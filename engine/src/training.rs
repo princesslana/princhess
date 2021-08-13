@@ -1,12 +1,10 @@
 extern crate pgn_reader;
 extern crate memmap;
-extern crate madvise;
 extern crate rand;
 
 use self::rand::{Rng, XorShiftRng, SeedableRng};
 use self::pgn_reader::{Reader, Visitor, San, Outcome, Skip};
 use self::memmap::Mmap;
-use self::madvise::{AccessPattern, AdviseMemory};
 
 use state::StateBuilder;
 use shakmaty;
@@ -130,7 +128,6 @@ fn run_value_gen(in_path: &str, out_file: Option<BufWriter<File>>, whitelist: [b
 
     let file = File::open(in_path).expect("fopen");
     let pgn = unsafe { Mmap::map(&file).expect("mmap") };
-    pgn.advise_memory_access(AccessPattern::Sequential).expect("madvise");
     Reader::new(&mut generator, &pgn[..]).read_all();
 
     generator
@@ -182,7 +179,6 @@ pub fn train_policy(in_path: &str, out_path: &str) {
     };
     let file = File::open(in_path).expect("fopen");
     let pgn = unsafe { Mmap::map(&file).expect("mmap") };
-    pgn.advise_memory_access(AccessPattern::Sequential).expect("madvise");
     Reader::new(&mut generator, &pgn[..]).read_all();
 }
 

@@ -116,15 +116,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "madvise"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4e1e75c3c34c2b34cec9f127418cb35240c7ebee5de36a51437e6b382c161b86"
-dependencies = [
- "libc",
-]
-
-[[package]]
 name = "mcts"
 version = "0.2.0"
 dependencies = [
@@ -238,7 +229,6 @@ dependencies = [
  "chess",
  "float-ord",
  "log",
- "madvise",
  "mcts",
  "memmap 0.7.0",
  "num_cpus",
