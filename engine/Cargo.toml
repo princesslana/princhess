@@ -2,7 +2,7 @@
 authors = ["Princess Lana <ianagbip1oti@gmail.com>", "Jacob Jackson <jacobbfjackson@gmail.com>"]
 build = "src/build.rs"
 name = "princhess"
-version = "0.0.1"
+version = "0.0.0-dev"
 [[bin]]
 name = "princhess"
 path = "src/main.rs"
