@@ -16,8 +16,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tag_name: ${{ github.run_number }}
-          release_name: Release ${{ github.run_number }}
+          tag_name: ${{ github.ref }}
+          release_name: Release ${{ github.ref }}
           draft: false
           prerelease: false
   build:
@@ -36,7 +36,7 @@ jobs:
         with:
           toolchain: nightly
       - name: Set version
-        run: sed -i "s/^version = .*/version = \"$(git describe --tags --dirty --always)\"/" */Cargo.toml
+        run: sed -i "s/^version = .*/version = \"${{ github.ref }}\"/" */Cargo.toml
       - uses: actions-rs/cargo@v1
         with:
           command: build
