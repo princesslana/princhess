@@ -32,10 +32,7 @@ fn main() {
         WriteLogger::new(
             LevelFilter::Debug,
             Config::default(),
-            log_file),
-        TermLogger::new(
-            LevelFilter::Info,
-            Config::default()).unwrap()
+            log_file)
         ]).unwrap();
     if let Some(ref train_pgn) = options.train_pgn {
         training::train(&train_pgn, &options.train_output_path, options.policy);

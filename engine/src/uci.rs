@@ -8,8 +8,8 @@ use std::thread;
 pub type Tokens<'a> = SplitWhitespace<'a>;
 
 pub const TIMEUP: &'static str = "timeup";
-const ENGINE_NAME: &'static str = "Sashimi";
-const ENGINE_AUTHOR: &'static str = "Jacob Jackson";
+const ENGINE_NAME: &'static str = "Princhess";
+const ENGINE_AUTHOR: &'static str = "Princess Lana & Jacob Jackson";
 const VERSION: Option<&'static str> = option_env!("CARGO_PKG_VERSION");
 
 pub fn main(commands: Vec<String>) {
