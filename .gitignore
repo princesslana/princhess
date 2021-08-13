@@ -14,3 +14,4 @@ feature_whitelist.txt
 run_goose.sh
 *.pb
 expanded_feature_list.txt
+bin/princhess
