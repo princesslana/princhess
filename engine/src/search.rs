@@ -1,7 +1,8 @@
+use mcts::GameState;
 use mcts::{MCTS, MCTSManager, AsyncSearchOwned, CycleBehaviour};
 use mcts::tree_policy::AlphaGoPolicy;
 use mcts::transposition_table::ApproxTable;
-use state::{State, Move};
+use state::{Player, State, Move};
 use std::sync::mpsc::Sender;
 use std::thread;
 use std::time::Duration;
@@ -10,9 +11,10 @@ use uci::{TIMEUP, Tokens};
 use evaluation::GooseEval;
 use features::Model;
 use args::options;
-use chess::Piece;
+use chess::{Color,Piece};
 
 const DEFAULT_MOVE_TIME_SECS: u64 = 10;
+const DEFAULT_MOVE_TIME_FRACTION: u64 = 15;
 
 pub const SCALE: f32 = 1e9;
 
@@ -74,7 +76,7 @@ impl Search {
     }
     pub fn new(state: State) -> Self {
         let search = Self::create_manager(state).into();
-        Self {search}
+        Self { search }
     }
     fn stop_and_print_m(self) -> MCTSManager<GooseMCTS> {
         if self.search.num_threads() == 0 {
@@ -111,6 +113,22 @@ impl Search {
                     if let Ok(t) = t.parse() {
                         think_time = Some(Duration::from_millis(t));
                     }
+                }
+                "wtime" => {
+                  if manager.tree().root_state().current_player() == Color::White {
+                    let t = tokens.next().unwrap_or("".into());
+                    if let Ok(t) = t.parse::<u64>() {
+                        think_time = Some(Duration::from_millis(t / DEFAULT_MOVE_TIME_FRACTION))
+                    }
+                  }
+                }
+                "btime" => {
+                  if manager.tree().root_state().current_player() == Color::Black {
+                    let t = tokens.next().unwrap_or("".into());
+                    if let Ok(t) = t.parse::<u64>() {
+                        think_time = Some(Duration::from_millis(t / DEFAULT_MOVE_TIME_FRACTION))
+                    }
+                  }
                 }
                 "infinite" => think_time = None,
                 _ => (),
