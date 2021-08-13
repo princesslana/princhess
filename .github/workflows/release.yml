@@ -1,0 +1,50 @@
+name: Release
+
+on:
+  push:
+    tags: ["*.*.*"]
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    outputs:
+      upload_url: ${{ steps.create_release.outputs.upload_url }}
+    steps:
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.run_number }}
+          release_name: Release ${{ github.run_number }}
+          draft: false
+          prerelease: false
+  build:
+    strategy:
+      matrix:
+        # Skip macos for now, since ends up with the same filename as ubuntu
+        # which means the upload glob needs some more work
+        os: ["ubuntu-latest", "windows-latest"]
+
+    runs-on: "${{ matrix.os }}"
+    needs: release
+
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: nightly
+      - uses: Set version
+        run: sed -i "s/^version = .*/version = \"$(git describe --tags --dirty --always)\"/" */Cargo.toml
+      - uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --release
+      - run: ls target/release
+      - name: Upload Assets to Release
+        uses: csexton/release-asset-action@v2
+        with:
+          pattern: "target/release/princess*"
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          release-url: ${{ needs.release.outputs.upload_url }}
