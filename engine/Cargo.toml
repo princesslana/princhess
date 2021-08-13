@@ -1,10 +1,10 @@
 [package]
-authors = ["Jacob Jackson <jacobbfjackson@gmail.com>"]
+authors = ["Princess Lana <ianagbip1oti@gmail.com>", "Jacob Jackson <jacobbfjackson@gmail.com>"]
 build = "src/build.rs"
-name = "sashimi"
-version = "0.2.0"
+name = "princhess"
+version = "0.0.1"
 [[bin]]
-name = "sashimi"
+name = "princhess"
 path = "src/main.rs"
 
 [build-dependencies]

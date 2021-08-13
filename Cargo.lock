@@ -231,6 +231,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "princhess"
+version = "0.0.1"
+dependencies = [
+ "argparse",
+ "chess",
+ "float-ord",
+ "log",
+ "madvise",
+ "mcts",
+ "memmap 0.7.0",
+ "num_cpus",
+ "pgn-reader",
+ "rand",
+ "shakmaty",
+ "simplelog",
+ "slurp",
+ "smallvec",
+]
+
+[[package]]
 name = "rand"
 version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -252,26 +272,6 @@ name = "redox_syscall"
 version = "0.1.37"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0d92eecebad22b767915e4d529f89f28ee96dbbf5a4810d2b844373f136417fd"
-
-[[package]]
-name = "sashimi"
-version = "0.2.0"
-dependencies = [
- "argparse",
- "chess",
- "float-ord",
- "log",
- "madvise",
- "mcts",
- "memmap 0.7.0",
- "num_cpus",
- "pgn-reader",
- "rand",
- "shakmaty",
- "simplelog",
- "slurp",
- "smallvec",
-]
 
 [[package]]
 name = "shakmaty"
