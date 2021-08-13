@@ -3,10 +3,10 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.cutechess-cli
-    command: -engine cmd=/engines/sashimi -engine cmd=/engines/princhess -each proto=uci tc=120+1 -rounds 50
+    command: -engine cmd=/engines/princhess -engine cmd=/engines/sashimi -each proto=uci tc=120+1 -rounds 50
   rapid:
     build:
       context: .
       dockerfile: Dockerfile.cutechess-cli
-    command: -engine cmd=/engines/sashimi -engine cmd=/engines/princhess -each proto=uci tc=10:00+10 -rounds 10
+    command: -engine cmd=/engines/princhess -engine cmd=/engines/sashimi -each proto=uci tc=10:00+10 -rounds 10
 
