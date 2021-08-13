@@ -1,0 +1,10 @@
+[workspace]
+
+members = [
+    "engine",
+    "mcts",
+    "arena",
+]
+
+[profile.release]
+lto = true

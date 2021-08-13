@@ -1,0 +1,17 @@
+[Event "Local Event"]
+[Site "Local Site"]
+[Date "2018.05.10"]
+[Round "1"]
+[White "zxqfl"]
+[Black "Sashimi 0.2.0"]
+[Result "0-1"]
+[ECO "A56"]
+[Opening "Benoni defense"]
+[Termination "normal"]
+
+1. d4 Nf6 2. c4 c5 3. dxc5 e5 4. Nc3 Bxc5 5. e4 Nc6 6. h3 Qb6 7. Qe2 Nd4 8.
+Qd2 d6 9. Na4 Nxe4 10. Nxb6 axb6 11. Qd1 Bb4+ 12. Bd2 Bxd2+ 13. Qxd2 Nxd2 14.
+Kxd2 Nb3+ 15. axb3 Rxa1 16. Nf3 Bd7 17. g4 h5 18. Rg1 hxg4 19. hxg4 Bc6 20. Be2
+Ra2 21. Kc3 Rh3 22. Rg3 Rh1 23. b4 Rb1 24. b5 Bd7 25. Bd3 Rbxb2 26. Bf5 Rxf2
+27. Bxd7+ Kxd7 28. Ng5 Ra3+ 29. Kb4 Rxg3 30. Ne4 Rb2+ 31. Ka4 Rg1 32. Nc3 Ra1+
+33. Na2 Raxa2# 0-1 

@@ -1,0 +1,11 @@
+[package]
+authors = ["Jacob Jackson <jacobbfjackson@gmail.com>"]
+name = "mcts"
+version = "0.2.0"
+
+[dependencies]
+arena = { path = "../arena" }
+crossbeam = "0.3"
+rand = "0.4"
+smallvec = "0.6"
+pod = "0.5.0"

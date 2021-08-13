@@ -1,0 +1,16 @@
+*.log
+/target/
+**/*.rs.bk
+lichess*.pgn
+engine/games/*
+*.libsvm
+train_data*
+*.sqlite
+old-versions/*
+*_features.txt
+policy_key.txt
+*debug.txt
+feature_whitelist.txt
+run_goose.sh
+*.pb
+expanded_feature_list.txt

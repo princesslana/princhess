@@ -1,0 +1,27 @@
+[package]
+authors = ["Jacob Jackson <jacobbfjackson@gmail.com>"]
+build = "src/build.rs"
+name = "sashimi"
+version = "0.2.0"
+[[bin]]
+name = "sashimi"
+path = "src/main.rs"
+
+[build-dependencies]
+slurp = "1.0.1"
+
+[dependencies]
+mcts = { path = "../mcts" }
+argparse = "0.2.2"
+chess = "1.0.3"
+float-ord = "0.2.0"
+log = "0.4.6"
+madvise = "0.1.0"
+memmap = "0.7.0"
+num_cpus = "1.9.0"
+pgn-reader = "0.4.0"
+rand = "^0.4"
+shakmaty = "^0.5"
+simplelog = "0.5.3"
+slurp = "1.0.1"
+smallvec = "0.6.7"

@@ -1,0 +1,12 @@
+PAWN_[NUM]_[0|1|2|3|4|5|6|7|8]
+KNIGHT_[NUM]_[0|1|2]
+BISHOP_[NUM]_[0|1|2]
+ROOK_[NUM]_[0|1|2]
+QUEEN_[NUM]_[0|1]
+CAN_DO_[piece]_TAKES_[piece]
+CAN_DO_[piece]_TO_[A|B|C|D|E|F|G|H][1|2|3|4|5|6|7|8]
+JUST_CAPTURED_[piece]_RECAPTURE_WITH_[piece]
+IS_CHECK
+IS_DOUBLE_CHECK
+[piece]_PINNED
+ONE
