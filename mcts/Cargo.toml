@@ -4,8 +4,8 @@ name = "mcts"
 version = "0.0.0-dev"
 
 [dependencies]
-arena = { path = "../arena" }
 crossbeam = "0.3"
+memmap = "0.6.2"
 rand = "0.4"
 smallvec = "0.6"
 pod = "0.5.0"

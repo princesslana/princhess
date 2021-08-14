@@ -107,10 +107,11 @@
 //! ```
 
 extern crate crossbeam;
+extern crate memmap;
 extern crate smallvec;
-extern crate arena;
 extern crate pod;
 
+mod arena;
 mod search_tree;
 mod atomics;
 pub mod tree_policy;

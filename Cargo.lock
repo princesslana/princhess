@@ -3,14 +3,6 @@
 version = 3
 
 [[package]]
-name = "arena"
-version = "0.1.0"
-dependencies = [
- "memmap 0.6.2",
- "pod",
-]
-
-[[package]]
 name = "argparse"
 version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -117,10 +109,10 @@ dependencies = [
 
 [[package]]
 name = "mcts"
-version = "0.2.0"
+version = "0.0.0-dev"
 dependencies = [
- "arena",
  "crossbeam",
+ "memmap 0.6.2",
  "pod",
  "rand",
  "smallvec",
@@ -223,7 +215,7 @@ dependencies = [
 
 [[package]]
 name = "princhess"
-version = "0.0.1"
+version = "0.0.0-dev"
 dependencies = [
  "argparse",
  "chess",

@@ -3,7 +3,6 @@
 members = [
     "engine",
     "mcts",
-    "arena",
 ]
 
 [profile.release]
