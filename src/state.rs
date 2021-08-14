@@ -1,6 +1,6 @@
 use smallvec::SmallVec;
 use mcts::GameState;
-use mcts::transposition_table::TranspositionHash;
+use transposition_table::TranspositionHash;
 use uci::Tokens;
 use shakmaty;
 use shakmaty::Position;

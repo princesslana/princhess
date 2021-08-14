@@ -1,8 +1,9 @@
 extern crate rand;
 use self::rand::{XorShiftRng, Rng, SeedableRng};
 
+use mcts::MCTS;
+
 use std;
-use super::*;
 use search_tree::*;
 
 pub struct Fraction(pub f32, pub f32);

@@ -1,7 +1,8 @@
 #![cfg_attr(feature = "nightly", feature(integer_atomics))]
 
+use mcts::*;
+use transposition_table::TranspositionTable;
 use atomics::*;
-use super::*;
 use std::ptr::{null, null_mut};
 use smallvec::SmallVec;
 use std::fmt;
