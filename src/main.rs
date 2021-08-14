@@ -5,12 +5,9 @@ extern crate crossbeam;
 extern crate float_ord;
 extern crate memmap;
 extern crate pod;
+extern crate pretty_env_logger;
 extern crate shakmaty;
-extern crate simplelog;
 extern crate smallvec;
-
-use simplelog::{CombinedLogger, Config, LevelFilter, TermLogger, WriteLogger};
-use std::fs::OpenOptions;
 
 mod arena;
 mod atomics;
@@ -32,17 +29,9 @@ mod uci;
 fn main() {
     args::init();
     let options = args::options();
-    let log_file = OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(&options.log_file_path)
-        .unwrap();
-    CombinedLogger::init(vec![WriteLogger::new(
-        LevelFilter::Debug,
-        Config::default(),
-        log_file,
-    )])
-    .unwrap();
+
+    pretty_env_logger::init();
+
     if let Some(ref train_pgn) = options.train_pgn {
         training::train(&train_pgn, &options.train_output_path, options.policy);
     } else {
