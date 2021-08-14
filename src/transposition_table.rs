@@ -1,6 +1,7 @@
 use super::*;
 use search_tree::*;
 use atomics::*;
+use mcts::MCTS;
 
 pub unsafe trait TranspositionTable<Spec: MCTS>: Sync + Sized {
     /// **If this function inserts a value, it must return `None`.** Failure to follow

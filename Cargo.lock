@@ -108,17 +108,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "mcts"
-version = "0.0.0-dev"
-dependencies = [
- "crossbeam",
- "memmap 0.6.2",
- "pod",
- "rand",
- "smallvec",
-]
-
-[[package]]
 name = "memchr"
 version = "2.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -127,16 +116,6 @@ dependencies = [
  "cfg-if",
  "libc",
  "version_check",
-]
-
-[[package]]
-name = "memmap"
-version = "0.6.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e2ffa2c986de11a9df78620c01eeaaf27d94d3ff02bf81bfcca953102dd0c6ff"
-dependencies = [
- "libc",
- "winapi",
 ]
 
 [[package]]
@@ -219,12 +198,13 @@ version = "0.0.0-dev"
 dependencies = [
  "argparse",
  "chess",
+ "crossbeam",
  "float-ord",
  "log",
- "mcts",
- "memmap 0.7.0",
+ "memmap",
  "num_cpus",
  "pgn-reader",
+ "pod",
  "rand",
  "shakmaty",
  "simplelog",

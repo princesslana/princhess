@@ -105,18 +105,6 @@
 //!         CountingGame(4),
 //!         CountingGame(5)]);
 //! ```
-
-extern crate crossbeam;
-extern crate memmap;
-extern crate smallvec;
-extern crate pod;
-
-mod arena;
-mod search_tree;
-mod atomics;
-pub mod tree_policy;
-pub mod transposition_table;
-
 pub use search_tree::*;
 use tree_policy::*;
 use transposition_table::*;
@@ -183,7 +171,7 @@ pub trait MCTS: Sized + Sync {
 pub struct ThreadData<'a, Spec: MCTS> {
     pub policy_data: TreePolicyThreadData<Spec>,
     pub extra_data: Spec::ExtraThreadData,
-    allocator: ArenaAllocator<'a>,
+    pub allocator: ArenaAllocator<'a>,
 }
 
 impl<'a, Spec: MCTS> ThreadData<'a, Spec>
@@ -401,7 +389,7 @@ where
 }
 
 // https://stackoverflow.com/questions/26998485/rust-print-format-number-with-thousand-separator
-fn thousands_separate(x: usize) -> String {
+pub fn thousands_separate(x: usize) -> String {
     let s = format!("{}", x);
     let bytes: Vec<_> = s.bytes().rev().collect();
     let chunks: Vec<_> = bytes.chunks(3).map(|chunk| String::from_utf8(chunk.to_vec()).unwrap()).collect();

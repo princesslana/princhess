@@ -1,8 +1,8 @@
 use mcts::GameState;
 use mcts::{MCTS, MCTSManager, AsyncSearchOwned, CycleBehaviour};
-use mcts::tree_policy::AlphaGoPolicy;
-use mcts::transposition_table::ApproxTable;
-use state::{Player, State, Move};
+use tree_policy::AlphaGoPolicy;
+use transposition_table::ApproxTable;
+use state::{State, Move};
 use std::sync::mpsc::Sender;
 use std::thread;
 use std::time::Duration;

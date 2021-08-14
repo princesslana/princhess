@@ -5,10 +5,19 @@ extern crate smallvec;
 extern crate simplelog;
 extern crate shakmaty;
 extern crate chess;
-extern crate mcts;
+extern crate crossbeam;
+extern crate memmap;
+extern crate pod;
 
 use simplelog::{WriteLogger, CombinedLogger, LevelFilter, Config, TermLogger};
 use std::fs::OpenOptions;
+
+mod arena;
+mod search_tree;
+mod atomics;
+mod tree_policy;
+mod transposition_table;
+mod mcts;
 
 mod uci;
 mod search;
