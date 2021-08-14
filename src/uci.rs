@@ -1,8 +1,8 @@
-use std::io::{stdin, BufRead};
 use search::Search;
 use state::State;
+use std::io::{stdin, BufRead};
 use std::str::SplitWhitespace;
-use std::sync::mpsc::{SendError, channel};
+use std::sync::mpsc::{channel, SendError};
 use std::thread;
 
 pub type Tokens<'a> = SplitWhitespace<'a>;

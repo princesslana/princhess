@@ -1,26 +1,35 @@
-use mcts::{Evaluator, SearchHandle};
-use search::{GooseMCTS, SCALE};
-use state::{State, Player, MoveList};
-use features::Model;
-use policy_features::evaluate_moves;
 use chess::*;
+use features::Model;
+use mcts::{Evaluator, SearchHandle};
+use policy_features::evaluate_moves;
+use search::{GooseMCTS, SCALE};
+use state::{MoveList, Player, State};
 
 pub struct GooseEval {
-    model: Model
+    model: Model,
 }
 
 impl Evaluator<GooseMCTS> for GooseEval {
     type StateEvaluation = i64;
 
-    fn evaluate_new_state(&self, state: &State, moves: &MoveList,
-                          _: Option<SearchHandle<GooseMCTS>>) -> (Vec<f32>, i64) {
+    fn evaluate_new_state(
+        &self,
+        state: &State,
+        moves: &MoveList,
+        _: Option<SearchHandle<GooseMCTS>>,
+    ) -> (Vec<f32>, i64) {
         let move_evaluations = evaluate_moves(state, moves.as_slice());
         let state_evaluation = if moves.len() == 0 {
             let x = SCALE as i64;
             match state.outcome() {
                 BoardStatus::Stalemate => 0,
-                BoardStatus::Checkmate =>
-                    if state.board().side_to_move() == Color::White {-x} else {x},
+                BoardStatus::Checkmate => {
+                    if state.board().side_to_move() == Color::White {
+                        -x
+                    } else {
+                        x
+                    }
+                }
                 BoardStatus::Ongoing => unreachable!(),
             }
         } else {
@@ -28,8 +37,7 @@ impl Evaluator<GooseMCTS> for GooseEval {
         };
         (move_evaluations, state_evaluation)
     }
-    fn evaluate_existing_state(&self, _: &State, evaln: &i64,
-                               _: SearchHandle<GooseMCTS>) -> i64 {
+    fn evaluate_existing_state(&self, _: &State, evaln: &i64, _: SearchHandle<GooseMCTS>) -> i64 {
         *evaln
     }
     fn interpret_evaluation_for_player(&self, evaln: &i64, player: &Player) -> i64 {
@@ -42,16 +50,16 @@ impl Evaluator<GooseMCTS> for GooseEval {
 
 impl From<Model> for GooseEval {
     fn from(m: Model) -> Self {
-        Self {model: m}
+        Self { model: m }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use search::Search;
-    use mcts::GameState;
     use super::*;
     use float_ord::FloatOrd;
+    use mcts::GameState;
+    use search::Search;
 
     fn assert_find_move(fen: &str, desired: &str) -> Vec<State> {
         let pv_len = 15;
@@ -79,16 +87,18 @@ mod tests {
             println!("{}", info);
         }
         println!("{}", manager.tree().diagnose());
-        assert!(format!("{}", mov).starts_with(desired),
-                "expected {}, got {}",
-                desired,
-                mov);
+        assert!(
+            format!("{}", mov).starts_with(desired),
+            "expected {}, got {}",
+            desired,
+            mov
+        );
         manager.principal_variation_states(pv_len)
     }
 
     #[test]
     fn mate_in_one() {
-        assert_find_move("6k1/8/6K1/8/8/8/8/R7 w - - 0 0", "a1a8");;
+        assert_find_move("6k1/8/6K1/8/8/8/8/R7 w - - 0 0", "a1a8");
     }
 
     #[test]
@@ -99,19 +109,28 @@ mod tests {
     #[test]
     #[ignore]
     fn take_the_bishop() {
-        assert_find_move("r3k2r/ppp1q1pp/2n1b3/8/3p4/6p1/PPPNQPP1/2K1RB1R w kq - 0 16", "Re1xe6");
+        assert_find_move(
+            "r3k2r/ppp1q1pp/2n1b3/8/3p4/6p1/PPPNQPP1/2K1RB1R w kq - 0 16",
+            "Re1xe6",
+        );
     }
 
     #[test]
     #[ignore]
     fn what_happened() {
-        assert_find_move("2k1r3/ppp2pp1/2nb1n1p/1q1rp3/8/2QPBNPP/PP2PPBK/2RR4 b - - 9 20", "foo");
+        assert_find_move(
+            "2k1r3/ppp2pp1/2nb1n1p/1q1rp3/8/2QPBNPP/PP2PPBK/2RR4 b - - 9 20",
+            "foo",
+        );
     }
 
     #[test]
     #[ignore]
     fn what_happened_2() {
-        assert_find_move("2r4r/ppB3p1/2n2k1p/1N5q/1b3Qn1/6Pb/PP2PPBP/R4RK1 b - - 10 18", "foo");
+        assert_find_move(
+            "2r4r/ppB3p1/2n2k1p/1N5q/1b3Qn1/6Pb/PP2PPBP/R4RK1 b - - 10 18",
+            "foo",
+        );
     }
 
     #[test]
@@ -124,6 +143,9 @@ mod tests {
     #[test]
     #[ignore]
     fn interesting() {
-        assert_find_move("2kr4/pp2bp1p/3p4/5b1Q/4q1r1/N4P2/PPPP2PP/R1B2RK1 b - -", "?");
+        assert_find_move(
+            "2kr4/pp2bp1p/3p4/5b1Q/4q1r1/N4P2/PPPP2PP/R1B2RK1 b - -",
+            "?",
+        );
     }
 }

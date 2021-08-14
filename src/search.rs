@@ -1,17 +1,17 @@
+use args::options;
+use chess::{Color, Piece};
+use evaluation::GooseEval;
+use features::Model;
 use mcts::GameState;
-use mcts::{MCTS, MCTSManager, AsyncSearchOwned, CycleBehaviour};
-use tree_policy::AlphaGoPolicy;
-use transposition_table::ApproxTable;
-use state::{State, Move};
+use mcts::{AsyncSearchOwned, CycleBehaviour, MCTSManager, MCTS};
+use state::{Move, State};
+use std::cmp::max;
 use std::sync::mpsc::Sender;
 use std::thread;
 use std::time::Duration;
-use std::cmp::max;
-use uci::{TIMEUP, Tokens};
-use evaluation::GooseEval;
-use features::Model;
-use args::options;
-use chess::{Color,Piece};
+use transposition_table::ApproxTable;
+use tree_policy::AlphaGoPolicy;
+use uci::{Tokens, TIMEUP};
 
 const DEFAULT_MOVE_TIME_SECS: u64 = 10;
 const DEFAULT_MOVE_TIME_FRACTION: u64 = 15;
@@ -72,7 +72,8 @@ impl Search {
             GooseMCTS,
             GooseEval::from(Model::new()),
             policy(),
-            ApproxTable::enough_to_hold(GooseMCTS.node_limit()))
+            ApproxTable::enough_to_hold(GooseMCTS.node_limit()),
+        )
     }
     pub fn new(state: State) -> Self {
         let search = Self::create_manager(state).into();
@@ -84,13 +85,16 @@ impl Search {
         }
         let manager = self.search.halt();
         if let Some(mov) = manager.best_move() {
-            let info_str = format!("info depth {} score cp {} pv{}",
-                                   manager.tree().num_nodes(),
-                                   manager.principal_variation_info(1)
-                                   .get(0)
-                                   .map(|x| x.sum_rewards() / x.visits() as i64 / (SCALE / 100.) as i64)
-                                   .unwrap_or(0),
-                                   get_pv(&manager));
+            let info_str = format!(
+                "info depth {} score cp {} pv{}",
+                manager.tree().num_nodes(),
+                manager
+                    .principal_variation_info(1)
+                    .get(0)
+                    .map(|x| x.sum_rewards() / x.visits() as i64 / (SCALE / 100.) as i64)
+                    .unwrap_or(0),
+                get_pv(&manager)
+            );
             info!("{}", info_str);
             println!("{}", info_str);
             println!("bestmove {}", to_uci(mov));
@@ -100,7 +104,7 @@ impl Search {
     }
     pub fn stop_and_print(self) -> Self {
         Self {
-            search: self.stop_and_print_m().into()
+            search: self.stop_and_print_m().into(),
         }
     }
     pub fn go(self, mut tokens: Tokens, position_num: u64, sender: &Sender<String>) -> Self {
@@ -115,20 +119,20 @@ impl Search {
                     }
                 }
                 "wtime" => {
-                  if manager.tree().root_state().current_player() == Color::White {
-                    let t = tokens.next().unwrap_or("".into());
-                    if let Ok(t) = t.parse::<u64>() {
-                        think_time = Some(Duration::from_millis(t / DEFAULT_MOVE_TIME_FRACTION))
+                    if manager.tree().root_state().current_player() == Color::White {
+                        let t = tokens.next().unwrap_or("".into());
+                        if let Ok(t) = t.parse::<u64>() {
+                            think_time = Some(Duration::from_millis(t / DEFAULT_MOVE_TIME_FRACTION))
+                        }
                     }
-                  }
                 }
                 "btime" => {
-                  if manager.tree().root_state().current_player() == Color::Black {
-                    let t = tokens.next().unwrap_or("".into());
-                    if let Ok(t) = t.parse::<u64>() {
-                        think_time = Some(Duration::from_millis(t / DEFAULT_MOVE_TIME_FRACTION))
+                    if manager.tree().root_state().current_player() == Color::Black {
+                        let t = tokens.next().unwrap_or("".into());
+                        if let Ok(t) = t.parse::<u64>() {
+                            think_time = Some(Duration::from_millis(t / DEFAULT_MOVE_TIME_FRACTION))
+                        }
                     }
-                  }
                 }
                 "infinite" => think_time = None,
                 _ => (),
@@ -142,14 +146,14 @@ impl Search {
             });
         }
         Self {
-            search: manager.into_playout_parallel_async(num_threads())
+            search: manager.into_playout_parallel_async(num_threads()),
         }
     }
     pub fn nodes_per_sec(self) -> Self {
         let mut manager = self.stop_and_print_m().reset();
         manager.perf_test_to_stderr(num_threads());
         Self {
-            search: manager.into()
+            search: manager.into(),
         }
     }
 }
@@ -167,7 +171,8 @@ fn to_uci(mov: Move) -> String {
 }
 
 fn get_pv(m: &MCTSManager<GooseMCTS>) -> String {
-    m.principal_variation(10).into_iter()
+    m.principal_variation(10)
+        .into_iter()
         .map(|x| format!(" {}", to_uci(x)))
         .collect()
 }

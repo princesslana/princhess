@@ -1,13 +1,13 @@
-extern crate pod;
 extern crate memmap;
+extern crate pod;
 
+use memmap::MmapMut;
 use pod::Pod;
-use std::ops::DerefMut;
-use std::sync::Mutex;
+use std::cell::UnsafeCell;
 use std::collections::LinkedList;
 use std::mem;
-use std::cell::UnsafeCell;
-use memmap::MmapMut;
+use std::ops::DerefMut;
+use std::sync::Mutex;
 
 pub struct Arena {
     owned_slices: Mutex<LinkedList<Box<[u8]>>>,
@@ -25,13 +25,13 @@ impl Arena {
         let result = (&mut *memory) as *mut _;
         let mut owned_slices = self.owned_slices.lock().unwrap();
         owned_slices.push_back(memory);
-        unsafe {&mut *result}
+        unsafe { &mut *result }
     }
     fn give_mmap(&self, mut map: MmapMut) -> &mut [u8] {
         let result = map.deref_mut() as *mut _;
         let mut owned_mappings = self.owned_mappings.lock().unwrap();
         owned_mappings.push_back(map);
-        unsafe {&mut *result}
+        unsafe { &mut *result }
     }
     fn alloc(&self, sz: usize) -> &mut [u8] {
         if sz == 1 << 21 {

@@ -105,10 +105,10 @@
 //!         CountingGame(4),
 //!         CountingGame(5)]);
 //! ```
-pub use search_tree::*;
-use tree_policy::*;
-use transposition_table::*;
 use arena::ArenaAllocator;
+pub use search_tree::*;
+use transposition_table::*;
+use tree_policy::*;
 
 use atomics::*;
 use std::sync::Arc;
@@ -141,8 +141,14 @@ pub trait MCTS: Sized + Sync {
         std::usize::MAX
     }
     /// Rule for selecting the best move once the search is over. Defaults to choosing the child with the most visits.
-    fn select_child_after_search<'a>(&self, children: &[MoveInfoHandle<'a, Self>]) -> MoveInfoHandle<'a, Self> {
-        *children.into_iter().max_by_key(|child| child.visits()).unwrap()
+    fn select_child_after_search<'a>(
+        &self,
+        children: &[MoveInfoHandle<'a, Self>],
+    ) -> MoveInfoHandle<'a, Self> {
+        *children
+            .into_iter()
+            .max_by_key(|child| child.visits())
+            .unwrap()
     }
     /// `playout` panics when this length is exceeded. Defaults to one million.
     fn max_playout_length(&self) -> usize {
@@ -158,14 +164,25 @@ pub trait MCTS: Sized + Sync {
         }
     }
     /// Called when a child node is selected in a playout. The default implementation does nothing.
-    fn on_choice_made<'a, 'b>(&self, _data: &mut Self::PlayoutData,
-                              _state: &Self::State, _moves: Moves<'a, Self>, _choice: MoveInfoHandle<'a, Self>,
-                              _handle: SearchHandle<'a, 'b, Self>) {}
+    fn on_choice_made<'a, 'b>(
+        &self,
+        _data: &mut Self::PlayoutData,
+        _state: &Self::State,
+        _moves: Moves<'a, Self>,
+        _choice: MoveInfoHandle<'a, Self>,
+        _handle: SearchHandle<'a, 'b, Self>,
+    ) {
+    }
     /// Called before the tree policy is run. If it returns `Some(x)`, the tree policy is ignored
     /// and `x` is used instead. The default implementation returns `None`.
-    fn override_policy<'a>(&self, _data: &Self::PlayoutData,
-                           _state: &Self::State, _moves: Moves<'a, Self>) -> Option<MoveInfoHandle<'a, Self>>
-    { None }
+    fn override_policy<'a>(
+        &self,
+        _data: &Self::PlayoutData,
+        _state: &Self::State,
+        _moves: Moves<'a, Self>,
+    ) -> Option<MoveInfoHandle<'a, Self>> {
+        None
+    }
 }
 
 pub struct ThreadData<'a, Spec: MCTS> {
@@ -177,7 +194,7 @@ pub struct ThreadData<'a, Spec: MCTS> {
 impl<'a, Spec: MCTS> ThreadData<'a, Spec>
 where
     TreePolicyThreadData<Spec>: Default,
-    Spec::ExtraThreadData: Default
+    Spec::ExtraThreadData: Default,
 {
     fn create(tree: &'a SearchTree<Spec>) -> Self {
         Self {
@@ -193,12 +210,13 @@ pub type StateEvaluation<Spec> = <<Spec as MCTS>::Eval as Evaluator<Spec>>::Stat
 pub type Move<Spec> = <<Spec as MCTS>::State as GameState>::Move;
 pub type MoveList<Spec> = <<Spec as MCTS>::State as GameState>::MoveList;
 pub type Player<Spec> = <<Spec as MCTS>::State as GameState>::Player;
-pub type TreePolicyThreadData<Spec> = <<Spec as MCTS>::TreePolicy as TreePolicy<Spec>>::ThreadLocalData;
+pub type TreePolicyThreadData<Spec> =
+    <<Spec as MCTS>::TreePolicy as TreePolicy<Spec>>::ThreadLocalData;
 
 pub trait GameState: Clone {
     type Move: Sync + Send + Clone;
     type Player: Sync;
-    type MoveList: std::iter::IntoIterator<Item=Self::Move>;
+    type MoveList: std::iter::IntoIterator<Item = Self::Move>;
 
     fn current_player(&self) -> Self::Player;
     fn available_moves(&self) -> Self::MoveList;
@@ -208,20 +226,26 @@ pub trait GameState: Clone {
 pub trait Evaluator<Spec: MCTS>: Sync {
     type StateEvaluation: Sync + Send;
 
-    fn evaluate_new_state(&self,
-                          state: &Spec::State, moves: &MoveList<Spec>,
-                          handle: Option<SearchHandle<Spec>>)
-                          -> (Vec<MoveEvaluation<Spec>>, Self::StateEvaluation);
+    fn evaluate_new_state(
+        &self,
+        state: &Spec::State,
+        moves: &MoveList<Spec>,
+        handle: Option<SearchHandle<Spec>>,
+    ) -> (Vec<MoveEvaluation<Spec>>, Self::StateEvaluation);
 
-    fn evaluate_existing_state(&self, state: &Spec::State, existing_evaln: &Self::StateEvaluation,
-                               handle: SearchHandle<Spec>)
-                               -> Self::StateEvaluation;
+    fn evaluate_existing_state(
+        &self,
+        state: &Spec::State,
+        existing_evaln: &Self::StateEvaluation,
+        handle: SearchHandle<Spec>,
+    ) -> Self::StateEvaluation;
 
-    fn interpret_evaluation_for_player(&self,
-                                       evaluation: &Self::StateEvaluation,
-                                       player: &Player<Spec>) -> i64;
+    fn interpret_evaluation_for_player(
+        &self,
+        evaluation: &Self::StateEvaluation,
+        player: &Player<Spec>,
+    ) -> i64;
 }
-
 
 pub struct MCTSManager<Spec: MCTS> {
     search_tree: SearchTree<Spec>,
@@ -231,12 +255,20 @@ pub struct MCTSManager<Spec: MCTS> {
 impl<Spec: MCTS> MCTSManager<Spec>
 where
     TreePolicyThreadData<Spec>: Default,
-    Spec::ExtraThreadData: Default
+    Spec::ExtraThreadData: Default,
 {
-    pub fn new(state: Spec::State, manager: Spec, eval: Spec::Eval, tree_policy: Spec::TreePolicy,
-               table: Spec::TranspositionTable) -> Self {
+    pub fn new(
+        state: Spec::State,
+        manager: Spec,
+        eval: Spec::Eval,
+        tree_policy: Spec::TreePolicy,
+        table: Spec::TranspositionTable,
+    ) -> Self {
         let search_tree = SearchTree::new(state, manager, tree_policy, eval, table);
-        Self {search_tree, print_on_playout_error: true}
+        Self {
+            search_tree,
+            print_on_playout_error: true,
+        }
     }
 
     pub fn print_on_playout_error(&mut self, v: bool) -> &mut Self {
@@ -267,8 +299,10 @@ where
                 }
                 if !search_tree.playout(&mut tld) {
                     if print_on_playout_error {
-                        eprintln!("Node limit of {} reached. Halting search.",
-                                  search_tree.spec().node_limit());
+                        eprintln!(
+                            "Node limit of {} reached. Halting search.",
+                            search_tree.spec().node_limit()
+                        );
                     }
                     break;
                 }
@@ -278,12 +312,12 @@ where
     pub fn playout_parallel_async<'a>(&'a mut self, num_threads: usize) -> AsyncSearch<'a, Spec> {
         assert!(num_threads != 0);
         let stop_signal = Arc::new(AtomicBool::new(false));
-        let threads = (0..num_threads).map(|_| {
-            let stop_signal = stop_signal.clone();
-            unsafe {
-                self.spawn_worker_thread(stop_signal)
-            }
-        }).collect();
+        let threads = (0..num_threads)
+            .map(|_| {
+                let stop_signal = stop_signal.clone();
+                unsafe { self.spawn_worker_thread(stop_signal) }
+            })
+            .collect();
         AsyncSearch {
             manager: self,
             stop_signal,
@@ -294,16 +328,16 @@ where
         assert!(num_threads != 0);
         let self_box = Box::new(self);
         let stop_signal = Arc::new(AtomicBool::new(false));
-        let threads = (0..num_threads).map(|_| {
-            let stop_signal = stop_signal.clone();
-            unsafe {
-                self_box.spawn_worker_thread(stop_signal)
-            }
-        }).collect();
+        let threads = (0..num_threads)
+            .map(|_| {
+                let stop_signal = stop_signal.clone();
+                unsafe { self_box.spawn_worker_thread(stop_signal) }
+            })
+            .collect();
         AsyncSearchOwned {
             manager: Some(self_box),
             stop_signal,
-            threads
+            threads,
         }
     }
     pub fn playout_parallel_for(&mut self, duration: Duration, num_threads: usize) {
@@ -337,14 +371,14 @@ where
         self.search_tree.principal_variation(num_moves)
     }
     pub fn principal_variation(&self, num_moves: usize) -> Vec<Move<Spec>> {
-        self.search_tree.principal_variation(num_moves)
+        self.search_tree
+            .principal_variation(num_moves)
             .into_iter()
             .map(|x| x.get_move())
             .map(|x| x.clone())
             .collect()
     }
-    pub fn principal_variation_states(&self, num_moves: usize)
-                                      -> Vec<Spec::State> {
+    pub fn principal_variation_states(&self, num_moves: usize) -> Vec<Spec::State> {
         let moves = self.principal_variation(num_moves);
         let mut states = vec![self.search_tree.root_state().clone()];
         for mov in moves {
@@ -354,21 +388,22 @@ where
         }
         states
     }
-    pub fn tree(&self) -> &SearchTree<Spec> {&self.search_tree}
+    pub fn tree(&self) -> &SearchTree<Spec> {
+        &self.search_tree
+    }
     pub fn best_move(&self) -> Option<Move<Spec>> {
         self.principal_variation(1).get(0).map(|x| x.clone())
     }
-    pub fn perf_test<F>(&mut self, num_threads: usize, mut f: F) where F: FnMut(usize) {
+    pub fn perf_test<F>(&mut self, num_threads: usize, mut f: F)
+    where
+        F: FnMut(usize),
+    {
         let search = self.playout_parallel_async(num_threads);
         for _ in 0..10 {
             let n1 = search.manager.search_tree.num_nodes();
             std::thread::sleep(Duration::from_secs(1));
             let n2 = search.manager.search_tree.num_nodes();
-            let diff = if n2 > n1 {
-                n2 - n1
-            } else {
-                0
-            };
+            let diff = if n2 > n1 { n2 - n1 } else { 0 };
             f(diff);
         }
     }
@@ -392,7 +427,10 @@ where
 pub fn thousands_separate(x: usize) -> String {
     let s = format!("{}", x);
     let bytes: Vec<_> = s.bytes().rev().collect();
-    let chunks: Vec<_> = bytes.chunks(3).map(|chunk| String::from_utf8(chunk.to_vec()).unwrap()).collect();
+    let chunks: Vec<_> = bytes
+        .chunks(3)
+        .map(|chunk| String::from_utf8(chunk.to_vec()).unwrap())
+        .collect();
     let result: Vec<_> = chunks.join(",").bytes().rev().collect();
     String::from_utf8(result).unwrap()
 }
