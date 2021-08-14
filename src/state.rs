@@ -1,13 +1,13 @@
-use smallvec::SmallVec;
+use chess;
 use mcts::GameState;
-use transposition_table::TranspositionHash;
-use uci::Tokens;
 use shakmaty;
 use shakmaty::Position;
-use chess;
-use std::iter::IntoIterator;
-use std::cmp::max;
+use smallvec::SmallVec;
 use std;
+use std::cmp::max;
+use std::iter::IntoIterator;
+use transposition_table::TranspositionHash;
+use uci::Tokens;
 
 pub type Player = chess::Color;
 pub type Move = chess::ChessMove;
@@ -29,10 +29,13 @@ impl StateBuilder {
         self.moves.push(mov);
     }
     pub fn from_fen(fen: &str) -> Option<Self> {
-        Some(fen
-            .parse::<shakmaty::fen::Fen>().ok()?
-            .position::<shakmaty::Chess>().ok()?
-            .into())
+        Some(
+            fen.parse::<shakmaty::fen::Fen>()
+                .ok()?
+                .position::<shakmaty::Chess>()
+                .ok()?
+                .into(),
+        )
     }
     pub fn from_tokens(mut tokens: Tokens) -> Option<Self> {
         let mut result = match tokens.next()? {
@@ -46,7 +49,7 @@ impl StateBuilder {
                     s.push_str(tokens.next()?);
                 }
                 Self::from_fen(&s)?
-            },
+            }
             _ => return None,
         };
         match tokens.next() {
@@ -110,16 +113,22 @@ impl State {
     }
     fn check_for_repetition(&mut self) {
         let crnt_hash = self.board.get_hash();
-        self.repetitions = max(self.repetitions,
-            self.prev_state_hashes.iter()
+        self.repetitions = max(
+            self.repetitions,
+            self.prev_state_hashes
+                .iter()
                 .filter(|h| **h == crnt_hash)
-                .count());
+                .count(),
+        );
     }
     fn drawn_by_repetition(&self) -> bool {
         self.repetitions >= 2
     }
     pub fn freeze(self) -> Self {
-        Self {frozen: true, ..self}
+        Self {
+            frozen: true,
+            ..self
+        }
     }
     pub fn queens_off(&self) -> bool {
         self.queens_off
@@ -164,7 +173,8 @@ impl From<shakmaty::Chess> for StateBuilder {
 fn convert_square(sq: shakmaty::Square) -> chess::Square {
     chess::Square::make_square(
         chess::Rank::from_index(sq.rank() as usize),
-        chess::File::from_index(sq.file() as usize))
+        chess::File::from_index(sq.file() as usize),
+    )
 }
 
 fn convert_role(role: shakmaty::Role) -> chess::Piece {
@@ -180,7 +190,7 @@ fn convert_role(role: shakmaty::Role) -> chess::Piece {
 
 fn convert_move(mov: &shakmaty::Move) -> chess::ChessMove {
     match mov {
-        &shakmaty::Move::Castle {ref king, ref rook} => {
+        &shakmaty::Move::Castle { ref king, ref rook } => {
             let from = convert_square(mov.from().unwrap());
             let to = if king.file() < rook.file() {
                 from.right().unwrap().right().unwrap()
@@ -192,7 +202,8 @@ fn convert_move(mov: &shakmaty::Move) -> chess::ChessMove {
         mov => chess::ChessMove::new(
             convert_square(mov.from().unwrap()),
             convert_square(mov.to()),
-            mov.promotion().map(|x| convert_role(x)))
+            mov.promotion().map(|x| convert_role(x)),
+        ),
     }
 }
 
@@ -219,9 +230,12 @@ impl From<StateBuilder> for State {
         let mut state = State::from(board);
         for mov in sb.moves {
             let mov = convert_move(&mov);
-            assert!(state.board().legal(mov),
+            assert!(
+                state.board().legal(mov),
                 "{} is illegal on the following board:\n{}",
-                mov, state.board());
+                mov,
+                state.board()
+            );
             state.make_move(&mov);
         }
         state
@@ -287,10 +301,13 @@ impl GameState for State {
         } else {
             self.board.enumerate_moves(&mut arr)
         };
-        MoveList {arr, len}
+        MoveList { arr, len }
     }
     fn make_move(&mut self, mov: &chess::ChessMove) {
-        if (self.board.pieces(chess::Piece::Pawn) & chess::BitBoard::from_square(mov.get_source())).0 != 0 {
+        if (self.board.pieces(chess::Piece::Pawn) & chess::BitBoard::from_square(mov.get_source()))
+            .0
+            != 0
+        {
             self.prev_state_hashes.clear();
         } else if !self.frozen {
             self.prev_state_hashes.push(self.board.get_hash());
@@ -298,7 +315,7 @@ impl GameState for State {
         self.prev_capture = self.board.piece_on(mov.get_dest());
         self.prev_move = Some(*mov);
         for i in (0..(NUM_OCCUPIED_KEPT - 1)).rev() {
-            self.formerly_occupied[i+1] = self.formerly_occupied[i];
+            self.formerly_occupied[i + 1] = self.formerly_occupied[i];
         }
         self.formerly_occupied[0] = self.board.combined();
         self.board = self.board.make_move(*mov);
@@ -320,9 +337,7 @@ mod tests {
     #[test]
     fn threefold_repetition() {
         let mut state = StateBuilder::default();
-        let moves = &[
-            "Nf3", "Nf6", "Ng1", "Ng8",
-            "Nf3", "Nf6", "Ng1", "Ng8"];
+        let moves = &["Nf3", "Nf6", "Ng1", "Ng8", "Nf3", "Nf6", "Ng1", "Ng8"];
         for m in moves {
             let m = San::from_str(m).expect("make san");
             let m = m.to_move(state.chess()).expect("convert san");

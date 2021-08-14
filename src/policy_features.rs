@@ -1,7 +1,7 @@
-use features::FeatureVec;
-use state::{State, Move};
 use chess::*;
+use features::FeatureVec;
 use features_common::*;
+use state::{Move, State};
 
 include!(concat!(env!("OUT_DIR"), "/policy_feature_const.rs"));
 const NUM_ADVS: usize = 5;
@@ -12,7 +12,8 @@ const ROLES: [Piece; NUM_ROLES] = [
     Piece::Bishop,
     Piece::Rook,
     Piece::Queen,
-    Piece::King];
+    Piece::King,
+];
 
 fn encode_advantage(adv: i32) -> usize {
     assert_eq!(PAWN_P2 + 0, PAWN_P2);
@@ -62,7 +63,10 @@ fn encode_urgency(piece: Piece, adv: i32) -> usize {
     x + PAWN_P2
 }
 
-fn foreach_feature<F>(state: &State, mov: &Move, mut f: F) where F: FnMut(usize, u8) {
+fn foreach_feature<F>(state: &State, mov: &Move, mut f: F)
+where
+    F: FnMut(usize, u8),
+{
     let mut f = |x| f(x, 1);
     let board = state.board();
     let our_role = board.piece_on(mov.get_source()).unwrap();
@@ -73,10 +77,7 @@ fn foreach_feature<F>(state: &State, mov: &Move, mut f: F) where F: FnMut(usize,
     let src_adv = get_advantage(state, without_src, mov.get_source());
     let dst_adv = get_advantage(state, occ, mov.get_dest());
     let taken = board.piece_on(mov.get_dest());
-    f(encode_axba(
-        our_role,
-        taken.unwrap_or(Piece::King),
-        dst_adv));
+    f(encode_axba(our_role, taken.unwrap_or(Piece::King), dst_adv));
     f(encode_urgency(our_role, src_adv));
     let follow_ups = attacks(mov.get_dest(), our_role, board.side_to_move(), occ);
     let enemies = board.color_combined(!board.side_to_move());
@@ -100,25 +101,47 @@ fn foreach_feature<F>(state: &State, mov: &Move, mut f: F) where F: FnMut(usize,
     {
         let betw = between(mov.get_source(), mov.get_dest());
         let former = state.formerly_occupied();
-        if (betw & former[0]).0 != 0 { f(CROSSES_FORMERLY_OCCUPIED_0); }
-        if (betw & former[1]).0 != 0 { f(CROSSES_FORMERLY_OCCUPIED_1); }
-        if (betw & former[2]).0 != 0 { f(CROSSES_FORMERLY_OCCUPIED_2); }
-        if (betw & former[3]).0 != 0 { f(CROSSES_FORMERLY_OCCUPIED_3); }
-        if (dst_bb & former[0]).0 != 0 { f(TAKES_FORMERLY_OCCUPIED_0); }
-        if (dst_bb & former[1]).0 != 0 { f(TAKES_FORMERLY_OCCUPIED_1); }
-        if (dst_bb & former[2]).0 != 0 { f(TAKES_FORMERLY_OCCUPIED_2); }
-        if (dst_bb & former[3]).0 != 0 { f(TAKES_FORMERLY_OCCUPIED_3); }
-        if (src_bb & former[0]).0 != 0 { f(FROM_FORMERLY_OCCUPIED_0); }
-        if (src_bb & former[1]).0 != 0 { f(FROM_FORMERLY_OCCUPIED_1); }
-        if (src_bb & former[2]).0 != 0 { f(FROM_FORMERLY_OCCUPIED_2); }
-        if (src_bb & former[3]).0 != 0 { f(FROM_FORMERLY_OCCUPIED_3); }
+        if (betw & former[0]).0 != 0 {
+            f(CROSSES_FORMERLY_OCCUPIED_0);
+        }
+        if (betw & former[1]).0 != 0 {
+            f(CROSSES_FORMERLY_OCCUPIED_1);
+        }
+        if (betw & former[2]).0 != 0 {
+            f(CROSSES_FORMERLY_OCCUPIED_2);
+        }
+        if (betw & former[3]).0 != 0 {
+            f(CROSSES_FORMERLY_OCCUPIED_3);
+        }
+        if (dst_bb & former[0]).0 != 0 {
+            f(TAKES_FORMERLY_OCCUPIED_0);
+        }
+        if (dst_bb & former[1]).0 != 0 {
+            f(TAKES_FORMERLY_OCCUPIED_1);
+        }
+        if (dst_bb & former[2]).0 != 0 {
+            f(TAKES_FORMERLY_OCCUPIED_2);
+        }
+        if (dst_bb & former[3]).0 != 0 {
+            f(TAKES_FORMERLY_OCCUPIED_3);
+        }
+        if (src_bb & former[0]).0 != 0 {
+            f(FROM_FORMERLY_OCCUPIED_0);
+        }
+        if (src_bb & former[1]).0 != 0 {
+            f(FROM_FORMERLY_OCCUPIED_1);
+        }
+        if (src_bb & former[2]).0 != 0 {
+            f(FROM_FORMERLY_OCCUPIED_2);
+        }
+        if (src_bb & former[3]).0 != 0 {
+            f(FROM_FORMERLY_OCCUPIED_3);
+        }
     }
     let f_src = mov.get_source().get_file();
     let f_dst = mov.get_dest().get_file();
-    if our_role == Piece::King &&
-            f_src != f_dst.left() &&
-            f_src != f_dst &&
-            f_src != f_dst.right() {
+    if our_role == Piece::King && f_src != f_dst.left() && f_src != f_dst && f_src != f_dst.right()
+    {
         if f_src.to_index() < f_dst.to_index() {
             f(CASTLE_LONG);
         } else {
@@ -175,9 +198,7 @@ fn evaluate_single(state: &State, mov: &Move) -> f32 {
 }
 
 pub fn evaluate_moves(state: &State, moves: &[Move]) -> Vec<f32> {
-    let mut evalns: Vec<_> = moves.iter()
-        .map(|x| evaluate_single(state, x))
-        .collect();
+    let mut evalns: Vec<_> = moves.iter().map(|x| evaluate_single(state, x)).collect();
     softmax(&mut evalns);
     evalns
 }
@@ -215,7 +236,7 @@ pub fn name_feature(idx: usize) -> String {
 
 fn get_advantage(state: &State, occ: BitBoard, to: Square) -> i32 {
     let board = state.board();
-    
+
     let b = get_bishop_moves(to, occ);
     let r = get_rook_moves(to, occ);
     let n = get_knight_moves(to);

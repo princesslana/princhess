@@ -27,9 +27,11 @@ fn build_value() {
     write!(f, "}}\n").unwrap();
     let colours = 2;
     let names = expand_macros(
-        names.split_whitespace()
+        names
+            .split_whitespace()
             .map(|x| x.as_bytes().to_vec())
-            .collect());
+            .collect(),
+    );
     for x in &names {
         if exempt(x) {
             write!(f, "#[allow(dead_code)]\n").unwrap();
@@ -47,10 +49,18 @@ fn build_value() {
         write!(f, "    \"{}\",\n", x).unwrap();
     }
     write!(f, "];\n").unwrap();
-    write!(f, "const NUM_MODEL_FEATURES: usize = {};\n",
-        read_all_lines("model").unwrap().len()).unwrap();
-    write!(f, "const COEF: [[f32; NUM_OUTCOMES]; NUM_MODEL_FEATURES] = {};\n",
-        read_all_to_string("model").unwrap()).unwrap();
+    write!(
+        f,
+        "const NUM_MODEL_FEATURES: usize = {};\n",
+        read_all_lines("model").unwrap().len()
+    )
+    .unwrap();
+    write!(
+        f,
+        "const COEF: [[f32; NUM_OUTCOMES]; NUM_MODEL_FEATURES] = {};\n",
+        read_all_to_string("model").unwrap()
+    )
+    .unwrap();
 }
 
 fn build_policy() {
@@ -60,17 +70,30 @@ fn build_policy() {
     let offset = "NUM_ENCODED";
     let names = write_feature_names("policy_feature_list.txt", &mut f, offset);
     let num_names = names.len();
-    write!(f, "pub const NUM_POLICY_FEATURES: usize = {} + {};\n", offset, num_names).unwrap();
+    write!(
+        f,
+        "pub const NUM_POLICY_FEATURES: usize = {} + {};\n",
+        offset, num_names
+    )
+    .unwrap();
     write!(f, "#[allow(dead_code)] ").unwrap();
     write!(f, "const INDEX_NAMES: [&'static str; {}] = [\n", num_names).unwrap();
     for x in &names {
         write!(f, "    \"{}\",\n", x).unwrap();
     }
     write!(f, "];\n").unwrap();
-    write!(f, "const NUM_MODEL_FEATURES: usize = {};\n",
-        read_all_lines("policy_model").unwrap().len()).unwrap();
-    write!(f, "const COEF: [f32; NUM_MODEL_FEATURES] = {};\n",
-        read_all_to_string("policy_model").unwrap()).unwrap();
+    write!(
+        f,
+        "const NUM_MODEL_FEATURES: usize = {};\n",
+        read_all_lines("policy_model").unwrap().len()
+    )
+    .unwrap();
+    write!(
+        f,
+        "const COEF: [f32; NUM_MODEL_FEATURES] = {};\n",
+        read_all_to_string("policy_model").unwrap()
+    )
+    .unwrap();
 }
 
 fn write_feature_names(from: &str, f: &mut File, offset: &str) -> Vec<String> {
@@ -93,11 +116,11 @@ fn exempt(name: &str) -> bool {
     } else if name.contains("NUM") {
         false
     } else {
-        name.contains("KNIGHT") ||
-        name.contains("BISHOP") ||
-        name.contains("ROOK") ||
-        name.contains("QUEEN") ||
-        name.contains("KING")
+        name.contains("KNIGHT")
+            || name.contains("BISHOP")
+            || name.contains("ROOK")
+            || name.contains("QUEEN")
+            || name.contains("KING")
     }
 }
 
@@ -109,11 +132,11 @@ fn expand_macros(mut x: Vec<Vec<u8>>) -> Vec<String> {
             let s = &x[0];
             if let Some(a) = s.iter().position(|c| *c == b'[') {
                 let b = s.iter().position(|c| *c == b']').unwrap();
-                for term in terms(s[(a+1)..b].to_vec()) {
+                for term in terms(s[(a + 1)..b].to_vec()) {
                     let mut crnt = Vec::new();
                     crnt.extend(s[..a].to_vec());
                     crnt.extend(term);
-                    crnt.extend(s[(b+1)..].to_vec());
+                    crnt.extend(s[(b + 1)..].to_vec());
                     buf.push(crnt);
                 }
             }
@@ -126,7 +149,10 @@ fn expand_macros(mut x: Vec<Vec<u8>>) -> Vec<String> {
         buf.append(&mut x);
         x = buf;
     }
-    result.into_iter().map(|x| String::from_utf8(x).unwrap()).collect()
+    result
+        .into_iter()
+        .map(|x| String::from_utf8(x).unwrap())
+        .collect()
 }
 
 fn terms(x: Vec<u8>) -> Vec<Vec<u8>> {
@@ -137,9 +163,11 @@ fn terms(x: Vec<u8>) -> Vec<Vec<u8>> {
             b"BISHOP".to_vec(),
             b"ROOK".to_vec(),
             b"QUEEN".to_vec(),
-            b"KING".to_vec(),]
+            b"KING".to_vec(),
+        ]
     } else {
-        String::from_utf8(x).unwrap()
+        String::from_utf8(x)
+            .unwrap()
             .split("|")
             .map(|x| x.to_string())
             .collect::<Vec<String>>()

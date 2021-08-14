@@ -1,23 +1,23 @@
-extern crate pgn_reader;
 extern crate memmap;
+extern crate pgn_reader;
 extern crate rand;
 
-use self::rand::{Rng, XorShiftRng, SeedableRng};
-use self::pgn_reader::{Reader, Visitor, San, Outcome, Skip};
 use self::memmap::Mmap;
+use self::pgn_reader::{Outcome, Reader, San, Skip, Visitor};
+use self::rand::{Rng, SeedableRng, XorShiftRng};
 
-use state::StateBuilder;
-use shakmaty;
 use chess;
+use features::{featurize, name_feature, GameResult, NUM_DENSE_FEATURES, NUM_FEATURES};
 use mcts::GameState;
-use features::{GameResult, featurize, NUM_DENSE_FEATURES, NUM_FEATURES, name_feature};
 use policy_features;
 use policy_features::NUM_POLICY_FEATURES;
+use shakmaty;
+use state::StateBuilder;
 
-use std::fs::File;
-use std::io::{Write, BufWriter};
-use std::str;
 use std;
+use std::fs::File;
+use std::io::{BufWriter, Write};
+use std::str;
 
 const NUM_ROWS: usize = std::usize::MAX;
 const MIN_ELO: i32 = 1700;
@@ -64,13 +64,13 @@ impl<'pgn> Visitor<'pgn> for ValueDataGenerator {
     fn outcome(&mut self, outcome: Outcome) {
         let game_result = match outcome {
             Outcome::Draw => GameResult::Draw,
-            Outcome::Decisive {winner} => {
+            Outcome::Decisive { winner } => {
                 if winner == shakmaty::Color::White {
                     GameResult::WhiteWin
                 } else {
                     GameResult::BlackWin
                 }
-            },
+            }
         };
         let (mut state, moves) = self.state.extract();
         let freq = NUM_SAMPLES as f64 / moves.len() as f64;
@@ -115,7 +115,11 @@ fn write_policy_feature_names() {
     }
 }
 
-fn run_value_gen(in_path: &str, out_file: Option<BufWriter<File>>, whitelist: [bool; NUM_FEATURES]) -> ValueDataGenerator {
+fn run_value_gen(
+    in_path: &str,
+    out_file: Option<BufWriter<File>>,
+    whitelist: [bool; NUM_FEATURES],
+) -> ValueDataGenerator {
     let mut generator = ValueDataGenerator {
         freq: [0; NUM_FEATURES],
         whitelist,
@@ -142,10 +146,7 @@ pub fn train_value(in_path: &str, out_path: &str) {
     }
     run_value_gen(in_path, Some(out_file), whitelist);
     let mut freq_file = File::create("frequencies.debug.txt").expect("create");
-    let mut indices =
-        (0..NUM_FEATURES)
-        .map(|x| (freq[x], x))
-        .collect::<Vec<_>>();
+    let mut indices = (0..NUM_FEATURES).map(|x| (freq[x], x)).collect::<Vec<_>>();
     indices.sort();
     for &(freq, feature) in &indices {
         write!(freq_file, "{} {}\n", feature, freq).unwrap();
@@ -228,7 +229,11 @@ impl<'pgn> Visitor<'pgn> for PolicyDataGenerator {
             let index = legals.iter().position(|x| m == *x).unwrap();
             write!(self.key_file, "{} {}\n", legals.len(), index).unwrap();
             for opt in legals {
-                policy_features::featurize(&state, &opt).write_libsvm(&mut self.out_file, 0, |_| true);
+                policy_features::featurize(&state, &opt).write_libsvm(
+                    &mut self.out_file,
+                    0,
+                    |_| true,
+                );
             }
             state.make_move(&m);
         }

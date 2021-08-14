@@ -1,7 +1,7 @@
 use super::*;
-use search_tree::*;
 use atomics::*;
 use mcts::MCTS;
+use search_tree::*;
 
 pub unsafe trait TranspositionTable<Spec: MCTS>: Sync + Sized {
     /// **If this function inserts a value, it must return `None`.** Failure to follow
@@ -21,8 +21,12 @@ pub unsafe trait TranspositionTable<Spec: MCTS>: Sync + Sized {
     ///
     /// The table *may* choose to replace old values.
     /// The table is *not* responsible for dropping values that are replaced.
-    fn insert<'a>(&'a self, key: &Spec::State, value: &'a SearchNode<Spec>,
-            handle: SearchHandle<Spec>) -> Option<&'a SearchNode<Spec>>;
+    fn insert<'a>(
+        &'a self,
+        key: &Spec::State,
+        value: &'a SearchNode<Spec>,
+        handle: SearchHandle<Spec>,
+    ) -> Option<&'a SearchNode<Spec>>;
 
     /// Looks up a key.
     ///
@@ -30,18 +34,28 @@ pub unsafe trait TranspositionTable<Spec: MCTS>: Sync + Sized {
     ///
     /// If the key is present, the table *may return either* `None` or a reference
     /// to the associated value.
-    fn lookup<'a>(&'a self, key: &Spec::State, handle: SearchHandle<Spec>)
-            -> Option<&'a SearchNode<Spec>>;
+    fn lookup<'a>(
+        &'a self,
+        key: &Spec::State,
+        handle: SearchHandle<Spec>,
+    ) -> Option<&'a SearchNode<Spec>>;
 }
 
-unsafe impl<Spec: MCTS<TranspositionTable=Self>> TranspositionTable<Spec> for () {
-    fn insert<'a>(&'a self, _: &Spec::State, _: &'a SearchNode<Spec>,
-            _: SearchHandle<Spec>) -> Option<&'a SearchNode<Spec>> {
+unsafe impl<Spec: MCTS<TranspositionTable = Self>> TranspositionTable<Spec> for () {
+    fn insert<'a>(
+        &'a self,
+        _: &Spec::State,
+        _: &'a SearchNode<Spec>,
+        _: SearchHandle<Spec>,
+    ) -> Option<&'a SearchNode<Spec>> {
         None
     }
 
-    fn lookup<'a>(&'a self, _: &Spec::State, _: SearchHandle<Spec>)
-            -> Option<&'a SearchNode<Spec>> {
+    fn lookup<'a>(
+        &'a self,
+        _: &Spec::State,
+        _: SearchHandle<Spec>,
+    ) -> Option<&'a SearchNode<Spec>> {
         None
     }
 }
@@ -85,10 +99,18 @@ impl<K: TranspositionHash, V> Clone for Entry16<K, V> {
 impl<K: TranspositionHash, V> ApproxQuadraticProbingHashTable<K, V> {
     pub fn new(capacity: usize) -> Self {
         assert!(std::mem::size_of::<Entry16<K, V>>() <= 16);
-        assert!(capacity.count_ones() == 1, "the capacity must be a power of 2");
+        assert!(
+            capacity.count_ones() == 1,
+            "the capacity must be a power of 2"
+        );
         let arr = vec![Entry16::default(); capacity].into_boxed_slice();
         let mask = capacity - 1;
-        Self {arr, mask, capacity, size: AtomicUsize::default()}
+        Self {
+            arr,
+            mask,
+            capacity,
+            size: AtomicUsize::default(),
+        }
     }
     pub fn enough_to_hold(num: usize) -> Self {
         let mut capacity = 1;
@@ -103,13 +125,14 @@ unsafe impl<K: TranspositionHash, V> Sync for ApproxQuadraticProbingHashTable<K,
 unsafe impl<K: TranspositionHash, V> Send for ApproxQuadraticProbingHashTable<K, V> {}
 
 pub type ApproxTable<Spec> =
-         ApproxQuadraticProbingHashTable<<Spec as MCTS>::State, SearchNode<Spec>>;
+    ApproxQuadraticProbingHashTable<<Spec as MCTS>::State, SearchNode<Spec>>;
 
 fn get_or_write<'a, V>(ptr: &AtomicPtr<V>, v: &'a V) -> Option<&'a V> {
     let result = ptr.compare_and_swap(
         std::ptr::null_mut(),
         v as *const _ as *mut _,
-        Ordering::Relaxed);
+        Ordering::Relaxed,
+    );
     convert(result)
 }
 
@@ -124,10 +147,16 @@ fn convert<'a, V>(ptr: *const V) -> Option<&'a V> {
 const PROBE_LIMIT: usize = 16;
 
 unsafe impl<Spec> TranspositionTable<Spec> for ApproxTable<Spec>
-    where Spec::State: TranspositionHash, Spec: MCTS
+where
+    Spec::State: TranspositionHash,
+    Spec: MCTS,
 {
-    fn insert<'a>(&'a self, key: &Spec::State, value: &'a SearchNode<Spec>,
-            handle: SearchHandle<Spec>) -> Option<&'a SearchNode<Spec>> {
+    fn insert<'a>(
+        &'a self,
+        key: &Spec::State,
+        value: &'a SearchNode<Spec>,
+        handle: SearchHandle<Spec>,
+    ) -> Option<&'a SearchNode<Spec>> {
         if self.size.load(Ordering::Relaxed) * 3 > self.capacity * 2 {
             return self.lookup(key, handle);
         }
@@ -147,7 +176,9 @@ unsafe impl<Spec> TranspositionTable<Spec> for ApproxTable<Spec>
                 return get_or_write(&entry.v, value);
             }
             if key_here == 0 {
-                let key_here = entry.k.compare_and_swap(0, my_hash as FakeU64, Ordering::Relaxed);
+                let key_here = entry
+                    .k
+                    .compare_and_swap(0, my_hash as FakeU64, Ordering::Relaxed);
                 self.size.fetch_add(1, Ordering::Relaxed);
                 if key_here == 0 || key_here == my_hash as FakeU64 {
                     return get_or_write(&entry.v, value);
@@ -158,8 +189,11 @@ unsafe impl<Spec> TranspositionTable<Spec> for ApproxTable<Spec>
         }
         None
     }
-    fn lookup<'a>(&'a self, key: &Spec::State, _: SearchHandle<Spec>)
-            -> Option<&'a SearchNode<Spec>> {
+    fn lookup<'a>(
+        &'a self,
+        key: &Spec::State,
+        _: SearchHandle<Spec>,
+    ) -> Option<&'a SearchNode<Spec>> {
         let my_hash = key.hash();
         let mut posn = my_hash as usize & self.mask;
         for inc in 1..(PROBE_LIMIT + 1) {
