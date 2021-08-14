@@ -36,7 +36,8 @@ jobs:
         with:
           toolchain: nightly
       - name: Set version
-        run: sed -i "s/^version = .*/version = \"${{ github.ref }}\"/" */Cargo.toml
+        run: sed -i "s/^version = .*/version = \"$(git describe --tags --dirty --always)\"/" */Cargo.toml
+        shell: bash
       - uses: actions-rs/cargo@v1
         with:
           command: build
