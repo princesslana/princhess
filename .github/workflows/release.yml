@@ -46,6 +46,6 @@ jobs:
       - name: Upload Assets to Release
         uses: csexton/release-asset-action@v2
         with:
-          pattern: "target/release/princhess*"
+          pattern: "target/release/princhess@(|.exe)"
           github-token: ${{ secrets.GITHUB_TOKEN }}
           release-url: ${{ needs.release.outputs.upload_url }}
