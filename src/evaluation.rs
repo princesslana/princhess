@@ -24,13 +24,18 @@ fn material_eval(board: &Board) -> f32 {
     let mut eval = 0.0;
 
     for piece in ALL_PIECES {
+        let e = piece_eval(&piece);
         let w = board.pieces(piece) & board.color_combined(Color::White);
         let b = board.pieces(piece) & board.color_combined(Color::Black);
 
-        eval += w.popcnt() as f32 * piece_eval(&piece) - b.popcnt() as f32 * piece_eval(&piece);
+        eval += w.popcnt() as f32 * e - b.popcnt() as f32 * e;
     }
 
     eval
+}
+
+fn move_eval(board: &Board, mv: &ChessMove) -> f32 {
+    board.piece_on(mv.get_dest()).map_or(0.0, |p| piece_eval(&p)) / 10.0
 }
 
 impl Evaluator<GooseMCTS> for SimpleEval {
@@ -42,7 +47,7 @@ impl Evaluator<GooseMCTS> for SimpleEval {
         moves: &MoveList,
         _: Option<SearchHandle<GooseMCTS>>,
     ) -> (Vec<f32>, i64) {
-        let mut move_eval: Vec<_> = moves.as_slice().iter().map(|x| 1.0).collect();
+        let mut move_eval: Vec<_> = moves.as_slice().iter().map(|m| move_eval(state.board(), m)).collect();
 
         softmax(&mut move_eval);
 
@@ -60,7 +65,9 @@ impl Evaluator<GooseMCTS> for SimpleEval {
                 BoardStatus::Ongoing => unreachable!(),
             }
         } else {
-            material_eval(state.board()) as i64
+            let eval = material_eval(state.board());
+
+            eval as i64
         };
 
         (move_eval, state_eval)
@@ -178,6 +185,14 @@ mod tests {
         manager.principal_variation_states(pv_len)
     }
 
+    fn assert_material_eval(fen: &str, expected: f32) {
+        let board = Board::from_str(fen).unwrap();
+        let eval = material_eval(&board);
+        let diff = (eval - expected).abs();
+
+        assert!(diff < 1.0e6, "expected {}, got {}", expected, eval);
+    }
+
     #[test]
     fn mate_in_one() {
         assert_find_move("6k1/8/6K1/8/8/8/8/R7 w - - 0 0", "a1a8");
@@ -233,8 +248,11 @@ mod tests {
 
     #[test]
     fn material_start_pos() {
-        let board =
-            Board::from_str("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1").unwrap();
-        assert!(material_eval(&board) < 1.0e-6);
+        assert_material_eval("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", 0.0);
+    }
+
+    #[test]
+    fn material_lost_queen() {
+        assert_material_eval("r1b1k2r/pppp1pbp/2n2qp1/4p3/4P3/1B6/PPPP1PPP/RNB1K1NR w KQkq - 0 7", -65.0);
     }
 }
