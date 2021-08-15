@@ -268,7 +268,7 @@ fn get_advantage(state: &State, occ: BitBoard, to: Square) -> i32 {
 #[test]
 fn test_advantage() {
     let state = State::default();
-    let occ = state.board().combined();
+    let occ = *state.board().combined();
     {
         let sq = Square::make_square(Rank::Sixth, File::C);
         let adv = get_advantage(&state, occ, sq);
