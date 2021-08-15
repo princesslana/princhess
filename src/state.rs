@@ -215,7 +215,7 @@ impl From<chess::Board> for State {
             prev_capture: None,
             prev_state_hashes: SmallVec::new(),
             repetitions: 0,
-            formerly_occupied: [board.combined(); NUM_OCCUPIED_KEPT],
+            formerly_occupied: [*board.combined(); NUM_OCCUPIED_KEPT],
             frozen: false,
             queens_off: false,
             move_lists: [Vec::new(), Vec::new()],
@@ -317,8 +317,8 @@ impl GameState for State {
         for i in (0..(NUM_OCCUPIED_KEPT - 1)).rev() {
             self.formerly_occupied[i + 1] = self.formerly_occupied[i];
         }
-        self.formerly_occupied[0] = self.board.combined();
-        self.board = self.board.make_move(*mov);
+        self.formerly_occupied[0] = *self.board.combined();
+        self.board = self.board.make_move_new(*mov);
         self.check_for_repetition();
         self.queens_off = self.queens_off || self.board.pieces(chess::Piece::Queen).0 == 0;
         self.move_lists.swap(0, 1);
