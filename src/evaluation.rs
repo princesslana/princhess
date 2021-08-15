@@ -4,6 +4,78 @@ use mcts::{Evaluator, SearchHandle};
 use policy_features::evaluate_moves;
 use search::{GooseMCTS, SCALE};
 use state::{MoveList, Player, State};
+use std::collections::HashMap;
+use std::str::FromStr;
+
+pub struct SimpleEval;
+
+fn piece_eval(p: &Piece) -> f32 {
+    match p {
+        Piece::King => 2000.0,
+        Piece::Queen => 100.0,
+        Piece::Rook => 52.5,
+        Piece::Bishop => 35.0,
+        Piece::Knight => 35.0,
+        Piece::Pawn => 10.0,
+    }
+}
+
+fn material_eval(board: &Board) -> f32 {
+    let mut eval = 0.0;
+
+    for piece in ALL_PIECES {
+        let w = board.pieces(piece) & board.color_combined(Color::White);
+        let b = board.pieces(piece) & board.color_combined(Color::Black);
+
+        eval += w.popcnt() as f32 * piece_eval(&piece) - b.popcnt() as f32 * piece_eval(&piece);
+    }
+
+    eval
+}
+
+impl Evaluator<GooseMCTS> for SimpleEval {
+    type StateEvaluation = i64;
+
+    fn evaluate_new_state(
+        &self,
+        state: &State,
+        moves: &MoveList,
+        _: Option<SearchHandle<GooseMCTS>>,
+    ) -> (Vec<f32>, i64) {
+        let mut move_eval: Vec<_> = moves.as_slice().iter().map(|x| 1.0).collect();
+
+        softmax(&mut move_eval);
+
+        let state_eval = if moves.len() == 0 {
+            let x = SCALE as i64;
+            match state.outcome() {
+                BoardStatus::Stalemate => 0,
+                BoardStatus::Checkmate => {
+                    if state.board().side_to_move() == Color::White {
+                        -x
+                    } else {
+                        x
+                    }
+                }
+                BoardStatus::Ongoing => unreachable!(),
+            }
+        } else {
+            material_eval(state.board()) as i64
+        };
+
+        (move_eval, state_eval)
+    }
+
+    fn evaluate_existing_state(&self, _: &State, evaln: &i64, _: SearchHandle<GooseMCTS>) -> i64 {
+        *evaln
+    }
+    fn interpret_evaluation_for_player(&self, evaln: &i64, player: &Player) -> i64 {
+        match *player {
+            Color::White => *evaln,
+            Color::Black => -*evaln,
+        }
+    }
+}
 
 pub struct GooseEval {
     model: Model,
@@ -51,6 +123,16 @@ impl Evaluator<GooseMCTS> for GooseEval {
 impl From<Model> for GooseEval {
     fn from(m: Model) -> Self {
         Self { model: m }
+    }
+}
+
+fn softmax(arr: &mut [f32]) {
+    for x in arr.iter_mut() {
+        *x = x.exp();
+    }
+    let s = 1.0 / arr.iter().sum::<f32>();
+    for x in arr.iter_mut() {
+        *x *= s;
     }
 }
 
@@ -147,5 +229,12 @@ mod tests {
             "2kr4/pp2bp1p/3p4/5b1Q/4q1r1/N4P2/PPPP2PP/R1B2RK1 b - -",
             "?",
         );
+    }
+
+    #[test]
+    fn material_start_pos() {
+        let board =
+            Board::from_str("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1").unwrap();
+        assert!(material_eval(&board) < 1.0e-6);
     }
 }

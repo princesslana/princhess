@@ -1,6 +1,6 @@
 use args::options;
 use chess::{Color, Piece};
-use evaluation::GooseEval;
+use evaluation::SimpleEval;
 use features::Model;
 use mcts::GameState;
 use mcts::{AsyncSearchOwned, CycleBehaviour, MCTSManager, MCTS};
@@ -43,7 +43,7 @@ impl Drop for ThreadSentinel {
 
 impl MCTS for GooseMCTS {
     type State = State;
-    type Eval = GooseEval;
+    type Eval = SimpleEval;
     type TreePolicy = AlphaGoPolicy;
     type NodeData = ();
     type ExtraThreadData = ThreadSentinel;
@@ -70,7 +70,7 @@ impl Search {
         MCTSManager::new(
             state.freeze(),
             GooseMCTS,
-            GooseEval::from(Model::new()),
+            SimpleEval,
             policy(),
             ApproxTable::enough_to_hold(GooseMCTS.node_limit()),
         )
