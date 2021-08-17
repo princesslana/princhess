@@ -3,7 +3,7 @@ use features::Model;
 use mcts::{Evaluator, SearchHandle};
 use policy_features::evaluate_moves;
 use search::{GooseMCTS, SCALE};
-use state::{MoveList, Player, State};
+use state::{Player, State};
 
 pub struct GooseEval {
     model: Model,
@@ -15,11 +15,12 @@ impl Evaluator<GooseMCTS> for GooseEval {
     fn evaluate_new_state(
         &self,
         state: &State,
-        moves: &MoveList,
+        moves: MoveGen,
         _: Option<SearchHandle<GooseMCTS>>,
     ) -> (Vec<f32>, i64) {
-        let move_evaluations = evaluate_moves(state, moves.as_slice());
-        let state_evaluation = if moves.len() == 0 {
+        let legal_moves = moves.len();
+        let move_evaluations = evaluate_moves(state, moves);
+        let state_evaluation = if legal_moves == 0 {
             let x = SCALE as i64;
             match state.outcome() {
                 BoardStatus::Stalemate => 0,
@@ -33,7 +34,7 @@ impl Evaluator<GooseMCTS> for GooseEval {
                 BoardStatus::Ongoing => unreachable!(),
             }
         } else {
-            (self.model.score(state, moves.as_slice()) * SCALE as f32) as i64
+            (self.model.score(state) * SCALE as f32) as i64
         };
         (move_evaluations, state_evaluation)
     }
@@ -65,9 +66,8 @@ mod tests {
         let pv_len = 15;
         let state = State::from_fen(fen).unwrap();
         let moves = state.available_moves();
-        let moves = moves.as_slice();
-        let evalns = evaluate_moves(&state, &moves);
-        let mut paired: Vec<_> = moves.iter().zip(evalns.iter()).collect();
+        let evalns = evaluate_moves(&state, moves);
+        let mut paired: Vec<_> = state.available_moves().zip(evalns.iter()).collect();
         paired.sort_by_key(|x| FloatOrd(*x.1));
         for (a, b) in paired {
             println!("policy: {} {}", a, b);

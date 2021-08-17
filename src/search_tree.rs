@@ -279,14 +279,14 @@ fn create_node<'a, 'b, 'c, Spec: MCTS>(
         }
     };
     let moves = state.available_moves();
-    let (move_eval, state_eval) = eval.evaluate_new_state(&state, &moves, handle);
+    let (move_eval, state_eval) = eval.evaluate_new_state(&state, moves, handle);
     policy.validate_evaluations(&move_eval);
     let hots = allocator.alloc_slice(move_eval.len());
     let colds = allocator.alloc_slice(move_eval.len());
     for (x, y) in hots.iter_mut().zip(move_eval.into_iter()) {
         *x = HotMoveInfo::new(y);
     }
-    for (x, y) in colds.iter_mut().zip(moves.into_iter()) {
+    for (x, y) in colds.iter_mut().zip(state.available_moves()) {
         *x = ColdMoveInfo::new(y);
     }
     SearchNode::new(hots, colds, state_eval)

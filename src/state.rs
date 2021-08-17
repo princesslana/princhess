@@ -1,11 +1,11 @@
 use chess;
+use chess::{BitBoard, MoveGen};
 use mcts::GameState;
 use shakmaty;
 use shakmaty::Position;
 use smallvec::SmallVec;
-use std;
 use std::cmp::max;
-use std::iter::IntoIterator;
+use std::str::FromStr;
 use transposition_table::TranspositionHash;
 use uci::Tokens;
 
@@ -226,7 +226,7 @@ impl From<chess::Board> for State {
 impl From<StateBuilder> for State {
     fn from(sb: StateBuilder) -> Self {
         let fen = shakmaty::fen::fen(&sb.initial_state, &shakmaty::fen::FenOpts::default());
-        let board = chess::Board::from_fen(fen).unwrap();
+        let board = chess::Board::from_str(&fen).unwrap();
         let mut state = State::from(board);
         for mov in sb.moves {
             let mov = convert_move(&mov);
@@ -242,67 +242,25 @@ impl From<StateBuilder> for State {
     }
 }
 
-pub struct MoveList {
-    arr: [chess::ChessMove; 256],
-    len: usize,
-}
-
-impl MoveList {
-    pub fn as_slice(&self) -> &[chess::ChessMove] {
-        &self.arr[..self.len]
-    }
-    pub fn len(&self) -> usize {
-        self.len
-    }
-}
-
-pub struct MoveListIterator {
-    arr: [chess::ChessMove; 256],
-    len: usize,
-    pos: usize,
-}
-
-impl Iterator for MoveListIterator {
-    type Item = chess::ChessMove;
-    fn next(&mut self) -> Option<chess::ChessMove> {
-        self.pos += 1;
-        if self.pos <= self.len {
-            unsafe { Some(*self.arr.get_unchecked(self.pos - 1)) }
-        } else {
-            None
-        }
-    }
-}
-
-impl IntoIterator for MoveList {
-    type Item = chess::ChessMove;
-    type IntoIter = MoveListIterator;
-    fn into_iter(self) -> MoveListIterator {
-        MoveListIterator {
-            pos: 0,
-            arr: self.arr,
-            len: self.len,
-        }
-    }
-}
-
 impl GameState for State {
     type Move = Move;
     type Player = Player;
-    type MoveList = MoveList;
+    type MoveList = MoveGen;
 
     fn current_player(&self) -> Player {
         self.board.side_to_move()
     }
-    fn available_moves(&self) -> MoveList {
-        let mut arr = unsafe { std::mem::uninitialized() };
-        let len = if self.drawn_by_repetition() {
-            0
-        } else {
-            self.board.enumerate_moves(&mut arr)
-        };
-        MoveList { arr, len }
+
+    fn available_moves(&self) -> MoveGen {
+        let mut mg = MoveGen::new_legal(self.board());
+
+        if self.drawn_by_repetition() {
+            mg.remove_mask(BitBoard(0xFFFFFFFF));
+        }
+
+        mg
     }
+
     fn make_move(&mut self, mov: &chess::ChessMove) {
         if (self.board.pieces(chess::Piece::Pawn) & chess::BitBoard::from_square(mov.get_source()))
             .0
@@ -323,7 +281,7 @@ impl GameState for State {
         self.queens_off = self.queens_off || self.board.pieces(chess::Piece::Queen).0 == 0;
         self.move_lists.swap(0, 1);
         if self.board.checkers().0 == 0 {
-            self.move_lists[0] = self.available_moves().as_slice().to_vec();
+            self.move_lists[0] = self.available_moves().collect();
         }
     }
 }

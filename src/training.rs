@@ -76,8 +76,7 @@ impl<'pgn> Visitor<'pgn> for ValueDataGenerator {
         let freq = NUM_SAMPLES as f64 / moves.len() as f64;
         for (i, m) in moves.into_iter().enumerate() {
             if i >= 2 && self.rng.gen_range(0., 1.) < freq {
-                let moves = state.available_moves();
-                let mut f = featurize(&state, moves.as_slice());
+                let mut f = featurize(&state);
                 self.rows_written += 1;
                 if let Some(out_file) = self.out_file.as_mut() {
                     let whitelist = &self.whitelist;
@@ -224,9 +223,8 @@ impl<'pgn> Visitor<'pgn> for PolicyDataGenerator {
     fn end_game(&mut self, _game: &'pgn [u8]) -> Self::Result {
         let (mut state, moves) = self.state.extract();
         for m in moves {
-            let legals = state.available_moves();
-            let legals = legals.as_slice();
-            let index = legals.iter().position(|x| m == *x).unwrap();
+            let mut legals = state.available_moves();
+            let index = legals.position(|x| m == x).unwrap();
             write!(self.key_file, "{} {}\n", legals.len(), index).unwrap();
             for opt in legals {
                 policy_features::featurize(&state, &opt).write_libsvm(

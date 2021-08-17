@@ -197,8 +197,8 @@ fn evaluate_single(state: &State, mov: &Move) -> f32 {
     result
 }
 
-pub fn evaluate_moves(state: &State, moves: &[Move]) -> Vec<f32> {
-    let mut evalns: Vec<_> = moves.iter().map(|x| evaluate_single(state, x)).collect();
+pub fn evaluate_moves(state: &State, moves: MoveGen) -> Vec<f32> {
+    let mut evalns: Vec<_> = moves.map(|x| evaluate_single(state, &x)).collect();
     softmax(&mut evalns);
     evalns
 }

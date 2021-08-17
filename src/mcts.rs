@@ -229,7 +229,7 @@ pub trait Evaluator<Spec: MCTS>: Sync {
     fn evaluate_new_state(
         &self,
         state: &Spec::State,
-        moves: &MoveList<Spec>,
+        moves: MoveList<Spec>,
         handle: Option<SearchHandle<Spec>>,
     ) -> (Vec<MoveEvaluation<Spec>>, Self::StateEvaluation);
 
