@@ -1,4 +1,5 @@
 use chess;
+use chess::{Board, Piece};
 use mcts::GameState;
 use shakmaty;
 use shakmaty::Position;
@@ -135,6 +136,26 @@ impl State {
     }
     pub fn move_lists(&self) -> &[Vec<chess::ChessMove>; 2] {
         &self.move_lists
+    }
+
+    pub fn is_opening(&self) -> bool {
+        if self.queens_off() {
+            return false;
+        }
+
+        let b = self.board();
+        let all_pieces = b.combined() & !b.pieces(Piece::Pawn);
+        let unmoved_pieces = all_pieces & (Board::default().combined() & !b.pieces(Piece::Pawn));
+
+        all_pieces.popcnt() > 12 && unmoved_pieces.popcnt() > 7
+    }
+
+    pub fn is_middlegame(&self) -> bool {
+        !self.is_opening() && !self.is_endgame()
+    }
+
+    pub fn is_endgame(&self) -> bool {
+        self.queens_off()
     }
 }
 

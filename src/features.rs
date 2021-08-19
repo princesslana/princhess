@@ -328,7 +328,7 @@ impl Model {
 }
 
 fn phase(s: &State) -> Phase {
-    if s.queens_off() {
+    if s.is_endgame() {
         return Phase::Endgame;
     } else {
         return Phase::Midgame;
