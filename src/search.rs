@@ -14,7 +14,7 @@ use tree_policy::AlphaGoPolicy;
 use uci::{Tokens, TIMEUP};
 
 const DEFAULT_MOVE_TIME_SECS: u64 = 10;
-const DEFAULT_MOVE_TIME_FRACTION: u64 = 15;
+const DEFAULT_MOVE_TIME_FRACTION: u32 = 15;
 
 pub const SCALE: f32 = 1e9;
 
@@ -107,37 +107,79 @@ impl Search {
             search: self.stop_and_print_m().into(),
         }
     }
+
+    fn parse_ms(tokens: &mut Tokens) -> Option<Duration> {
+        tokens
+            .next()
+            .unwrap_or("".into())
+            .parse()
+            .ok()
+            .map(|ms| Duration::from_millis(ms))
+    }
+
     pub fn go(self, mut tokens: Tokens, position_num: u64, sender: &Sender<String>) -> Self {
         let manager = self.stop_and_print_m();
-        let mut think_time = Some(Duration::from_secs(DEFAULT_MOVE_TIME_SECS));
+
+        let state = manager.tree().root_state();
+        let player = state.current_player();
+
+        let mut move_time = None;
+        let mut infinite = false;
+        let mut remaining = None;
+        let mut increment = Duration::from_secs(0);
+
         while let Some(s) = tokens.next() {
             match s {
-                "movetime" => {
-                    let t = tokens.next().unwrap_or("".into());
-                    if let Ok(t) = t.parse() {
-                        think_time = Some(Duration::from_millis(t));
-                    }
-                }
+                "movetime" => move_time = Self::parse_ms(&mut tokens),
                 "wtime" => {
-                    if manager.tree().root_state().current_player() == Color::White {
-                        let t = tokens.next().unwrap_or("".into());
-                        if let Ok(t) = t.parse::<u64>() {
-                            think_time = Some(Duration::from_millis(t / DEFAULT_MOVE_TIME_FRACTION))
-                        }
+                    if player == Color::White {
+                        remaining = Self::parse_ms(&mut tokens)
                     }
                 }
                 "btime" => {
-                    if manager.tree().root_state().current_player() == Color::Black {
-                        let t = tokens.next().unwrap_or("".into());
-                        if let Ok(t) = t.parse::<u64>() {
-                            think_time = Some(Duration::from_millis(t / DEFAULT_MOVE_TIME_FRACTION))
-                        }
+                    if player == Color::Black {
+                        remaining = Self::parse_ms(&mut tokens)
                     }
                 }
-                "infinite" => think_time = None,
+                "winc" => {
+                    if player == Color::White {
+                        increment = Self::parse_ms(&mut tokens).unwrap_or(increment)
+                    }
+                }
+                "binc" => {
+                    if player == Color::Black {
+                        increment = Self::parse_ms(&mut tokens).unwrap_or(increment)
+                    }
+                }
+                "infinite" => infinite = true,
                 _ => (),
             }
         }
+
+        let mut think_time = Some(Duration::from_secs(DEFAULT_MOVE_TIME_SECS));
+
+        if infinite {
+            think_time = None
+        } else if let Some(mt) = move_time {
+            think_time = Some(mt)
+        } else if let Some(r) = remaining {
+            let mut t = r / DEFAULT_MOVE_TIME_FRACTION;
+
+            if state.is_endgame() {
+                debug!("Endgame");
+                t += increment;
+
+                t = t.min(r - increment / 2);
+            } else if state.is_opening() {
+                debug!("Opening");
+                t /= 2;
+            } else {
+                debug!("Middlegame");
+            }
+
+            think_time = Some(t)
+        }
+
         if let Some(t) = think_time {
             let sender = sender.clone();
             thread::spawn(move || {
@@ -149,6 +191,7 @@ impl Search {
             search: manager.into_playout_parallel_async(num_threads()),
         }
     }
+
     pub fn nodes_per_sec(self) -> Self {
         let mut manager = self.stop_and_print_m().reset();
         manager.perf_test_to_stderr(num_threads());

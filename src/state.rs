@@ -1,4 +1,5 @@
 use chess;
+use chess::{Board, CastleRights, Color, Piece};
 use mcts::GameState;
 use shakmaty;
 use shakmaty::Position;
@@ -135,6 +136,30 @@ impl State {
     }
     pub fn move_lists(&self) -> &[Vec<chess::ChessMove>; 2] {
         &self.move_lists
+    }
+
+    pub fn is_opening(&self) -> bool {
+        if self.queens_off() {
+            return false;
+        }
+        if self.board().castle_rights(Color::White) == CastleRights::NoRights
+            || self.board().castle_rights(Color::Black) == CastleRights::NoRights
+        {
+            return false;
+        }
+
+        let b = self.board();
+        let all_pieces = b.combined() & !b.pieces(Piece::Pawn);
+
+        all_pieces.popcnt() > 12
+    }
+
+    pub fn is_middlegame(&self) -> bool {
+        !self.is_opening() && !self.is_endgame()
+    }
+
+    pub fn is_endgame(&self) -> bool {
+        self.queens_off()
     }
 }
 
@@ -345,5 +370,24 @@ mod tests {
         }
         let state = State::from(state);
         assert!(state.outcome() == chess::BoardStatus::Stalemate);
+    }
+
+    #[test]
+    fn is_opening() {
+        let mut state = State::from(StateBuilder::default());
+        assert!(state.is_opening());
+        assert!(!state.is_middlegame());
+        assert!(!state.is_endgame());
+
+        state = State::from(
+            StateBuilder::from_fen(
+                "r1bqk2r/ppp1n1pp/3p1p2/2n3B1/2Bp4/5N2/PPP2PPP/R2QR1K1 w kq - 2 11",
+            )
+            .unwrap(),
+        );
+
+        assert!(!state.is_opening());
+        assert!(state.is_middlegame());
+        assert!(!state.is_endgame());
     }
 }
