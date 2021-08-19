@@ -6,7 +6,7 @@ RUN cd /src \
    && cargo build --release
 
 
-FROM python:3.9
+FROM python:3.9 AS run
 
 COPY bin/run-bot.sh /run-bot.sh
 
