@@ -1,0 +1,21 @@
+FROM rust:buster AS build
+
+COPY . /src
+
+RUN cd /src \
+   && cargo build --release
+
+
+FROM python:3.9
+
+COPY bin/run-bot.sh /run-bot.sh
+
+RUN  git clone https://github.com/ShailChoksi/lichess-bot.git /src \
+ && cd /src \
+ && pip install -r requirements.txt
+
+COPY bin/config.yml /src/config.yml
+COPY --from=build /src/target/release/princhess /engines/princhess
+
+CMD /run-bot.sh
+
