@@ -171,6 +171,8 @@ impl Search {
             } else if state.is_endgame() {
                 debug!("Endgame");
                 t += increment;
+
+                t = t.min(r - increment / 2);
             } else {
                 debug!("Middlegame");
             }

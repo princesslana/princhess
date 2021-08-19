@@ -367,4 +367,20 @@ mod tests {
         let state = State::from(state);
         assert!(state.outcome() == chess::BoardStatus::Stalemate);
     }
+
+    #[test]
+    fn is_opening() {
+        let mut state = State::from(StateBuilder::default());
+        assert!(state.is_opening());
+        assert!(!state.is_middlegame());
+        assert!(!state.is_endgame());
+
+        state = State::from(StateBuilder::from_fen("r1b2rk1/p1B1ppbp/1pn2np1/2Np3q/N7/2P2PP1/PP2P1BP/R2Q1RK1 w - - 1 16").unwrap());
+
+        assert!(!state.is_opening());
+        assert!(state.is_middlegame());
+        assert!(!state.is_endgame());
+    }
+    
+
 }
