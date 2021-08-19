@@ -165,14 +165,14 @@ impl Search {
         } else if let Some(r) = remaining {
             let mut t = r / DEFAULT_MOVE_TIME_FRACTION;
 
-            if state.is_opening() {
-                debug!("Opening");
-                t /= 2;
-            } else if state.is_endgame() {
+            if state.is_endgame() {
                 debug!("Endgame");
                 t += increment;
 
                 t = t.min(r - increment / 2);
+            } else if state.is_opening() {
+                debug!("Opening");
+                t /= 2;
             } else {
                 debug!("Middlegame");
             }
