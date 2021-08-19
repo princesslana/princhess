@@ -1,0 +1,24 @@
+url: "http://lichess.org"
+
+engine:
+  dir: "/engines"
+  name: "princhess"
+  protocol: "uci"
+  ponder: false
+
+challenge:
+  concurrency: 1
+  sort_by: "first"
+  accept_bot: true
+  variants:
+    - standard
+
+  time_controls:
+    - bullet
+    - blitz
+    - rapid
+    - classical
+  modes:
+    - casual
+    - rated
+
