@@ -13,3 +13,5 @@ Princhess can be played against on Lichess at https://lichess.org/@/princhess_bo
 # Contributing
 
 Look for the princhess channel on [Discord Projects Hub](https://discord.gg/3aTVQtz)
+
+[Emoji Log](https://github.com/ahmadawais/Emoji-Log) is used for commit messages and pull requests.
