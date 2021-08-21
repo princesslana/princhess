@@ -1,9 +1,6 @@
 FROM debian:buster
 
-RUN apt-get update && apt-get install -y curl libqt5core5a wget
-
-RUN mkdir /syzygy \
- && wget -e robots=off -r -nH --cut-dirs=2 --no-parent --reject="index.html*" http://tablebase.sesse.net/syzygy/3-4-5/ -P /syzygy
+RUN apt-get update && apt-get install -y curl libqt5core5a
 
 RUN mkdir /engines
 
