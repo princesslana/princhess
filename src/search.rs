@@ -1,5 +1,5 @@
 use args::options;
-use chess::{Color, Piece};
+use chess::{Color, MoveGen, Piece};
 use evaluation::GooseEval;
 use features::Model;
 use mcts::GameState;
@@ -122,6 +122,14 @@ impl Search {
 
         let state = manager.tree().root_state();
         let player = state.current_player();
+
+        let mut mvs = MoveGen::new_legal(state.board());
+
+        if mvs.len() == 1 {
+            println!("bestmove {}", to_uci(mvs.next().unwrap()));
+            return Self { search: manager.into() }
+        }
+
 
         let mut move_time = None;
         let mut infinite = false;
