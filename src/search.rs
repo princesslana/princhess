@@ -100,8 +100,7 @@ impl Search {
             println!("{}", info_str);
             println!("bestmove {}", to_uci(mov));
         }
-        let manager = manager.reset();
-        manager
+        manager.reset()
     }
 
     pub fn stop_and_print(self) -> Self {
@@ -113,10 +112,10 @@ impl Search {
     fn parse_ms(tokens: &mut Tokens) -> Option<Duration> {
         tokens
             .next()
-            .unwrap_or("".into())
+            .unwrap_or("")
             .parse()
             .ok()
-            .map(|ms| Duration::from_millis(ms))
+            .map(Duration::from_millis)
     }
 
     pub fn go(self, mut tokens: Tokens, position_num: u64, sender: &Sender<String>) -> Self {
@@ -129,9 +128,10 @@ impl Search {
 
         if mvs.len() == 1 {
             println!("bestmove {}", to_uci(mvs.next().unwrap()));
-            return Self { search: manager.into() }
+            return Self {
+                search: manager.into(),
+            };
         }
-
 
         let mut move_time = None;
         let mut infinite = false;
@@ -210,13 +210,13 @@ impl Search {
         let eval = GooseEval::from(Model::new());
 
         let moves = state.available_moves();
-        let (move_eval, state_eval) = eval.evaluate_new_state(&state, &moves);
+        let (move_eval, state_eval) = eval.evaluate_new_state(state, &moves);
 
         println!("cp {}", (state_eval as f32 / (SCALE / 100.)) as i64);
 
         print!("moves ");
-        for i in 0..moves.len() {
-            print!("{}:{:.3} ", moves.as_slice()[i], move_eval[i]);
+        for (i, e) in move_eval.iter().enumerate().take(moves.len()) {
+            print!("{}:{:.3} ", moves.as_slice()[i], e);
         }
         println!();
 

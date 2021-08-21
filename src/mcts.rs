@@ -1,5 +1,3 @@
-#![feature(integer_atomics)]
-
 //! This is a library for Monte Carlo tree search.
 //!
 //! It is still under development and the documentation isn't good. However, the following example may be helpful:

@@ -137,7 +137,7 @@ fn get_or_write<'a, V>(ptr: &AtomicPtr<V>, v: &'a V) -> Option<&'a V> {
 }
 
 fn convert<'a, V>(ptr: *const V) -> Option<&'a V> {
-    if ptr == std::ptr::null() {
+    if ptr.is_null() {
         None
     } else {
         unsafe { Some(&*ptr) }
@@ -170,7 +170,7 @@ where
             let key_here = entry.k.load(Ordering::Relaxed) as u64;
             if key_here == my_hash {
                 let value_here = entry.v.load(Ordering::Relaxed);
-                if value_here != std::ptr::null_mut() {
+                if !value_here.is_null() {
                     return unsafe { Some(&*value_here) };
                 }
                 return get_or_write(&entry.v, value);

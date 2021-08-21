@@ -7,9 +7,9 @@ use std::thread;
 
 pub type Tokens<'a> = SplitWhitespace<'a>;
 
-pub const TIMEUP: &'static str = "timeup";
-const ENGINE_NAME: &'static str = "Princhess";
-const ENGINE_AUTHOR: &'static str = "Princess Lana & Jacob Jackson";
+pub const TIMEUP: &str = "timeup";
+const ENGINE_NAME: &str = "Princhess";
+const ENGINE_AUTHOR: &str = "Princess Lana & Jacob Jackson";
 const VERSION: Option<&'static str> = option_env!("CARGO_PKG_VERSION");
 
 pub fn main(commands: Vec<String>) {
@@ -24,7 +24,7 @@ pub fn main(commands: Vec<String>) {
         thread::spawn(move || -> Result<(), SendError<String>> {
             let stdin = stdin();
             for line in stdin.lock().lines() {
-                sender.send(line.unwrap_or("".into()))?;
+                sender.send(line.unwrap_or_else(|_| "".into()))?;
             }
             sender.send("quit".into())?;
             Ok(())

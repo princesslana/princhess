@@ -1,12 +1,12 @@
 use chess;
-use chess::{Board, CastleRights, Color, Piece};
 use mcts::GameState;
 use shakmaty;
-use shakmaty::{CastlingMode, Position};
+use shakmaty::Position;
 use smallvec::SmallVec;
 use std;
 use std::cmp::max;
 use std::iter::IntoIterator;
+use std::str::FromStr;
 use transposition_table::TranspositionHash;
 use uci::Tokens;
 
@@ -33,7 +33,7 @@ impl StateBuilder {
         Some(
             fen.parse::<shakmaty::fen::Fen>()
                 .ok()?
-                .position::<shakmaty::Chess>(CastlingMode::Standard)
+                .position::<shakmaty::Chess>(shakmaty::CastlingMode::Standard)
                 .ok()?
                 .into(),
         )
@@ -142,14 +142,14 @@ impl State {
         if self.queens_off() {
             return false;
         }
-        if self.board().castle_rights(Color::White) == CastleRights::NoRights
-            || self.board().castle_rights(Color::Black) == CastleRights::NoRights
+        if self.board().castle_rights(Player::White) == chess::CastleRights::NoRights
+            || self.board().castle_rights(Player::Black) == chess::CastleRights::NoRights
         {
             return false;
         }
 
         let b = self.board();
-        let all_pieces = b.combined() & !b.pieces(Piece::Pawn);
+        let all_pieces = b.combined() & !b.pieces(chess::Piece::Pawn);
 
         all_pieces.popcnt() > 12
     }
@@ -227,7 +227,7 @@ fn convert_move(mov: &shakmaty::Move) -> chess::ChessMove {
         mov => chess::ChessMove::new(
             convert_square(mov.from().unwrap()),
             convert_square(mov.to()),
-            mov.promotion().map(|x| convert_role(x)),
+            mov.promotion().map(convert_role),
         ),
     }
 }
@@ -251,7 +251,7 @@ impl From<chess::Board> for State {
 impl From<StateBuilder> for State {
     fn from(sb: StateBuilder) -> Self {
         let fen = shakmaty::fen::fen(&sb.initial_state);
-        let board = chess::Board::from_fen(fen).unwrap();
+        let board = chess::Board::from_str(&fen).unwrap();
         let mut state = State::from(board);
         for mov in sb.moves {
             let mov = convert_move(&mov);
@@ -320,7 +320,8 @@ impl GameState for State {
         self.board.side_to_move()
     }
     fn available_moves(&self) -> MoveList {
-        let mut arr = unsafe { std::mem::uninitialized() };
+        #[allow(clippy::uninit_assumed_init)]
+        let mut arr = unsafe { std::mem::MaybeUninit::uninit().assume_init() };
         let len = if self.drawn_by_repetition() {
             0
         } else {
