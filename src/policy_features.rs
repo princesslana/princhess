@@ -16,7 +16,6 @@ const ROLES: [Piece; NUM_ROLES] = [
 ];
 
 fn encode_advantage(adv: i32) -> usize {
-    assert_eq!(PAWN_P2 + 0, PAWN_P2);
     assert_eq!(PAWN_P2 + 1, PAWN_P1);
     assert_eq!(PAWN_P2 + 2, PAWN_P0);
     assert_eq!(PAWN_P2 + 3, PAWN_N1);
@@ -34,8 +33,7 @@ fn encode_axba(a: Piece, b: Piece, adv: i32) -> usize {
     let adv_i = encode_advantage(adv);
     let x = encode_pair(a, b);
     assert!(adv_i < NUM_ADVS);
-    let x = x * NUM_ADVS + adv_i;
-    x
+    x * NUM_ADVS + adv_i
 }
 
 fn attacks(sq: Square, piece: Piece, color: Color, occ: BitBoard) -> BitBoard {
@@ -234,6 +232,7 @@ pub fn name_feature(idx: usize) -> String {
     name_feature_uc(idx).to_lowercase()
 }
 
+#[allow(clippy::many_single_char_names)]
 fn get_advantage(state: &State, occ: BitBoard, to: Square) -> i32 {
     let board = state.board();
 

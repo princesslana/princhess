@@ -1,3 +1,5 @@
+#![feature(integer_atomics)]
+
 #[macro_use]
 extern crate log;
 extern crate chess;
@@ -33,7 +35,7 @@ fn main() {
     pretty_env_logger::init();
 
     if let Some(ref train_pgn) = options.train_pgn {
-        training::train(&train_pgn, &options.train_output_path, options.policy);
+        training::train(train_pgn, &options.train_output_path, options.policy);
     } else {
         info!("Init.");
         uci::main(options.extra.clone());

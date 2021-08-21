@@ -136,7 +136,7 @@ impl<Spec: MCTS<TreePolicy = Self>> TreePolicy<Spec> for AlphaGoPolicy {
                 x
             );
         }
-        if evalns.len() >= 1 {
+        if !evalns.is_empty() {
             let evaln_sum: f32 = evalns.iter().sum();
             assert!(
                 (evaln_sum - 1.0).abs() < 0.1,
@@ -174,7 +174,7 @@ impl PolicyRng {
                 choice = Some(elt);
                 num_optimal = 1;
                 best_so_far = score;
-            } else if a == b {
+            } else if (a - b).abs() < std::f32::EPSILON {
                 num_optimal += 1;
                 if self.rng.gen_weighted_bool(num_optimal) {
                     choice = Some(elt);

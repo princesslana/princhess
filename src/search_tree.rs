@@ -137,10 +137,10 @@ impl<Spec: MCTS> SearchNode<Spec> {
             sum_evaluations: AtomicI64::default(),
         }
     }
-    fn hots<'a>(&'a self) -> &'a [HotMoveInfo<Spec>] {
+    fn hots(&self) -> &[HotMoveInfo<Spec>] {
         unsafe { &*(self.hots as *const [HotMoveInfo<Spec>]) }
     }
-    fn colds<'a>(&'a self) -> &'a [ColdMoveInfo<Spec>] {
+    fn colds(&self) -> &[ColdMoveInfo<Spec>] {
         unsafe { &*(self.colds as *const [ColdMoveInfo<Spec>]) }
     }
     pub fn moves(&self) -> Moves<Spec> {
@@ -190,7 +190,7 @@ impl<'a, Spec: MCTS> MoveInfoHandle<'a, Spec> {
 
     pub fn child(&self) -> Option<NodeHandle<'a, Spec>> {
         let ptr = self.cold.child.load(Ordering::Relaxed);
-        if ptr == null_mut() {
+        if ptr.is_null() {
             None
         } else {
             unsafe { Some(NodeHandle { node: &*ptr }) }
@@ -263,13 +263,13 @@ enum CreationHelper<'a: 'b, 'b, Spec: 'a + MCTS> {
 }
 
 #[inline(always)]
-fn create_node<'a, 'b, 'c, Spec: MCTS>(
+fn create_node<'a, 'b, Spec: MCTS>(
     eval: &Spec::Eval,
     policy: &Spec::TreePolicy,
     state: &Spec::State,
     ch: CreationHelper<'a, 'b, Spec>,
 ) -> SearchNode<Spec> {
-    let (allocator, handle) = match ch {
+    let (allocator, _handle) = match ch {
         CreationHelper::Allocator(x) => (x, None),
         CreationHelper::Handle(x) => {
             // this is safe because nothing will move into x.tld.allocator
@@ -279,7 +279,7 @@ fn create_node<'a, 'b, 'c, Spec: MCTS>(
         }
     };
     let moves = state.available_moves();
-    let (move_eval, state_eval) = eval.evaluate_new_state(&state, &moves);
+    let (move_eval, state_eval) = eval.evaluate_new_state(state, &moves);
     policy.validate_evaluations(&move_eval);
     let hots = allocator.alloc_slice(move_eval.len());
     let colds = allocator.alloc_slice(move_eval.len());
@@ -293,7 +293,7 @@ fn create_node<'a, 'b, 'c, Spec: MCTS>(
 }
 
 fn is_cycle<T>(past: &[&T], current: &T) -> bool {
-    past.iter().any(|x| *x as *const T == current as *const T)
+    past.iter().any(|x| std::ptr::eq(*x, current))
 }
 
 impl<Spec: MCTS> SearchTree<Spec> {
@@ -363,7 +363,7 @@ impl<Spec: MCTS> SearchTree<Spec> {
         let mut did_we_create = false;
         let mut node = &self.root_node;
         loop {
-            if node.hots().len() == 0 {
+            if node.hots().is_empty() {
                 break;
             }
             if path.len() >= self.manager.max_playout_length() {
@@ -446,16 +446,20 @@ impl<Spec: MCTS> SearchTree<Spec> {
         path: &[&'a SearchNode<Spec>],
     ) -> (&'a SearchNode<Spec>, bool) {
         let child = choice.child.load(Ordering::Relaxed) as *const _;
-        if child != null() {
+        if !child.is_null() {
             return unsafe { (&*child, false) };
         }
         if let Some(node) = self.table.lookup(state, self.make_handle(tld, path)) {
-            let child = choice.child.compare_and_swap(
-                null_mut(),
-                node as *const _ as *mut _,
-                Ordering::Relaxed,
-            ) as *const _;
-            if child == null() {
+            let child = choice
+                .child
+                .compare_exchange(
+                    null_mut(),
+                    node as *const _ as *mut _,
+                    Ordering::Relaxed,
+                    Ordering::Relaxed,
+                )
+                .unwrap() as *const _;
+            if child.is_null() {
                 self.transposition_table_hits
                     .fetch_add(1, Ordering::Relaxed);
                 return (node, false);
@@ -471,11 +475,16 @@ impl<Spec: MCTS> SearchTree<Spec> {
         );
         let created = tld.allocator.alloc_one();
         *created = created_here;
-        let other_child =
-            choice
-                .child
-                .compare_and_swap(null_mut(), created as *mut _, Ordering::Relaxed);
-        if other_child != null_mut() {
+        let other_child = choice
+            .child
+            .compare_exchange(
+                null_mut(),
+                created as *mut _,
+                Ordering::Relaxed,
+                Ordering::Relaxed,
+            )
+            .unwrap();
+        if !other_child.is_null() {
             self.expansion_contention_events
                 .fetch_add(1, Ordering::Relaxed);
             unsafe {
@@ -512,10 +521,10 @@ impl<Spec: MCTS> SearchTree<Spec> {
             node.up(&self.manager, evaln_value);
             move_info.hot.replace(*node);
             self.manager
-                .on_backpropagation(&evaln, self.make_handle(tld, node_path));
+                .on_backpropagation(evaln, self.make_handle(tld, node_path));
         }
         self.manager
-            .on_backpropagation(&evaln, self.make_handle(tld, node_path));
+            .on_backpropagation(evaln, self.make_handle(tld, node_path));
     }
 
     fn make_handle<'a, 'b>(
@@ -539,13 +548,13 @@ impl<Spec: MCTS> SearchTree<Spec> {
     pub fn principal_variation(&self, num_moves: usize) -> Vec<MoveInfoHandle<Spec>> {
         let mut result = Vec::new();
         let mut crnt = &self.root_node;
-        while crnt.hots().len() != 0 && result.len() < num_moves {
+        while !crnt.hots().is_empty() && result.len() < num_moves {
             let choice = self
                 .manager
                 .select_child_after_search(&crnt.moves().collect::<Vec<_>>());
             result.push(choice);
             let child = choice.cold.child.load(Ordering::SeqCst) as *const SearchNode<Spec>;
-            if child == null() {
+            if child.is_null() {
                 break;
             } else {
                 unsafe {
@@ -624,7 +633,7 @@ impl<'a, Spec: MCTS> NodeHandle<'a, Spec> {
     pub fn moves(&self) -> Moves<Spec> {
         self.node.moves()
     }
-    pub fn into_raw(&self) -> *const () {
+    pub fn into_raw(self) -> *const () {
         self.node as *const _ as *const ()
     }
     pub unsafe fn from_raw(ptr: *const ()) -> Self {

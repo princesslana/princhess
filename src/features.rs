@@ -24,15 +24,13 @@ fn feature_index(c: usize, p: Phase, idx: usize) -> usize {
     let x = 0;
     let x = x * NUM_PHASES + p as usize;
     let x = x * NUM_COLORS + c;
-    let x = x * NUM_NAMES + idx;
-    x
+    x * NUM_NAMES + idx
 }
 
 fn encode_piece(pc: FullPiece) -> usize {
     let x = 0;
     let x = x * NUM_COLORS + pc.color as usize;
-    let x = x * NUM_ROLES + pc.role as usize;
-    x
+    x * NUM_ROLES + pc.role as usize
 }
 
 fn pattern_index(ph: Phase, pc: FullPiece, sq: Square, is_rank: bool) -> usize {
@@ -91,7 +89,7 @@ impl FeatureVec {
                 write!(f, " {}:{}", index + 1, value).unwrap();
             }
         }
-        self.patterns.sort();
+        self.patterns.sort_unstable();
         let mut cnt = 0;
         for i in 0..self.patterns.len() {
             let x = self.patterns[i];
@@ -187,7 +185,7 @@ where
         let prev_dest = state
             .prev_move()
             .map(|x| x.get_dest())
-            .unwrap_or(Square::make_square(Rank::First, File::A));
+            .unwrap_or_else(|| Square::make_square(Rank::First, File::A));
         let mut best_recapture = Piece::King;
         for mov in moves {
             if let Some(a) = board.piece_on(mov.get_source()) {
@@ -303,6 +301,7 @@ impl Model {
         let mut result = [0f32; NUM_OUTCOMES];
         foreach_feature(state, moves, |i, _| {
             if i < NUM_MODEL_FEATURES {
+                #[allow(clippy::needless_range_loop)]
                 for j in 0..NUM_OUTCOMES {
                     // result[j] += COEF[i][j] * (v as f32);
                     result[j] += COEF[i][j];
@@ -329,20 +328,19 @@ impl Model {
 
 fn phase(s: &State) -> Phase {
     if s.is_endgame() {
-        return Phase::Endgame;
+        Phase::Endgame
     } else {
-        return Phase::Midgame;
+        Phase::Midgame
     }
 }
 
 pub fn name_feature(fidx: usize) -> String {
     assert!(fidx < NUM_DENSE_FEATURES);
-    let side_names = &["OUR", "OPPONENT"];
-    for c in 0..2 {
+    for (c, side) in ["OUR", "OPPONENT"].iter().enumerate() {
         for p in &[Phase::Midgame, Phase::Endgame] {
             for (idx, name) in INDEX_NAMES.iter().enumerate() {
                 if feature_index(c, *p, idx) == fidx {
-                    return format!("{}_{:?}_{}", side_names[c], p, name).to_lowercase();
+                    return format!("{}_{:?}_{}", side, p, name).to_lowercase();
                 }
             }
         }
@@ -363,16 +361,16 @@ fn full_piece_on(board: &Board, sq: Square) -> Option<FullPiece> {
 fn extract_2x2_pattern(board: &Board, file: File, rank: Rank) -> [usize; 4] {
     [
         full_piece_on(board, Square::make_square(rank, file))
-            .map(|pc| encode_piece(pc))
+            .map(encode_piece)
             .unwrap_or(NUM_PIECES),
         full_piece_on(board, Square::make_square(rank, file.right()))
-            .map(|pc| encode_piece(pc))
+            .map(encode_piece)
             .unwrap_or(NUM_PIECES),
         full_piece_on(board, Square::make_square(rank.up(), file))
-            .map(|pc| encode_piece(pc))
+            .map(encode_piece)
             .unwrap_or(NUM_PIECES),
         full_piece_on(board, Square::make_square(rank.up(), file.right()))
-            .map(|pc| encode_piece(pc))
+            .map(encode_piece)
             .unwrap_or(NUM_PIECES),
     ]
 }

@@ -18,13 +18,13 @@ fn build_value() {
     let names = read_all_to_string("feature_list.txt").unwrap();
     let mut nxt = 0;
     let phases = ["Midgame", "Endgame"];
-    write!(f, "#[repr(u8)]\n").unwrap();
-    write!(f, "#[derive(Copy, Clone, Debug, Eq, PartialEq)]\n").unwrap();
-    write!(f, "enum Phase {{\n").unwrap();
+    writeln!(f, "#[repr(u8)]").unwrap();
+    writeln!(f, "#[derive(Copy, Clone, Debug, Eq, PartialEq)]").unwrap();
+    writeln!(f, "enum Phase {{").unwrap();
     for (i, p) in phases.iter().enumerate() {
-        write!(f, "    {} = {},\n", p, i).unwrap()
+        writeln!(f, "    {} = {},", p, i).unwrap()
     }
-    write!(f, "}}\n").unwrap();
+    writeln!(f, "}}").unwrap();
     let colours = 2;
     let names = expand_macros(
         names
@@ -39,25 +39,25 @@ fn build_value() {
         write!(f, "const {}: usize = {};\n", x, nxt).unwrap();
         nxt += 1
     }
-    write!(f, "const NUM_COLORS: usize = 2;\n").unwrap();
-    write!(f, "const NUM_NAMES: usize = {};\n", nxt).unwrap();
-    write!(f, "const NUM_PHASES: usize = {};\n", phases.len()).unwrap();
+    writeln!(f, "const NUM_COLORS: usize = 2;").unwrap();
+    writeln!(f, "const NUM_NAMES: usize = {};", nxt).unwrap();
+    writeln!(f, "const NUM_PHASES: usize = {};", phases.len()).unwrap();
     let tot = nxt * phases.len() * colours;
-    write!(f, "pub const NUM_DENSE_FEATURES: usize = {};\n", tot).unwrap();
-    write!(f, "const INDEX_NAMES: [&'static str; {}] = [\n", nxt).unwrap();
+    writeln!(f, "pub const NUM_DENSE_FEATURES: usize = {};", tot).unwrap();
+    writeln!(f, "const INDEX_NAMES: [&str; {}] = [", nxt).unwrap();
     for x in &names {
-        write!(f, "    \"{}\",\n", x).unwrap();
+        writeln!(f, "    \"{}\",", x).unwrap();
     }
-    write!(f, "];\n").unwrap();
-    write!(
+    writeln!(f, "];").unwrap();
+    writeln!(
         f,
-        "const NUM_MODEL_FEATURES: usize = {};\n",
+        "const NUM_MODEL_FEATURES: usize = {};",
         read_all_lines("model").unwrap().len()
     )
     .unwrap();
-    write!(
+    writeln!(
         f,
-        "const COEF: [[f32; NUM_OUTCOMES]; NUM_MODEL_FEATURES] = {};\n",
+        "#[allow(clippy::excessive_precision)] const COEF: [[f32; NUM_OUTCOMES]; NUM_MODEL_FEATURES] = {};",
         read_all_to_string("model").unwrap()
     )
     .unwrap();
@@ -70,27 +70,27 @@ fn build_policy() {
     let offset = "NUM_ENCODED";
     let names = write_feature_names("policy_feature_list.txt", &mut f, offset);
     let num_names = names.len();
-    write!(
+    writeln!(
         f,
-        "pub const NUM_POLICY_FEATURES: usize = {} + {};\n",
+        "pub const NUM_POLICY_FEATURES: usize = {} + {};",
         offset, num_names
     )
     .unwrap();
     write!(f, "#[allow(dead_code)] ").unwrap();
-    write!(f, "const INDEX_NAMES: [&'static str; {}] = [\n", num_names).unwrap();
+    writeln!(f, "const INDEX_NAMES: [&str; {}] = [", num_names).unwrap();
     for x in &names {
-        write!(f, "    \"{}\",\n", x).unwrap();
+        writeln!(f, "    \"{}\",", x).unwrap();
     }
-    write!(f, "];\n").unwrap();
-    write!(
+    writeln!(f, "];").unwrap();
+    writeln!(
         f,
-        "const NUM_MODEL_FEATURES: usize = {};\n",
+        "const NUM_MODEL_FEATURES: usize = {};",
         read_all_lines("policy_model").unwrap().len()
     )
     .unwrap();
-    write!(
+    writeln!(
         f,
-        "const COEF: [f32; NUM_MODEL_FEATURES] = {};\n",
+        "#[allow(clippy::excessive_precision)] const COEF: [f32; NUM_MODEL_FEATURES] = {};",
         read_all_to_string("policy_model").unwrap()
     )
     .unwrap();
@@ -103,15 +103,16 @@ fn write_feature_names(from: &str, f: &mut File, offset: &str) -> Vec<String> {
         if exempt(x) {
             write!(f, "#[allow(dead_code)] ").unwrap();
         }
-        write!(f, "const {}: usize = {} + {};\n", x, offset, i).unwrap();
+        if i == 0 {
+            write!(f, "#[allow(clippy::identity_op)]").unwrap();
+        }
+        writeln!(f, "const {}: usize = {} + {};", x, offset, i).unwrap();
     }
     names
 }
 
 fn exempt(name: &str) -> bool {
-    if name.contains("PAWN_TO_RANK") {
-        true
-    } else if name.contains("_TO_") {
+    if name.contains("PAWN_TO_RANK") || name.contains("_TO_") {
         true
     } else if name.contains("NUM") {
         false
@@ -168,7 +169,7 @@ fn terms(x: Vec<u8>) -> Vec<Vec<u8>> {
     } else {
         String::from_utf8(x)
             .unwrap()
-            .split("|")
+            .split('|')
             .map(|x| x.to_string())
             .collect::<Vec<String>>()
             .into_iter()

@@ -39,7 +39,7 @@ impl Visitor for ValueDataGenerator {
 
     fn begin_game(&mut self) {
         self.state = StateBuilder::default();
-        self.skip = self.rows_written >= NUM_ROWS;
+        self.skip = self.rows_written == NUM_ROWS;
     }
 
     fn san(&mut self, san: SanPlus) {
@@ -133,7 +133,9 @@ fn run_value_gen(
 
     let file = File::open(in_path).expect("fopen");
     let pgn = unsafe { Mmap::map(&file).expect("mmap") };
-    BufferedReader::new(&pgn[..]).read_all(&mut generator);
+    BufferedReader::new(&pgn[..])
+        .read_all(&mut generator)
+        .unwrap();
 
     generator
 }
@@ -148,13 +150,13 @@ pub fn train_value(in_path: &str, out_path: &str) {
     run_value_gen(in_path, Some(out_file), whitelist);
     let mut freq_file = File::create("frequencies.debug.txt").expect("create");
     let mut indices = (0..NUM_FEATURES).map(|x| (freq[x], x)).collect::<Vec<_>>();
-    indices.sort();
+    indices.sort_unstable();
     for &(freq, feature) in &indices {
         write!(freq_file, "{} {}\n", feature, freq).unwrap();
     }
     let mut whitelist_file = File::create("feature_whitelist.txt").expect("create");
-    for i in 0..NUM_FEATURES {
-        write!(whitelist_file, "{}\n", whitelist[i]).unwrap();
+    for feature in whitelist.iter().take(NUM_FEATURES) {
+        write!(whitelist_file, "{}\n", feature).unwrap();
     }
 }
 
@@ -181,7 +183,9 @@ pub fn train_policy(in_path: &str, out_path: &str) {
     };
     let file = File::open(in_path).expect("fopen");
     let pgn = unsafe { Mmap::map(&file).expect("mmap") };
-    BufferedReader::new(&pgn[..]).read_all(&mut generator);
+    BufferedReader::new(&pgn[..])
+        .read_all(&mut generator)
+        .unwrap();
 }
 
 struct PolicyDataGenerator {
@@ -228,13 +232,10 @@ impl Visitor for PolicyDataGenerator {
             let legals = state.available_moves();
             let legals = legals.as_slice();
             let index = legals.iter().position(|x| m == *x).unwrap();
-            write!(self.key_file, "{} {}\n", legals.len(), index).unwrap();
+            writeln!(self.key_file, "{} {}", legals.len(), index).unwrap();
             for opt in legals {
-                policy_features::featurize(&state, &opt).write_libsvm(
-                    &mut self.out_file,
-                    0,
-                    |_| true,
-                );
+                policy_features::featurize(&state, opt)
+                    .write_libsvm(&mut self.out_file, 0, |_| true);
             }
             state.make_move(&m);
         }
