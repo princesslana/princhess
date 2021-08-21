@@ -12,12 +12,7 @@ pub struct GooseEval {
 impl Evaluator<GooseMCTS> for GooseEval {
     type StateEvaluation = i64;
 
-    fn evaluate_new_state(
-        &self,
-        state: &State,
-        moves: &MoveList,
-        _: Option<SearchHandle<GooseMCTS>>,
-    ) -> (Vec<f32>, i64) {
+    fn evaluate_new_state(&self, state: &State, moves: &MoveList) -> (Vec<f32>, i64) {
         let move_evaluations = evaluate_moves(state, moves.as_slice());
         let state_evaluation = if moves.len() == 0 {
             let x = SCALE as i64;

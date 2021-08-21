@@ -2,8 +2,7 @@ use args::options;
 use chess::{Color, MoveGen, Piece};
 use evaluation::GooseEval;
 use features::Model;
-use mcts::GameState;
-use mcts::{AsyncSearchOwned, CycleBehaviour, MCTSManager, MCTS};
+use mcts::{AsyncSearchOwned, CycleBehaviour, Evaluator, GameState, MCTSManager, MCTS};
 use state::{Move, State};
 use std::cmp::max;
 use std::sync::mpsc::Sender;
@@ -75,10 +74,12 @@ impl Search {
             ApproxTable::enough_to_hold(GooseMCTS.node_limit()),
         )
     }
+
     pub fn new(state: State) -> Self {
         let search = Self::create_manager(state).into();
         Self { search }
     }
+
     fn stop_and_print_m(self) -> MCTSManager<GooseMCTS> {
         if self.search.num_threads() == 0 {
             return self.search.halt();
@@ -102,6 +103,7 @@ impl Search {
         let manager = manager.reset();
         manager
     }
+
     pub fn stop_and_print(self) -> Self {
         Self {
             search: self.stop_and_print_m().into(),
@@ -197,6 +199,29 @@ impl Search {
         }
         Self {
             search: manager.into_playout_parallel_async(num_threads()),
+        }
+    }
+
+    pub fn print_eval(self) -> Self {
+        let manager = self.stop_and_print_m();
+
+        let state = manager.tree().root_state();
+
+        let eval = GooseEval::from(Model::new());
+
+        let moves = state.available_moves();
+        let (move_eval, state_eval) = eval.evaluate_new_state(&state, &moves);
+
+        println!("cp {}", (state_eval as f32 / (SCALE / 100.)) as i64);
+
+        print!("moves ");
+        for i in 0..moves.len() {
+            print!("{}:{:.3} ", moves.as_slice()[i], move_eval[i]);
+        }
+        println!();
+
+        Self {
+            search: manager.into(),
         }
     }
 
