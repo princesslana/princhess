@@ -1,17 +1,12 @@
 name: Games
 
 on:
-  push:
-    branches: [ main ]
   pull_request:
     branches: [ main ]
 
 jobs:
   games:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        games: [bullet, blitz, rapid]
     steps:
       - uses: actions/checkout@v2
       - uses: actions-rs/toolchain@v1
@@ -22,4 +17,4 @@ jobs:
           command: build
           args: --release
       - run: cp target/release/princhess bin/princhess
-      - run: docker-compose -f bin/docker-compose.yml up ${{ matrix.games }}
+      - run: docker-compose -f bin/docker-compose.yml up bullet
