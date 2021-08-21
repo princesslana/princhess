@@ -29,8 +29,10 @@ impl GooseEval {
             .position::<shakmaty::Chess>(shakmaty::CastlingMode::Standard)
             .ok()?;
 
-        let lock = self.tablebase.read().unwrap();
-        let wdl = lock.probe_wdl(&board);
+        let wdl = { 
+            let lock = self.tablebase.read().unwrap();
+            lock.probe_wdl(&board)
+        };
 
         let x = SCALE as i64;
 
@@ -45,10 +47,13 @@ impl GooseEval {
             return Some((vec![], state_eval));
         }
 
-        let best_move = if let Ok(Some((m, _))) = lock.best_move(&board) {
-            format!("{}", m.to_uci(shakmaty::CastlingMode::Standard))
-        } else {
-            "".into()
+        let best_move = {
+            let lock = self.tablebase.read().unwrap();
+            if let Ok(Some((m, _))) = lock.best_move(&board) {
+                format!("{}", m.to_uci(shakmaty::CastlingMode::Standard))
+            } else {
+                "".into()
+            }
         };
 
         let mut move_evals: Vec<_> = moves

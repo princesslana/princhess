@@ -1,16 +1,11 @@
 FROM debian:buster
 
-RUN apt-get update && apt-get install -y curl libqt5core5a wget
-
-RUN mkdir /syzygy \
- && wget -e robots=off -r -nH --cut-dirs=2 --no-parent --reject="index.html*" http://tablebase.sesse.net/syzygy/3-4-5/ -P /syzygy
+RUN apt-get update && apt-get install -y curl libqt5core5a
 
 RUN mkdir /engines
 
 RUN curl -sSL https://github.com/cutechess/cutechess/releases/download/1.2.0/cutechess-cli-1.2.0-linux64.tar.gz | tar zxv
 
 RUN curl -sSL https://github.com/princesslana/princhess/releases/download/0.1.0/princhess -o /engines/princhess-0.1.0 && chmod +x /engines/princhess-0.1.0
-
-COPY princhess /engines/princhess
 
 ENTRYPOINT ["cutechess-cli/cutechess-cli"]
