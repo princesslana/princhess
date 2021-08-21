@@ -16,3 +16,4 @@ run_goose.sh
 expanded_feature_list.txt
 bin/princhess
 .token
+syzygy

@@ -5,6 +5,8 @@ engine:
   name: "princhess"
   protocol: "uci"
   ponder: false
+  uci_options:
+    SyzygyPath: /syzygy
 
 challenge:
   concurrency: 1

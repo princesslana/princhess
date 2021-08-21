@@ -5,7 +5,7 @@ use mcts::*;
 use smallvec::SmallVec;
 use std::fmt;
 use std::fmt::{Debug, Display, Formatter};
-use std::ptr::{null, null_mut};
+use std::ptr::null_mut;
 use transposition_table::TranspositionTable;
 
 use pod::Pod;

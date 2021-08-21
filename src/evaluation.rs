@@ -1,18 +1,79 @@
 use chess::*;
 use features::Model;
 use mcts::{Evaluator, SearchHandle};
-use policy_features::evaluate_moves;
-use search::{GooseMCTS, SCALE};
-use state::{MoveList, Player, State};
+use policy_features::{evaluate_moves, softmax};
+use search::{to_uci, GooseMCTS, Tablebase, SCALE};
+use shakmaty;
+use shakmaty_syzygy::{Syzygy, Wdl};
+use state::{Move, MoveList, Player, State};
 
 pub struct GooseEval {
     model: Model,
+    tablebase: Tablebase,
+}
+
+impl GooseEval {
+    pub fn new(model: Model, tablebase: Tablebase) -> Self {
+        Self { model, tablebase }
+    }
+
+    fn evaluate_syzygy(&self, state: &State, moves: &[Move]) -> Option<(Vec<f32>, i64)> {
+        let fen = format!("{}", state.board());
+
+        // Shakmaty and Chess seem to have some disagreements about fen.
+        // En Passant square being a known one.
+        // So we'll just skip syzygy eval in those cases
+        let board = fen
+            .parse::<shakmaty::fen::Fen>()
+            .unwrap()
+            .position::<shakmaty::Chess>(shakmaty::CastlingMode::Standard)
+            .ok()?;
+
+        let lock = self.tablebase.read().unwrap();
+        let wdl = lock.probe_wdl(&board);
+
+        let x = SCALE as i64;
+
+        let state_eval = match wdl {
+            Ok(Wdl::Win) => x,
+            Ok(Wdl::Loss) => -x,
+            Ok(_) => 0,
+            _ => return None,
+        };
+
+        if moves.len() == 0 {
+            return Some((vec![], state_eval));
+        }
+
+        let best_move = if let Ok(Some((m, _))) = lock.best_move(&board) {
+            format!("{}", m.to_uci(shakmaty::CastlingMode::Standard))
+        } else {
+            "".into()
+        };
+
+        let mut move_evals: Vec<_> = moves
+            .iter()
+            .map(|m| if to_uci(*m) == best_move { 1.0 } else { 0.0 })
+            .collect();
+
+        softmax(&mut move_evals);
+
+        Some((move_evals, state_eval))
+    }
 }
 
 impl Evaluator<GooseMCTS> for GooseEval {
     type StateEvaluation = i64;
 
     fn evaluate_new_state(&self, state: &State, moves: &MoveList) -> (Vec<f32>, i64) {
+        let piece_count = state.board().combined().popcnt() as usize;
+
+        if piece_count <= shakmaty::Chess::MAX_PIECES {
+            if let Some(syzygy_eval) = self.evaluate_syzygy(state, moves.as_slice()) {
+                return syzygy_eval;
+            }
+        }
+
         let move_evaluations = evaluate_moves(state, moves.as_slice());
         let state_evaluation = if moves.len() == 0 {
             let x = SCALE as i64;
@@ -40,12 +101,6 @@ impl Evaluator<GooseMCTS> for GooseEval {
             Color::White => *evaln,
             Color::Black => -*evaln,
         }
-    }
-}
-
-impl From<Model> for GooseEval {
-    fn from(m: Model) -> Self {
-        Self { model: m }
     }
 }
 

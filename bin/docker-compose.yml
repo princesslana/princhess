@@ -3,6 +3,6 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.cutechess-cli
-    command: -engine cmd=/engines/princhess -engine cmd=/engines/princhess-0.1.0 -each proto=uci tc=120+1 -rounds 50
+    command: -engine cmd=/engines/princhess -engine cmd=/engines/princhess-0.1.0 -each proto=uci tc=120+1 option.SyzygyPath=/syzygy -rounds 50 
     environment:
       RUST_LOG: warn

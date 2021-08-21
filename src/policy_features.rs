@@ -201,7 +201,7 @@ pub fn evaluate_moves(state: &State, moves: &[Move]) -> Vec<f32> {
     evalns
 }
 
-fn softmax(arr: &mut [f32]) {
+pub fn softmax(arr: &mut [f32]) {
     for x in arr.iter_mut() {
         *x = x.exp();
     }
