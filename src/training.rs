@@ -3,7 +3,7 @@ extern crate pgn_reader;
 extern crate rand;
 
 use self::memmap::Mmap;
-use self::pgn_reader::{Outcome, Reader, San, Skip, Visitor};
+use self::pgn_reader::{BufferedReader, Outcome, RawHeader, SanPlus, Skip, Visitor};
 use self::rand::{Rng, SeedableRng, XorShiftRng};
 
 use chess;
@@ -34,7 +34,7 @@ struct ValueDataGenerator {
     whitelist: [bool; NUM_FEATURES],
 }
 
-impl<'pgn> Visitor<'pgn> for ValueDataGenerator {
+impl Visitor for ValueDataGenerator {
     type Result = ();
 
     fn begin_game(&mut self) {
@@ -42,8 +42,8 @@ impl<'pgn> Visitor<'pgn> for ValueDataGenerator {
         self.skip = self.rows_written >= NUM_ROWS;
     }
 
-    fn san(&mut self, san: San) {
-        if let Ok(m) = san.to_move(self.state.chess()) {
+    fn san(&mut self, san: SanPlus) {
+        if let Ok(m) = san.san.to_move(self.state.chess()) {
             self.state.make_move(m);
         }
     }
@@ -52,25 +52,26 @@ impl<'pgn> Visitor<'pgn> for ValueDataGenerator {
         Skip(self.skip)
     }
 
-    fn header(&mut self, key: &[u8], value: &[u8]) {
+    fn header(&mut self, key: &[u8], value: RawHeader) {
         if key == b"WhiteElo" || key == b"BlackElo" {
-            let elo: i32 = str::from_utf8(value).unwrap().parse().unwrap();
+            let elo: i32 = value.decode_utf8().unwrap().parse().unwrap();
             if elo < MIN_ELO {
                 self.skip = true;
             }
         }
     }
 
-    fn outcome(&mut self, outcome: Outcome) {
+    fn outcome(&mut self, outcome: Option<Outcome>) {
         let game_result = match outcome {
-            Outcome::Draw => GameResult::Draw,
-            Outcome::Decisive { winner } => {
+            Some(Outcome::Draw) => GameResult::Draw,
+            Some(Outcome::Decisive { winner }) => {
                 if winner == shakmaty::Color::White {
                     GameResult::WhiteWin
                 } else {
                     GameResult::BlackWin
                 }
             }
+            None => return,
         };
         let (mut state, moves) = self.state.extract();
         let freq = NUM_SAMPLES as f64 / moves.len() as f64;
@@ -98,7 +99,7 @@ impl<'pgn> Visitor<'pgn> for ValueDataGenerator {
         Skip(true) // stay in the mainline
     }
 
-    fn end_game(&mut self, _game: &'pgn [u8]) -> Self::Result {}
+    fn end_game(&mut self) -> Self::Result {}
 }
 
 fn write_feature_names() {
@@ -132,7 +133,7 @@ fn run_value_gen(
 
     let file = File::open(in_path).expect("fopen");
     let pgn = unsafe { Mmap::map(&file).expect("mmap") };
-    Reader::new(&mut generator, &pgn[..]).read_all();
+    BufferedReader::new(&pgn[..]).read_all(&mut generator);
 
     generator
 }
@@ -180,7 +181,7 @@ pub fn train_policy(in_path: &str, out_path: &str) {
     };
     let file = File::open(in_path).expect("fopen");
     let pgn = unsafe { Mmap::map(&file).expect("mmap") };
-    Reader::new(&mut generator, &pgn[..]).read_all();
+    BufferedReader::new(&pgn[..]).read_all(&mut generator);
 }
 
 struct PolicyDataGenerator {
@@ -190,7 +191,7 @@ struct PolicyDataGenerator {
     skip: bool,
 }
 
-impl<'pgn> Visitor<'pgn> for PolicyDataGenerator {
+impl Visitor for PolicyDataGenerator {
     type Result = ();
 
     fn begin_game(&mut self) {
@@ -198,8 +199,8 @@ impl<'pgn> Visitor<'pgn> for PolicyDataGenerator {
         self.skip = false;
     }
 
-    fn san(&mut self, san: San) {
-        if let Ok(m) = san.to_move(self.state.chess()) {
+    fn san(&mut self, san: SanPlus) {
+        if let Ok(m) = san.san.to_move(self.state.chess()) {
             self.state.make_move(m);
         }
     }
@@ -208,9 +209,9 @@ impl<'pgn> Visitor<'pgn> for PolicyDataGenerator {
         Skip(self.skip)
     }
 
-    fn header(&mut self, key: &[u8], value: &[u8]) {
+    fn header(&mut self, key: &[u8], value: RawHeader) {
         if key == b"WhiteElo" || key == b"BlackElo" {
-            let elo: i32 = str::from_utf8(value).unwrap().parse().unwrap();
+            let elo: i32 = value.decode_utf8().unwrap().parse().unwrap();
             if elo < MIN_ELO_POLICY {
                 self.skip = true;
             }
@@ -221,7 +222,7 @@ impl<'pgn> Visitor<'pgn> for PolicyDataGenerator {
         Skip(true) // stay in the mainline
     }
 
-    fn end_game(&mut self, _game: &'pgn [u8]) -> Self::Result {
+    fn end_game(&mut self) -> Self::Result {
         let (mut state, moves) = self.state.extract();
         for m in moves {
             let legals = state.available_moves();
