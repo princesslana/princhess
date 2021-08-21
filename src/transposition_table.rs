@@ -128,14 +128,11 @@ pub type ApproxTable<Spec> =
     ApproxQuadraticProbingHashTable<<Spec as MCTS>::State, SearchNode<Spec>>;
 
 fn get_or_write<'a, V>(ptr: &AtomicPtr<V>, v: &'a V) -> Option<&'a V> {
-    let result = ptr
-        .compare_exchange(
-            std::ptr::null_mut(),
-            v as *const _ as *mut _,
-            Ordering::Relaxed,
-            Ordering::Relaxed,
-        )
-        .unwrap();
+    let result = ptr.compare_and_swap(
+        std::ptr::null_mut(),
+        v as *const _ as *mut _,
+        Ordering::Relaxed,
+    );
     convert(result)
 }
 
@@ -181,8 +178,7 @@ where
             if key_here == 0 {
                 let key_here = entry
                     .k
-                    .compare_exchange(0, my_hash as FakeU64, Ordering::Relaxed, Ordering::Relaxed)
-                    .unwrap();
+                    .compare_and_swap(0, my_hash as FakeU64, Ordering::Relaxed);
                 self.size.fetch_add(1, Ordering::Relaxed);
                 if key_here == 0 || key_here == my_hash as FakeU64 {
                     return get_or_write(&entry.v, value);

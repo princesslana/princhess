@@ -450,15 +450,11 @@ impl<Spec: MCTS> SearchTree<Spec> {
             return unsafe { (&*child, false) };
         }
         if let Some(node) = self.table.lookup(state, self.make_handle(tld, path)) {
-            let child = choice
-                .child
-                .compare_exchange(
-                    null_mut(),
-                    node as *const _ as *mut _,
-                    Ordering::Relaxed,
-                    Ordering::Relaxed,
-                )
-                .unwrap() as *const _;
+            let child = choice.child.compare_and_swap(
+                null_mut(),
+                node as *const _ as *mut _,
+                Ordering::Relaxed,
+            ) as *const _;
             if child.is_null() {
                 self.transposition_table_hits
                     .fetch_add(1, Ordering::Relaxed);
@@ -475,15 +471,10 @@ impl<Spec: MCTS> SearchTree<Spec> {
         );
         let created = tld.allocator.alloc_one();
         *created = created_here;
-        let other_child = choice
-            .child
-            .compare_exchange(
-                null_mut(),
-                created as *mut _,
-                Ordering::Relaxed,
-                Ordering::Relaxed,
-            )
-            .unwrap();
+        let other_child =
+            choice
+                .child
+                .compare_and_swap(null_mut(), created as *mut _, Ordering::Relaxed);
         if !other_child.is_null() {
             self.expansion_contention_events
                 .fetch_add(1, Ordering::Relaxed);
