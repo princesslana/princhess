@@ -2,7 +2,7 @@ use chess;
 use chess::{Board, CastleRights, Color, Piece};
 use mcts::GameState;
 use shakmaty;
-use shakmaty::Position;
+use shakmaty::{CastlingMode, Position};
 use smallvec::SmallVec;
 use std;
 use std::cmp::max;
@@ -33,7 +33,7 @@ impl StateBuilder {
         Some(
             fen.parse::<shakmaty::fen::Fen>()
                 .ok()?
-                .position::<shakmaty::Chess>()
+                .position::<shakmaty::Chess>(CastlingMode::Standard)
                 .ok()?
                 .into(),
         )
@@ -250,7 +250,7 @@ impl From<chess::Board> for State {
 
 impl From<StateBuilder> for State {
     fn from(sb: StateBuilder) -> Self {
-        let fen = shakmaty::fen::fen(&sb.initial_state, &shakmaty::fen::FenOpts::default());
+        let fen = shakmaty::fen::fen(&sb.initial_state);
         let board = chess::Board::from_fen(fen).unwrap();
         let mut state = State::from(board);
         for mov in sb.moves {
