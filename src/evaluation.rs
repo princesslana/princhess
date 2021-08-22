@@ -18,18 +18,7 @@ impl GooseEval {
     }
 
     fn evaluate_syzygy(&self, state: &State, moves: &[Move]) -> Option<(Vec<f32>, i64)> {
-        let fen = format!("{}", state.board());
-
-        // Shakmaty and Chess seem to have some disagreements about fen.
-        // En Passant square being a known one.
-        // So we'll just skip syzygy eval in those cases
-        let board = fen
-            .parse::<shakmaty::fen::Fen>()
-            .unwrap()
-            .position::<shakmaty::Chess>(shakmaty::CastlingMode::Standard)
-            .ok()?;
-
-        let wdl = probe_tablebase_wdl(&board)?;
+        let wdl = probe_tablebase_wdl(state.shakmaty_board())?;
 
         let mut x = SCALE as i64;
 
@@ -48,7 +37,7 @@ impl GooseEval {
         }
 
         let best_move = {
-            if let Some(m) = probe_tablebase_best_move(&board) {
+            if let Some(m) = probe_tablebase_best_move(state.shakmaty_board()) {
                 format!("{}", m.to_uci(shakmaty::CastlingMode::Standard))
             } else {
                 "".into()

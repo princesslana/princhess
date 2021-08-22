@@ -74,6 +74,7 @@ impl StateBuilder {
 
 #[derive(Clone)]
 pub struct State {
+    shakmaty_board: shakmaty::Chess,
     board: chess::Board,
     prev_move: Option<chess::ChessMove>,
     prev_capture: Option<chess::Piece>,
@@ -101,6 +102,9 @@ impl State {
     }
     pub fn board(&self) -> &chess::Board {
         &self.board
+    }
+    pub fn shakmaty_board(&self) -> &shakmaty::Chess {
+        &self.shakmaty_board
     }
     pub fn outcome(&self) -> chess::BoardStatus {
         if self.drawn_by_repetition() {
@@ -160,6 +164,10 @@ impl State {
 
     pub fn is_endgame(&self) -> bool {
         self.queens_off()
+    }
+
+    pub fn piece_count(&self) -> u32 {
+        self.board().combined().popcnt()
     }
 }
 
@@ -232,9 +240,12 @@ fn convert_move(mov: &shakmaty::Move) -> chess::ChessMove {
     }
 }
 
-impl From<chess::Board> for State {
-    fn from(board: chess::Board) -> Self {
-        Self {
+impl From<StateBuilder> for State {
+    fn from(sb: StateBuilder) -> Self {
+        let fen = shakmaty::fen::fen(&sb.initial_state);
+        let board = chess::Board::from_str(&fen).unwrap();
+        let mut state = State {
+            shakmaty_board: sb.initial_state,
             board,
             prev_move: None,
             prev_capture: None,
@@ -244,15 +255,7 @@ impl From<chess::Board> for State {
             frozen: false,
             queens_off: false,
             move_lists: [Vec::new(), Vec::new()],
-        }
-    }
-}
-
-impl From<StateBuilder> for State {
-    fn from(sb: StateBuilder) -> Self {
-        let fen = shakmaty::fen::fen(&sb.initial_state);
-        let board = chess::Board::from_str(&fen).unwrap();
-        let mut state = State::from(board);
+        };
         for mov in sb.moves {
             let mov = convert_move(&mov);
             assert!(
@@ -319,6 +322,7 @@ impl GameState for State {
     fn current_player(&self) -> Player {
         self.board.side_to_move()
     }
+
     fn available_moves(&self) -> MoveList {
         #[allow(clippy::uninit_assumed_init)]
         let mut arr = unsafe { std::mem::MaybeUninit::uninit().assume_init() };
@@ -329,6 +333,7 @@ impl GameState for State {
         };
         MoveList { arr, len }
     }
+
     fn make_move(&mut self, mov: &chess::ChessMove) {
         if (self.board.pieces(chess::Piece::Pawn) & chess::BitBoard::from_square(mov.get_source()))
             .0
