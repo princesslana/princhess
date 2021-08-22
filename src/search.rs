@@ -3,11 +3,13 @@ use chess::{Color, MoveGen, Piece};
 use evaluation::GooseEval;
 use features::Model;
 use mcts::{AsyncSearchOwned, CycleBehaviour, Evaluator, GameState, MCTSManager, MCTS};
+use shakmaty_syzygy::Syzygy;
 use state::{Move, State};
 use std::cmp::max;
 use std::sync::mpsc::Sender;
 use std::thread;
 use std::time::Duration;
+use tablebase::probe_tablebase_best_move;
 use transposition_table::ApproxTable;
 use tree_policy::AlphaGoPolicy;
 use uci::{Tokens, TIMEUP};
@@ -131,6 +133,13 @@ impl Search {
             return Self {
                 search: manager.into(),
             };
+        } else if state.piece_count() < shakmaty::Chess::MAX_PIECES as u32 {
+            if let Some(mv) = probe_tablebase_best_move(state.shakmaty_board()) {
+                println!("bestmove {}", mv.to_uci(shakmaty::CastlingMode::Standard));
+                return Self {
+                    search: manager.into(),
+                };
+            }
         }
 
         let mut move_time = None;
