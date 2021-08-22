@@ -1,12 +1,9 @@
 use chess::*;
 use features::Model;
 use mcts::{Evaluator, SearchHandle};
-use policy_features::{evaluate_moves, softmax};
-use search::{to_uci, GooseMCTS, SCALE};
-use shakmaty;
-use shakmaty_syzygy::{Syzygy, Wdl};
-use state::{Move, MoveList, Player, State};
-use tablebase::{probe_tablebase_best_move, probe_tablebase_wdl};
+use policy_features::evaluate_moves;
+use search::{GooseMCTS, SCALE};
+use state::{MoveList, Outcome, Player, State};
 
 pub struct GooseEval {
     model: Model,
@@ -16,70 +13,20 @@ impl GooseEval {
     pub fn new(model: Model) -> Self {
         Self { model }
     }
-
-    fn evaluate_syzygy(&self, state: &State, moves: &[Move]) -> Option<(Vec<f32>, i64)> {
-        let wdl = probe_tablebase_wdl(state.shakmaty_board())?;
-
-        let mut x = SCALE as i64;
-
-        if state.board().side_to_move() == Color::Black {
-            x = -x;
-        }
-
-        let state_eval = match wdl {
-            Wdl::Win => x,
-            Wdl::Loss => -x,
-            _ => 0,
-        };
-
-        if moves.len() == 0 {
-            return Some((vec![], state_eval));
-        }
-
-        let best_move = {
-            if let Some(m) = probe_tablebase_best_move(state.shakmaty_board()) {
-                format!("{}", m.to_uci(shakmaty::CastlingMode::Standard))
-            } else {
-                "".into()
-            }
-        };
-
-        let mut move_evals: Vec<_> = moves
-            .iter()
-            .map(|m| if to_uci(*m) == best_move { 1.0 } else { 0.0 })
-            .collect();
-
-        softmax(&mut move_evals);
-
-        Some((move_evals, state_eval))
-    }
 }
 
 impl Evaluator<GooseMCTS> for GooseEval {
     type StateEvaluation = i64;
 
     fn evaluate_new_state(&self, state: &State, moves: &MoveList) -> (Vec<f32>, i64) {
-        let piece_count = state.board().combined().popcnt() as usize;
-
-        if piece_count <= shakmaty::Chess::MAX_PIECES {
-            if let Some(syzygy_eval) = self.evaluate_syzygy(state, moves.as_slice()) {
-                return syzygy_eval;
-            }
-        }
-
         let move_evaluations = evaluate_moves(state, moves.as_slice());
         let state_evaluation = if moves.len() == 0 {
             let x = SCALE as i64;
             match state.outcome() {
-                BoardStatus::Stalemate => 0,
-                BoardStatus::Checkmate => {
-                    if state.board().side_to_move() == Color::White {
-                        -x
-                    } else {
-                        x
-                    }
-                }
-                BoardStatus::Ongoing => unreachable!(),
+                Outcome::Draw => 0,
+                Outcome::WhiteWin => x,
+                Outcome::BlackWin => -x,
+                Outcome::Ongoing => unreachable!(),
             }
         } else {
             (self.model.score(state, moves.as_slice()) * SCALE as f32) as i64
@@ -180,7 +127,7 @@ mod tests {
     #[ignore]
     fn checkmating() {
         let states = assert_find_move("8/8/8/3k4/1Q6/K7/8/8 w - - 8 59", "");
-        assert!(states[states.len() - 1].outcome() == BoardStatus::Checkmate);
+        assert!(states[states.len() - 1].outcome() == &Outcome::WhiteWin);
     }
 
     #[test]

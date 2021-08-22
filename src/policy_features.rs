@@ -187,7 +187,7 @@ pub fn featurize(state: &State, mov: &Move) -> FeatureVec {
     }
 }
 
-fn evaluate_single(state: &State, mov: &Move) -> f32 {
+pub fn evaluate_single(state: &State, mov: &Move) -> f32 {
     let mut result = 0f32;
     foreach_feature(state, mov, |i, _| {
         result += COEF[i];

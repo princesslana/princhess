@@ -2,7 +2,9 @@ use args::options;
 use chess::{Color, MoveGen, Piece};
 use evaluation::GooseEval;
 use features::Model;
+use float_ord::FloatOrd;
 use mcts::{AsyncSearchOwned, CycleBehaviour, Evaluator, GameState, MCTSManager, MCTS};
+use policy_features::evaluate_single;
 use shakmaty_syzygy::Syzygy;
 use state::{Move, State};
 use std::cmp::max;
@@ -89,7 +91,7 @@ impl Search {
         let manager = self.search.halt();
         if let Some(mov) = manager.best_move() {
             let info_str = format!(
-                "info depth {} score cp {} pv{}",
+                "info nodes {} score cp {} pv{}",
                 manager.tree().num_nodes(),
                 manager
                     .principal_variation_info(1)
@@ -126,20 +128,38 @@ impl Search {
         let state = manager.tree().root_state();
         let player = state.current_player();
 
-        let mut mvs = MoveGen::new_legal(state.board());
+        let mvs = state.available_moves();
 
         if mvs.len() == 1 {
-            println!("bestmove {}", to_uci(mvs.next().unwrap()));
+            println!("bestmove {}", to_uci(mvs.as_slice()[0]));
             return Self {
                 search: manager.into(),
             };
         } else if state.piece_count() < shakmaty::Chess::MAX_PIECES as u32 {
             if let Some(mv) = probe_tablebase_best_move(state.shakmaty_board()) {
+                println!("info tbhits 1");
                 println!("bestmove {}", mv.to_uci(shakmaty::CastlingMode::Standard));
                 return Self {
                     search: manager.into(),
                 };
             }
+        }
+
+        // This shouldn't happen (being asked to search with no moves available).
+        //
+        // One known case is the tablebase determiining a win, but not a best move.
+        //
+        // Just depend upon our move evaluation here.
+        if mvs.len() == 0 {
+            let move_gen = MoveGen::new_legal(&state.board());
+            let mv = move_gen
+                .max_by_key(|m| FloatOrd(evaluate_single(state, m)))
+                .unwrap();
+
+            println!("bestmove {}", to_uci(mv));
+            return Self {
+                search: manager.into(),
+            };
         }
 
         let mut move_time = None;
@@ -221,7 +241,11 @@ impl Search {
         let moves = state.available_moves();
         let (move_eval, state_eval) = eval.evaluate_new_state(state, &moves);
 
-        println!("cp {}", (state_eval as f32 / (SCALE / 100.)) as i64);
+        println!(
+            "cp {} outcome {:?}",
+            (state_eval as f32 / (SCALE / 100.)) as i64,
+            state.outcome()
+        );
 
         print!("moves ");
         for (i, e) in move_eval.iter().enumerate().take(moves.len()) {
