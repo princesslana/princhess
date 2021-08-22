@@ -2,10 +2,12 @@
 
 #[macro_use]
 extern crate log;
+extern crate arc_swap;
 extern crate chess;
 extern crate crossbeam;
 extern crate float_ord;
 extern crate memmap;
+extern crate once_cell;
 extern crate pod;
 extern crate pretty_env_logger;
 extern crate shakmaty;
@@ -16,6 +18,7 @@ mod arena;
 mod atomics;
 mod mcts;
 mod search_tree;
+mod tablebase;
 mod transposition_table;
 mod tree_policy;
 
