@@ -6,7 +6,7 @@ use float_ord::FloatOrd;
 use mcts::{AsyncSearchOwned, CycleBehaviour, Evaluator, GameState, MCTSManager, MCTS};
 use policy_features::evaluate_single;
 use shakmaty_syzygy::Syzygy;
-use state::{Move, State};
+use state::{Move, Outcome, State, StateBuilder};
 use std::cmp::max;
 use std::sync::mpsc::Sender;
 use std::thread;
@@ -142,6 +142,28 @@ impl Search {
                 return Self {
                     search: manager.into(),
                 };
+            } else if state.outcome() != &Outcome::Ongoing {
+                // Choose a capture that keeps the outcome the same,
+                // if there's no capture, leave it to move eval
+                // This is a special case for when the tablebase has determined a result
+                // but not a best move
+                let mut move_gen = MoveGen::new_legal(&state.board());
+
+                let targets = state.board().combined();
+                move_gen.set_iterator_mask(*targets);
+
+                for mv in move_gen {
+                    let mut new_state: State =
+                        StateBuilder::from(state.shakmaty_board().clone()).into();
+                    new_state.make_move(&mv);
+
+                    if new_state.outcome() == state.outcome() {
+                        println!("bestmove {}", to_uci(mv));
+                        return Self {
+                            search: manager.into(),
+                        };
+                    }
+                }
             }
         }
 
