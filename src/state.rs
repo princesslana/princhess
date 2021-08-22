@@ -1,12 +1,15 @@
 use chess;
 use mcts::GameState;
+use search::to_uci;
 use shakmaty;
 use shakmaty::Position;
+use shakmaty_syzygy::Wdl;
 use smallvec::SmallVec;
 use std;
 use std::cmp::max;
 use std::iter::IntoIterator;
 use std::str::FromStr;
+use tablebase::probe_tablebase_wdl;
 use transposition_table::TranspositionHash;
 use uci::Tokens;
 
@@ -25,10 +28,12 @@ impl StateBuilder {
     pub fn chess(&self) -> &shakmaty::Chess {
         &self.crnt_state
     }
+
     pub fn make_move(&mut self, mov: shakmaty::Move) {
         self.crnt_state = self.crnt_state.clone().play(&mov).unwrap();
         self.moves.push(mov);
     }
+
     pub fn from_fen(fen: &str) -> Option<Self> {
         Some(
             fen.parse::<shakmaty::fen::Fen>()
@@ -38,6 +43,7 @@ impl StateBuilder {
                 .into(),
         )
     }
+
     pub fn from_tokens(mut tokens: Tokens) -> Option<Self> {
         let mut result = match tokens.next()? {
             "startpos" => Self::default(),
@@ -65,11 +71,20 @@ impl StateBuilder {
         }
         Some(result)
     }
+
     pub fn extract(&self) -> (State, Vec<Move>) {
         let state = StateBuilder::from(self.initial_state.clone()).into();
         let moves = self.moves.iter().map(|m| convert_move(m)).collect();
         (state, moves)
     }
+}
+
+#[derive(Clone, Eq, PartialEq, Debug)]
+pub enum Outcome {
+    WhiteWin,
+    BlackWin,
+    Draw,
+    Ongoing,
 }
 
 #[derive(Clone)]
@@ -84,8 +99,8 @@ pub struct State {
     frozen: bool,
     queens_off: bool,
     move_lists: [Vec<chess::ChessMove>; 2],
+    outcome: Outcome,
 }
-
 impl State {
     pub fn from_tokens(tokens: Tokens) -> Option<Self> {
         StateBuilder::from_tokens(tokens).map(|x| x.into())
@@ -106,13 +121,52 @@ impl State {
     pub fn shakmaty_board(&self) -> &shakmaty::Chess {
         &self.shakmaty_board
     }
-    pub fn outcome(&self) -> chess::BoardStatus {
+
+    pub fn outcome(&self) -> &Outcome {
+        &self.outcome
+    }
+
+    fn check_outcome(&mut self) {
         if self.drawn_by_repetition() {
-            chess::BoardStatus::Stalemate // close enough
+            self.outcome = Outcome::Draw;
+        } else if self.board().status() != chess::BoardStatus::Ongoing {
+            self.outcome = match self.board().status() {
+                chess::BoardStatus::Stalemate => Outcome::Draw,
+                chess::BoardStatus::Checkmate => {
+                    if self.board().side_to_move() == chess::Color::Black {
+                        Outcome::WhiteWin
+                    } else {
+                        Outcome::BlackWin
+                    }
+                }
+                chess::BoardStatus::Ongoing => unreachable!(),
+            }
         } else {
-            self.board.status()
+            debug!(
+                "Checking tablebase for {}...",
+                shakmaty::fen::fen(&self.shakmaty_board)
+            );
+            self.outcome = match probe_tablebase_wdl(&self.shakmaty_board) {
+                Some(Wdl::Win) => {
+                    if self.board().side_to_move() == chess::Color::White {
+                        Outcome::WhiteWin
+                    } else {
+                        Outcome::BlackWin
+                    }
+                }
+                Some(Wdl::Loss) => {
+                    if self.board().side_to_move() == chess::Color::White {
+                        Outcome::BlackWin
+                    } else {
+                        Outcome::WhiteWin
+                    }
+                }
+                Some(_) => Outcome::Draw,
+                None => Outcome::Ongoing,
+            }
         }
     }
+
     pub fn formerly_occupied(&self) -> &[chess::BitBoard; NUM_OCCUPIED_KEPT] {
         &self.formerly_occupied
     }
@@ -244,6 +298,7 @@ impl From<StateBuilder> for State {
     fn from(sb: StateBuilder) -> Self {
         let fen = shakmaty::fen::fen(&sb.initial_state);
         let board = chess::Board::from_str(&fen).unwrap();
+
         let mut state = State {
             shakmaty_board: sb.initial_state,
             board,
@@ -255,7 +310,11 @@ impl From<StateBuilder> for State {
             frozen: false,
             queens_off: false,
             move_lists: [Vec::new(), Vec::new()],
+            outcome: Outcome::Ongoing,
         };
+
+        state.check_outcome();
+
         for mov in sb.moves {
             let mov = convert_move(&mov);
             assert!(
@@ -326,7 +385,7 @@ impl GameState for State {
     fn available_moves(&self) -> MoveList {
         #[allow(clippy::uninit_assumed_init)]
         let mut arr = unsafe { std::mem::MaybeUninit::uninit().assume_init() };
-        let len = if self.drawn_by_repetition() {
+        let len = if self.outcome() != &Outcome::Ongoing {
             0
         } else {
             self.board.enumerate_moves(&mut arr)
@@ -349,6 +408,12 @@ impl GameState for State {
             self.formerly_occupied[i + 1] = self.formerly_occupied[i];
         }
         self.formerly_occupied[0] = *self.board.combined();
+
+        let shakmaty_move = shakmaty::uci::Uci::from_ascii(to_uci(*mov).as_bytes())
+            .unwrap()
+            .to_move(&self.shakmaty_board)
+            .unwrap();
+        self.shakmaty_board = self.shakmaty_board.clone().play(&shakmaty_move).unwrap();
         self.board = self.board.make_move_new(*mov);
         self.check_for_repetition();
         self.queens_off = self.queens_off || self.board.pieces(chess::Piece::Queen).0 == 0;
@@ -356,6 +421,7 @@ impl GameState for State {
         if self.board.checkers().0 == 0 {
             self.move_lists[0] = self.available_moves().as_slice().to_vec();
         }
+        self.check_outcome();
     }
 }
 
@@ -375,7 +441,7 @@ mod tests {
             state.make_move(m);
         }
         let state = State::from(state);
-        assert!(state.outcome() == chess::BoardStatus::Stalemate);
+        assert!(state.outcome() == &Outcome::Draw);
     }
 
     #[test]
