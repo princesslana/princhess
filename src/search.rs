@@ -3,12 +3,9 @@ use chess::{Color, MoveGen, Piece};
 use evaluation::GooseEval;
 use features::Model;
 use mcts::{AsyncSearchOwned, CycleBehaviour, Evaluator, GameState, MCTSManager, MCTS};
-use shakmaty;
-use shakmaty_syzygy;
 use state::{Move, State};
 use std::cmp::max;
 use std::sync::mpsc::Sender;
-use std::sync::{Arc, RwLock};
 use std::thread;
 use std::time::Duration;
 use transposition_table::ApproxTable;
@@ -26,12 +23,6 @@ fn policy() -> AlphaGoPolicy {
 
 fn num_threads() -> usize {
     max(1, options().num_threads)
-}
-
-pub type Tablebase = Arc<RwLock<shakmaty_syzygy::Tablebase<shakmaty::Chess>>>;
-
-pub fn new_tablebase() -> Tablebase {
-    Arc::new(RwLock::new(shakmaty_syzygy::Tablebase::new()))
 }
 
 pub struct GooseMCTS;
@@ -74,18 +65,18 @@ pub struct Search {
 }
 
 impl Search {
-    pub fn create_manager(state: State, tablebase: Tablebase) -> MCTSManager<GooseMCTS> {
+    pub fn create_manager(state: State) -> MCTSManager<GooseMCTS> {
         MCTSManager::new(
             state.freeze(),
             GooseMCTS,
-            GooseEval::new(Model::new(), tablebase),
+            GooseEval::new(Model::new()),
             policy(),
             ApproxTable::enough_to_hold(GooseMCTS.node_limit()),
         )
     }
 
-    pub fn new(state: State, tablebase: Tablebase) -> Self {
-        let search = Self::create_manager(state, tablebase).into();
+    pub fn new(state: State) -> Self {
+        let search = Self::create_manager(state).into();
         Self { search }
     }
 
@@ -211,12 +202,12 @@ impl Search {
         }
     }
 
-    pub fn print_eval(self, tb: Tablebase) -> Self {
+    pub fn print_eval(self) -> Self {
         let manager = self.stop_and_print_m();
 
         let state = manager.tree().root_state();
 
-        let eval = GooseEval::new(Model::new(), tb);
+        let eval = GooseEval::new(Model::new());
 
         let moves = state.available_moves();
         let (move_eval, state_eval) = eval.evaluate_new_state(state, &moves);
