@@ -3,10 +3,10 @@ services:
     build:
       context: .
       dockerfile: bin/Dockerfile.cutechess-cli
-    command: -engine cmd=/engines/princhess -engine cmd=/engines/princhess-0.1.0 -each proto=uci tc=1+1 option.SyzygyPath=/syzygy -sprt elo0=10 elo1=25 alpha=0.05 beta=0.05 -rounds 1000
+    command: -engine cmd=/engines/princhess -engine cmd=/engines/princhess-0.1.0 -each proto=uci tc=1+1 timemargin=1000 option.SyzygyPath=/syzygy -sprt elo0=10 elo1=25 alpha=0.05 beta=0.05 -rounds 1000
     volumes:
       - ./target/release/princhess:/engines/princhess
-      - ./syzgyy:/syzygy:ro
+      - ./syzygy:/syzygy:ro
     environment:
       RUST_LOG: warn
   crash_test:
