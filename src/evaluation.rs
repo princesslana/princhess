@@ -34,7 +34,11 @@ impl GooseEval {
             lock.probe_wdl(&board)
         };
 
-        let x = SCALE as i64;
+        let mut x = SCALE as i64;
+
+        if state.board().side_to_move() == Color::Black {
+            x = -x;
+        }
 
         let state_eval = match wdl {
             Ok(Wdl::Win) => x,
