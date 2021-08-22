@@ -9,6 +9,7 @@ extern crate memmap;
 extern crate pod;
 extern crate pretty_env_logger;
 extern crate shakmaty;
+extern crate shakmaty_syzygy;
 extern crate smallvec;
 
 mod arena;

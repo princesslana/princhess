@@ -1,4 +1,4 @@
-use search::Search;
+use search::{new_tablebase, Search};
 use state::State;
 use std::io::{stdin, BufRead};
 use std::str::SplitWhitespace;
@@ -13,7 +13,9 @@ const ENGINE_AUTHOR: &str = "Princess Lana & Jacob Jackson";
 const VERSION: Option<&'static str> = option_env!("CARGO_PKG_VERSION");
 
 pub fn main(commands: Vec<String>) {
-    let mut search = Search::new(State::default());
+    let tablebase = new_tablebase();
+    let mut search = Search::new(State::default(), tablebase.clone());
+
     let mut position_num: u64 = 0;
     let (sender, receiver) = channel();
     for cmd in commands {
@@ -37,13 +39,33 @@ pub fn main(commands: Vec<String>) {
             match first_word {
                 "uci"        => uci(),
                 "isready"    => println!("readyok"),
-                "setoption"  => (),
+                "setoption"  => {
+                   if tokens.next() != Some("name") {
+                       warn!("Badly formatted option");
+                   }
+
+                   match tokens.next().unwrap() {
+                       "SyzygyPath" => {
+                           if tokens.next() != Some("value") {
+                               warn!("Badly formatted option");
+                               break;
+                           }
+
+                           if let Some(path) = tokens.next() {
+                               let mut lock = tablebase.write().unwrap();
+                               let added_count = lock.add_directory(path).unwrap();
+                               debug!("Added {} files", added_count);
+                           }
+                       }
+                       _ => (),
+                   }
+                }
                 "ucinewgame" => position_num += 1,
                 "position"   => {
                     position_num += 1;
                     if let Some(state) = State::from_tokens(tokens) {
                         debug!("\n{}", state.board());
-                        search = Search::new(state);
+                        search = Search::new(state, tablebase.clone());
                     } else {
                         error!("Couldn't parse '{}' as position", line);
                     }
@@ -60,7 +82,7 @@ pub fn main(commands: Vec<String>) {
                 "go"         => {
                     search = search.go(tokens, position_num, &sender);
                 },
-                "eval"       => search = search.print_eval(),
+                "eval"       => search = search.print_eval(tablebase.clone()),
                 _ => error!("Unknown command: {} (this engine uses a reduced set of commands from the UCI protocol)", first_word)
             }
         }
@@ -70,6 +92,7 @@ pub fn main(commands: Vec<String>) {
 pub fn uci() {
     println!("id name {} {}", ENGINE_NAME, VERSION.unwrap_or("unknown"));
     println!("id author {}", ENGINE_AUTHOR);
+    println!("option name SyzygyPath type string");
     println!("uciok");
 }
 

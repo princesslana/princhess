@@ -1,6 +1,8 @@
 name: Games
 
 on:
+  push:
+    branches: [ main ]
   pull_request:
     branches: [ main ]
 
@@ -16,5 +18,4 @@ jobs:
         with:
           command: build
           args: --release
-      - run: cp target/release/princhess bin/princhess
-      - run: docker-compose -f bin/docker-compose.yml up bullet
+      - run: docker-compose up crash_test
