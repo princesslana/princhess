@@ -222,7 +222,7 @@ pub trait GameState: Clone {
 }
 
 pub trait Evaluator<Spec: MCTS>: Sync {
-    type StateEvaluation: Sync + Send;
+    type StateEvaluation: Sync + Send + Copy;
 
     fn evaluate_new_state(
         &self,

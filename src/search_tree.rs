@@ -478,16 +478,21 @@ impl<Spec: MCTS> SearchTree<Spec> {
             }
         }
 
-        let created_here = create_node(
+        let mut created_here = create_node(
             &self.eval,
             &self.tree_policy,
             state,
             CreationHelper::Handle(self.make_handle(tld, path)),
         );
 
+        let mut did_we_create = true;
+
         if let Some(node) = self.prev_table.table.lookup(state) {
+            did_we_create = false;
             let prev_sum = node.sum_evaluations.load(Ordering::Relaxed);
             let prev_visits = node.visits.load(Ordering::Relaxed);
+
+            created_here.evaln = node.evaln;
 
             created_here
                 .get_sum_evaluations()
@@ -526,7 +531,7 @@ impl<Spec: MCTS> SearchTree<Spec> {
         }
         choice.owned.store(true, Ordering::Relaxed);
         self.num_nodes.fetch_add(1, Ordering::Relaxed);
-        (created, true)
+        (created, did_we_create)
     }
 
     fn finish_playout<'a>(

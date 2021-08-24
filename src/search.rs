@@ -112,6 +112,7 @@ impl Search {
             info!("{}", info_str);
             println!("{}", info_str);
             println!("bestmove {}", to_uci(mov));
+            //manager.tree().display_moves();
         }
         manager
     }
