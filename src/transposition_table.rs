@@ -25,7 +25,6 @@ pub unsafe trait TranspositionTable<Spec: MCTS>: Sync + Sized {
         &'a self,
         key: &Spec::State,
         value: &'a SearchNode<Spec>,
-        handle: SearchHandle<Spec>,
     ) -> Option<&'a SearchNode<Spec>>;
 
     /// Looks up a key.
@@ -34,11 +33,7 @@ pub unsafe trait TranspositionTable<Spec: MCTS>: Sync + Sized {
     ///
     /// If the key is present, the table *may return either* `None` or a reference
     /// to the associated value.
-    fn lookup<'a>(
-        &'a self,
-        key: &Spec::State,
-        handle: SearchHandle<Spec>,
-    ) -> Option<&'a SearchNode<Spec>>;
+    fn lookup<'a>(&'a self, key: &Spec::State) -> Option<&'a SearchNode<Spec>>;
 }
 
 unsafe impl<Spec: MCTS<TranspositionTable = Self>> TranspositionTable<Spec> for () {
@@ -46,16 +41,11 @@ unsafe impl<Spec: MCTS<TranspositionTable = Self>> TranspositionTable<Spec> for 
         &'a self,
         _: &Spec::State,
         _: &'a SearchNode<Spec>,
-        _: SearchHandle<Spec>,
     ) -> Option<&'a SearchNode<Spec>> {
         None
     }
 
-    fn lookup<'a>(
-        &'a self,
-        _: &Spec::State,
-        _: SearchHandle<Spec>,
-    ) -> Option<&'a SearchNode<Spec>> {
+    fn lookup<'a>(&'a self, _: &Spec::State) -> Option<&'a SearchNode<Spec>> {
         None
     }
 }
@@ -155,10 +145,9 @@ where
         &'a self,
         key: &Spec::State,
         value: &'a SearchNode<Spec>,
-        handle: SearchHandle<Spec>,
     ) -> Option<&'a SearchNode<Spec>> {
         if self.size.load(Ordering::Relaxed) * 3 > self.capacity * 2 {
-            return self.lookup(key, handle);
+            return self.lookup(key);
         }
         let my_hash = key.hash();
         if my_hash == 0 {
@@ -189,11 +178,7 @@ where
         }
         None
     }
-    fn lookup<'a>(
-        &'a self,
-        key: &Spec::State,
-        _: SearchHandle<Spec>,
-    ) -> Option<&'a SearchNode<Spec>> {
+    fn lookup<'a>(&'a self, key: &Spec::State) -> Option<&'a SearchNode<Spec>> {
         let my_hash = key.hash();
         let mut posn = my_hash as usize & self.mask;
         for inc in 1..(PROBE_LIMIT + 1) {
