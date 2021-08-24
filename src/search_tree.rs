@@ -2,11 +2,12 @@
 
 use atomics::*;
 use mcts::*;
+use search::GooseMCTS;
 use smallvec::SmallVec;
 use std::fmt;
 use std::fmt::{Debug, Display, Formatter};
 use std::ptr::null_mut;
-use transposition_table::TranspositionTable;
+use transposition_table::{ApproxTable, TranspositionTable};
 
 use pod::Pod;
 
@@ -21,6 +22,7 @@ pub struct SearchTree<Spec: MCTS> {
     root_state: Spec::State,
     tree_policy: Spec::TreePolicy,
     table: Spec::TranspositionTable,
+    prev_table: PreviousTable<Spec>,
     eval: Spec::Eval,
     manager: Spec,
     arena: Box<Arena>,
@@ -29,6 +31,18 @@ pub struct SearchTree<Spec: MCTS> {
     transposition_table_hits: AtomicUsize,
     delayed_transposition_table_hits: AtomicUsize,
     expansion_contention_events: AtomicUsize,
+}
+
+pub struct PreviousTable<Spec: MCTS> {
+    table: Spec::TranspositionTable,
+    arena: Box<Arena>,
+}
+
+pub fn empty_previous_table() -> PreviousTable<GooseMCTS> {
+    PreviousTable {
+        table: ApproxTable::enough_to_hold(0),
+        arena: Box::new(Arena::new()),
+    }
 }
 
 trait NodeStats {
@@ -303,6 +317,7 @@ impl<Spec: MCTS> SearchTree<Spec> {
         tree_policy: Spec::TreePolicy,
         eval: Spec::Eval,
         table: Spec::TranspositionTable,
+        prev_table: PreviousTable<Spec>,
     ) -> Self {
         let arena = Box::new(Arena::new());
         let root_node = create_node(
@@ -318,6 +333,7 @@ impl<Spec: MCTS> SearchTree<Spec> {
             tree_policy,
             eval,
             table,
+            prev_table,
             num_nodes: 1.into(),
             arena,
             transposition_table_hits: 0.into(),
@@ -326,18 +342,15 @@ impl<Spec: MCTS> SearchTree<Spec> {
         }
     }
 
-    pub fn reset(self) -> Self {
-        Self::new(
-            self.root_state,
-            self.manager,
-            self.tree_policy.reset(),
-            self.eval,
-            self.table,
-        )
-    }
-
     pub fn spec(&self) -> &Spec {
         &self.manager
+    }
+
+    pub fn table(self) -> PreviousTable<Spec> {
+        PreviousTable {
+            table: self.table,
+            arena: self.arena,
+        }
     }
 
     pub fn num_nodes(&self) -> usize {
@@ -449,7 +462,8 @@ impl<Spec: MCTS> SearchTree<Spec> {
         if !child.is_null() {
             return unsafe { (&*child, false) };
         }
-        if let Some(node) = self.table.lookup(state, self.make_handle(tld, path)) {
+
+        if let Some(node) = self.table.lookup(state) {
             let child = choice.child.compare_and_swap(
                 null_mut(),
                 node as *const _ as *mut _,
@@ -463,12 +477,33 @@ impl<Spec: MCTS> SearchTree<Spec> {
                 return unsafe { (&*child, false) };
             }
         }
+
         let created_here = create_node(
             &self.eval,
             &self.tree_policy,
             state,
             CreationHelper::Handle(self.make_handle(tld, path)),
         );
+
+        if let Some(node) = self.prev_table.table.lookup(state) {
+            let prev_sum = node.sum_evaluations.load(Ordering::Relaxed);
+            let prev_visits = node.visits.load(Ordering::Relaxed);
+
+            created_here
+                .get_sum_evaluations()
+                .store(prev_sum, Ordering::Relaxed);
+            created_here
+                .get_visits()
+                .store(prev_visits, Ordering::Relaxed);
+
+            let lhs = created_here.hots();
+            let rhs = node.hots();
+
+            for i in 0..rhs.len() {
+                lhs[i].replace(&rhs[i]);
+            }
+        }
+
         let created = tld.allocator.alloc_one();
         *created = created_here;
         let other_child =
@@ -482,10 +517,7 @@ impl<Spec: MCTS> SearchTree<Spec> {
                 return (&*other_child, false);
             }
         }
-        if let Some(existing) = self
-            .table
-            .insert(state, created, self.make_handle(tld, path))
-        {
+        if let Some(existing) = self.table.insert(state, created) {
             self.delayed_transposition_table_hits
                 .fetch_add(1, Ordering::Relaxed);
             let existing_ptr = existing as *const _ as *mut _;

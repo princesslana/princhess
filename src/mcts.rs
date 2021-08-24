@@ -260,8 +260,9 @@ where
         eval: Spec::Eval,
         tree_policy: Spec::TreePolicy,
         table: Spec::TranspositionTable,
+        prev_table: PreviousTable<Spec>,
     ) -> Self {
-        let search_tree = SearchTree::new(state, manager, tree_policy, eval, table);
+        let search_tree = SearchTree::new(state, manager, tree_policy, eval, table, prev_table);
         Self {
             search_tree,
             print_on_playout_error: true,
@@ -388,6 +389,9 @@ where
     pub fn tree(&self) -> &SearchTree<Spec> {
         &self.search_tree
     }
+    pub fn table(self) -> PreviousTable<Spec> {
+        self.search_tree.table()
+    }
     pub fn best_move(&self) -> Option<Move<Spec>> {
         self.principal_variation(1).get(0).map(|x| x.clone())
     }
@@ -411,12 +415,6 @@ where
             eprintln!("{} nodes/sec", thousands_separate(x));
         });
         eprintln!("{} nodes total", thousands_separate(running_total));
-    }
-    pub fn reset(self) -> Self {
-        Self {
-            search_tree: self.search_tree.reset(),
-            print_on_playout_error: self.print_on_playout_error,
-        }
     }
 }
 

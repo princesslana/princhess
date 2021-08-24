@@ -5,6 +5,7 @@ use features::Model;
 use float_ord::FloatOrd;
 use mcts::{AsyncSearchOwned, CycleBehaviour, Evaluator, GameState, MCTSManager, MCTS};
 use policy_features::evaluate_single;
+use search_tree::PreviousTable;
 use shakmaty_syzygy::Syzygy;
 use state::{Move, Outcome, State, StateBuilder};
 use std::cmp::max;
@@ -69,21 +70,29 @@ pub struct Search {
 }
 
 impl Search {
-    pub fn create_manager(state: State) -> MCTSManager<GooseMCTS> {
+    pub fn create_manager(
+        state: State,
+        prev_table: PreviousTable<GooseMCTS>,
+    ) -> MCTSManager<GooseMCTS> {
         MCTSManager::new(
             state.freeze(),
             GooseMCTS,
             GooseEval::new(Model::new()),
             policy(),
             ApproxTable::enough_to_hold(GooseMCTS.node_limit()),
+            prev_table,
         )
     }
 
-    pub fn new(state: State) -> Self {
-        let search = Self::create_manager(state).into();
+    pub fn new(state: State, prev_table: PreviousTable<GooseMCTS>) -> Self {
+        let search = Self::create_manager(state, prev_table).into();
         Self { search }
     }
 
+    pub fn table(self) -> PreviousTable<GooseMCTS> {
+        let manager = self.stop_and_print_m();
+        manager.table()
+    }
     fn stop_and_print_m(self) -> MCTSManager<GooseMCTS> {
         if self.search.num_threads() == 0 {
             return self.search.halt();
@@ -104,7 +113,7 @@ impl Search {
             println!("{}", info_str);
             println!("bestmove {}", to_uci(mov));
         }
-        manager.reset()
+        manager
     }
 
     pub fn stop_and_print(self) -> Self {
@@ -281,7 +290,7 @@ impl Search {
     }
 
     pub fn nodes_per_sec(self) -> Self {
-        let mut manager = self.stop_and_print_m().reset();
+        let mut manager = self.stop_and_print_m();
         manager.perf_test_to_stderr(num_threads());
         Self {
             search: manager.into(),
