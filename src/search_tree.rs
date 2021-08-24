@@ -449,7 +449,7 @@ impl<Spec: MCTS> SearchTree<Spec> {
         if !child.is_null() {
             return unsafe { (&*child, false) };
         }
-        if let Some(node) = self.table.lookup(state, self.make_handle(tld, path)) {
+        if let Some(node) = self.table.lookup(state) {
             let child = choice.child.compare_and_swap(
                 null_mut(),
                 node as *const _ as *mut _,
@@ -482,10 +482,7 @@ impl<Spec: MCTS> SearchTree<Spec> {
                 return (&*other_child, false);
             }
         }
-        if let Some(existing) = self
-            .table
-            .insert(state, created, self.make_handle(tld, path))
-        {
+        if let Some(existing) = self.table.insert(state, created) {
             self.delayed_transposition_table_hits
                 .fetch_add(1, Ordering::Relaxed);
             let existing_ptr = existing as *const _ as *mut _;
