@@ -5,6 +5,7 @@ use mcts::*;
 use smallvec::SmallVec;
 use std::fmt;
 use std::fmt::{Debug, Display, Formatter};
+use std::iter::FromIterator;
 use std::ptr::null_mut;
 use transposition_table::TranspositionTable;
 
@@ -104,43 +105,36 @@ impl<'a, Spec: MCTS> Clone for MoveInfoHandle<'a, Spec> {
 impl<'a, Spec: MCTS> Copy for MoveInfoHandle<'a, Spec> {}
 
 pub struct SearchNode<Spec: MCTS> {
-    hots: Vec<HotMoveInfo<Spec>>,
-    colds: Vec<ColdMoveInfo<Spec>>,
+    hots: SmallVec<[HotMoveInfo<Spec>; 256]>,
+    colds: SmallVec<[ColdMoveInfo<Spec>; 256]>,
     evaln: StateEvaluation<Spec>,
     sum_evaluations: AtomicI64,
     visits: FakeU32,
 }
 
-unsafe impl<Spec: MCTS> Sync for SearchNode<Spec>
-where
-    Spec::NodeData: Sync,
-    StateEvaluation<Spec>: Sync,
-    // NodeStats: Sync,
-    // for<'a> &'a[HotMoveInfo<Spec>]: Sync,
-    // for<'a> &'a[ColdMoveInfo<Spec>]: Sync,
-{
-}
-
 impl<Spec: MCTS> SearchNode<Spec> {
-    fn new<'a>(
-        hots: Vec<HotMoveInfo<Spec>>,
-        colds: Vec<ColdMoveInfo<Spec>>,
+    fn new<
+        H: IntoIterator<Item = HotMoveInfo<Spec>>,
+        C: IntoIterator<Item = ColdMoveInfo<Spec>>,
+    >(
+        hots: H,
+        colds: C,
         evaln: StateEvaluation<Spec>,
     ) -> Self {
         Self {
-            hots,
-            colds,
+            hots: SmallVec::from_iter(hots),
+            colds: SmallVec::from_iter(colds),
             evaln,
             visits: FakeU32::default(),
             sum_evaluations: AtomicI64::default(),
         }
     }
 
-    fn hots(&self) -> &Vec<HotMoveInfo<Spec>> {
+    fn hots(&self) -> &SmallVec<[HotMoveInfo<Spec>; 256]> {
         &self.hots
     }
 
-    fn colds(&self) -> &Vec<ColdMoveInfo<Spec>> {
+    fn colds(&self) -> &SmallVec<[ColdMoveInfo<Spec>; 256]> {
         &self.colds
     }
 
@@ -162,7 +156,8 @@ impl<Spec: MCTS> HotMoveInfo<Spec> {
         }
     }
 }
-impl<'a, Spec: MCTS> ColdMoveInfo<Spec> {
+
+impl<Spec: MCTS> ColdMoveInfo<Spec> {
     fn new(mov: Move<Spec>) -> Self {
         Self {
             mov,
@@ -273,8 +268,8 @@ fn create_node<Spec: MCTS>(
     let (move_eval, state_eval) = eval.evaluate_new_state(state, &moves);
     policy.validate_evaluations(&move_eval);
 
-    let hots: Vec<_> = move_eval.into_iter().map(HotMoveInfo::new).collect();
-    let colds: Vec<_> = moves.into_iter().map(ColdMoveInfo::new).collect();
+    let hots = move_eval.into_iter().map(HotMoveInfo::new);
+    let colds = moves.into_iter().map(ColdMoveInfo::new);
 
     SearchNode::new(hots, colds, state_eval)
 }

@@ -142,10 +142,6 @@ impl State {
                 chess::BoardStatus::Ongoing => unreachable!(),
             }
         } else {
-            debug!(
-                "Checking tablebase for {}...",
-                shakmaty::fen::fen(&self.shakmaty_board)
-            );
             self.outcome = match probe_tablebase_wdl(&self.shakmaty_board) {
                 Some(Wdl::Win) => {
                     if self.board().side_to_move() == chess::Color::White {
