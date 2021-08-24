@@ -104,9 +104,8 @@ impl<'a, Spec: MCTS> Clone for MoveInfoHandle<'a, Spec> {
 impl<'a, Spec: MCTS> Copy for MoveInfoHandle<'a, Spec> {}
 
 pub struct SearchNode<Spec: MCTS> {
-    hots: *const [()],
-    colds: *const [()],
-    data: Spec::NodeData,
+    hots: Vec<HotMoveInfo<Spec>>,
+    colds: Vec<ColdMoveInfo<Spec>>,
     evaln: StateEvaluation<Spec>,
     sum_evaluations: AtomicI64,
     visits: FakeU32,
@@ -124,25 +123,27 @@ where
 
 impl<Spec: MCTS> SearchNode<Spec> {
     fn new<'a>(
-        hots: &'a [HotMoveInfo<Spec>],
-        colds: &'a [ColdMoveInfo<Spec>],
+        hots: Vec<HotMoveInfo<Spec>>,
+        colds: Vec<ColdMoveInfo<Spec>>,
         evaln: StateEvaluation<Spec>,
     ) -> Self {
         Self {
-            hots: hots as *const _ as *const [()],
-            colds: colds as *const _ as *const [()],
-            data: Default::default(),
+            hots,
+            colds,
             evaln,
             visits: FakeU32::default(),
             sum_evaluations: AtomicI64::default(),
         }
     }
-    fn hots(&self) -> &[HotMoveInfo<Spec>] {
-        unsafe { &*(self.hots as *const [HotMoveInfo<Spec>]) }
+
+    fn hots(&self) -> &Vec<HotMoveInfo<Spec>> {
+        &self.hots
     }
-    fn colds(&self) -> &[ColdMoveInfo<Spec>] {
-        unsafe { &*(self.colds as *const [ColdMoveInfo<Spec>]) }
+
+    fn colds(&self) -> &Vec<ColdMoveInfo<Spec>> {
+        &self.colds
     }
+
     pub fn moves(&self) -> Moves<Spec> {
         Moves {
             hots: self.hots(),
@@ -263,32 +264,18 @@ enum CreationHelper<'a: 'b, 'b, Spec: 'a + MCTS> {
 }
 
 #[inline(always)]
-fn create_node<'a, 'b, Spec: MCTS>(
+fn create_node<Spec: MCTS>(
     eval: &Spec::Eval,
     policy: &Spec::TreePolicy,
     state: &Spec::State,
-    ch: CreationHelper<'a, 'b, Spec>,
 ) -> SearchNode<Spec> {
-    let (allocator, _handle) = match ch {
-        CreationHelper::Allocator(x) => (x, None),
-        CreationHelper::Handle(x) => {
-            // this is safe because nothing will move into x.tld.allocator
-            // since ThreadData.allocator is a private field
-            let allocator = unsafe { &*(&x.tld.allocator as *const _) };
-            (allocator, Some(x))
-        }
-    };
     let moves = state.available_moves();
     let (move_eval, state_eval) = eval.evaluate_new_state(state, &moves);
     policy.validate_evaluations(&move_eval);
-    let hots = allocator.alloc_slice(move_eval.len());
-    let colds = allocator.alloc_slice(move_eval.len());
-    for (x, y) in hots.iter_mut().zip(move_eval.into_iter()) {
-        *x = HotMoveInfo::new(y);
-    }
-    for (x, y) in colds.iter_mut().zip(moves.into_iter()) {
-        *x = ColdMoveInfo::new(y);
-    }
+
+    let hots: Vec<_> = move_eval.into_iter().map(HotMoveInfo::new).collect();
+    let colds: Vec<_> = moves.into_iter().map(ColdMoveInfo::new).collect();
+
     SearchNode::new(hots, colds, state_eval)
 }
 
@@ -305,12 +292,7 @@ impl<Spec: MCTS> SearchTree<Spec> {
         table: Spec::TranspositionTable,
     ) -> Self {
         let arena = Box::new(Arena::new());
-        let root_node = create_node(
-            &eval,
-            &tree_policy,
-            &state,
-            CreationHelper::Allocator(&arena.allocator()),
-        );
+        let root_node = create_node(&eval, &tree_policy, &state);
         Self {
             root_state: state,
             root_node,
@@ -394,7 +376,7 @@ impl<Spec: MCTS> SearchTree<Spec> {
                 "playout length exceeded maximum of {} (maybe the transposition table is creating an infinite loop?)",
                 self.manager.max_playout_length());
             state.make_move(&choice.cold.mov);
-            let (new_node, new_did_we_create) = self.descend(&state, choice.cold, tld, &node_path);
+            let (new_node, new_did_we_create) = self.descend(&state, choice.cold, tld);
             node = new_node;
             did_we_create = new_did_we_create;
             match self.manager.cycle_behaviour() {
@@ -443,7 +425,6 @@ impl<Spec: MCTS> SearchTree<Spec> {
         state: &Spec::State,
         choice: &ColdMoveInfo<Spec>,
         tld: &mut ThreadData<'a, Spec>,
-        path: &[&'a SearchNode<Spec>],
     ) -> (&'a SearchNode<Spec>, bool) {
         let child = choice.child.load(Ordering::Relaxed) as *const _;
         if !child.is_null() {
@@ -463,12 +444,7 @@ impl<Spec: MCTS> SearchTree<Spec> {
                 return unsafe { (&*child, false) };
             }
         }
-        let created_here = create_node(
-            &self.eval,
-            &self.tree_policy,
-            state,
-            CreationHelper::Handle(self.make_handle(tld, path)),
-        );
+        let created_here = create_node(&self.eval, &self.tree_policy, state);
         let created = tld.allocator.alloc_one();
         *created = created_here;
         let other_child =
@@ -615,9 +591,6 @@ impl<'a, Spec: MCTS> Clone for NodeHandle<'a, Spec> {
 impl<'a, Spec: MCTS> Copy for NodeHandle<'a, Spec> {}
 
 impl<'a, Spec: MCTS> NodeHandle<'a, Spec> {
-    pub fn data(&self) -> &'a Spec::NodeData {
-        &self.node.data
-    }
     pub fn moves(&self) -> Moves<Spec> {
         self.node.moves()
     }
