@@ -2,7 +2,10 @@ FROM debian:buster
 
 RUN apt-get update && apt-get install -y curl libqt5core5a
 
+RUN mkdir /books
 RUN mkdir /engines
+
+COPY bin/gm2001.bin /books/gm2001.bin
 
 RUN curl -sSL https://github.com/cutechess/cutechess/releases/download/1.2.0/cutechess-cli-1.2.0-linux64.tar.gz | tar zxv
 
