@@ -1,4 +1,5 @@
 use search::Search;
+use search_tree::empty_previous_table;
 use state::State;
 use std::io::{stdin, BufRead};
 use std::str::SplitWhitespace;
@@ -14,7 +15,7 @@ const ENGINE_AUTHOR: &str = "Princess Lana & Jacob Jackson";
 const VERSION: Option<&'static str> = option_env!("CARGO_PKG_VERSION");
 
 pub fn main(commands: Vec<String>) {
-    let mut search = Search::new(State::default());
+    let mut search = Search::new(State::default(), empty_previous_table());
     let mut position_num: u64 = 0;
     let (sender, receiver) = channel();
     for cmd in commands {
@@ -57,12 +58,16 @@ pub fn main(commands: Vec<String>) {
                        _ => (),
                    }
                 }
-                "ucinewgame" => position_num += 1,
+                "ucinewgame" => {
+                    position_num += 1;
+                    search = Search::new(State::default(), empty_previous_table());
+                }
                 "position"   => {
                     position_num += 1;
                     if let Some(state) = State::from_tokens(tokens) {
                         debug!("\n{}", state.board());
-                        search = Search::new(state);
+                        let prev_table = search.table();
+                        search = Search::new(state, prev_table);
                     } else {
                         error!("Couldn't parse '{}' as position", line);
                     }

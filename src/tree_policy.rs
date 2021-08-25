@@ -25,9 +25,6 @@ pub trait TreePolicy<Spec: MCTS<TreePolicy = Self>>: Sync + Sized {
         handle: SearchHandle<Spec>,
     ) -> MoveInfoHandle<'a, Spec>;
     fn validate_evaluations(&self, _evalns: &[Self::MoveEvaluation]) {}
-    fn reset(self) -> Self {
-        self
-    } // TODO put this on everything
 }
 
 #[derive(Clone, Debug)]

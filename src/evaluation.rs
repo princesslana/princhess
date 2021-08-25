@@ -50,6 +50,7 @@ mod tests {
     use float_ord::FloatOrd;
     use mcts::GameState;
     use search::Search;
+    use search_tree::empty_previous_table;
 
     fn assert_find_move(fen: &str, desired: &str) -> Vec<State> {
         let pv_len = 15;
@@ -62,7 +63,7 @@ mod tests {
         for (a, b) in paired {
             println!("policy: {} {}", a, b);
         }
-        let mut manager = Search::create_manager(state);
+        let mut manager = Search::create_manager(state, empty_previous_table());
         // for _ in 0..5 {
         manager.playout_n(1_000_000);
         println!("\n\nMOVES");
