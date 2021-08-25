@@ -5,6 +5,11 @@ engine:
   name: "princhess"
   protocol: "uci"
   ponder: false
+  polyglot:
+    enabled: true
+    max_depth: 4
+    standard:
+      - /books/gm2001.bin
   uci_options:
     SyzygyPath: /syzygy
 
