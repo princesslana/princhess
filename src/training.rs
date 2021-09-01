@@ -77,8 +77,7 @@ impl Visitor for ValueDataGenerator {
         let freq = NUM_SAMPLES as f64 / moves.len() as f64;
         for (i, m) in moves.into_iter().enumerate() {
             if i >= 2 && self.rng.gen_range(0., 1.) < freq {
-                let moves = state.available_moves();
-                let mut f = featurize(&state, moves.as_slice());
+                let mut f = featurize(&state);
                 self.rows_written += 1;
                 if let Some(out_file) = self.out_file.as_mut() {
                     let whitelist = &self.whitelist;
