@@ -130,7 +130,7 @@ fn encode_move(c: Color, p: Piece, to: Square) -> usize {
     x + CAN_DO_PAWN_TO_A1
 }
 
-fn foreach_feature<F>(state: &State, _: &[ChessMove], mut f: F)
+fn foreach_feature<F>(state: &State, mut f: F)
 where
     F: FnMut(usize, u8),
 {
@@ -272,10 +272,10 @@ where
     }
 }
 
-pub fn featurize(state: &State, moves: &[ChessMove]) -> FeatureVec {
+pub fn featurize(state: &State) -> FeatureVec {
     let mut arr = [0u8; NUM_DENSE_FEATURES];
     let mut patterns = Vec::with_capacity(MAX_PATTERNS_IN_POSITION);
-    foreach_feature(state, moves, |i, v| {
+    foreach_feature(state, |i, v| {
         assert_eq!(v, 1);
         assert!(i < NUM_FEATURES);
         if i < NUM_DENSE_FEATURES {
@@ -297,9 +297,9 @@ impl Model {
     pub fn new() -> Self {
         Model
     }
-    pub fn predict(&self, state: &State, moves: &[ChessMove]) -> [f32; NUM_OUTCOMES] {
+    pub fn predict(&self, state: &State) -> [f32; NUM_OUTCOMES] {
         let mut result = [0f32; NUM_OUTCOMES];
-        foreach_feature(state, moves, |i, _| {
+        foreach_feature(state, |i, _| {
             if i < NUM_MODEL_FEATURES {
                 #[allow(clippy::needless_range_loop)]
                 for j in 0..NUM_OUTCOMES {
@@ -320,8 +320,8 @@ impl Model {
         }
         result
     }
-    pub fn score(&self, state: &State, moves: &[ChessMove]) -> f32 {
-        let probs = self.predict(state, moves);
+    pub fn score(&self, state: &State) -> f32 {
+        let probs = self.predict(state);
         probs[GameResult::WhiteWin as usize] - probs[GameResult::BlackWin as usize]
     }
 }

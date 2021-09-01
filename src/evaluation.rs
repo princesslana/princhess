@@ -29,7 +29,7 @@ impl Evaluator<GooseMCTS> for GooseEval {
                 Outcome::Ongoing => unreachable!(),
             }
         } else {
-            (self.model.score(state, moves.as_slice()) * SCALE as f32) as i64
+            (self.model.score(state) * SCALE as f32) as i64
         };
         (move_evaluations, state_evaluation)
     }
