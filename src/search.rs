@@ -248,6 +248,11 @@ impl Search {
                 debug!("Middlegame");
             }
 
+            // Be more aggressive with time managmenet when no increment
+            if increment.is_zero() {
+                t /= 2;
+            }
+
             think_time = Some(t)
         }
 
