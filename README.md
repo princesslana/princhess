@@ -10,6 +10,14 @@ The initial code base was [Sashimi](https://github.com/zxqfl/sashimi)
 
 Princhess can be played against on Lichess at https://lichess.org/@/princhess_bot
 
+# UCI Options
+
+* **Threads** - The number of threads used during search. Defaults to 1.
+
+* **SyzygyPath** - Path to folder where the Syzygy tablebase files are.
+  Currently only supports a single folder.
+
+
 # Contributing
 
 Look for the princhess channel on [Discord Projects Hub](https://discord.gg/3aTVQtz)
