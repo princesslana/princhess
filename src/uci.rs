@@ -1,3 +1,4 @@
+use options::set_num_threads;
 use search::Search;
 use search_tree::empty_previous_table;
 use state::State;
@@ -40,23 +41,23 @@ pub fn main(commands: Vec<String>) {
                 "uci"        => uci(),
                 "isready"    => println!("readyok"),
                 "setoption"  => {
-                   if tokens.next() != Some("name") {
-                       warn!("Badly formatted option");
-                   }
+                    let option = UciOption::parse(tokens);
 
-                   match tokens.next().unwrap() {
-                       "SyzygyPath" => {
-                           if tokens.next() != Some("value") {
-                               warn!("Badly formatted option");
-                               break;
-                           }
-
-                           if let Some(path) = tokens.next() {
-                               set_tablebase_directory(path);
-                           }
+                    match option {
+                        Some(opt) if opt.name() == "syzygypath" => {
+                            if let Some(path) = opt.value() {
+                                set_tablebase_directory(path)
+                            }
+                        }
+                        Some(opt) if opt.name() == "threads" => {
+                            if let Some(v) = opt.value() {
+                                if let Some(t) = v.parse().ok() {
+                                    set_num_threads(t)
+                                }
+                            }
+                        }
+                        _ => warn!("Badly formatted or unknown option"),
                        }
-                       _ => (),
-                   }
                 }
                 "ucinewgame" => {
                     position_num += 1;
@@ -95,7 +96,53 @@ pub fn uci() {
     println!("id name {} {}", ENGINE_NAME, VERSION.unwrap_or("unknown"));
     println!("id author {}", ENGINE_AUTHOR);
     println!("option name SyzygyPath type string");
+    println!("option name Threads type spin min 1 max 255 default 1");
     println!("uciok");
+}
+
+struct UciOption {
+    name: String,
+    value: Option<String>,
+}
+
+impl UciOption {
+    pub fn parse(mut tokens: Tokens) -> Option<UciOption> {
+        if tokens.next() != Some("name") {
+            return None;
+        }
+
+        let mut name = tokens.next()?.to_owned();
+
+        while let Some(t) = tokens.next() {
+            if t == "value" {
+                break;
+            }
+
+            name = format!("{} {}", name, t);
+        }
+
+        let mut value = None;
+
+        while let Some(t) = tokens.next() {
+            value = match value {
+                None => Some(t.to_owned()),
+                Some(s) => Some(format!("{} {}", s, t)),
+            }
+        }
+
+        Some(Self {
+            name: name.to_lowercase(),
+            value,
+        })
+    }
+
+    pub fn name(&self) -> &String {
+        &self.name
+    }
+
+    pub fn value(&self) -> &Option<String> {
+        &self.value
+    }
 }
 
 #[cfg(test)]

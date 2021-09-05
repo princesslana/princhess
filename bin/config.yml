@@ -12,6 +12,7 @@ engine:
       standard:
         - /books/gm2001.bin
   uci_options:
+    Threads: 2
     SyzygyPath: /syzygy
 
 challenge:

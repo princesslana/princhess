@@ -1,14 +1,13 @@
-use args::options;
 use chess::{Color, MoveGen, Piece};
 use evaluation::GooseEval;
 use features::Model;
 use float_ord::FloatOrd;
 use mcts::{AsyncSearchOwned, CycleBehaviour, Evaluator, GameState, MCTSManager, MCTS};
+use options::get_num_threads;
 use policy_features::evaluate_single;
 use search_tree::PreviousTable;
 use shakmaty_syzygy::Syzygy;
 use state::{Move, Outcome, State, StateBuilder};
-use std::cmp::max;
 use std::sync::mpsc::Sender;
 use std::thread;
 use std::time::Duration;
@@ -24,10 +23,6 @@ pub const SCALE: f32 = 1e9;
 
 fn policy() -> AlphaGoPolicy {
     AlphaGoPolicy::new(5.0 * SCALE)
-}
-
-fn num_threads() -> usize {
-    max(1, options().num_threads)
 }
 
 pub struct GooseMCTS;
@@ -259,7 +254,7 @@ impl Search {
             });
         }
         Self {
-            search: manager.into_playout_parallel_async(num_threads()),
+            search: manager.into_playout_parallel_async(get_num_threads()),
         }
     }
 
@@ -292,7 +287,7 @@ impl Search {
 
     pub fn nodes_per_sec(self) -> Self {
         let mut manager = self.stop_and_print_m();
-        manager.perf_test_to_stderr(num_threads());
+        manager.perf_test_to_stderr(get_num_threads());
         Self {
             search: manager.into(),
         }
