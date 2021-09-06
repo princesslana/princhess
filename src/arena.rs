@@ -1,6 +1,7 @@
 extern crate memmap;
 extern crate pod;
 
+use log::debug;
 use memmap::MmapMut;
 use pod::Pod;
 use std::cell::UnsafeCell;
@@ -23,7 +24,8 @@ pub struct Arena {
 
 impl Arena {
     pub fn new(max_size_mb: usize) -> Self {
-        let max_chunks = max_size_mb << 20 / CHUNK_SIZE;
+        let max_chunks = (max_size_mb << 20) / CHUNK_SIZE;
+        debug!("Creating Arena of {}mb = {} chunks", max_size_mb, max_chunks);
         Self {
             owned_mappings: Default::default(),
             max_chunks,
