@@ -2,6 +2,7 @@
 
 use atomics::*;
 use mcts::*;
+use options::get_hash_size_mb;
 use search::GooseMCTS;
 use smallvec::SmallVec;
 use std::fmt;
@@ -13,7 +14,7 @@ use pod::Pod;
 
 use tree_policy::TreePolicy;
 
-use arena::{Arena, ArenaAllocator};
+use arena::{Arena, ArenaAllocator, ArenaError};
 
 /// You're not intended to use this class (use an `MCTSManager` instead),
 /// but you can use it if you want to manage the threads yourself.
@@ -41,7 +42,7 @@ pub struct PreviousTable<Spec: MCTS> {
 pub fn empty_previous_table() -> PreviousTable<GooseMCTS> {
     PreviousTable {
         table: ApproxTable::enough_to_hold(0),
-        arena: Box::new(Arena::new()),
+        arena: Box::new(Arena::new(2)),
     }
 }
 
@@ -282,7 +283,7 @@ fn create_node<'a, 'b, Spec: MCTS>(
     policy: &Spec::TreePolicy,
     state: &Spec::State,
     ch: CreationHelper<'a, 'b, Spec>,
-) -> SearchNode<Spec> {
+) -> Result<SearchNode<Spec>, ArenaError> {
     let (allocator, _handle) = match ch {
         CreationHelper::Allocator(x) => (x, None),
         CreationHelper::Handle(x) => {
@@ -295,15 +296,15 @@ fn create_node<'a, 'b, Spec: MCTS>(
     let moves = state.available_moves();
     let (move_eval, state_eval) = eval.evaluate_new_state(state, &moves);
     policy.validate_evaluations(&move_eval);
-    let hots = allocator.alloc_slice(move_eval.len());
-    let colds = allocator.alloc_slice(move_eval.len());
+    let hots = allocator.alloc_slice(move_eval.len())?;
+    let colds = allocator.alloc_slice(move_eval.len())?;
     for (x, y) in hots.iter_mut().zip(move_eval.into_iter()) {
         *x = HotMoveInfo::new(y);
     }
     for (x, y) in colds.iter_mut().zip(moves.into_iter()) {
         *x = ColdMoveInfo::new(y);
     }
-    SearchNode::new(hots, colds, state_eval)
+    Ok(SearchNode::new(hots, colds, state_eval))
 }
 
 fn is_cycle<T>(past: &[&T], current: &T) -> bool {
@@ -319,13 +320,14 @@ impl<Spec: MCTS> SearchTree<Spec> {
         table: Spec::TranspositionTable,
         prev_table: PreviousTable<Spec>,
     ) -> Self {
-        let arena = Box::new(Arena::new());
+        let arena = Box::new(Arena::new(get_hash_size_mb() / 2));
         let root_node = create_node(
             &eval,
             &tree_policy,
             &state,
             CreationHelper::Allocator(&arena.allocator()),
-        );
+        )
+        .expect("Unable to create root node");
         Self {
             root_state: state,
             root_node,
@@ -366,6 +368,11 @@ impl<Spec: MCTS> SearchTree<Spec> {
         const LARGE_DEPTH: usize = 64;
         let sentinel = IncreaseSentinel::new(&self.num_nodes);
         if sentinel.num_nodes >= self.manager.node_limit() {
+            debug!(
+                "Node limit of {} reached. Halting search.",
+                self.spec().node_limit()
+            );
+            println!("info hashfull");
             return false;
         }
         let mut state = self.root_state.clone();
@@ -407,7 +414,17 @@ impl<Spec: MCTS> SearchTree<Spec> {
                 "playout length exceeded maximum of {} (maybe the transposition table is creating an infinite loop?)",
                 self.manager.max_playout_length());
             state.make_move(&choice.cold.mov);
-            let (new_node, new_did_we_create) = self.descend(&state, choice.cold, tld, &node_path);
+
+            let (new_node, new_did_we_create) =
+                match self.descend(&state, choice.cold, tld, &node_path) {
+                    Ok(r) => r,
+                    Err(ArenaError::Full) => {
+                        debug!("Hash reached max capacity");
+                        println!("info hashfull");
+                        return false;
+                    }
+                };
+
             node = new_node;
             did_we_create = new_did_we_create;
             match self.manager.cycle_behaviour() {
@@ -457,10 +474,10 @@ impl<Spec: MCTS> SearchTree<Spec> {
         choice: &ColdMoveInfo<Spec>,
         tld: &mut ThreadData<'a, Spec>,
         path: &[&'a SearchNode<Spec>],
-    ) -> (&'a SearchNode<Spec>, bool) {
+    ) -> Result<(&'a SearchNode<Spec>, bool), ArenaError> {
         let child = choice.child.load(Ordering::Relaxed) as *const _;
         if !child.is_null() {
-            return unsafe { (&*child, false) };
+            return unsafe { Ok((&*child, false)) };
         }
 
         if let Some(node) = self.table.lookup(state) {
@@ -472,9 +489,9 @@ impl<Spec: MCTS> SearchTree<Spec> {
             if child.is_null() {
                 self.transposition_table_hits
                     .fetch_add(1, Ordering::Relaxed);
-                return (node, false);
+                return Ok((node, false));
             } else {
-                return unsafe { (&*child, false) };
+                return unsafe { Ok((&*child, false)) };
             }
         }
 
@@ -483,7 +500,7 @@ impl<Spec: MCTS> SearchTree<Spec> {
             &self.tree_policy,
             state,
             CreationHelper::Handle(self.make_handle(tld, path)),
-        );
+        )?;
 
         let mut did_we_create = true;
 
@@ -509,7 +526,7 @@ impl<Spec: MCTS> SearchTree<Spec> {
             }
         }
 
-        let created = tld.allocator.alloc_one();
+        let created = tld.allocator.alloc_one()?;
         *created = created_here;
         let other_child =
             choice
@@ -519,7 +536,7 @@ impl<Spec: MCTS> SearchTree<Spec> {
             self.expansion_contention_events
                 .fetch_add(1, Ordering::Relaxed);
             unsafe {
-                return (&*other_child, false);
+                return Ok((&*other_child, false));
             }
         }
         if let Some(existing) = self.table.insert(state, created) {
@@ -527,11 +544,11 @@ impl<Spec: MCTS> SearchTree<Spec> {
                 .fetch_add(1, Ordering::Relaxed);
             let existing_ptr = existing as *const _ as *mut _;
             choice.child.store(existing_ptr, Ordering::Relaxed);
-            return (existing, false);
+            return Ok((existing, false));
         }
         choice.owned.store(true, Ordering::Relaxed);
         self.num_nodes.fetch_add(1, Ordering::Relaxed);
-        (created, did_we_create)
+        Ok((created, did_we_create))
     }
 
     fn finish_playout<'a>(

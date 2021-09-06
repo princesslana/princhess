@@ -246,7 +246,6 @@ pub trait Evaluator<Spec: MCTS>: Sync {
 
 pub struct MCTSManager<Spec: MCTS> {
     search_tree: SearchTree<Spec>,
-    print_on_playout_error: bool,
 }
 
 impl<Spec: MCTS> MCTSManager<Spec>
@@ -263,15 +262,7 @@ where
         prev_table: PreviousTable<Spec>,
     ) -> Self {
         let search_tree = SearchTree::new(state, manager, tree_policy, eval, table, prev_table);
-        Self {
-            search_tree,
-            print_on_playout_error: true,
-        }
-    }
-
-    pub fn print_on_playout_error(&mut self, v: bool) -> &mut Self {
-        self.print_on_playout_error = v;
-        self
+        Self { search_tree }
     }
 
     pub fn playout_until<Predicate: FnMut() -> bool>(&mut self, mut pred: Predicate) {
@@ -288,7 +279,6 @@ where
     }
     unsafe fn spawn_worker_thread(&self, stop_signal: Arc<AtomicBool>) -> JoinHandle<()> {
         let search_tree = &self.search_tree;
-        let print_on_playout_error = self.print_on_playout_error;
         crossbeam::spawn_unsafe(move || {
             let mut tld = ThreadData::create(search_tree);
             loop {
@@ -296,12 +286,6 @@ where
                     break;
                 }
                 if !search_tree.playout(&mut tld) {
-                    if print_on_playout_error {
-                        eprintln!(
-                            "Node limit of {} reached. Halting search.",
-                            search_tree.spec().node_limit()
-                        );
-                    }
                     break;
                 }
             }

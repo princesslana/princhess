@@ -1,4 +1,4 @@
-use options::set_num_threads;
+use options::{set_hash_size_mb, set_num_threads};
 use search::Search;
 use search_tree::empty_previous_table;
 use state::State;
@@ -56,6 +56,13 @@ pub fn main(commands: Vec<String>) {
                                 }
                             }
                         }
+                        Some(opt) if opt.name() == "hash" => {
+                            if let Some(v) = opt.value() {
+                                if let Some(t) = v.parse().ok() {
+                                    set_hash_size_mb(t)
+                                }
+                            }
+                        }
                         _ => warn!("Badly formatted or unknown option"),
                        }
                 }
@@ -95,8 +102,9 @@ pub fn main(commands: Vec<String>) {
 pub fn uci() {
     println!("id name {} {}", ENGINE_NAME, VERSION.unwrap_or("unknown"));
     println!("id author {}", ENGINE_AUTHOR);
-    println!("option name SyzygyPath type string");
+    println!("option name Hash type spin min 1 max 65536 default 1");
     println!("option name Threads type spin min 1 max 255 default 1");
+    println!("option name SyzygyPath type string");
     println!("uciok");
 }
 
