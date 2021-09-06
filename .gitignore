@@ -17,3 +17,8 @@ expanded_feature_list.txt
 bin/princhess
 .token
 syzygy
+
+train/pgn/*
+train/model_data/*
+train/model
+train/.env

@@ -22,7 +22,7 @@ use std::str;
 const NUM_ROWS: usize = std::usize::MAX;
 const MIN_ELO: i32 = 1700;
 const MIN_ELO_POLICY: i32 = 2200;
-const NUM_SAMPLES: usize = 1;
+const NUM_SAMPLES: usize = 4;
 
 struct ValueDataGenerator {
     out_file: Option<BufWriter<File>>,
