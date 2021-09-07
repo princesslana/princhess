@@ -12,7 +12,7 @@ pub type Tokens<'a> = SplitWhitespace<'a>;
 
 pub const TIMEUP: &str = "timeup";
 const ENGINE_NAME: &str = "Princhess";
-const ENGINE_AUTHOR: &str = "Princess Lana & Jacob Jackson";
+const ENGINE_AUTHOR: &str = "Princess Lana";
 const VERSION: Option<&'static str> = option_env!("CARGO_PKG_VERSION");
 
 pub fn main(commands: Vec<String>) {
