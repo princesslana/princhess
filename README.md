@@ -14,6 +14,8 @@ Princhess can be played against on Lichess at https://lichess.org/@/princhess_bo
 
 * **Threads** - The number of threads used during search. Defaults to 1.
 
+* **Hash** - The amount of hash space to use in MB. Default 16
+
 * **SyzygyPath** - Path to folder where the Syzygy tablebase files are.
   Currently only supports a single folder.
 
