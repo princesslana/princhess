@@ -22,7 +22,7 @@ const DEFAULT_MOVE_TIME_FRACTION: u32 = 15;
 pub const SCALE: f32 = 1e9;
 
 fn policy() -> AlphaGoPolicy {
-    AlphaGoPolicy::new(5.0 * SCALE)
+    AlphaGoPolicy::new(1.5 * SCALE)
 }
 
 pub struct GooseMCTS;
