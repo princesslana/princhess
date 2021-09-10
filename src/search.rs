@@ -97,11 +97,7 @@ impl Search {
             let info_str = format!(
                 "info nodes {} score cp {} pv{}",
                 manager.tree().num_nodes(),
-                manager
-                    .principal_variation_info(1)
-                    .get(0)
-                    .map(|x| x.sum_rewards() / x.visits() as i64 / (SCALE / 100.) as i64)
-                    .unwrap_or(0),
+                manager.eval_in_cp(),
                 get_pv(&manager)
             );
             info!("{}", info_str);
