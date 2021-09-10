@@ -372,7 +372,7 @@ impl<Spec: MCTS> SearchTree<Spec> {
                 "Node limit of {} reached. Halting search.",
                 self.spec().node_limit()
             );
-            println!("info hashfull");
+            println!("info hashfull 1000");
             return false;
         }
         let mut state = self.root_state.clone();
@@ -420,7 +420,7 @@ impl<Spec: MCTS> SearchTree<Spec> {
                     Ok(r) => r,
                     Err(ArenaError::Full) => {
                         debug!("Hash reached max capacity");
-                        println!("info hashfull");
+                        println!("info hashfull 1000");
                         return false;
                     }
                 };
