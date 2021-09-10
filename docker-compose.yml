@@ -18,3 +18,21 @@ services:
       - ./target/release/princhess:/engines/princhess
     environment:
       RUST_LOG: warn
+
+  all_versions:
+    build:
+      context: .
+      dockerfile: bin/Dockerfile.cutechess-cli
+    command: >
+      -engine cmd=/engines/princhess-0.1.0
+      -engine cmd=/engines/princhess-0.2.1
+      -engine cmd=/engines/princhess-0.3.1
+      -each proto=uci tc=1+1 timemargin=1000
+            option.SyzygyPath=/syzygy option.Hash=1024 option.Threads=4
+            book=/books/gm2001.bin bookdepth=2
+      -tournament round-robin -games 2 -rounds 4
+      -recover -ratinginterval 1
+    volumes:
+      - ./syzygy:/syzygy:ro
+    environment:
+      RUST_LOG: warn
