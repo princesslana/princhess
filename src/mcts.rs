@@ -109,6 +109,7 @@ use transposition_table::*;
 use tree_policy::*;
 
 use atomics::*;
+use search::SCALE;
 use std::sync::Arc;
 use std::thread::JoinHandle;
 use std::time::Duration;
@@ -370,15 +371,30 @@ where
         }
         states
     }
+
     pub fn tree(&self) -> &SearchTree<Spec> {
         &self.search_tree
     }
+
     pub fn table(self) -> PreviousTable<Spec> {
         self.search_tree.table()
     }
+
     pub fn best_move(&self) -> Option<Move<Spec>> {
         self.principal_variation(1).get(0).map(|x| x.clone())
     }
+
+    pub fn eval_in_cp(&self) -> i64 {
+        (100.0
+            * (1.5
+                * self
+                    .principal_variation_info(1)
+                    .get(0)
+                    .map(|x| (x.sum_rewards() / x.visits() as i64) as f32 / SCALE)
+                    .unwrap_or(0.0))
+            .tan()) as i64
+    }
+
     pub fn perf_test<F>(&mut self, num_threads: usize, mut f: F)
     where
         F: FnMut(usize),
