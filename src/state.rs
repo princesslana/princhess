@@ -192,26 +192,6 @@ impl State {
         &self.move_lists
     }
 
-    pub fn is_opening(&self) -> bool {
-        if self.queens_off() {
-            return false;
-        }
-        if self.board().castle_rights(Player::White) == chess::CastleRights::NoRights
-            || self.board().castle_rights(Player::Black) == chess::CastleRights::NoRights
-        {
-            return false;
-        }
-
-        let b = self.board();
-        let all_pieces = b.combined() & !b.pieces(chess::Piece::Pawn);
-
-        all_pieces.popcnt() > 12
-    }
-
-    pub fn is_middlegame(&self) -> bool {
-        !self.is_opening() && !self.is_endgame()
-    }
-
     pub fn is_endgame(&self) -> bool {
         self.queens_off()
     }
