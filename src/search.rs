@@ -203,16 +203,6 @@ impl Search {
                         remaining = Self::parse_ms(&mut tokens)
                     }
                 }
-                "winc" => {
-                    if player == Color::White {
-                        increment = Self::parse_ms(&mut tokens).unwrap_or(increment)
-                    }
-                }
-                "binc" => {
-                    if player == Color::Black {
-                        increment = Self::parse_ms(&mut tokens).unwrap_or(increment)
-                    }
-                }
                 "infinite" => infinite = true,
                 _ => (),
             }
@@ -227,22 +217,7 @@ impl Search {
         } else if let Some(r) = remaining {
             let mut t = r / DEFAULT_MOVE_TIME_FRACTION;
 
-            if state.is_endgame() {
-                debug!("Endgame");
-                t += increment;
-
-                t = t.min(r - increment / 2);
-            } else if state.is_opening() {
-                debug!("Opening");
-                t /= 2;
-            } else {
-                debug!("Middlegame");
-            }
-
-            // Be more aggressive with time managmenet when no increment
-            if increment.is_zero() {
-                t /= 2;
-            }
+            t = t - t / mvs.len() as u32;
 
             think_time = Some(t)
         }
