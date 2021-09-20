@@ -419,23 +419,4 @@ mod tests {
         let state = State::from(state);
         assert!(state.outcome() == &Outcome::Draw);
     }
-
-    #[test]
-    fn is_opening() {
-        let mut state = State::from(StateBuilder::default());
-        assert!(state.is_opening());
-        assert!(!state.is_middlegame());
-        assert!(!state.is_endgame());
-
-        state = State::from(
-            StateBuilder::from_fen(
-                "r1bqk2r/ppp1n1pp/3p1p2/2n3B1/2Bp4/5N2/PPP2PPP/R2QR1K1 w kq - 2 11",
-            )
-            .unwrap(),
-        );
-
-        assert!(!state.is_opening());
-        assert!(state.is_middlegame());
-        assert!(!state.is_endgame());
-    }
 }
