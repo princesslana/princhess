@@ -232,8 +232,8 @@ impl Search {
 
             t = t - t / mvs.len() as u32;
 
-            if sudden_death && r < Duration::from_millis(60000) {
-                t = t / (60000 / t.as_millis()) as u32;
+            if sudden_death && r < Duration::from_millis(120000) {
+                t = t / (120000 / t.as_millis()) as u32;
             }
 
             think_time = Some(t)
