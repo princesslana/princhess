@@ -188,7 +188,7 @@ impl Search {
         let mut move_time = None;
         let mut infinite = false;
         let mut remaining = None;
-        let mut increment = Duration::from_secs(0);
+        let mut sudden_death = true;
 
         while let Some(s) = tokens.next() {
             match s {
@@ -202,6 +202,19 @@ impl Search {
                     if player == Color::Black {
                         remaining = Self::parse_ms(&mut tokens)
                     }
+                }
+                "winc" => {
+                    if player == Color::White {
+                        sudden_death = false;
+                    }
+                }
+                "binc" => {
+                    if player == Color::Black {
+                        sudden_death = false;
+                    }
+                }
+                "movestogo" => {
+                    sudden_death = false;
                 }
                 "infinite" => infinite = true,
                 _ => (),
@@ -218,6 +231,10 @@ impl Search {
             let mut t = r / DEFAULT_MOVE_TIME_FRACTION;
 
             t = t - t / mvs.len() as u32;
+
+            if sudden_death && r < Duration::from_millis(60000) {
+                t = t / (60000 / t.as_millis()) as u32;
+            }
 
             think_time = Some(t)
         }
