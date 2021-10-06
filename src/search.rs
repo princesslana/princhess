@@ -205,12 +205,16 @@ impl Search {
                 }
                 "winc" => {
                     if player == Color::White {
-                        sudden_death = false;
+                        if let Some(inc) = Self::parse_ms(&mut tokens) {
+                            sudden_death = inc.is_zero();
+                        }
                     }
                 }
                 "binc" => {
                     if player == Color::Black {
-                        sudden_death = false;
+                        if let Some(inc) = Self::parse_ms(&mut tokens) {
+                            sudden_death = inc.is_zero();
+                        }
                     }
                 }
                 "movestogo" => {
