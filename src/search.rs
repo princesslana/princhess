@@ -8,6 +8,7 @@ use policy_features::evaluate_single;
 use search_tree::PreviousTable;
 use shakmaty_syzygy::Syzygy;
 use state::{Move, Outcome, State, StateBuilder};
+use std::cmp;
 use std::sync::mpsc::Sender;
 use std::thread;
 use std::time::Duration;
@@ -188,6 +189,7 @@ impl Search {
         let mut move_time = None;
         let mut infinite = false;
         let mut remaining = None;
+        let mut opp_remaining = None;
         let mut sudden_death = true;
 
         while let Some(s) = tokens.next() {
@@ -196,11 +198,15 @@ impl Search {
                 "wtime" => {
                     if player == Color::White {
                         remaining = Self::parse_ms(&mut tokens)
+                    } else {
+                        opp_remaining = Self::parse_ms(&mut tokens)
                     }
                 }
                 "btime" => {
                     if player == Color::Black {
                         remaining = Self::parse_ms(&mut tokens)
+                    } else {
+                        opp_remaining = Self::parse_ms(&mut tokens)
                     }
                 }
                 "winc" => {
@@ -232,8 +238,14 @@ impl Search {
 
             t = t - t / mvs.len() as u32;
 
-            if sudden_death && r < Duration::from_millis(120000) {
-                t = t / (120000 / t.as_millis()) as u32;
+            if sudden_death && r < Duration::from_millis(60000) {
+                if let Some(opp_r) = opp_remaining {
+                    if r < opp_r {
+                        t = Duration::from_millis(cmp::min(500, (r.as_millis() / 40) as u64));
+                    }
+                } else {
+                    t = r / 40;
+                }
             }
 
             think_time = Some(t)
