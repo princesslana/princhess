@@ -63,7 +63,7 @@ fn encode_urgency(piece: Piece, adv: i32) -> usize {
 
 fn foreach_feature<F>(state: &State, mov: &Move, mut f: F)
 where
-    F: FnMut(usize, u8),
+    F: FnMut(usize, i8),
 {
     let mut f = |x| f(x, 1);
     let board = state.board();
@@ -173,7 +173,7 @@ where
 }
 
 pub fn featurize(state: &State, mov: &Move) -> FeatureVec {
-    let mut arr = [0u8; NUM_POLICY_FEATURES];
+    let mut arr = [0i8; NUM_POLICY_FEATURES];
     foreach_feature(state, mov, |i, v| {
         assert!(v == 1);
         arr[i] += v;

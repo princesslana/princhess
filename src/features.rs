@@ -55,7 +55,7 @@ fn index_2x2_pattern(pattern: &[usize; 4]) -> usize {
 }
 
 pub struct FeatureVec {
-    pub arr: Vec<u8>,
+    pub arr: Vec<i8>,
     pub patterns: Vec<usize>,
 }
 
@@ -132,7 +132,7 @@ fn encode_move(c: Color, p: Piece, to: Square) -> usize {
 
 fn foreach_feature<F>(state: &State, mut f: F)
 where
-    F: FnMut(usize, u8),
+    F: FnMut(usize, i8),
 {
     let board = state.board();
     let colors = &[board.side_to_move(), !board.side_to_move()];
@@ -273,7 +273,7 @@ where
 }
 
 pub fn featurize(state: &State) -> FeatureVec {
-    let mut arr = [0u8; NUM_DENSE_FEATURES];
+    let mut arr = [0i8; NUM_DENSE_FEATURES];
     let mut patterns = Vec::with_capacity(MAX_PATTERNS_IN_POSITION);
     foreach_feature(state, |i, v| {
         assert_eq!(v, 1);
