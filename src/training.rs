@@ -179,6 +179,7 @@ pub fn train_policy(in_path: &str, out_path: &str) {
         key_file,
         state: StateBuilder::default(),
         skip: true,
+        rng: SeedableRng::from_seed([1, 2, 3, 4]),
     };
     let file = File::open(in_path).expect("fopen");
     let pgn = unsafe { Mmap::map(&file).expect("mmap") };
@@ -192,6 +193,7 @@ struct PolicyDataGenerator {
     key_file: BufWriter<File>,
     state: StateBuilder,
     skip: bool,
+    rng: XorShiftRng,
 }
 
 impl Visitor for PolicyDataGenerator {
@@ -227,14 +229,20 @@ impl Visitor for PolicyDataGenerator {
 
     fn end_game(&mut self) -> Self::Result {
         let (mut state, moves) = self.state.extract();
+        let freq = NUM_SAMPLES as f64 / moves.len() as f64;
         for m in moves {
-            let legals = state.available_moves();
-            let legals = legals.as_slice();
-            let index = legals.iter().position(|x| m == *x).unwrap();
-            writeln!(self.key_file, "{} {}", legals.len(), index).unwrap();
-            for opt in legals {
-                policy_features::featurize(&state, opt)
-                    .write_libsvm(&mut self.out_file, 0, |_| true);
+            if self.rng.gen_range(0., 1.) < freq {
+                let legals = state.available_moves();
+                let legals = legals.as_slice();
+                let index = legals.iter().position(|x| m == *x).unwrap();
+                writeln!(self.key_file, "{} {}", legals.len(), index).unwrap();
+                for opt in legals {
+                    policy_features::featurize(&state, opt).write_libsvm(
+                        &mut self.out_file,
+                        0,
+                        |_| true,
+                    );
+                }
             }
             state.make_move(&m);
         }
