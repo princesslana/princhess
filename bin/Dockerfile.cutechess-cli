@@ -9,8 +9,7 @@ COPY bin/gm2001.bin /books/gm2001.bin
 
 RUN curl -sSL https://github.com/cutechess/cutechess/releases/download/1.2.0/cutechess-cli-1.2.0-linux64.tar.gz | tar zxv
 
-RUN curl -sSL https://github.com/princesslana/princhess/releases/download/0.1.0/princhess -o /engines/princhess-0.1.0 && chmod +x /engines/princhess-0.1.0
-RUN curl -sSL https://github.com/princesslana/princhess/releases/download/0.2.1/princhess -o /engines/princhess-0.2.1 && chmod +x /engines/princhess-0.2.1
 RUN curl -sSL https://github.com/princesslana/princhess/releases/download/0.3.1/princhess -o /engines/princhess-0.3.1 && chmod +x /engines/princhess-0.3.1
+RUN curl -sSL https://github.com/princesslana/princhess/releases/download/0.4.0/princhess -o /engines/princhess-0.4.0 && chmod +x /engines/princhess-0.4.0
 
 ENTRYPOINT ["cutechess-cli/cutechess-cli"]
