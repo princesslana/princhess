@@ -2,6 +2,7 @@ use chess::*;
 use state::State;
 use std::cmp::min;
 use std::io::Write;
+use std::ops;
 
 use features_common::*;
 
@@ -54,6 +55,7 @@ fn index_2x2_pattern(pattern: &[usize; 4]) -> usize {
     x + NUM_DENSE_FEATURES + NUM_PATTERNS
 }
 
+#[derive(Clone)]
 pub struct FeatureVec {
     pub arr: Vec<i8>,
     pub patterns: Vec<usize>,
@@ -80,7 +82,7 @@ impl FeatureVec {
     pub fn write_libsvm<W: Write, Pred: Fn(usize) -> bool>(
         &mut self,
         f: &mut W,
-        label: usize,
+        label: i8,
         whitelist: Pred,
     ) {
         write!(f, "{}", label).unwrap();
@@ -111,6 +113,21 @@ impl FeatureVec {
             freq[x] += 1;
         }
     }
+}
+
+impl ops::Sub<FeatureVec> for FeatureVec {
+    type Output = FeatureVec;
+
+    fn sub(self, rhs: FeatureVec) -> FeatureVec {
+        assert!(self.arr.len() == rhs.arr.len());
+        assert!(self.patterns.is_empty());
+        assert!(rhs.patterns.is_empty());
+
+        let new_arr = self.arr.iter().zip(rhs.arr.iter()).map(|(l, r)| l - r).collect();
+
+        FeatureVec { arr: new_arr, patterns: Vec::new() }
+    }
+
 }
 
 fn flip_side(s: Square) -> Square {

@@ -86,7 +86,7 @@ impl Visitor for ValueDataGenerator {
                     } else {
                         game_result.flip()
                     };
-                    f.write_libsvm(out_file, crnt_result as usize, |x| whitelist[x]);
+                    f.write_libsvm(out_file, crnt_result as i8, |x| whitelist[x]);
                 }
                 f.write_frequency(&mut self.freq);
             }
@@ -173,10 +173,8 @@ pub fn train_policy(in_path: &str, out_path: &str) {
     let out_path = format!("policy_{}", out_path);
 
     let out_file = BufWriter::new(File::create(out_path).expect("create"));
-    let key_file = BufWriter::new(File::create("policy_key.txt").expect("create"));
     let mut generator = PolicyDataGenerator {
         out_file,
-        key_file,
         state: StateBuilder::default(),
         skip: true,
         rng: SeedableRng::from_seed([1, 2, 3, 4]),
@@ -190,7 +188,6 @@ pub fn train_policy(in_path: &str, out_path: &str) {
 
 struct PolicyDataGenerator {
     out_file: BufWriter<File>,
-    key_file: BufWriter<File>,
     state: StateBuilder,
     skip: bool,
     rng: XorShiftRng,
@@ -234,14 +231,28 @@ impl Visitor for PolicyDataGenerator {
             if self.rng.gen_range(0., 1.) < freq {
                 let legals = state.available_moves();
                 let legals = legals.as_slice();
-                let index = legals.iter().position(|x| m == *x).unwrap();
-                writeln!(self.key_file, "{} {}", legals.len(), index).unwrap();
+                //let index = legals.iter().position(|x| m == *x).unwrap();
+
+                let chosen_vec = policy_features::featurize(&state, &m);
+
                 for opt in legals {
-                    policy_features::featurize(&state, opt).write_libsvm(
-                        &mut self.out_file,
-                        0,
-                        |_| true,
-                    );
+                    if *opt == m {
+                        continue;
+                    }
+
+                    let not_chosen_vec = policy_features::featurize(&state, opt);
+
+                    if self.rng.gen_range(0., 1.) < 0.5 {
+                        (chosen_vec.clone() - not_chosen_vec).write_libsvm(
+                            &mut self.out_file,
+                            1,
+                            |_| true)
+                    } else {
+                        (not_chosen_vec - chosen_vec.clone()).write_libsvm(
+                            &mut self.out_file,
+                            -1,
+                            |_| true)
+                    }
                 }
             }
             state.make_move(&m);
