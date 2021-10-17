@@ -9,7 +9,7 @@
 .token
 /target/
 bin/princhess
-engine/games/*
+engine/*
 expanded_feature_list.txt
 feature_whitelist.txt
 lichess*.pgn
