@@ -153,8 +153,7 @@ pub trait MCTS: Sized + Sync {
     fn max_playout_length(&self) -> usize {
         1_000_000
     }
-    /// Called when a playout is complete. The default implementation does nothing.
-    fn on_backpropagation(&self, _evaln: &StateEvaluation<Self>, _handle: SearchHandle<Self>) {}
+
     fn cycle_behaviour(&self) -> CycleBehaviour<Self> {
         if std::mem::size_of::<Self::TranspositionTable>() == 0 {
             CycleBehaviour::Ignore

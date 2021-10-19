@@ -246,12 +246,14 @@ impl Visitor for PolicyDataGenerator {
                         (chosen_vec.clone() - not_chosen_vec).write_libsvm(
                             &mut self.out_file,
                             1,
-                            |_| true)
+                            |_| true,
+                        )
                     } else {
                         (not_chosen_vec - chosen_vec.clone()).write_libsvm(
                             &mut self.out_file,
                             -1,
-                            |_| true)
+                            |_| true,
+                        )
                     }
                 }
             }

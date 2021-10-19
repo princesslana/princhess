@@ -565,11 +565,7 @@ impl<Spec: MCTS> SearchTree<Spec> {
             let evaln_value = self.eval.interpret_evaluation_for_player(evaln, player);
             node.up(&self.manager, evaln_value);
             move_info.hot.replace(*node);
-            self.manager
-                .on_backpropagation(evaln, self.make_handle(tld, node_path));
         }
-        self.manager
-            .on_backpropagation(evaln, self.make_handle(tld, node_path));
     }
 
     fn make_handle<'a, 'b>(
