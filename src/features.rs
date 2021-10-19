@@ -123,11 +123,18 @@ impl ops::Sub<FeatureVec> for FeatureVec {
         assert!(self.patterns.is_empty());
         assert!(rhs.patterns.is_empty());
 
-        let new_arr = self.arr.iter().zip(rhs.arr.iter()).map(|(l, r)| l - r).collect();
+        let new_arr = self
+            .arr
+            .iter()
+            .zip(rhs.arr.iter())
+            .map(|(l, r)| l - r)
+            .collect();
 
-        FeatureVec { arr: new_arr, patterns: Vec::new() }
+        FeatureVec {
+            arr: new_arr,
+            patterns: Vec::new(),
+        }
     }
-
 }
 
 fn flip_side(s: Square) -> Square {
