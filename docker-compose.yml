@@ -8,8 +8,9 @@ services:
       -engine cmd=/engines/princhess-main name=princhess-main
       -each proto=uci tc=10+0.1 timemargin=1000
             option.SyzygyPath=/syzygy option.Hash=256 option.Threads=1
-      -sprt elo0=10 elo1=25 alpha=0.05 beta=0.05
-      -games 2 -repeat -rounds 500 -ratinginterval 1
+      -openings file=/books/noob_2moves.epd format=epd order=random
+      -sprt elo0=5 elo1=15 alpha=0.05 beta=0.05
+      -games 2 -repeat -rounds 1000 -ratinginterval 1
       -recover -concurrency 2
     volumes:
       - ./target/release/princhess:/engines/princhess
@@ -37,7 +38,7 @@ services:
       -engine cmd=/engines/princhess-0.3.1
       -each proto=uci tc=10+0.1 timemargin=1000
             option.SyzygyPath=/syzygy option.Hash=256 option.Threads=1
-      -openings file=/books/noob_2moves.epd format=epd order=random policy=round
+      -openings file=/books/noob_2moves.epd format=epd order=random
       -games 2 -repeat -rounds 250
       -recover -ratinginterval 1 -concurrency 2
     volumes:

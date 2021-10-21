@@ -206,6 +206,13 @@ where
             };
             f(feature_index(color_index, p, feat), 1);
         }
+
+        let our_bishop_cnt = (board.pieces(Piece::Bishop) & color_board).popcnt();
+        let total_bishop_cnt = board.pieces(Piece::Bishop).popcnt();
+        if our_bishop_cnt == 2 && total_bishop_cnt < 4 {
+            f(feature_index(color_index, p, BISHOP_PAIR), 1);
+        }
+
         let prev_dest = state
             .prev_move()
             .map(|x| x.get_dest())
