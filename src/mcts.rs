@@ -329,7 +329,7 @@ where
         let nps = nodes * 1000 / search_time_ms as usize;
 
         let info_str = format!(
-            "info nodes {:7} nps {:7} score cp {:4} time {:7} pv{}",
+            "info nodes {} nps {} score cp {} time {} pv{}",
             nodes,
             nps,
             self.eval_in_cp(),
