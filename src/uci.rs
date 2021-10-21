@@ -93,6 +93,7 @@ pub fn main(commands: Vec<String>) {
                     search = search.go(tokens, position_num, &sender);
                 },
                 "eval"       => search = search.print_eval(),
+                "info"       => search.print_info(),
                 _ => error!("Unknown command: {} (this engine uses a reduced set of commands from the UCI protocol)", first_word)
             }
         }

@@ -95,7 +95,7 @@ struct HotMoveInfo<Spec: MCTS> {
     move_evaluation: MoveEvaluation<Spec>,
 }
 struct ColdMoveInfo<Spec: MCTS> {
-    mov: Move<Spec>,
+    mov: chess::ChessMove,
     child: AtomicPtr<SearchNode<Spec>>,
     owned: AtomicBool,
 }
@@ -177,7 +177,7 @@ impl<Spec: MCTS> HotMoveInfo<Spec> {
     }
 }
 impl<'a, Spec: MCTS> ColdMoveInfo<Spec> {
-    fn new(mov: Move<Spec>) -> Self {
+    fn new(mov: chess::ChessMove) -> Self {
         Self {
             mov,
             child: AtomicPtr::default(),
@@ -187,7 +187,7 @@ impl<'a, Spec: MCTS> ColdMoveInfo<Spec> {
 }
 
 impl<'a, Spec: MCTS> MoveInfoHandle<'a, Spec> {
-    pub fn get_move(&self) -> &'a Move<Spec> {
+    pub fn get_move(&self) -> &'a chess::ChessMove {
         &self.cold.mov
     }
 
@@ -220,10 +220,7 @@ impl<'a, Spec: MCTS> MoveInfoHandle<'a, Spec> {
     }
 }
 
-impl<'a, Spec: MCTS> Display for MoveInfoHandle<'a, Spec>
-where
-    Move<Spec>: Display,
-{
+impl<'a, Spec: MCTS> Display for MoveInfoHandle<'a, Spec> {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         let own_str = if self.cold.owned.load(Ordering::Relaxed) {
             ""
@@ -246,10 +243,7 @@ where
     }
 }
 
-impl<'a, Spec: MCTS> Debug for MoveInfoHandle<'a, Spec>
-where
-    Move<Spec>: Debug,
-{
+impl<'a, Spec: MCTS> Debug for MoveInfoHandle<'a, Spec> {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         let own_str = if self.cold.owned.load(Ordering::Relaxed) {
             ""
@@ -631,10 +625,7 @@ impl<Spec: MCTS> SearchTree<Spec> {
     }
 }
 
-impl<Spec: MCTS> SearchTree<Spec>
-where
-    Move<Spec>: Debug,
-{
+impl<Spec: MCTS> SearchTree<Spec> {
     pub fn debug_moves(&self) {
         let mut moves: Vec<MoveInfoHandle<Spec>> = self.root_node.moves().collect();
         moves.sort_by_key(|x| -(x.visits() as i64));
@@ -644,10 +635,7 @@ where
     }
 }
 
-impl<Spec: MCTS> SearchTree<Spec>
-where
-    Move<Spec>: Display,
-{
+impl<Spec: MCTS> SearchTree<Spec> {
     pub fn display_moves(&self) {
         let mut moves: Vec<MoveInfoHandle<Spec>> = self.root_node.moves().collect();
         moves.sort_by_key(|x| -(x.visits() as i64));
