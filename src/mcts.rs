@@ -6,9 +6,9 @@ use tree_policy::*;
 use atomics::*;
 use chess;
 use search::{to_uci, SCALE};
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 use std::thread::JoinHandle;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 pub trait MCTS: Sized + Sync {
     type State: GameState + Sync;
@@ -140,6 +140,7 @@ pub trait Evaluator<Spec: MCTS>: Sync {
 
 pub struct MCTSManager<Spec: MCTS> {
     search_tree: SearchTree<Spec>,
+    search_start: RwLock<Option<Instant>>,
 }
 
 impl<Spec: MCTS> MCTSManager<Spec>
@@ -156,7 +157,10 @@ where
         prev_table: PreviousTable<Spec>,
     ) -> Self {
         let search_tree = SearchTree::new(state, manager, tree_policy, eval, table, prev_table);
-        Self { search_tree }
+        Self {
+            search_tree,
+            search_start: RwLock::new(None),
+        }
     }
 
     pub fn playout_until<Predicate: FnMut() -> bool>(&mut self, mut pred: Predicate) {
@@ -173,6 +177,10 @@ where
     }
     unsafe fn spawn_worker_thread(&self, stop_signal: Arc<AtomicBool>) -> JoinHandle<()> {
         let search_tree = &self.search_tree;
+        {
+            let mut lock = self.search_start.write().unwrap();
+            let _ = lock.get_or_insert(Instant::now());
+        }
         crossbeam::spawn_unsafe(move || {
             let mut tld = ThreadData::create(search_tree);
             loop {
@@ -311,10 +319,21 @@ where
     }
 
     pub fn print_info(&self) {
+        let search_start = self.search_start.read().unwrap();
+
+        let search_time_ms = Instant::now()
+            .duration_since(search_start.unwrap())
+            .as_millis();
+
+        let nodes = self.tree().num_nodes();
+        let nps = nodes * 1000 / search_time_ms as usize;
+
         let info_str = format!(
-            "info nodes {:7} score cp {:4} pv{}",
-            self.tree().num_nodes(),
+            "info nodes {:7} nps {:7} score cp {:4} time {:7} pv{}",
+            nodes,
+            nps,
             self.eval_in_cp(),
+            search_time_ms,
             self.get_pv()
         );
         println!("{}", info_str);
