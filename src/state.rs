@@ -350,7 +350,6 @@ impl IntoIterator for MoveList {
 }
 
 impl GameState for State {
-    type Move = Move;
     type Player = Player;
     type MoveList = MoveList;
 

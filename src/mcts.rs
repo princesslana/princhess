@@ -1,115 +1,11 @@
-//! This is a library for Monte Carlo tree search.
-//!
-//! It is still under development and the documentation isn't good. However, the following example may be helpful:
-//!
-//! ```
-//! use mcts::*;
-//! use mcts::tree_policy::*;
-//! use mcts::transposition_table::*;
-//!
-//! // A really simple game. There's one player and one number. In each move the player can
-//! // increase or decrease the number. The player's score is the number.
-//! // The game ends when the number reaches 100.
-//! //
-//! // The best strategy is to increase the number at every step.
-//!
-//! #[derive(Clone, Debug, PartialEq)]
-//! struct CountingGame(i64);
-//!
-//! #[derive(Clone, Debug, PartialEq)]
-//! enum Move {
-//!     Add, Sub
-//! }
-//!
-//! impl GameState for CountingGame {
-//!     type Move = Move;
-//!     type Player = ();
-//!     type MoveList = Vec<Move>;
-//!
-//!     fn current_player(&self) -> Self::Player {
-//!         ()
-//!     }
-//!     fn available_moves(&self) -> Vec<Move> {
-//!         let x = self.0;
-//!         if x == 100 {
-//!             vec![]
-//!         } else {
-//!             vec![Move::Add, Move::Sub]
-//!         }
-//!     }
-//!     fn make_move(&mut self, mov: &Self::Move) {
-//!         match *mov {
-//!             Move::Add => self.0 += 1,
-//!             Move::Sub => self.0 -= 1,
-//!         }
-//!     }
-//! }
-//!
-//! impl TranspositionHash for CountingGame {
-//!     fn hash(&self) -> u64 {
-//!         self.0 as u64
-//!     }
-//! }
-//!
-//! struct MyEvaluator;
-//!
-//! impl Evaluator<MyMCTS> for MyEvaluator {
-//!     type StateEvaluation = i64;
-//!
-//!     fn evaluate_new_state(&self, state: &CountingGame, moves: &Vec<Move>,
-//!         _: Option<SearchHandle<MyMCTS>>)
-//!         -> (Vec<()>, i64) {
-//!         (vec![(); moves.len()], state.0)
-//!     }
-//!     fn interpret_evaluation_for_player(&self, evaln: &i64, _player: &()) -> i64 {
-//!         *evaln
-//!     }
-//!     fn evaluate_existing_state(&self, _: &CountingGame,  evaln: &i64, _: SearchHandle<MyMCTS>) -> i64 {
-//!         *evaln
-//!     }
-//! }
-//!
-//! #[derive(Default)]
-//! struct MyMCTS;
-//!
-//! impl MCTS for MyMCTS {
-//!     type State = CountingGame;
-//!     type Eval = MyEvaluator;
-//!     type NodeData = ();
-//!     type ExtraThreadData = ();
-//!     type TreePolicy = UCTPolicy;
-//!     type TranspositionTable = ApproxTable<Self>;
-//!     type PlayoutData = ();
-//!
-//!     fn cycle_behaviour(&self) -> CycleBehaviour<Self> {
-//!         CycleBehaviour::UseThisEvalWhenCycleDetected(0)
-//!     }
-//! }
-//!
-//! let game = CountingGame(0);
-//! let mut mcts = MCTSManager::new(game, MyMCTS, MyEvaluator, UCTPolicy::new(0.5),
-//!     ApproxTable::new(1024));
-//! mcts.playout_n_parallel(10000, 4); // 10000 playouts, 4 search threads
-//! mcts.tree().debug_moves();
-//! assert_eq!(mcts.best_move().unwrap(), Move::Add);
-//! assert_eq!(mcts.principal_variation(50),
-//!     vec![Move::Add; 50]);
-//! assert_eq!(mcts.principal_variation_states(5),
-//!     vec![
-//!         CountingGame(0),
-//!         CountingGame(1),
-//!         CountingGame(2),
-//!         CountingGame(3),
-//!         CountingGame(4),
-//!         CountingGame(5)]);
-//! ```
 use arena::ArenaAllocator;
 pub use search_tree::*;
 use transposition_table::*;
 use tree_policy::*;
 
 use atomics::*;
-use search::SCALE;
+use chess;
+use search::{to_uci, SCALE};
 use std::sync::Arc;
 use std::thread::JoinHandle;
 use std::time::Duration;
@@ -205,20 +101,18 @@ where
 
 pub type MoveEvaluation<Spec> = <<Spec as MCTS>::TreePolicy as TreePolicy<Spec>>::MoveEvaluation;
 pub type StateEvaluation<Spec> = <<Spec as MCTS>::Eval as Evaluator<Spec>>::StateEvaluation;
-pub type Move<Spec> = <<Spec as MCTS>::State as GameState>::Move;
 pub type MoveList<Spec> = <<Spec as MCTS>::State as GameState>::MoveList;
 pub type Player<Spec> = <<Spec as MCTS>::State as GameState>::Player;
 pub type TreePolicyThreadData<Spec> =
     <<Spec as MCTS>::TreePolicy as TreePolicy<Spec>>::ThreadLocalData;
 
 pub trait GameState: Clone {
-    type Move: Sync + Send + Clone;
     type Player: Sync;
-    type MoveList: std::iter::IntoIterator<Item = Self::Move>;
+    type MoveList: std::iter::IntoIterator<Item = chess::ChessMove>;
 
     fn current_player(&self) -> Self::Player;
     fn available_moves(&self) -> Self::MoveList;
-    fn make_move(&mut self, mov: &Self::Move);
+    fn make_move(&mut self, mov: &chess::ChessMove);
 }
 
 pub trait Evaluator<Spec: MCTS>: Sync {
@@ -352,7 +246,7 @@ where
     pub fn principal_variation_info(&self, num_moves: usize) -> Vec<MoveInfoHandle<Spec>> {
         self.search_tree.principal_variation(num_moves)
     }
-    pub fn principal_variation(&self, num_moves: usize) -> Vec<Move<Spec>> {
+    pub fn principal_variation(&self, num_moves: usize) -> Vec<chess::ChessMove> {
         self.search_tree
             .principal_variation(num_moves)
             .into_iter()
@@ -379,7 +273,7 @@ where
         self.search_tree.table()
     }
 
-    pub fn best_move(&self) -> Option<Move<Spec>> {
+    pub fn best_move(&self) -> Option<chess::ChessMove> {
         self.principal_variation(1).get(0).map(|x| x.clone())
     }
 
@@ -414,6 +308,23 @@ where
             eprintln!("{} nodes/sec", thousands_separate(x));
         });
         eprintln!("{} nodes total", thousands_separate(running_total));
+    }
+
+    pub fn print_info(&self) {
+        let info_str = format!(
+            "info nodes {:7} score cp {:4} pv{}",
+            self.tree().num_nodes(),
+            self.eval_in_cp(),
+            self.get_pv()
+        );
+        println!("{}", info_str);
+    }
+
+    fn get_pv(&self) -> String {
+        self.principal_variation(10)
+            .into_iter()
+            .map(|x| format!(" {}", to_uci(x)))
+            .collect()
     }
 }
 
@@ -465,6 +376,12 @@ impl<Spec: MCTS> AsyncSearchOwned<Spec> {
     pub fn halt(mut self) -> MCTSManager<Spec> {
         self.stop_threads();
         *self.manager.take().unwrap()
+    }
+    pub fn get_manager(&self) -> &MCTSManager<Spec> {
+        self.manager.as_ref().unwrap()
+    }
+    pub fn get_stop_signal(&self) -> &Arc<AtomicBool> {
+        &self.stop_signal
     }
     pub fn num_threads(&self) -> usize {
         self.threads.len()

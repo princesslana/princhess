@@ -1,3 +1,4 @@
+use atomics::Ordering;
 use chess::{Color, MoveGen, Piece};
 use evaluation::GooseEval;
 use features::Model;
@@ -94,14 +95,7 @@ impl Search {
         }
         let manager = self.search.halt();
         if let Some(mov) = manager.best_move() {
-            let info_str = format!(
-                "info nodes {} score cp {} pv{}",
-                manager.tree().num_nodes(),
-                manager.eval_in_cp(),
-                get_pv(&manager)
-            );
-            info!("{}", info_str);
-            println!("{}", info_str);
+            manager.print_info();
             println!("bestmove {}", to_uci(mov));
             //manager.tree().display_moves();
         }
@@ -248,9 +242,22 @@ impl Search {
                 let _ = sender.send(format!("{} {}", TIMEUP, position_num));
             });
         }
-        Self {
+        let new_self = Self {
             search: manager.into_playout_parallel_async(get_num_threads()),
+        };
+        {
+            let sender = sender.clone();
+            let stop_signal = new_self.search.get_stop_signal().clone();
+            thread::spawn(move || {
+                thread::sleep(Duration::from_secs(1));
+                while !stop_signal.load(Ordering::Relaxed) {
+                    let _ = sender.send("info".to_string());
+                    thread::sleep(Duration::from_secs(1));
+                }
+            });
         }
+
+        new_self
     }
 
     pub fn print_eval(self) -> Self {
@@ -280,6 +287,10 @@ impl Search {
         }
     }
 
+    pub fn print_info(&self) {
+        self.search.get_manager().print_info();
+    }
+
     pub fn nodes_per_sec(self) -> Self {
         let mut manager = self.stop_and_print_m();
         manager.perf_test_to_stderr(get_num_threads());
@@ -299,11 +310,4 @@ pub fn to_uci(mov: Move) -> String {
         None => "",
     };
     format!("{}{}{}", mov.get_source(), mov.get_dest(), promo)
-}
-
-fn get_pv(m: &MCTSManager<GooseMCTS>) -> String {
-    m.principal_variation(10)
-        .into_iter()
-        .map(|x| format!(" {}", to_uci(x)))
-        .collect()
 }
