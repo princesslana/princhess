@@ -329,7 +329,9 @@ where
         let nps = nodes * 1000 / search_time_ms as usize;
 
         let info_str = format!(
-            "info nodes {} nps {} score cp {} time {} pv{}",
+            "info depth {} seldepth {} nodes {} nps {} score cp {} time {} pv{}",
+            self.tree().average_depth(),
+            self.tree().max_depth(),
             nodes,
             nps,
             self.eval_in_cp(),
