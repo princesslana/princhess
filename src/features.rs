@@ -213,6 +213,16 @@ where
             f(feature_index(color_index, p, BISHOP_PAIR), 1);
         }
 
+        let our_pawns = board.pieces(Piece::Pawn) & color_board;
+        for file_idx in 0..8 {
+            let cur_file = File::from_index(file_idx);
+            if (our_pawns & get_file(cur_file)).0 != 0
+                && (our_pawns & get_adjacent_files(cur_file)).0 == 0
+            {
+                f(feature_index(color_index, p, ISOLATED_PAWN_A + file_idx), 1);
+            }
+        }
+
         let prev_dest = state
             .prev_move()
             .map(|x| x.get_dest())

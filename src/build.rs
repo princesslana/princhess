@@ -112,7 +112,7 @@ fn write_feature_names(from: &str, f: &mut File, offset: &str) -> Vec<String> {
 }
 
 fn exempt(name: &str) -> bool {
-    if name.contains("PAWN_TO_RANK") || name.contains("_TO_") {
+    if name.contains("PAWN_TO_RANK") || name.contains("_TO_") || name.contains("ISOLATED_PAWN") {
         true
     } else if name.contains("NUM") {
         false
