@@ -329,9 +329,9 @@ checksum = "41218181af10bee963afd8645b68e050b2feb64635c3639a263c42dba8295334"
 
 [[package]]
 name = "pgn-reader"
-version = "0.18.0"
+version = "0.19.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "91bafb853d017f5b38a0a621bdcf16c0b022b99dafad9e6d6ff39f47dd4af5d2"
+checksum = "05204c9bbe786fab57027792337073bfbaf568257ba5320d43a1dc688f2fda35"
 dependencies = [
  "btoi",
  "memchr",
@@ -543,9 +543,9 @@ checksum = "08d43f7aa6b08d49f382cde6a7982047c3426db949b1424bc4b7ec9ae12c6ce2"
 
 [[package]]
 name = "shakmaty"
-version = "0.19.0"
+version = "0.20.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5d2f76c665c10e915a3371689a668796f9fe1f93b47a6dd1955e0ebe91477f51"
+checksum = "4686eb3a4abc9e72cbd9a71cb385097e2d44800138dd3c099084bb5013922b5f"
 dependencies = [
  "arrayvec 0.7.1",
  "bitflags",
@@ -554,9 +554,9 @@ dependencies = [
 
 [[package]]
 name = "shakmaty-syzygy"
-version = "0.16.1"
+version = "0.17.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "843936b87a002da1b1ede40340064b31505ade6d848b735ccd43c9c7ca251948"
+checksum = "436854f28d1d94a7e41ade67dbe1a1ad8eb38e11f9ebf09867a8f407aa4a6c76"
 dependencies = [
  "arrayvec 0.7.1",
  "bitflags",
