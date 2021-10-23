@@ -42,7 +42,6 @@ impl Drop for ThreadSentinel {
 }
 
 impl MCTS for GooseMCTS {
-    type State = State;
     type Eval = GooseEval;
     type TreePolicy = AlphaGoPolicy;
     type NodeData = ();

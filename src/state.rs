@@ -100,6 +100,7 @@ pub struct State {
     queens_off: bool,
     move_lists: [Vec<chess::ChessMove>; 2],
     outcome: Outcome,
+    tb_hit: bool,
 }
 impl State {
     pub fn from_tokens(tokens: Tokens) -> Option<Self> {
@@ -126,6 +127,10 @@ impl State {
         &self.outcome
     }
 
+    pub fn is_tb_hit(&self) -> bool {
+        self.tb_hit
+    }
+
     fn check_outcome(&mut self) {
         if self.drawn_by_repetition() {
             self.outcome = Outcome::Draw;
@@ -144,6 +149,7 @@ impl State {
         } else {
             self.outcome = match probe_tablebase_wdl(&self.shakmaty_board) {
                 Some(Wdl::Win) => {
+                    self.tb_hit = true;
                     if self.board().side_to_move() == chess::Color::White {
                         Outcome::WhiteWin
                     } else {
@@ -151,13 +157,17 @@ impl State {
                     }
                 }
                 Some(Wdl::Loss) => {
+                    self.tb_hit = true;
                     if self.board().side_to_move() == chess::Color::White {
                         Outcome::BlackWin
                     } else {
                         Outcome::WhiteWin
                     }
                 }
-                Some(_) => Outcome::Draw,
+                Some(_) => {
+                    self.tb_hit = true;
+                    Outcome::Draw
+                }
                 None => Outcome::Ongoing,
             }
         }
@@ -287,6 +297,7 @@ impl From<StateBuilder> for State {
             queens_off: false,
             move_lists: [Vec::new(), Vec::new()],
             outcome: Outcome::Ongoing,
+            tb_hit: false,
         };
 
         state.check_outcome();
