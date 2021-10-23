@@ -10,14 +10,12 @@ use tablebase::set_tablebase_directory;
 
 pub type Tokens<'a> = SplitWhitespace<'a>;
 
-pub const TIMEUP: &str = "timeup";
 const ENGINE_NAME: &str = "Princhess";
 const ENGINE_AUTHOR: &str = "Princess Lana";
 const VERSION: Option<&'static str> = option_env!("CARGO_PKG_VERSION");
 
 pub fn main(commands: Vec<String>) {
     let mut search = Search::new(State::default(), empty_previous_table());
-    let mut position_num: u64 = 0;
     let (sender, receiver) = channel();
     for cmd in commands {
         sender.send(cmd).unwrap();
@@ -67,11 +65,9 @@ pub fn main(commands: Vec<String>) {
                        }
                 }
                 "ucinewgame" => {
-                    position_num += 1;
                     search = Search::new(State::default(), empty_previous_table());
                 }
                 "position"   => {
-                    position_num += 1;
                     if let Some(state) = State::from_tokens(tokens) {
                         debug!("\n{}", state.board());
                         let prev_table = search.table();
@@ -81,17 +77,9 @@ pub fn main(commands: Vec<String>) {
                     }
                 },
                 "stop"       => search = search.stop_and_print(),
-                TIMEUP       => {
-                    let old_position_num = tokens.next().and_then(|x| x.parse().ok()).unwrap_or(0);
-                    if position_num == old_position_num {
-                        search = search.stop_and_print();
-                    }
-                }
                 "quit"       => return,
                 "n/s"        => search = search.nodes_per_sec(),
-                "go"         => {
-                    search = search.go(tokens, position_num, &sender);
-                },
+                "go"         => search = search.go(tokens, &sender),
                 "eval"       => search = search.print_eval(),
                 "info"       => search.print_info(),
                 _ => error!("Unknown command: {} (this engine uses a reduced set of commands from the UCI protocol)", first_word)
