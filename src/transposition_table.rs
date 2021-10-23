@@ -2,6 +2,7 @@ use super::*;
 use atomics::*;
 use mcts::MCTS;
 use search_tree::*;
+use state::State;
 
 pub unsafe trait TranspositionTable<Spec: MCTS>: Sync + Sized {
     /// **If this function inserts a value, it must return `None`.** Failure to follow
@@ -23,7 +24,7 @@ pub unsafe trait TranspositionTable<Spec: MCTS>: Sync + Sized {
     /// The table is *not* responsible for dropping values that are replaced.
     fn insert<'a>(
         &'a self,
-        key: &Spec::State,
+        key: &State,
         value: &'a SearchNode<Spec>,
     ) -> Option<&'a SearchNode<Spec>>;
 
@@ -33,19 +34,15 @@ pub unsafe trait TranspositionTable<Spec: MCTS>: Sync + Sized {
     ///
     /// If the key is present, the table *may return either* `None` or a reference
     /// to the associated value.
-    fn lookup<'a>(&'a self, key: &Spec::State) -> Option<&'a SearchNode<Spec>>;
+    fn lookup<'a>(&'a self, key: &State) -> Option<&'a SearchNode<Spec>>;
 }
 
 unsafe impl<Spec: MCTS<TranspositionTable = Self>> TranspositionTable<Spec> for () {
-    fn insert<'a>(
-        &'a self,
-        _: &Spec::State,
-        _: &'a SearchNode<Spec>,
-    ) -> Option<&'a SearchNode<Spec>> {
+    fn insert<'a>(&'a self, _: &State, _: &'a SearchNode<Spec>) -> Option<&'a SearchNode<Spec>> {
         None
     }
 
-    fn lookup<'a>(&'a self, _: &Spec::State) -> Option<&'a SearchNode<Spec>> {
+    fn lookup<'a>(&'a self, _: &State) -> Option<&'a SearchNode<Spec>> {
         None
     }
 }
@@ -114,8 +111,7 @@ impl<K: TranspositionHash, V> ApproxQuadraticProbingHashTable<K, V> {
 unsafe impl<K: TranspositionHash, V> Sync for ApproxQuadraticProbingHashTable<K, V> {}
 unsafe impl<K: TranspositionHash, V> Send for ApproxQuadraticProbingHashTable<K, V> {}
 
-pub type ApproxTable<Spec> =
-    ApproxQuadraticProbingHashTable<<Spec as MCTS>::State, SearchNode<Spec>>;
+pub type ApproxTable<Spec> = ApproxQuadraticProbingHashTable<State, SearchNode<Spec>>;
 
 fn get_or_write<'a, V>(ptr: &AtomicPtr<V>, v: &'a V) -> Option<&'a V> {
     let result = ptr.compare_and_swap(
@@ -138,12 +134,12 @@ const PROBE_LIMIT: usize = 16;
 
 unsafe impl<Spec> TranspositionTable<Spec> for ApproxTable<Spec>
 where
-    Spec::State: TranspositionHash,
+    State: TranspositionHash,
     Spec: MCTS,
 {
     fn insert<'a>(
         &'a self,
-        key: &Spec::State,
+        key: &State,
         value: &'a SearchNode<Spec>,
     ) -> Option<&'a SearchNode<Spec>> {
         if self.size.load(Ordering::Relaxed) * 3 > self.capacity * 2 {
@@ -178,7 +174,7 @@ where
         }
         None
     }
-    fn lookup<'a>(&'a self, key: &Spec::State) -> Option<&'a SearchNode<Spec>> {
+    fn lookup<'a>(&'a self, key: &State) -> Option<&'a SearchNode<Spec>> {
         let my_hash = key.hash();
         let mut posn = my_hash as usize & self.mask;
         for inc in 1..(PROBE_LIMIT + 1) {

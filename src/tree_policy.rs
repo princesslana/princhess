@@ -4,6 +4,7 @@ use self::rand::{Rng, SeedableRng, XorShiftRng};
 use mcts::MCTS;
 
 use search_tree::*;
+use state::State;
 use std;
 
 pub struct Fraction(pub f32, pub f32);
@@ -20,7 +21,7 @@ pub trait TreePolicy<Spec: MCTS<TreePolicy = Self>>: Sync + Sized {
 
     fn choose_child<'a>(
         &self,
-        state: &Spec::State,
+        state: &State,
         moves: Moves<'a, Spec>,
         handle: SearchHandle<Spec>,
     ) -> MoveInfoHandle<'a, Spec>;
@@ -71,7 +72,7 @@ impl<Spec: MCTS<TreePolicy = Self>> TreePolicy<Spec> for UCTPolicy {
 
     fn choose_child<'a>(
         &self,
-        _: &Spec::State,
+        _: &State,
         moves: Moves<'a, Spec>,
         mut handle: SearchHandle<Spec>,
     ) -> MoveInfoHandle<'a, Spec> {
@@ -103,7 +104,7 @@ impl<Spec: MCTS<TreePolicy = Self>> TreePolicy<Spec> for AlphaGoPolicy {
 
     fn choose_child<'a>(
         &self,
-        _: &Spec::State,
+        _: &State,
         moves: Moves<'a, Spec>,
         mut handle: SearchHandle<Spec>,
     ) -> MoveInfoHandle<'a, Spec> {

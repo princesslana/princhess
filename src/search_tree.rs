@@ -5,6 +5,7 @@ use mcts::*;
 use options::get_hash_size_mb;
 use search::GooseMCTS;
 use smallvec::SmallVec;
+use state::State;
 use std::fmt;
 use std::fmt::{Debug, Display, Formatter};
 use std::ptr::null_mut;
@@ -20,7 +21,7 @@ use arena::{Arena, ArenaAllocator, ArenaError};
 /// but you can use it if you want to manage the threads yourself.
 pub struct SearchTree<Spec: MCTS> {
     root_node: SearchNode<Spec>,
-    root_state: Spec::State,
+    root_state: State,
     tree_policy: Spec::TreePolicy,
     table: Spec::TranspositionTable,
     prev_table: PreviousTable<Spec>,
@@ -31,6 +32,7 @@ pub struct SearchTree<Spec: MCTS> {
     num_nodes: AtomicUsize,
     sum_depth: AtomicUsize,
     max_depth: AtomicUsize,
+    tb_hits: AtomicUsize,
     transposition_table_hits: AtomicUsize,
     delayed_transposition_table_hits: AtomicUsize,
     expansion_contention_events: AtomicUsize,
@@ -277,7 +279,7 @@ enum CreationHelper<'a: 'b, 'b, Spec: 'a + MCTS> {
 fn create_node<'a, 'b, Spec: MCTS>(
     eval: &Spec::Eval,
     policy: &Spec::TreePolicy,
-    state: &Spec::State,
+    state: &State,
     ch: CreationHelper<'a, 'b, Spec>,
 ) -> Result<SearchNode<Spec>, ArenaError> {
     let (allocator, _handle) = match ch {
@@ -309,7 +311,7 @@ fn is_cycle<T>(past: &[&T], current: &T) -> bool {
 
 impl<Spec: MCTS> SearchTree<Spec> {
     pub fn new(
-        state: Spec::State,
+        state: State,
         manager: Spec,
         tree_policy: Spec::TreePolicy,
         eval: Spec::Eval,
@@ -335,6 +337,7 @@ impl<Spec: MCTS> SearchTree<Spec> {
             num_nodes: 1.into(),
             sum_depth: 1.into(),
             max_depth: 1.into(),
+            tb_hits: 0.into(),
             arena,
             transposition_table_hits: 0.into(),
             delayed_transposition_table_hits: 0.into(),
@@ -365,6 +368,10 @@ impl<Spec: MCTS> SearchTree<Spec> {
         self.max_depth.load(Ordering::SeqCst)
     }
 
+    pub fn tb_hits(&self) -> usize {
+        self.tb_hits.load(Ordering::SeqCst)
+    }
+
     pub fn arena(&self) -> &Arena {
         &self.arena
     }
@@ -385,7 +392,7 @@ impl<Spec: MCTS> SearchTree<Spec> {
         let mut playout_data = Spec::PlayoutData::default();
         let mut path: SmallVec<[MoveInfoHandle<Spec>; LARGE_DEPTH]> = SmallVec::new();
         let mut node_path: SmallVec<[&SearchNode<Spec>; LARGE_DEPTH]> = SmallVec::new();
-        let mut players: SmallVec<[Player<Spec>; LARGE_DEPTH]> = SmallVec::new();
+        let mut players: SmallVec<[Player; LARGE_DEPTH]> = SmallVec::new();
         let mut did_we_create = false;
         let mut node = &self.root_node;
         loop {
@@ -474,12 +481,16 @@ impl<Spec: MCTS> SearchTree<Spec> {
 
         self.sum_depth.fetch_add(node_path.len(), Ordering::Relaxed);
 
+        if state.is_tb_hit() {
+            self.tb_hits.fetch_add(1, Ordering::Relaxed);
+        }
+
         true
     }
 
     fn descend<'a>(
         &'a self,
-        state: &Spec::State,
+        state: &State,
         choice: &ColdMoveInfo<Spec>,
         tld: &mut ThreadData<'a, Spec>,
         path: &[&'a SearchNode<Spec>],
@@ -530,7 +541,7 @@ impl<Spec: MCTS> SearchTree<Spec> {
             let lhs = created_here.hots();
             let rhs = node.hots();
 
-            for i in 0..rhs.len() {
+            for i in 0..lhs.len().min(rhs.len()) {
                 lhs[i].replace(&rhs[i]);
             }
         }
@@ -567,7 +578,7 @@ impl<Spec: MCTS> SearchTree<Spec> {
         &'a self,
         path: &[MoveInfoHandle<Spec>],
         node_path: &[&'a SearchNode<Spec>],
-        players: &[Player<Spec>],
+        players: &[Player],
         tld: &mut ThreadData<'a, Spec>,
         evaln: &StateEvaluation<Spec>,
     ) {
@@ -589,7 +600,7 @@ impl<Spec: MCTS> SearchTree<Spec> {
         SearchHandle { shared, tld }
     }
 
-    pub fn root_state(&self) -> &Spec::State {
+    pub fn root_state(&self) -> &State {
         &self.root_state
     }
     pub fn root_node(&self) -> NodeHandle<Spec> {

@@ -6,12 +6,12 @@ use tree_policy::*;
 use atomics::*;
 use chess;
 use search::{to_uci, SCALE};
+use state::State;
 use std::sync::{Arc, RwLock};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
 pub trait MCTS: Sized + Sync {
-    type State: GameState + Sync;
     type Eval: Evaluator<Self>;
     type TreePolicy: TreePolicy<Self>;
     type NodeData: Default + Sync + Send;
@@ -61,7 +61,7 @@ pub trait MCTS: Sized + Sync {
     fn on_choice_made<'a, 'b>(
         &self,
         _data: &mut Self::PlayoutData,
-        _state: &Self::State,
+        _state: &State,
         _moves: Moves<'a, Self>,
         _choice: MoveInfoHandle<'a, Self>,
         _handle: SearchHandle<'a, 'b, Self>,
@@ -72,7 +72,7 @@ pub trait MCTS: Sized + Sync {
     fn override_policy<'a>(
         &self,
         _data: &Self::PlayoutData,
-        _state: &Self::State,
+        _state: &State,
         _moves: Moves<'a, Self>,
     ) -> Option<MoveInfoHandle<'a, Self>> {
         None
@@ -101,8 +101,8 @@ where
 
 pub type MoveEvaluation<Spec> = <<Spec as MCTS>::TreePolicy as TreePolicy<Spec>>::MoveEvaluation;
 pub type StateEvaluation<Spec> = <<Spec as MCTS>::Eval as Evaluator<Spec>>::StateEvaluation;
-pub type MoveList<Spec> = <<Spec as MCTS>::State as GameState>::MoveList;
-pub type Player<Spec> = <<Spec as MCTS>::State as GameState>::Player;
+pub type MoveList = <State as GameState>::MoveList;
+pub type Player = <State as GameState>::Player;
 pub type TreePolicyThreadData<Spec> =
     <<Spec as MCTS>::TreePolicy as TreePolicy<Spec>>::ThreadLocalData;
 
@@ -120,13 +120,13 @@ pub trait Evaluator<Spec: MCTS>: Sync {
 
     fn evaluate_new_state(
         &self,
-        state: &Spec::State,
-        moves: &MoveList<Spec>,
+        state: &State,
+        moves: &MoveList,
     ) -> (Vec<MoveEvaluation<Spec>>, Self::StateEvaluation);
 
     fn evaluate_existing_state(
         &self,
-        state: &Spec::State,
+        state: &State,
         existing_evaln: &Self::StateEvaluation,
         handle: SearchHandle<Spec>,
     ) -> Self::StateEvaluation;
@@ -134,7 +134,7 @@ pub trait Evaluator<Spec: MCTS>: Sync {
     fn interpret_evaluation_for_player(
         &self,
         evaluation: &Self::StateEvaluation,
-        player: &Player<Spec>,
+        player: &Player,
     ) -> i64;
 }
 
@@ -149,7 +149,7 @@ where
     Spec::ExtraThreadData: Default,
 {
     pub fn new(
-        state: Spec::State,
+        state: State,
         manager: Spec,
         eval: Spec::Eval,
         tree_policy: Spec::TreePolicy,
@@ -262,7 +262,7 @@ where
             .map(|x| x.clone())
             .collect()
     }
-    pub fn principal_variation_states(&self, num_moves: usize) -> Vec<Spec::State> {
+    pub fn principal_variation_states(&self, num_moves: usize) -> Vec<State> {
         let moves = self.principal_variation(num_moves);
         let mut states = vec![self.search_tree.root_state().clone()];
         for mov in moves {
@@ -329,11 +329,12 @@ where
         let nps = nodes * 1000 / search_time_ms as usize;
 
         let info_str = format!(
-            "info depth {} seldepth {} nodes {} nps {} score cp {} time {} pv{}",
+            "info depth {} seldepth {} nodes {} nps {} tbhits {} score cp {} time {} pv{}",
             self.tree().average_depth(),
             self.tree().max_depth(),
             nodes,
             nps,
+            self.tree().tb_hits(),
             self.eval_in_cp(),
             search_time_ms,
             self.get_pv()
