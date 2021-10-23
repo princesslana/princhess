@@ -7,9 +7,10 @@ use atomics::*;
 use chess;
 use search::{to_uci, SCALE};
 use state::State;
+use std::sync::mpsc::Sender;
 use std::sync::{Arc, RwLock};
 use std::thread::JoinHandle;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 pub trait MCTS: Sized + Sync {
     type Eval: Evaluator<Self>;
@@ -163,24 +164,17 @@ where
         }
     }
 
-    pub fn playout_until<Predicate: FnMut() -> bool>(&mut self, mut pred: Predicate) {
-        let mut tld = ThreadData::create(self.tree());
-        while !pred() {
-            self.tree().playout(&mut tld);
-        }
-    }
-    pub fn playout_n(&mut self, n: u64) {
-        let mut tld = ThreadData::create(self.tree());
-        for _ in 0..n {
-            self.tree().playout(&mut tld);
-        }
-    }
-    unsafe fn spawn_worker_thread(&self, stop_signal: Arc<AtomicBool>) -> JoinHandle<()> {
+    unsafe fn spawn_worker_thread(
+        &self,
+        stop_signal: Arc<AtomicBool>,
+        sender: &Sender<String>,
+    ) -> JoinHandle<()> {
         let search_tree = &self.search_tree;
         {
             let mut lock = self.search_start.write().unwrap();
             let _ = lock.get_or_insert(Instant::now());
         }
+        let sender_clone = sender.clone();
         crossbeam::spawn_unsafe(move || {
             let mut tld = ThreadData::create(search_tree);
             loop {
@@ -188,34 +182,27 @@ where
                     break;
                 }
                 if !search_tree.playout(&mut tld) {
+                    if !stop_signal.swap(true, Ordering::SeqCst) {
+                        let _ = sender_clone.send("stop".to_string());
+                    }
                     break;
                 }
             }
         })
     }
-    pub fn playout_parallel_async<'a>(&'a mut self, num_threads: usize) -> AsyncSearch<'a, Spec> {
-        assert!(num_threads != 0);
-        let stop_signal = Arc::new(AtomicBool::new(false));
-        let threads = (0..num_threads)
-            .map(|_| {
-                let stop_signal = stop_signal.clone();
-                unsafe { self.spawn_worker_thread(stop_signal) }
-            })
-            .collect();
-        AsyncSearch {
-            manager: self,
-            stop_signal,
-            threads,
-        }
-    }
-    pub fn into_playout_parallel_async(self, num_threads: usize) -> AsyncSearchOwned<Spec> {
+
+    pub fn into_playout_parallel_async(
+        self,
+        num_threads: usize,
+        sender: &Sender<String>,
+    ) -> AsyncSearchOwned<Spec> {
         assert!(num_threads != 0);
         let self_box = Box::new(self);
         let stop_signal = Arc::new(AtomicBool::new(false));
         let threads = (0..num_threads)
             .map(|_| {
                 let stop_signal = stop_signal.clone();
-                unsafe { self_box.spawn_worker_thread(stop_signal) }
+                unsafe { self_box.spawn_worker_thread(stop_signal, sender) }
             })
             .collect();
         AsyncSearchOwned {
@@ -224,33 +211,7 @@ where
             threads,
         }
     }
-    pub fn playout_parallel_for(&mut self, duration: Duration, num_threads: usize) {
-        let search = self.playout_parallel_async(num_threads);
-        std::thread::sleep(duration);
-        search.halt();
-    }
-    pub fn playout_n_parallel(&mut self, n: u32, num_threads: usize) {
-        if n == 0 {
-            return;
-        }
-        assert!(num_threads != 0);
-        let counter = AtomicIsize::new(n as isize);
-        let search_tree = &self.search_tree;
-        crossbeam::scope(|scope| {
-            for _ in 0..num_threads {
-                scope.spawn(|| {
-                    let mut tld = ThreadData::create(search_tree);
-                    loop {
-                        let count = counter.fetch_sub(1, Ordering::SeqCst);
-                        if count <= 0 {
-                            break;
-                        }
-                        search_tree.playout(&mut tld);
-                    }
-                });
-            }
-        });
-    }
+
     pub fn principal_variation_info(&self, num_moves: usize) -> Vec<MoveInfoHandle<Spec>> {
         self.search_tree.principal_variation(num_moves)
     }
@@ -261,16 +222,6 @@ where
             .map(|x| x.get_move())
             .map(|x| x.clone())
             .collect()
-    }
-    pub fn principal_variation_states(&self, num_moves: usize) -> Vec<State> {
-        let moves = self.principal_variation(num_moves);
-        let mut states = vec![self.search_tree.root_state().clone()];
-        for mov in moves {
-            let mut state = states[states.len() - 1].clone();
-            state.make_move(&mov);
-            states.push(state);
-        }
-        states
     }
 
     pub fn tree(&self) -> &SearchTree<Spec> {
@@ -294,28 +245,6 @@ where
                     .map(|x| (x.sum_rewards() / x.visits() as i64) as f32 / SCALE)
                     .unwrap_or(0.0))
             .tan()) as i64
-    }
-
-    pub fn perf_test<F>(&mut self, num_threads: usize, mut f: F)
-    where
-        F: FnMut(usize),
-    {
-        let search = self.playout_parallel_async(num_threads);
-        for _ in 0..10 {
-            let n1 = search.manager.search_tree.num_nodes();
-            std::thread::sleep(Duration::from_secs(1));
-            let n2 = search.manager.search_tree.num_nodes();
-            let diff = if n2 > n1 { n2 - n1 } else { 0 };
-            f(diff);
-        }
-    }
-    pub fn perf_test_to_stderr(&mut self, num_threads: usize) {
-        let mut running_total = 0;
-        self.perf_test(num_threads, |x| {
-            running_total += x;
-            eprintln!("{} nodes/sec", thousands_separate(x));
-        });
-        eprintln!("{} nodes total", thousands_separate(running_total));
     }
 
     pub fn print_info(&self) {

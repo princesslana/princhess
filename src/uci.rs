@@ -78,7 +78,6 @@ pub fn main(commands: Vec<String>) {
                 },
                 "stop"       => search = search.stop_and_print(),
                 "quit"       => return,
-                "n/s"        => search = search.nodes_per_sec(),
                 "go"         => search = search.go(tokens, &sender),
                 "eval"       => search = search.print_eval(),
                 "info"       => search.print_info(),

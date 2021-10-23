@@ -125,14 +125,23 @@ impl Search {
         let mvs = state.available_moves();
 
         if mvs.len() == 1 {
-            println!("bestmove {}", to_uci(mvs.as_slice()[0]));
+            let uci_mv = to_uci(mvs.as_slice()[0]);
+            println!(
+                "info depth 1 seldepth 1 nodes 1 nps 1 tbhits 0 time 1 pv {}",
+                uci_mv
+            );
+            println!("bestmove {}", uci_mv);
             return Self {
                 search: manager.into(),
             };
         } else if state.piece_count() < shakmaty::Chess::MAX_PIECES as u32 {
             if let Some(mv) = probe_tablebase_best_move(state.shakmaty_board()) {
-                println!("info tbhits 1");
-                println!("bestmove {}", mv.to_uci(shakmaty::CastlingMode::Standard));
+                let uci_mv = mv.to_uci(shakmaty::CastlingMode::Standard);
+                println!(
+                    "info depth 1 seldepth 1 nodes 1 nps 1 tbhits 1 time 1 pv {}",
+                    uci_mv
+                );
+                println!("bestmove {}", uci_mv);
                 return Self {
                     search: manager.into(),
                 };
@@ -152,6 +161,10 @@ impl Search {
                     new_state.make_move(&mv);
 
                     if new_state.outcome() == state.outcome() {
+                        println!(
+                            "info depth 1 seldepth 1 nodes 1 nps 1 tbhits r time 1 pv {}",
+                            to_uci(mv)
+                        );
                         println!("bestmove {}", to_uci(mv));
                         return Self {
                             search: manager.into(),
@@ -172,6 +185,10 @@ impl Search {
                 .max_by_key(|m| FloatOrd(evaluate_single(state, m)))
                 .unwrap();
 
+            println!(
+                "info depth 1 seldepth 1 nodes 1 nps 1 tbhits 0 time 1 pv {}",
+                to_uci(mv)
+            );
             println!("bestmove {}", to_uci(mv));
             return Self {
                 search: manager.into(),
@@ -235,7 +252,7 @@ impl Search {
         }
 
         let new_self = Self {
-            search: manager.into_playout_parallel_async(get_num_threads()),
+            search: manager.into_playout_parallel_async(get_num_threads(), sender),
         };
 
         if let Some(t) = think_time {
@@ -293,14 +310,6 @@ impl Search {
 
     pub fn print_info(&self) {
         self.search.get_manager().print_info();
-    }
-
-    pub fn nodes_per_sec(self) -> Self {
-        let mut manager = self.stop_and_print_m();
-        manager.perf_test_to_stderr(get_num_threads());
-        Self {
-            search: manager.into(),
-        }
     }
 }
 
