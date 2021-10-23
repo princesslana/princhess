@@ -40,6 +40,7 @@ pub struct SearchTree<Spec: MCTS> {
 
 pub struct PreviousTable<Spec: MCTS> {
     table: Spec::TranspositionTable,
+    #[allow(dead_code)]
     arena: Box<Arena>,
 }
 
@@ -125,7 +126,6 @@ impl<'a, Spec: MCTS> Copy for MoveInfoHandle<'a, Spec> {}
 pub struct SearchNode<Spec: MCTS> {
     hots: *const [()],
     colds: *const [()],
-    data: Spec::NodeData,
     evaln: StateEvaluation<Spec>,
     sum_evaluations: AtomicI64,
     visits: FakeU32,
@@ -150,7 +150,6 @@ impl<Spec: MCTS> SearchNode<Spec> {
         Self {
             hots: hots as *const _ as *const [()],
             colds: colds as *const _ as *const [()],
-            data: Default::default(),
             evaln,
             visits: FakeU32::default(),
             sum_evaluations: AtomicI64::default(),
@@ -454,7 +453,7 @@ impl<Spec: MCTS> SearchTree<Spec> {
                 }
                 CycleBehaviour::UseThisEvalWhenCycleDetected(e) => {
                     if is_cycle(&node_path, node) {
-                        self.finish_playout(&path, &node_path, &players, tld, &e);
+                        self.finish_playout(&path, &node_path, &players, &e);
                         return true;
                     }
                 }
@@ -477,7 +476,7 @@ impl<Spec: MCTS> SearchTree<Spec> {
             ))
         };
         let evaln = new_evaln.as_ref().unwrap_or(&node.evaln);
-        self.finish_playout(&path, &node_path, &players, tld, evaln);
+        self.finish_playout(&path, &node_path, &players, evaln);
 
         self.sum_depth.fetch_add(node_path.len(), Ordering::Relaxed);
 
@@ -579,7 +578,6 @@ impl<Spec: MCTS> SearchTree<Spec> {
         path: &[MoveInfoHandle<Spec>],
         node_path: &[&'a SearchNode<Spec>],
         players: &[Player],
-        tld: &mut ThreadData<'a, Spec>,
         evaln: &StateEvaluation<Spec>,
     ) {
         for ((move_info, player), node) in
@@ -685,9 +683,6 @@ impl<'a, Spec: MCTS> Clone for NodeHandle<'a, Spec> {
 impl<'a, Spec: MCTS> Copy for NodeHandle<'a, Spec> {}
 
 impl<'a, Spec: MCTS> NodeHandle<'a, Spec> {
-    pub fn data(&self) -> &'a Spec::NodeData {
-        &self.node.data
-    }
     pub fn moves(&self) -> Moves<Spec> {
         self.node.moves()
     }
