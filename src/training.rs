@@ -4,7 +4,8 @@ extern crate rand;
 
 use self::memmap::Mmap;
 use self::pgn_reader::{BufferedReader, Outcome, RawHeader, SanPlus, Skip, Visitor};
-use self::rand::{Rng, SeedableRng, XorShiftRng};
+use self::rand::rngs::SmallRng;
+use self::rand::{Rng, SeedableRng};
 
 use chess;
 use features::{featurize, name_feature, GameResult, NUM_DENSE_FEATURES, NUM_FEATURES};
@@ -29,7 +30,7 @@ struct ValueDataGenerator {
     state: StateBuilder,
     skip: bool,
     rows_written: usize,
-    rng: XorShiftRng,
+    rng: SmallRng,
     freq: [u64; NUM_FEATURES],
     whitelist: [bool; NUM_FEATURES],
 }
@@ -127,7 +128,7 @@ fn run_value_gen(
         state: StateBuilder::default(),
         skip: true,
         rows_written: 0,
-        rng: SeedableRng::from_seed([1, 2, 3, 4]),
+        rng: SeedableRng::seed_from_u64(42),
     };
 
     let file = File::open(in_path).expect("fopen");
@@ -177,7 +178,7 @@ pub fn train_policy(in_path: &str, out_path: &str) {
         out_file,
         state: StateBuilder::default(),
         skip: true,
-        rng: SeedableRng::from_seed([1, 2, 3, 4]),
+        rng: SeedableRng::seed_from_u64(42),
     };
     let file = File::open(in_path).expect("fopen");
     let pgn = unsafe { Mmap::map(&file).expect("mmap") };
@@ -190,7 +191,7 @@ struct PolicyDataGenerator {
     out_file: BufWriter<File>,
     state: StateBuilder,
     skip: bool,
-    rng: XorShiftRng,
+    rng: SmallRng,
 }
 
 impl Visitor for PolicyDataGenerator {
