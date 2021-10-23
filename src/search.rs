@@ -15,7 +15,7 @@ use std::time::Duration;
 use tablebase::probe_tablebase_best_move;
 use transposition_table::ApproxTable;
 use tree_policy::AlphaGoPolicy;
-use uci::{Tokens, TIMEUP};
+use uci::Tokens;
 
 const DEFAULT_MOVE_TIME_SECS: u64 = 10;
 const DEFAULT_MOVE_TIME_FRACTION: u32 = 15;
@@ -116,7 +116,7 @@ impl Search {
             .map(Duration::from_millis)
     }
 
-    pub fn go(self, mut tokens: Tokens, position_num: u64, sender: &Sender<String>) -> Self {
+    pub fn go(self, mut tokens: Tokens, sender: &Sender<String>) -> Self {
         let manager = self.stop_and_print_m();
 
         let state = manager.tree().root_state();
@@ -234,16 +234,21 @@ impl Search {
             think_time = Some(t)
         }
 
-        if let Some(t) = think_time {
-            let sender = sender.clone();
-            thread::spawn(move || {
-                thread::sleep(t);
-                let _ = sender.send(format!("{} {}", TIMEUP, position_num));
-            });
-        }
         let new_self = Self {
             search: manager.into_playout_parallel_async(get_num_threads()),
         };
+
+        if let Some(t) = think_time {
+            let sender = sender.clone();
+            let stop_signal = new_self.search.get_stop_signal().clone();
+            thread::spawn(move || {
+                thread::sleep(t);
+                if !stop_signal.load(Ordering::Relaxed) {
+                    let _ = sender.send("stop".to_string());
+                }
+            });
+        }
+
         {
             let sender = sender.clone();
             let stop_signal = new_self.search.get_stop_signal().clone();
