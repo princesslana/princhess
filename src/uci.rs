@@ -79,7 +79,8 @@ pub fn main(commands: Vec<String>) {
                 "stop"       => search = search.stop_and_print(),
                 "quit"       => return,
                 "go"         => search = search.go(tokens, &sender),
-                "eval"       => search = search.print_eval(),
+                "eval"       => search.print_eval(),
+                "movelist"   => search.print_move_list(),
                 "info"       => search.print_info(),
                 _ => error!("Unknown command: {} (this engine uses a reduced set of commands from the UCI protocol)", first_word)
             }

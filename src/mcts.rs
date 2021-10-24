@@ -5,6 +5,8 @@ use tree_policy::*;
 
 use atomics::*;
 use chess;
+use float_ord::FloatOrd;
+use policy_features::evaluate_moves;
 use search::{to_uci, SCALE};
 use state::State;
 use std::sync::mpsc::Sender;
@@ -237,14 +239,12 @@ where
     }
 
     pub fn eval_in_cp(&self) -> i64 {
-        (100.0
-            * (1.5
-                * self
-                    .principal_variation_info(1)
-                    .get(0)
-                    .map(|x| (x.sum_rewards() / x.visits() as i64) as f32 / SCALE)
-                    .unwrap_or(0.0))
-            .tan()) as i64
+        eval_in_cp(
+            self.principal_variation_info(1)
+                .get(0)
+                .map(|x| (x.sum_rewards() / x.visits() as i64) as f32 / SCALE)
+                .unwrap_or(0.0),
+        )
     }
 
     pub fn print_info(&self) {
@@ -276,6 +276,32 @@ where
             .into_iter()
             .map(|x| format!(" {}", to_uci(x)))
             .collect()
+    }
+
+    pub fn print_move_list(&self) {
+        let root_node = self.tree().root_node();
+        let root_state = self.tree().root_state();
+
+        let root_moves = root_node.moves();
+
+        let state_moves = root_state.available_moves();
+        let state_moves_eval = evaluate_moves(root_state, state_moves.as_slice());
+
+        let mut moves: Vec<(MoveInfoHandle<Spec>, f32)> =
+            root_moves.zip(state_moves_eval).collect();
+        moves.sort_by_key(|(h, e)| FloatOrd(h.average_reward().unwrap_or(*e)));
+        for (mov, e) in moves {
+            println!(
+                "info string {} M: {:>6} V: {:7} E: {:>6} (cp {:>5})",
+                mov.get_move(),
+                format!("{:3.2}", e * 100.),
+                mov.visits(),
+                mov.average_reward()
+                    .map_or("n/a".to_string(), |r| format!("{:3.2}", r / (SCALE / 100.))),
+                mov.average_reward()
+                    .map_or("n/a".to_string(), |r| format!("{}", eval_in_cp(r / SCALE)))
+            );
+        }
     }
 }
 
@@ -368,4 +394,10 @@ pub enum CycleBehaviour<Spec: MCTS> {
     UseCurrentEvalWhenCycleDetected,
     PanicWhenCycleDetected,
     UseThisEvalWhenCycleDetected(StateEvaluation<Spec>),
+}
+
+// Based upon leela's formula.
+// Tweaked to appear in thee range (-1000, 1000)
+fn eval_in_cp(eval: f32) -> i64 {
+    (101.139 * (1.47 * eval).tan()) as i64
 }

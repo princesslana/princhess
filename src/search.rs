@@ -96,7 +96,6 @@ impl Search {
         if let Some(mov) = manager.best_move() {
             manager.print_info();
             println!("bestmove {}", to_uci(mov));
-            //manager.tree().display_moves();
         }
         manager
     }
@@ -281,8 +280,8 @@ impl Search {
         new_self
     }
 
-    pub fn print_eval(self) -> Self {
-        let manager = self.stop_and_print_m();
+    pub fn print_eval(&self) {
+        let manager = self.search.get_manager();
 
         let state = manager.tree().root_state();
 
@@ -302,14 +301,14 @@ impl Search {
             print!("{}:{:.3} ", moves.as_slice()[i], e);
         }
         println!();
-
-        Self {
-            search: manager.into(),
-        }
     }
 
     pub fn print_info(&self) {
         self.search.get_manager().print_info();
+    }
+
+    pub fn print_move_list(&self) {
+        self.search.get_manager().print_move_list();
     }
 }
 
