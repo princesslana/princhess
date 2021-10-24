@@ -652,26 +652,6 @@ impl<Spec: MCTS> SearchTree<Spec> {
     }
 }
 
-impl<Spec: MCTS> SearchTree<Spec> {
-    pub fn debug_moves(&self) {
-        let mut moves: Vec<MoveInfoHandle<Spec>> = self.root_node.moves().collect();
-        moves.sort_by_key(|x| -(x.visits() as i64));
-        for mov in moves {
-            println!("{:?}", mov);
-        }
-    }
-}
-
-impl<Spec: MCTS> SearchTree<Spec> {
-    pub fn display_moves(&self) {
-        let mut moves: Vec<MoveInfoHandle<Spec>> = self.root_node.moves().collect();
-        moves.sort_by_key(|x| -(x.visits() as i64));
-        for mov in moves {
-            println!("{}", mov);
-        }
-    }
-}
-
 pub struct NodeHandle<'a, Spec: 'a + MCTS> {
     node: &'a SearchNode<Spec>,
 }
