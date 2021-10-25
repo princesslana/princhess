@@ -3,7 +3,9 @@ use chess::{Color, MoveGen, Piece};
 use evaluation::GooseEval;
 use features::Model;
 use float_ord::FloatOrd;
-use mcts::{AsyncSearchOwned, CycleBehaviour, Evaluator, GameState, MCTSManager, MCTS};
+use mcts::{
+    AsyncSearchOwned, CycleBehaviour, Evaluator, GameState, MCTSManager, MoveInfoHandle, MCTS,
+};
 use options::get_num_threads;
 use policy_features::evaluate_single;
 use search_tree::PreviousTable;
@@ -57,6 +59,20 @@ impl MCTS for GooseMCTS {
     }
     fn cycle_behaviour(&self) -> CycleBehaviour<Self> {
         CycleBehaviour::UseThisEvalWhenCycleDetected(0)
+    }
+    fn select_child_after_search<'a>(
+        &self,
+        children: &[MoveInfoHandle<'a, Self>],
+    ) -> MoveInfoHandle<'a, Self> {
+        *children
+            .into_iter()
+            .max_by_key(|child| {
+                child
+                    .average_reward()
+                    .map(|r| r.max(-SCALE).min(SCALE).round() as i64)
+                    .unwrap_or(-SCALE as i64)
+            })
+            .unwrap()
     }
 }
 
