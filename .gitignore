@@ -14,6 +14,7 @@ expanded_feature_list.txt
 feature_whitelist.txt
 lichess*.pgn
 old-versions/*
+out/
 policy_key.txt
 run_goose.sh
 syzygy
