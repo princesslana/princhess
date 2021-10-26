@@ -2,7 +2,7 @@ extern crate rand;
 use self::rand::rngs::SmallRng;
 use self::rand::{Rng, SeedableRng};
 
-use mcts::MCTS;
+use mcts::{MoveEvaluation, MCTS};
 
 use search_tree::*;
 use state::State;
@@ -17,7 +17,6 @@ impl From<f32> for Fraction {
 }
 
 pub trait TreePolicy<Spec: MCTS<TreePolicy = Self>>: Sync + Sized {
-    type MoveEvaluation: Sync + Send;
     type ThreadLocalData: Default;
 
     fn choose_child<'a>(
@@ -26,7 +25,7 @@ pub trait TreePolicy<Spec: MCTS<TreePolicy = Self>>: Sync + Sized {
         moves: Moves<'a, Spec>,
         handle: SearchHandle<Spec>,
     ) -> MoveInfoHandle<'a, Spec>;
-    fn validate_evaluations(&self, _evalns: &[Self::MoveEvaluation]) {}
+    fn validate_evaluations(&self, _evalns: &[MoveEvaluation]) {}
 }
 
 #[derive(Clone, Debug)]
@@ -69,7 +68,6 @@ impl AlphaGoPolicy {
 
 impl<Spec: MCTS<TreePolicy = Self>> TreePolicy<Spec> for UCTPolicy {
     type ThreadLocalData = PolicyRng;
-    type MoveEvaluation = ();
 
     fn choose_child<'a>(
         &self,
@@ -101,7 +99,6 @@ impl<Spec: MCTS<TreePolicy = Self>> TreePolicy<Spec> for UCTPolicy {
 
 impl<Spec: MCTS<TreePolicy = Self>> TreePolicy<Spec> for AlphaGoPolicy {
     type ThreadLocalData = PolicyRng;
-    type MoveEvaluation = f32;
 
     fn choose_child<'a>(
         &self,

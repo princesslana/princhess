@@ -102,7 +102,7 @@ where
     }
 }
 
-pub type MoveEvaluation<Spec> = <<Spec as MCTS>::TreePolicy as TreePolicy<Spec>>::MoveEvaluation;
+pub type MoveEvaluation = f32;
 pub type StateEvaluation<Spec> = <<Spec as MCTS>::Eval as Evaluator<Spec>>::StateEvaluation;
 pub type MoveList = <State as GameState>::MoveList;
 pub type Player = <State as GameState>::Player;
@@ -125,7 +125,7 @@ pub trait Evaluator<Spec: MCTS>: Sync {
         &self,
         state: &State,
         moves: &MoveList,
-    ) -> (Vec<MoveEvaluation<Spec>>, Self::StateEvaluation);
+    ) -> (Vec<MoveEvaluation>, Self::StateEvaluation);
 
     fn evaluate_existing_state(
         &self,
