@@ -96,7 +96,7 @@ trait NodeStats {
     }
 }
 
-impl<Spec: MCTS> NodeStats for HotMoveInfo<Spec> {
+impl NodeStats for HotMoveInfo {
     fn get_visits(&self) -> &FakeU32 {
         &self.visits
     }
@@ -113,10 +113,10 @@ impl<Spec: MCTS> NodeStats for SearchNode<Spec> {
     }
 }
 
-struct HotMoveInfo<Spec: MCTS> {
+struct HotMoveInfo {
     sum_evaluations: AtomicI64,
     visits: FakeU32,
-    move_evaluation: MoveEvaluation<Spec>,
+    move_evaluation: MoveEvaluation,
 }
 struct ColdMoveInfo<Spec: MCTS> {
     mov: chess::ChessMove,
@@ -124,11 +124,11 @@ struct ColdMoveInfo<Spec: MCTS> {
     owned: AtomicBool,
 }
 pub struct MoveInfoHandle<'a, Spec: 'a + MCTS> {
-    hot: &'a HotMoveInfo<Spec>,
+    hot: &'a HotMoveInfo,
     cold: &'a ColdMoveInfo<Spec>,
 }
 
-unsafe impl<Spec: MCTS> Pod for HotMoveInfo<Spec> {}
+unsafe impl Pod for HotMoveInfo {}
 unsafe impl<Spec: MCTS> Pod for ColdMoveInfo<Spec> {}
 unsafe impl<Spec: MCTS> Pod for SearchNode<Spec> {}
 
@@ -155,14 +155,14 @@ where
     Spec::NodeData: Sync,
     StateEvaluation<Spec>: Sync,
     // NodeStats: Sync,
-    // for<'a> &'a[HotMoveInfo<Spec>]: Sync,
+    // for<'a> &'a[HotMoveInfo]: Sync,
     // for<'a> &'a[ColdMoveInfo<Spec>]: Sync,
 {
 }
 
 impl<Spec: MCTS> SearchNode<Spec> {
     fn new<'a>(
-        hots: &'a [HotMoveInfo<Spec>],
+        hots: &'a [HotMoveInfo],
         colds: &'a [ColdMoveInfo<Spec>],
         evaln: StateEvaluation<Spec>,
     ) -> Self {
@@ -174,8 +174,8 @@ impl<Spec: MCTS> SearchNode<Spec> {
             sum_evaluations: AtomicI64::default(),
         }
     }
-    fn hots(&self) -> &[HotMoveInfo<Spec>] {
-        unsafe { &*(self.hots as *const [HotMoveInfo<Spec>]) }
+    fn hots(&self) -> &[HotMoveInfo] {
+        unsafe { &*(self.hots as *const [HotMoveInfo]) }
     }
     fn colds(&self) -> &[ColdMoveInfo<Spec>] {
         unsafe { &*(self.colds as *const [ColdMoveInfo<Spec>]) }
@@ -189,8 +189,8 @@ impl<Spec: MCTS> SearchNode<Spec> {
     }
 }
 
-impl<Spec: MCTS> HotMoveInfo<Spec> {
-    fn new(move_evaluation: MoveEvaluation<Spec>) -> Self {
+impl HotMoveInfo {
+    fn new(move_evaluation: MoveEvaluation) -> Self {
         Self {
             move_evaluation,
             sum_evaluations: AtomicI64::default(),
@@ -213,7 +213,7 @@ impl<'a, Spec: MCTS> MoveInfoHandle<'a, Spec> {
         &self.cold.mov
     }
 
-    pub fn move_evaluation(&self) -> &'a MoveEvaluation<Spec> {
+    pub fn move_evaluation(&self) -> &'a MoveEvaluation {
         &self.hot.move_evaluation
     }
 
@@ -677,7 +677,7 @@ impl<'a, Spec: MCTS> NodeHandle<'a, Spec> {
 }
 
 pub struct Moves<'a, Spec: 'a + MCTS> {
-    hots: &'a [HotMoveInfo<Spec>],
+    hots: &'a [HotMoveInfo],
     colds: &'a [ColdMoveInfo<Spec>],
     index: usize,
 }
