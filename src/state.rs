@@ -132,7 +132,7 @@ impl State {
     }
 
     fn check_outcome(&mut self) {
-        if self.drawn_by_repetition() {
+        if self.drawn_by_repetition() || self.drawn_by_fifty_move_rule() {
             self.outcome = Outcome::Draw;
         } else if self.board().status() != chess::BoardStatus::Ongoing {
             self.outcome = match self.board().status() {
@@ -186,9 +186,15 @@ impl State {
                 .count(),
         );
     }
+
+    fn drawn_by_fifty_move_rule(&self) -> bool {
+        self.prev_state_hashes.len() >= 100
+    }
+
     fn drawn_by_repetition(&self) -> bool {
         self.repetitions >= 2
     }
+
     pub fn freeze(self) -> Self {
         Self {
             frozen: true,
@@ -380,15 +386,15 @@ impl GameState for State {
     }
 
     fn make_move(&mut self, mov: &chess::ChessMove) {
-        if (self.board.pieces(chess::Piece::Pawn) & chess::BitBoard::from_square(mov.get_source()))
-            .0
-            != 0
-        {
+        self.prev_capture = self.board.piece_on(mov.get_dest());
+        let is_pawn_move = (self.board.pieces(chess::Piece::Pawn)
+            & chess::BitBoard::from_square(mov.get_source()))
+        .0 != 0;
+        if is_pawn_move || self.prev_capture.is_some() {
             self.prev_state_hashes.clear();
         } else if !self.frozen {
             self.prev_state_hashes.push(self.board.get_hash());
         }
-        self.prev_capture = self.board.piece_on(mov.get_dest());
         self.prev_move = Some(*mov);
         for i in (0..(NUM_OCCUPIED_KEPT - 1)).rev() {
             self.formerly_occupied[i + 1] = self.formerly_occupied[i];
