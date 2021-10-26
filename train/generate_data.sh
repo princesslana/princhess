@@ -12,10 +12,16 @@ state_data() {
 
     $PRINCHESS -t $f
 
-    echo "Splitting data..."
+    echo "Calculating split..."
+
+    samples=$(wc -l < train_data.libsvm)
+    splits=$(( $samples /  1000000 ))
+    split_size=$(( $samples / $splits + 1))
+
+    echo "Splitting data ($split_size)..."
 
     rm -f model_data/*.libsvm.*
-    split -l 1000000 train_data.libsvm model_data/$(basename $f).libsvm.
+    split -l $split_size train_data.libsvm model_data/$(basename $f).libsvm.
 
     rm train_data.libsvm
     rm -f model_data/*.gz
@@ -30,10 +36,16 @@ policy_data() {
 
     $PRINCHESS -p -t $f
 
-    echo "Splitting data..."
+    echo "Calculating split..."
+
+    samples=$(wc -l < policy_train_data.libsvm)
+    splits=$(( $samples /  1000000 ))
+    split_size=$(( $samples / $splits + 1))
+
+    echo "Splitting data ($split_size)..."
 
     rm -f policy_data/*.libsvm.*
-    split -l 1000000 policy_train_data.libsvm policy_data/$(basename $f).libsvm.
+    split -l $split_size policy_train_data.libsvm policy_data/$(basename $f).libsvm.
 
     rm policy_train_data.libsvm
     rm -f policy_data/*.gz
@@ -51,4 +63,3 @@ case $1 in
     echo "Must specify either 'state' or 'policy'"
     ;;
 esac
-
