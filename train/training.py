@@ -24,8 +24,9 @@ def train(classifier, files):
 
     random.shuffle(all_files)
 
-    test_files = all_files[: int(len(all_files) / 10)]
-    train_files = all_files[int(len(all_files) / 10) :]
+    split_idx = max(1, len(all_files) // 10)
+    test_files = all_files[:split_idx]
+    train_files = all_files[split_idx:]
 
     print("Loading test data...")
     x_test = None

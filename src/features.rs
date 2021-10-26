@@ -271,8 +271,57 @@ where
                 }
             }
         }
+
+        // King/Pawn Shield
+        let ksq = board.king_square(c);
+
+        if let Some(sq) = ksq.forward(c) {
+            if is_full_piece_on(board, sq, c, Piece::Pawn) {
+                f(feature_index(color_index, p, KING_PAWN_SHIELD_C1), 1);
+            }
+
+            if let Some(sq) = sq.forward(c) {
+                if is_full_piece_on(board, sq, c, Piece::Pawn) {
+                    f(feature_index(color_index, p, KING_PAWN_SHIELD_C2), 1);
+                }
+            }
+        }
+
+        if let Some(sq) = ksq.left() {
+            if is_full_piece_on(board, sq, c, Piece::Pawn) {
+                f(feature_index(color_index, p, KING_PAWN_SHIELD_L0), 1);
+            }
+            if let Some(sq) = sq.forward(c) {
+                if is_full_piece_on(board, sq, c, Piece::Pawn) {
+                    f(feature_index(color_index, p, KING_PAWN_SHIELD_L1), 1);
+                }
+                if let Some(sq) = sq.forward(c) {
+                    if is_full_piece_on(board, sq, c, Piece::Pawn) {
+                        f(feature_index(color_index, p, KING_PAWN_SHIELD_L2), 1);
+                    }
+                }
+            }
+        }
+
+        if let Some(sq) = ksq.right() {
+            if is_full_piece_on(board, sq, c, Piece::Pawn) {
+                f(feature_index(color_index, p, KING_PAWN_SHIELD_R0), 1);
+            }
+            if let Some(sq) = sq.forward(c) {
+                if is_full_piece_on(board, sq, c, Piece::Pawn) {
+                    f(feature_index(color_index, p, KING_PAWN_SHIELD_R1), 1);
+                }
+                if let Some(sq) = sq.forward(c) {
+                    if is_full_piece_on(board, sq, c, Piece::Pawn) {
+                        f(feature_index(color_index, p, KING_PAWN_SHIELD_R2), 1);
+                    }
+                }
+            }
+        }
+
         f(feature_index(color_index, p, ONE), 1);
     }
+
     for &color in colors {
         let color_board = board.color_combined(color);
         for &piece in all_pieces {
@@ -397,6 +446,13 @@ fn full_piece_on(board: &Board, sq: Square) -> Option<FullPiece> {
         Color::Black
     };
     Some(FullPiece { color, role })
+}
+
+fn is_full_piece_on(board: &Board, sq: Square, c: Color, pc: Piece) -> bool {
+    match full_piece_on(board, sq) {
+        None => false,
+        Some(fp) => fp.role == pc && fp.color == c,
+    }
 }
 
 fn extract_2x2_pattern(board: &Board, file: File, rank: Rank) -> [usize; 4] {
