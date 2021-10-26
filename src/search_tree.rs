@@ -51,6 +51,25 @@ pub fn empty_previous_table() -> PreviousTable<GooseMCTS> {
     }
 }
 
+impl<Spec: MCTS> PreviousTable<Spec> {
+    pub fn lookup_into(&self, state: &State, dest: &mut SearchNode<Spec>) -> bool {
+        if let Some(src) = self.table.lookup(state) {
+            dest.replace(src);
+            dest.evaln = src.evaln;
+
+            let lhs = dest.hots();
+            let rhs = src.hots();
+
+            for i in 0..lhs.len().min(rhs.len()) {
+                lhs[i].replace(&rhs[i]);
+            }
+            true
+        } else {
+            false
+        }
+    }
+}
+
 trait NodeStats {
     fn get_visits(&self) -> &FakeU32;
     fn get_sum_evaluations(&self) -> &AtomicI64;
@@ -318,13 +337,16 @@ impl<Spec: MCTS> SearchTree<Spec> {
         prev_table: PreviousTable<Spec>,
     ) -> Self {
         let arena = Box::new(Arena::new(get_hash_size_mb() / 2));
-        let root_node = create_node(
+        let mut root_node = create_node(
             &eval,
             &tree_policy,
             &state,
             CreationHelper::Allocator(&arena.allocator()),
         )
         .expect("Unable to create root node");
+
+        let _ = prev_table.lookup_into(&state, &mut root_node);
+
         Self {
             root_state: state,
             root_node,
@@ -521,29 +543,7 @@ impl<Spec: MCTS> SearchTree<Spec> {
             CreationHelper::Handle(self.make_handle(tld, path)),
         )?;
 
-        let mut did_we_create = true;
-
-        if let Some(node) = self.prev_table.table.lookup(state) {
-            did_we_create = false;
-            let prev_sum = node.sum_evaluations.load(Ordering::Relaxed);
-            let prev_visits = node.visits.load(Ordering::Relaxed);
-
-            created_here.evaln = node.evaln;
-
-            created_here
-                .get_sum_evaluations()
-                .store(prev_sum, Ordering::Relaxed);
-            created_here
-                .get_visits()
-                .store(prev_visits, Ordering::Relaxed);
-
-            let lhs = created_here.hots();
-            let rhs = node.hots();
-
-            for i in 0..lhs.len().min(rhs.len()) {
-                lhs[i].replace(&rhs[i]);
-            }
-        }
+        let did_we_create = !self.prev_table.lookup_into(state, &mut created_here);
 
         let created = tld.allocator.alloc_one()?;
         *created = created_here;
