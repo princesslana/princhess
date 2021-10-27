@@ -3,7 +3,8 @@
 use atomics::*;
 use mcts::*;
 use options::get_hash_size_mb;
-use search::GooseMCTS;
+use policy_features::softmax;
+use search::{GooseMCTS, SCALE};
 use smallvec::SmallVec;
 use state::State;
 use std::fmt;
@@ -11,6 +12,7 @@ use std::fmt::{Debug, Display, Formatter};
 use std::ptr::null_mut;
 use transposition_table::{ApproxTable, TranspositionTable};
 
+use log::debug;
 use pod::Pod;
 
 use tree_policy::TreePolicy;
@@ -176,6 +178,13 @@ impl<Spec: MCTS> SearchNode<Spec> {
     }
     fn hots(&self) -> &[HotMoveInfo] {
         unsafe { &*(self.hots as *const [HotMoveInfo]) }
+    }
+    fn update_policy(&mut self, evals: Vec<f32>) {
+        let mut hots = unsafe { &mut *(self.hots as *mut [HotMoveInfo]) };
+
+        for i in 0..hots.len().min(evals.len()) {
+            hots[i].move_evaluation = evals[i];
+        }
     }
     fn colds(&self) -> &[ColdMoveInfo<Spec>] {
         unsafe { &*(self.colds as *const [ColdMoveInfo<Spec>]) }
@@ -346,6 +355,16 @@ impl<Spec: MCTS> SearchTree<Spec> {
         .expect("Unable to create root node");
 
         let _ = prev_table.lookup_into(&state, &mut root_node);
+
+        let mut avg_rewards: Vec<f32> = root_node
+            .moves()
+            .into_iter()
+            .map(|m| m.average_reward().unwrap_or(-SCALE) / SCALE)
+            .collect();
+
+        softmax(&mut avg_rewards);
+
+        root_node.update_policy(avg_rewards);
 
         Self {
             root_state: state,
@@ -691,6 +710,7 @@ impl<'a, Spec: MCTS> Clone for Moves<'a, Spec> {
         }
     }
 }
+
 impl<'a, Spec: MCTS> Copy for Moves<'a, Spec> {}
 
 impl<'a, Spec: 'a + MCTS> Iterator for Moves<'a, Spec> {

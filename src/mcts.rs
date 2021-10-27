@@ -292,9 +292,10 @@ where
         moves.sort_by_key(|(h, e)| FloatOrd(h.average_reward().unwrap_or(*e)));
         for (mov, e) in moves {
             println!(
-                "info string {} M: {:>6} V: {:7} E: {:>6} (cp {:>5})",
+                "info string {} M: {:>6} P: {:>6} V: {:7} E: {:>6} (cp {:>5})",
                 mov.get_move(),
                 format!("{:3.2}", e * 100.),
+                format!("{:3.2}", mov.move_evaluation() * 100.),
                 mov.visits(),
                 mov.average_reward()
                     .map_or("n/a".to_string(), |r| format!("{:3.2}", r / (SCALE / 100.))),
