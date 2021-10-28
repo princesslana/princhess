@@ -193,6 +193,12 @@ where
         })
     }
 
+    pub fn playout_sync(&self) {
+        let search_tree = &self.search_tree;
+        let mut tld = ThreadData::create(search_tree);
+        while search_tree.playout(&mut tld) {}
+    }
+
     pub fn into_playout_parallel_async(
         self,
         num_threads: usize,
@@ -245,6 +251,10 @@ where
                 .map(|x| (x.sum_rewards() / x.visits() as i64) as f32 / SCALE)
                 .unwrap_or(0.0),
         )
+    }
+
+    pub fn nodes(&self) -> usize {
+        self.tree().num_nodes()
     }
 
     pub fn print_info(&self) {
