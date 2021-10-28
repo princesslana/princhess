@@ -82,6 +82,7 @@ pub fn main(commands: Vec<String>) {
                 "eval"       => search.print_eval(),
                 "movelist"   => search.print_move_list(),
                 "info"       => search.print_info(),
+                "bench"      => search.bench(),
                 _ => error!("Unknown command: {} (this engine uses a reduced set of commands from the UCI protocol)", first_word)
             }
         }

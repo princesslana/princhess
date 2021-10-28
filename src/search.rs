@@ -1,4 +1,5 @@
 use atomics::Ordering;
+use bench::BENCHMARKING_POSITIONS;
 use chess::{Color, MoveGen, Piece};
 use evaluation::GooseEval;
 use features::Model;
@@ -8,12 +9,12 @@ use mcts::{
 };
 use options::get_num_threads;
 use policy_features::evaluate_single;
-use search_tree::PreviousTable;
+use search_tree::{empty_previous_table, PreviousTable};
 use shakmaty_syzygy::Syzygy;
 use state::{Move, Outcome, State, StateBuilder};
 use std::sync::mpsc::Sender;
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tablebase::probe_tablebase_best_move;
 use transposition_table::ApproxTable;
 use tree_policy::AlphaGoPolicy;
@@ -325,6 +326,38 @@ impl Search {
 
     pub fn print_move_list(&self) {
         self.search.get_manager().print_move_list();
+    }
+
+    pub fn bench(&self) {
+        let bench_start = Instant::now();
+        let mut nodes = 0;
+        let mut search_time_ms = 0;
+        for fen in BENCHMARKING_POSITIONS {
+            let state: State = StateBuilder::from_fen(fen).unwrap().into();
+
+            let manager = MCTSManager::new(
+                state.freeze(),
+                GooseMCTS,
+                GooseEval::new(Model::new()),
+                policy(),
+                ApproxTable::enough_to_hold(GooseMCTS.node_limit()),
+                empty_previous_table(),
+            );
+
+            manager.playout_sync();
+
+            nodes += manager.nodes();
+            search_time_ms = Instant::now().duration_since(bench_start).as_millis();
+
+            println!(
+                "info string {}/{}",
+                nodes,
+                nodes * 1000 / search_time_ms as usize
+            );
+        }
+
+        println!("info nodes {}", nodes,);
+        println!("info nps {}", nodes * 100 / search_time_ms as usize)
     }
 }
 
