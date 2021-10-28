@@ -356,11 +356,8 @@ impl Search {
             );
         }
 
-        println!(
-            "info nodes {} nps {}",
-            nodes,
-            nodes * 1000 / search_time_ms as usize
-        );
+        println!("info nodes {}", nodes,);
+        println!("info nps {}", nodes * 100 / search_time_ms as usize)
     }
 }
 
