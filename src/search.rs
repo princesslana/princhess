@@ -7,7 +7,7 @@ use float_ord::FloatOrd;
 use mcts::{
     AsyncSearchOwned, CycleBehaviour, Evaluator, GameState, MCTSManager, MoveInfoHandle, MCTS,
 };
-use options::get_num_threads;
+use options::{get_num_threads, get_exploration_constant};
 use policy_features::evaluate_single;
 use search_tree::{empty_previous_table, PreviousTable};
 use shakmaty_syzygy::Syzygy;
@@ -26,7 +26,8 @@ const DEFAULT_MOVE_TIME_FRACTION: u32 = 15;
 pub const SCALE: f32 = 1e9;
 
 fn policy() -> AlphaGoPolicy {
-    AlphaGoPolicy::new(2.0 * SCALE)
+    let c = get_exploration_constant() as f32 / 100.;
+    AlphaGoPolicy::new(c * SCALE)
 }
 
 pub struct GooseMCTS;
