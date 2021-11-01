@@ -4,7 +4,7 @@ use std::cmp::max;
 static NUM_THREADS: AtomicUsize = AtomicUsize::new(1);
 static HASH_SIZE_MB: AtomicUsize = AtomicUsize::new(16);
 
-static EXPLORATION_CONSTANT: AtomicU64 = AtomicU64::new(200);
+static EXPLORATION_CONSTANT: AtomicU64 = AtomicU64::new(225);
 
 pub fn set_num_threads(threads: usize) {
     NUM_THREADS.store(threads, Ordering::Relaxed);
