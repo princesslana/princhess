@@ -7,8 +7,6 @@ use policy_features::softmax;
 use search::{GooseMCTS, SCALE};
 use smallvec::SmallVec;
 use state::State;
-use std::fmt;
-use std::fmt::{Debug, Display, Formatter};
 use std::ptr::null_mut;
 use transposition_table::{ApproxTable, TranspositionTable};
 
@@ -123,7 +121,6 @@ struct HotMoveInfo {
 struct ColdMoveInfo<Spec: MCTS> {
     mov: chess::ChessMove,
     child: AtomicPtr<SearchNode<Spec>>,
-    owned: AtomicBool,
 }
 pub struct MoveInfoHandle<'a, Spec: 'a + MCTS> {
     hot: &'a HotMoveInfo,
@@ -212,7 +209,6 @@ impl<'a, Spec: MCTS> ColdMoveInfo<Spec> {
         Self {
             mov,
             child: AtomicPtr::default(),
-            owned: AtomicBool::new(false),
         }
     }
 }
@@ -247,52 +243,6 @@ impl<'a, Spec: MCTS> MoveInfoHandle<'a, Spec> {
         match self.visits() {
             0 => None,
             x => Some(self.sum_rewards() as f32 / x as f32),
-        }
-    }
-}
-
-impl<'a, Spec: MCTS> Display for MoveInfoHandle<'a, Spec> {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        let own_str = if self.cold.owned.load(Ordering::Relaxed) {
-            ""
-        } else {
-            " [child pointer is alias]"
-        };
-        if self.visits() == 0 {
-            write!(f, "{} [0 visits]{}", self.get_move(), own_str)
-        } else {
-            write!(
-                f,
-                "{} [{} visit{}] [{} avg reward]{}",
-                self.get_move(),
-                self.visits(),
-                if self.visits() == 1 { "" } else { "s" },
-                self.sum_rewards() as f64 / self.visits() as f64,
-                own_str
-            )
-        }
-    }
-}
-
-impl<'a, Spec: MCTS> Debug for MoveInfoHandle<'a, Spec> {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        let own_str = if self.cold.owned.load(Ordering::Relaxed) {
-            ""
-        } else {
-            " [child pointer is alias]"
-        };
-        if self.visits() == 0 {
-            write!(f, "{:?} [0 visits]{}", self.get_move(), own_str)
-        } else {
-            write!(
-                f,
-                "{:?} [{} visit{}] [{} avg reward]{}",
-                self.get_move(),
-                self.visits(),
-                if self.visits() == 1 { "" } else { "s" },
-                self.sum_rewards() as f64 / self.visits() as f64,
-                own_str
-            )
         }
     }
 }
@@ -584,7 +534,6 @@ impl<Spec: MCTS> SearchTree<Spec> {
             choice.child.store(existing_ptr, Ordering::Relaxed);
             return Ok((existing, false));
         }
-        choice.owned.store(true, Ordering::Relaxed);
         self.num_nodes.fetch_add(1, Ordering::Relaxed);
         let depth = path.len();
         self.sum_depth.fetch_add(depth, Ordering::Relaxed);

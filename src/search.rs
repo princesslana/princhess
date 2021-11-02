@@ -7,7 +7,7 @@ use float_ord::FloatOrd;
 use mcts::{
     AsyncSearchOwned, CycleBehaviour, Evaluator, GameState, MCTSManager, MoveInfoHandle, MCTS,
 };
-use options::{get_num_threads, get_exploration_constant};
+use options::{get_exploration_constant, get_num_threads};
 use policy_features::evaluate_single;
 use search_tree::{empty_previous_table, PreviousTable};
 use shakmaty_syzygy::Syzygy;
