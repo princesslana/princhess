@@ -19,6 +19,7 @@ Princhess can be played against on Lichess at https://lichess.org/@/princhess_bo
 * **SyzygyPath** - Path to folder where the Syzygy tablebase files are.
   Currently only supports a single folder.
 
+* **ExplorationConstant** - Exploration constant used by PUCT. Defaults to 200.
 
 # Contributing
 

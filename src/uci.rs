@@ -1,4 +1,4 @@
-use options::{set_hash_size_mb, set_num_threads};
+use options::{set_exploration_constant, set_hash_size_mb, set_num_threads};
 use search::Search;
 use search_tree::empty_previous_table;
 use state::State;
@@ -41,28 +41,9 @@ pub fn main(commands: Vec<String>) {
                 "setoption"  => {
                     let option = UciOption::parse(tokens);
 
-                    match option {
-                        Some(opt) if opt.name() == "syzygypath" => {
-                            if let Some(path) = opt.value() {
-                                set_tablebase_directory(path)
-                            }
-                        }
-                        Some(opt) if opt.name() == "threads" => {
-                            if let Some(v) = opt.value() {
-                                if let Some(t) = v.parse().ok() {
-                                    set_num_threads(t)
-                                }
-                            }
-                        }
-                        Some(opt) if opt.name() == "hash" => {
-                            if let Some(v) = opt.value() {
-                                if let Some(t) = v.parse().ok() {
-                                    set_hash_size_mb(t)
-                                }
-                            }
-                        }
-                        _ => warn!("Badly formatted or unknown option"),
-                       }
+                    if let Some(opt) = option {
+                        opt.set();
+                    }
                 }
                 "ucinewgame" => {
                     search = Search::new(State::default(), empty_previous_table());
@@ -95,6 +76,7 @@ pub fn uci() {
     println!("option name Hash type spin min 1 max 65536 default 1");
     println!("option name Threads type spin min 1 max 255 default 1");
     println!("option name SyzygyPath type string");
+    println!("option name ExplorationConstant type spin min 1 max 65536 default 225");
     println!("uciok");
 }
 
@@ -140,6 +122,38 @@ impl UciOption {
 
     pub fn value(&self) -> &Option<String> {
         &self.value
+    }
+
+    pub fn set(&self) {
+        match self.name().as_str() {
+            "syzygypath" => {
+                if let Some(path) = self.value() {
+                    set_tablebase_directory(path)
+                }
+            }
+            "threads" => {
+                if let Some(v) = self.value() {
+                    if let Some(t) = v.parse().ok() {
+                        set_num_threads(t)
+                    }
+                }
+            }
+            "hash" => {
+                if let Some(v) = self.value() {
+                    if let Some(t) = v.parse().ok() {
+                        set_hash_size_mb(t)
+                    }
+                }
+            }
+            "explorationconstant" => {
+                if let Some(v) = self.value() {
+                    if let Some(t) = v.parse().ok() {
+                        set_exploration_constant(t)
+                    }
+                }
+            }
+            _ => warn!("Badly formatted or unknown option"),
+        }
     }
 }
 
