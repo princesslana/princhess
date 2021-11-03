@@ -1,6 +1,6 @@
 use options::{set_exploration_constant, set_hash_size_mb, set_num_threads};
 use search::Search;
-use search_tree::empty_previous_table;
+use search_tree::{empty_previous_table, print_size_list};
 use state::State;
 use std::io::{stdin, BufRead};
 use std::str::SplitWhitespace;
@@ -62,6 +62,7 @@ pub fn main(commands: Vec<String>) {
                 "go"         => search = search.go(tokens, &sender),
                 "eval"       => search.print_eval(),
                 "movelist"   => search.print_move_list(),
+                "sizelist"   => print_size_list(),
                 "info"       => search.print_info(),
                 "bench"      => search.bench(),
                 "evalpolicy" => search.eval_policy(),

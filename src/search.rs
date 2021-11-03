@@ -49,7 +49,7 @@ impl MCTS for GooseMCTS {
     type Eval = GooseEval;
     type TreePolicy = AlphaGoPolicy;
     type ExtraThreadData = ThreadSentinel;
-    type TranspositionTable = ApproxTable<Self>;
+    type TranspositionTable = ApproxTable;
 
     fn node_limit(&self) -> usize {
         4_000_000
@@ -57,13 +57,10 @@ impl MCTS for GooseMCTS {
     fn virtual_loss(&self) -> i64 {
         SCALE as i64
     }
-    fn cycle_behaviour(&self) -> CycleBehaviour<Self> {
+    fn cycle_behaviour(&self) -> CycleBehaviour {
         CycleBehaviour::UseThisEvalWhenCycleDetected(0)
     }
-    fn select_child_after_search<'a>(
-        &self,
-        children: &[MoveInfoHandle<'a, Self>],
-    ) -> MoveInfoHandle<'a, Self> {
+    fn select_child_after_search<'a>(&self, children: &[MoveInfoHandle<'a>]) -> MoveInfoHandle<'a> {
         *children
             .into_iter()
             .max_by_key(|child| {

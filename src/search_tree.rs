@@ -4,6 +4,7 @@ use policy_features::softmax;
 use search::{GooseMCTS, SCALE};
 use smallvec::SmallVec;
 use state::State;
+use std::mem;
 use std::ptr::null_mut;
 use std::sync::atomic::{AtomicI64, AtomicPtr, AtomicU32, AtomicUsize, Ordering};
 use transposition_table::{ApproxTable, TranspositionTable};
@@ -18,7 +19,7 @@ use arena::{Arena, ArenaAllocator, ArenaError};
 /// You're not intended to use this class (use an `MCTSManager` instead),
 /// but you can use it if you want to manage the threads yourself.
 pub struct SearchTree<Spec: MCTS> {
-    root_node: SearchNode<Spec>,
+    root_node: SearchNode,
     root_state: State,
     tree_policy: Spec::TreePolicy,
     table: Spec::TranspositionTable,
@@ -50,7 +51,7 @@ pub fn empty_previous_table() -> PreviousTable<GooseMCTS> {
 }
 
 impl<Spec: MCTS> PreviousTable<Spec> {
-    pub fn lookup_into(&self, state: &State, dest: &mut SearchNode<Spec>) -> bool {
+    pub fn lookup_into(&self, state: &State, dest: &mut SearchNode) -> bool {
         if let Some(src) = self.table.lookup(state) {
             dest.replace(src);
             dest.evaln = src.evaln;
@@ -102,7 +103,7 @@ impl NodeStats for HotMoveInfo {
         &self.sum_evaluations
     }
 }
-impl<Spec: MCTS> NodeStats for SearchNode<Spec> {
+impl NodeStats for SearchNode {
     fn get_visits(&self) -> &AtomicU32 {
         &self.visits
     }
@@ -116,20 +117,20 @@ struct HotMoveInfo {
     visits: AtomicU32,
     move_evaluation: MoveEvaluation,
 }
-struct ColdMoveInfo<Spec: MCTS> {
+struct ColdMoveInfo {
     mov: chess::ChessMove,
-    child: AtomicPtr<SearchNode<Spec>>,
+    child: AtomicPtr<SearchNode>,
 }
-pub struct MoveInfoHandle<'a, Spec: 'a + MCTS> {
+pub struct MoveInfoHandle<'a> {
     hot: &'a HotMoveInfo,
-    cold: &'a ColdMoveInfo<Spec>,
+    cold: &'a ColdMoveInfo,
 }
 
 unsafe impl Pod for HotMoveInfo {}
-unsafe impl<Spec: MCTS> Pod for ColdMoveInfo<Spec> {}
-unsafe impl<Spec: MCTS> Pod for SearchNode<Spec> {}
+unsafe impl Pod for ColdMoveInfo {}
+unsafe impl Pod for SearchNode {}
 
-impl<'a, Spec: MCTS> Clone for MoveInfoHandle<'a, Spec> {
+impl<'a> Clone for MoveInfoHandle<'a> {
     fn clone(&self) -> Self {
         Self {
             hot: self.hot,
@@ -137,29 +138,20 @@ impl<'a, Spec: MCTS> Clone for MoveInfoHandle<'a, Spec> {
         }
     }
 }
-impl<'a, Spec: MCTS> Copy for MoveInfoHandle<'a, Spec> {}
+impl<'a> Copy for MoveInfoHandle<'a> {}
 
-pub struct SearchNode<Spec: MCTS> {
+pub struct SearchNode {
     hots: *const [()],
     colds: *const [()],
-    evaln: StateEvaluation<Spec>,
+    evaln: StateEvaluation,
     sum_evaluations: AtomicI64,
     visits: AtomicU32,
 }
 
-unsafe impl<Spec: MCTS> Sync for SearchNode<Spec> where
-    StateEvaluation<Spec>: Sync // NodeStats: Sync,
-                                // for<'a> &'a[HotMoveInfo]: Sync,
-                                // for<'a> &'a[ColdMoveInfo<Spec>]: Sync
-{
-}
+unsafe impl Sync for SearchNode {}
 
-impl<Spec: MCTS> SearchNode<Spec> {
-    fn new<'a>(
-        hots: &'a [HotMoveInfo],
-        colds: &'a [ColdMoveInfo<Spec>],
-        evaln: StateEvaluation<Spec>,
-    ) -> Self {
+impl SearchNode {
+    fn new<'a>(hots: &'a [HotMoveInfo], colds: &'a [ColdMoveInfo], evaln: StateEvaluation) -> Self {
         Self {
             hots: hots as *const _ as *const [()],
             colds: colds as *const _ as *const [()],
@@ -178,10 +170,10 @@ impl<Spec: MCTS> SearchNode<Spec> {
             hots[i].move_evaluation = evals[i];
         }
     }
-    fn colds(&self) -> &[ColdMoveInfo<Spec>] {
-        unsafe { &*(self.colds as *const [ColdMoveInfo<Spec>]) }
+    fn colds(&self) -> &[ColdMoveInfo] {
+        unsafe { &*(self.colds as *const [ColdMoveInfo]) }
     }
-    pub fn moves(&self) -> Moves<Spec> {
+    pub fn moves(&self) -> Moves {
         Moves {
             hots: self.hots(),
             colds: self.colds(),
@@ -199,7 +191,7 @@ impl HotMoveInfo {
         }
     }
 }
-impl<'a, Spec: MCTS> ColdMoveInfo<Spec> {
+impl<'a> ColdMoveInfo {
     fn new(mov: chess::ChessMove) -> Self {
         Self {
             mov,
@@ -208,7 +200,7 @@ impl<'a, Spec: MCTS> ColdMoveInfo<Spec> {
     }
 }
 
-impl<'a, Spec: MCTS> MoveInfoHandle<'a, Spec> {
+impl<'a> MoveInfoHandle<'a> {
     pub fn get_move(&self) -> &'a chess::ChessMove {
         &self.cold.mov
     }
@@ -225,7 +217,7 @@ impl<'a, Spec: MCTS> MoveInfoHandle<'a, Spec> {
         self.hot.sum_evaluations.load(Ordering::Relaxed) as i64
     }
 
-    pub fn child(&self) -> Option<NodeHandle<'a, Spec>> {
+    pub fn child(&self) -> Option<NodeHandle<'a>> {
         let ptr = self.cold.child.load(Ordering::Relaxed);
         if ptr.is_null() {
             None
@@ -253,7 +245,7 @@ fn create_node<'a, 'b, Spec: MCTS>(
     policy: &Spec::TreePolicy,
     state: &State,
     ch: CreationHelper<'a, 'b, Spec>,
-) -> Result<SearchNode<Spec>, ArenaError> {
+) -> Result<SearchNode, ArenaError> {
     let (allocator, _handle) = match ch {
         CreationHelper::Allocator(x) => (x, None),
         CreationHelper::Handle(x) => {
@@ -291,7 +283,7 @@ impl<Spec: MCTS> SearchTree<Spec> {
         prev_table: PreviousTable<Spec>,
     ) -> Self {
         let arena = Box::new(Arena::new(get_hash_size_mb() / 2));
-        let mut root_node = create_node(
+        let mut root_node = create_node::<Spec>(
             &eval,
             &tree_policy,
             &state,
@@ -374,8 +366,8 @@ impl<Spec: MCTS> SearchTree<Spec> {
             return false;
         }
         let mut state = self.root_state.clone();
-        let mut path: SmallVec<[MoveInfoHandle<Spec>; LARGE_DEPTH]> = SmallVec::new();
-        let mut node_path: SmallVec<[&SearchNode<Spec>; LARGE_DEPTH]> = SmallVec::new();
+        let mut path: SmallVec<[MoveInfoHandle; LARGE_DEPTH]> = SmallVec::new();
+        let mut node_path: SmallVec<[&SearchNode; LARGE_DEPTH]> = SmallVec::new();
         let mut players: SmallVec<[Player; LARGE_DEPTH]> = SmallVec::new();
         let mut did_we_create = false;
         let mut node = &self.root_node;
@@ -458,10 +450,10 @@ impl<Spec: MCTS> SearchTree<Spec> {
     fn descend<'a>(
         &'a self,
         state: &State,
-        choice: &ColdMoveInfo<Spec>,
+        choice: &ColdMoveInfo,
         tld: &mut ThreadData<'a, Spec>,
-        path: &[&'a SearchNode<Spec>],
-    ) -> Result<(&'a SearchNode<Spec>, bool), ArenaError> {
+        path: &[&'a SearchNode],
+    ) -> Result<(&'a SearchNode, bool), ArenaError> {
         let child = choice.child.load(Ordering::Relaxed) as *const _;
         if !child.is_null() {
             return unsafe { Ok((&*child, false)) };
@@ -520,10 +512,10 @@ impl<Spec: MCTS> SearchTree<Spec> {
 
     fn finish_playout<'a>(
         &'a self,
-        path: &[MoveInfoHandle<Spec>],
-        node_path: &[&'a SearchNode<Spec>],
+        path: &[MoveInfoHandle],
+        node_path: &[&'a SearchNode],
         players: &[Player],
-        evaln: &StateEvaluation<Spec>,
+        evaln: &StateEvaluation,
     ) {
         for ((move_info, player), node) in
             path.iter().zip(players.iter()).zip(node_path.iter()).rev()
@@ -540,7 +532,7 @@ impl<Spec: MCTS> SearchTree<Spec> {
     fn make_handle<'a, 'b>(
         &'a self,
         tld: &'b mut ThreadData<'a, Spec>,
-        path: &'b [&'a SearchNode<Spec>],
+        path: &'b [&'a SearchNode],
     ) -> SearchHandle<'a, 'b, Spec> {
         let shared = SharedSearchHandle { tree: self, path };
         SearchHandle { shared, tld }
@@ -549,13 +541,13 @@ impl<Spec: MCTS> SearchTree<Spec> {
     pub fn root_state(&self) -> &State {
         &self.root_state
     }
-    pub fn root_node(&self) -> NodeHandle<Spec> {
+    pub fn root_node(&self) -> NodeHandle {
         NodeHandle {
             node: &self.root_node,
         }
     }
 
-    pub fn principal_variation(&self, num_moves: usize) -> Vec<MoveInfoHandle<Spec>> {
+    pub fn principal_variation(&self, num_moves: usize) -> Vec<MoveInfoHandle> {
         let mut result = Vec::new();
         let mut crnt = &self.root_node;
         while !crnt.hots().is_empty() && result.len() < num_moves {
@@ -563,7 +555,7 @@ impl<Spec: MCTS> SearchTree<Spec> {
                 .manager
                 .select_child_after_search(&crnt.moves().collect::<Vec<_>>());
             result.push(choice);
-            let child = choice.cold.child.load(Ordering::SeqCst) as *const SearchNode<Spec>;
+            let child = choice.cold.child.load(Ordering::SeqCst) as *const SearchNode;
             if child.is_null() {
                 break;
             } else {
@@ -600,29 +592,29 @@ impl<Spec: MCTS> SearchTree<Spec> {
     }
 }
 
-pub struct NodeHandle<'a, Spec: 'a + MCTS> {
-    node: &'a SearchNode<Spec>,
+pub struct NodeHandle<'a> {
+    node: &'a SearchNode,
 }
-impl<'a, Spec: MCTS> Clone for NodeHandle<'a, Spec> {
+impl<'a> Clone for NodeHandle<'a> {
     fn clone(&self) -> Self {
         Self { node: self.node }
     }
 }
-impl<'a, Spec: MCTS> Copy for NodeHandle<'a, Spec> {}
+impl<'a> Copy for NodeHandle<'a> {}
 
-impl<'a, Spec: MCTS> NodeHandle<'a, Spec> {
-    pub fn moves(&self) -> Moves<Spec> {
+impl<'a> NodeHandle<'a> {
+    pub fn moves(&self) -> Moves {
         self.node.moves()
     }
 }
 
-pub struct Moves<'a, Spec: 'a + MCTS> {
+pub struct Moves<'a> {
     hots: &'a [HotMoveInfo],
-    colds: &'a [ColdMoveInfo<Spec>],
+    colds: &'a [ColdMoveInfo],
     index: usize,
 }
 
-impl<'a, Spec: MCTS> Clone for Moves<'a, Spec> {
+impl<'a> Clone for Moves<'a> {
     fn clone(&self) -> Self {
         Self {
             hots: self.hots,
@@ -632,10 +624,10 @@ impl<'a, Spec: MCTS> Clone for Moves<'a, Spec> {
     }
 }
 
-impl<'a, Spec: MCTS> Copy for Moves<'a, Spec> {}
+impl<'a> Copy for Moves<'a> {}
 
-impl<'a, Spec: 'a + MCTS> Iterator for Moves<'a, Spec> {
-    type Item = MoveInfoHandle<'a, Spec>;
+impl<'a> Iterator for Moves<'a> {
+    type Item = MoveInfoHandle<'a>;
     fn next(&mut self) -> Option<Self::Item> {
         if self.index == self.hots.len() {
             None
@@ -654,7 +646,7 @@ impl<'a, Spec: 'a + MCTS> Iterator for Moves<'a, Spec> {
 
 pub struct SharedSearchHandle<'a: 'b, 'b, Spec: 'a + MCTS> {
     tree: &'a SearchTree<Spec>,
-    path: &'b [&'a SearchNode<Spec>],
+    path: &'b [&'a SearchNode],
 }
 impl<'a: 'b, 'b, Spec: 'a + MCTS> Clone for SharedSearchHandle<'a, 'b, Spec> {
     fn clone(&self) -> Self {
@@ -671,13 +663,13 @@ pub struct SearchHandle<'a: 'b, 'b, Spec: 'a + MCTS> {
 }
 
 impl<'a, 'b, Spec: MCTS> SharedSearchHandle<'a, 'b, Spec> {
-    pub fn node(&self) -> NodeHandle<'a, Spec> {
+    pub fn node(&self) -> NodeHandle<'a> {
         self.nth_parent(0).unwrap()
     }
-    pub fn parent(&self) -> Option<NodeHandle<'a, Spec>> {
+    pub fn parent(&self) -> Option<NodeHandle<'a>> {
         self.nth_parent(1)
     }
-    pub fn grandparent(&self) -> Option<NodeHandle<'a, Spec>> {
+    pub fn grandparent(&self) -> Option<NodeHandle<'a>> {
         self.nth_parent(2)
     }
     pub fn mcts(&self) -> &'a Spec {
@@ -693,7 +685,7 @@ impl<'a, 'b, Spec: MCTS> SharedSearchHandle<'a, 'b, Spec> {
     pub fn depth(&self) -> usize {
         self.path.len()
     }
-    pub fn nth_parent(&self, n: usize) -> Option<NodeHandle<'a, Spec>> {
+    pub fn nth_parent(&self, n: usize) -> Option<NodeHandle<'a>> {
         if n >= self.path.len() {
             None
         } else {
@@ -708,7 +700,7 @@ impl<'a, 'b, Spec: MCTS> SearchHandle<'a, 'b, Spec> {
     pub fn thread_data(&mut self) -> &mut ThreadData<'a, Spec> {
         self.tld
     }
-    pub fn node(&self) -> NodeHandle<'a, Spec> {
+    pub fn node(&self) -> NodeHandle<'a> {
         self.shared.node()
     }
     pub fn mcts(&self) -> &'a Spec {
@@ -723,7 +715,7 @@ impl<'a, 'b, Spec: MCTS> SearchHandle<'a, 'b, Spec> {
     pub fn depth(&self) -> usize {
         self.shared.depth()
     }
-    pub fn nth_parent(&self, n: usize) -> Option<NodeHandle<'a, Spec>> {
+    pub fn nth_parent(&self, n: usize) -> Option<NodeHandle<'a>> {
         self.shared.nth_parent(n)
     }
 }
@@ -744,4 +736,13 @@ impl<'a> Drop for IncreaseSentinel<'a> {
     fn drop(&mut self) {
         self.x.fetch_sub(1, Ordering::Relaxed);
     }
+}
+
+pub fn print_size_list() {
+    println!(
+        "info string SearchNode {} HotMoveInfo {} ColdMoveInfo {}",
+        mem::size_of::<SearchNode>(),
+        mem::size_of::<HotMoveInfo>(),
+        mem::size_of::<ColdMoveInfo>()
+    );
 }
