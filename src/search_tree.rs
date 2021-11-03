@@ -116,25 +116,20 @@ struct HotMoveInfo {
     sum_evaluations: AtomicI64,
     visits: AtomicU32,
     move_evaluation: MoveEvaluation,
-}
-struct ColdMoveInfo {
     mov: chess::ChessMove,
     child: AtomicPtr<SearchNode>,
 }
 pub struct MoveInfoHandle<'a> {
     hot: &'a HotMoveInfo,
-    cold: &'a ColdMoveInfo,
 }
 
 unsafe impl Pod for HotMoveInfo {}
-unsafe impl Pod for ColdMoveInfo {}
 unsafe impl Pod for SearchNode {}
 
 impl<'a> Clone for MoveInfoHandle<'a> {
     fn clone(&self) -> Self {
         Self {
             hot: self.hot,
-            cold: self.cold,
         }
     }
 }
@@ -142,7 +137,6 @@ impl<'a> Copy for MoveInfoHandle<'a> {}
 
 pub struct SearchNode {
     hots: *const [()],
-    colds: *const [()],
     evaln: StateEvaluation,
     sum_evaluations: AtomicI64,
     visits: AtomicU32,
@@ -151,10 +145,9 @@ pub struct SearchNode {
 unsafe impl Sync for SearchNode {}
 
 impl SearchNode {
-    fn new<'a>(hots: &'a [HotMoveInfo], colds: &'a [ColdMoveInfo], evaln: StateEvaluation) -> Self {
+    fn new<'a>(hots: &'a [HotMoveInfo], evaln: StateEvaluation) -> Self {
         Self {
             hots: hots as *const _ as *const [()],
-            colds: colds as *const _ as *const [()],
             evaln,
             visits: AtomicU32::default(),
             sum_evaluations: AtomicI64::default(),
@@ -170,30 +163,20 @@ impl SearchNode {
             hots[i].move_evaluation = evals[i];
         }
     }
-    fn colds(&self) -> &[ColdMoveInfo] {
-        unsafe { &*(self.colds as *const [ColdMoveInfo]) }
-    }
     pub fn moves(&self) -> Moves {
         Moves {
             hots: self.hots(),
-            colds: self.colds(),
             index: 0,
         }
     }
 }
 
 impl HotMoveInfo {
-    fn new(move_evaluation: MoveEvaluation) -> Self {
+    fn new(move_evaluation: MoveEvaluation, mov: chess::ChessMove) -> Self {
         Self {
             move_evaluation,
             sum_evaluations: AtomicI64::default(),
             visits: AtomicU32::default(),
-        }
-    }
-}
-impl<'a> ColdMoveInfo {
-    fn new(mov: chess::ChessMove) -> Self {
-        Self {
             mov,
             child: AtomicPtr::default(),
         }
@@ -202,7 +185,7 @@ impl<'a> ColdMoveInfo {
 
 impl<'a> MoveInfoHandle<'a> {
     pub fn get_move(&self) -> &'a chess::ChessMove {
-        &self.cold.mov
+        &self.hot.mov
     }
 
     pub fn move_evaluation(&self) -> &'a MoveEvaluation {
@@ -218,7 +201,7 @@ impl<'a> MoveInfoHandle<'a> {
     }
 
     pub fn child(&self) -> Option<NodeHandle<'a>> {
-        let ptr = self.cold.child.load(Ordering::Relaxed);
+        let ptr = self.hot.child.load(Ordering::Relaxed);
         if ptr.is_null() {
             None
         } else {
@@ -259,14 +242,11 @@ fn create_node<'a, 'b, Spec: MCTS>(
     let (move_eval, state_eval) = eval.evaluate_new_state(state, &moves);
     policy.validate_evaluations(&move_eval);
     let hots = allocator.alloc_slice(move_eval.len())?;
-    let colds = allocator.alloc_slice(move_eval.len())?;
-    for (x, y) in hots.iter_mut().zip(move_eval.into_iter()) {
-        *x = HotMoveInfo::new(y);
+    let moves_slice = moves.as_slice();
+    for (i, x) in hots.iter_mut().enumerate() {
+        *x = HotMoveInfo::new(move_eval[i], moves_slice[i]);
     }
-    for (x, y) in colds.iter_mut().zip(moves.into_iter()) {
-        *x = ColdMoveInfo::new(y);
-    }
-    Ok(SearchNode::new(hots, colds, state_eval))
+    Ok(SearchNode::new(hots, state_eval))
 }
 
 fn is_cycle<T>(past: &[&T], current: &T) -> bool {
@@ -389,10 +369,10 @@ impl<Spec: MCTS> SearchTree<Spec> {
             assert!(path.len() <= self.manager.max_playout_length(),
                 "playout length exceeded maximum of {} (maybe the transposition table is creating an infinite loop?)",
                 self.manager.max_playout_length());
-            state.make_move(&choice.cold.mov);
+            state.make_move(&choice.hot.mov);
 
             let (new_node, new_did_we_create) =
-                match self.descend(&state, choice.cold, tld, &node_path) {
+                match self.descend(&state, choice.hot, tld, &node_path) {
                     Ok(r) => r,
                     Err(ArenaError::Full) => {
                         debug!("Hash reached max capacity");
@@ -450,7 +430,7 @@ impl<Spec: MCTS> SearchTree<Spec> {
     fn descend<'a>(
         &'a self,
         state: &State,
-        choice: &ColdMoveInfo,
+        choice: &HotMoveInfo,
         tld: &mut ThreadData<'a, Spec>,
         path: &[&'a SearchNode],
     ) -> Result<(&'a SearchNode, bool), ArenaError> {
@@ -555,7 +535,7 @@ impl<Spec: MCTS> SearchTree<Spec> {
                 .manager
                 .select_child_after_search(&crnt.moves().collect::<Vec<_>>());
             result.push(choice);
-            let child = choice.cold.child.load(Ordering::SeqCst) as *const SearchNode;
+            let child = choice.hot.child.load(Ordering::SeqCst) as *const SearchNode;
             if child.is_null() {
                 break;
             } else {
@@ -610,7 +590,6 @@ impl<'a> NodeHandle<'a> {
 
 pub struct Moves<'a> {
     hots: &'a [HotMoveInfo],
-    colds: &'a [ColdMoveInfo],
     index: usize,
 }
 
@@ -618,7 +597,6 @@ impl<'a> Clone for Moves<'a> {
     fn clone(&self) -> Self {
         Self {
             hots: self.hots,
-            colds: self.colds,
             index: self.index,
         }
     }
@@ -635,7 +613,6 @@ impl<'a> Iterator for Moves<'a> {
             let handle = unsafe {
                 MoveInfoHandle {
                     hot: self.hots.get_unchecked(self.index),
-                    cold: self.colds.get_unchecked(self.index),
                 }
             };
             self.index += 1;
@@ -740,9 +717,8 @@ impl<'a> Drop for IncreaseSentinel<'a> {
 
 pub fn print_size_list() {
     println!(
-        "info string SearchNode {} HotMoveInfo {} ColdMoveInfo {}",
+        "info string SearchNode {} HotMoveInfo {}",
         mem::size_of::<SearchNode>(),
         mem::size_of::<HotMoveInfo>(),
-        mem::size_of::<ColdMoveInfo>()
     );
 }
