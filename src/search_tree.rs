@@ -1,5 +1,3 @@
-#![cfg_attr(feature = "nightly", feature(integer_atomics))]
-
 use atomics::*;
 use mcts::*;
 use options::get_hash_size_mb;

@@ -34,7 +34,7 @@ jobs:
       - uses: actions/checkout@v2
       - uses: actions-rs/toolchain@v1
         with:
-          toolchain: nightly
+          toolchain: stable
       - name: Set version
         run: sed -i "s/^version = .*/version = \"$(git describe --tags --dirty --always)\"/" Cargo.toml
         shell: bash

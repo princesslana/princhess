@@ -1,5 +1,3 @@
-#![feature(integer_atomics)]
-
 #[macro_use]
 extern crate log;
 extern crate arc_swap;
