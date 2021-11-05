@@ -1,5 +1,3 @@
-cargo-features = ["strip"]
-
 [package]
 authors = ["Princess Lana <ianagbip1oti@gmail.com>", "Jacob Jackson <jacobbfjackson@gmail.com>"]
 build = "src/build.rs"
@@ -32,4 +30,3 @@ smallvec = "=0.6.14"
 
 [profile.release]
 lto = true
-strip = "symbols"
