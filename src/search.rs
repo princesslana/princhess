@@ -1,5 +1,5 @@
 use atomics::Ordering;
-use bench::BENCHMARKING_POSITIONS;
+use bench::{get_policy_validations, BENCHMARKING_POSITIONS};
 use chess::{Color, MoveGen, Piece};
 use evaluation::GooseEval;
 use features::Model;
@@ -8,7 +8,7 @@ use mcts::{
     AsyncSearchOwned, CycleBehaviour, Evaluator, GameState, MCTSManager, MoveInfoHandle, MCTS,
 };
 use options::{get_exploration_constant, get_num_threads};
-use policy_features::evaluate_single;
+use policy_features::{evaluate_moves, evaluate_single};
 use search_tree::{empty_previous_table, PreviousTable};
 use shakmaty_syzygy::Syzygy;
 use state::{Move, Outcome, State, StateBuilder};
@@ -359,6 +359,47 @@ impl Search {
 
         println!("info nodes {}", nodes,);
         println!("info nps {}", nodes * 100 / search_time_ms as usize)
+    }
+
+    pub fn eval_policy(&self) {
+        let mut correct = 0;
+        let mut attempts = 0;
+
+        for (mv, s) in get_policy_validations() {
+            let move_list = s.available_moves();
+            let moves = move_list.as_slice();
+            let evals = evaluate_moves(&s, &moves);
+
+            let mut max_eval = evals[0];
+            let mut best_move = moves[0];
+
+            for (e, m) in evals.iter().zip(moves) {
+                if e > &max_eval {
+                    best_move = *m;
+                    max_eval = *e;
+                }
+            }
+
+            attempts += 1;
+            if to_uci(best_move) == mv {
+                correct += 1;
+            }
+
+            if attempts % 100000 == 0 {
+                println!(
+                    "info string {}/{} ({:.2}%)",
+                    correct,
+                    attempts,
+                    correct as f32 / attempts as f32 * 100.
+                );
+            }
+        }
+        println!(
+            "info string {}/{} ({:.2}%)",
+            correct,
+            attempts,
+            correct as f32 / attempts as f32 * 100.
+        );
     }
 }
 

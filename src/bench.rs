@@ -1,3 +1,7 @@
+use state::{State, StateBuilder};
+use std::fs::File;
+use std::io::{BufRead, BufReader};
+
 pub const BENCHMARKING_POSITIONS: [&str; 50] = [
     "r3k2r/2pb1ppp/2pp1q2/p7/1nP1B3/1P2P3/P2N1PPP/R2QK2R w KQkq a6 0 14",
     "4rrk1/2p1b1p1/p1p3q1/4p3/2P2n1p/1P1NR2P/PB3PP1/3R1QK1 b - - 2 24",
@@ -50,3 +54,30 @@ pub const BENCHMARKING_POSITIONS: [&str; 50] = [
     "3br1k1/p1pn3p/1p3n2/5pNq/2P1p3/1PN3PP/P2Q1PB1/4R1K1 w - - 0 23",
     "2r2b2/5p2/5k2/p1r1pP2/P2pB3/1P3P2/K1P3R1/7R w - - 23 93",
 ];
+
+pub fn get_policy_validations() -> Vec<(String, State)> {
+    let f = File::open("policy_validation").unwrap();
+    let mut cursor = BufReader::new(f);
+    let mut line = String::new();
+
+    let mut ps = Vec::new();
+
+    loop {
+        line.clear();
+        match cursor.read_line(&mut line) {
+            Err(_) | Ok(0) => break,
+            Ok(_) => {
+                let mut parts = line.split(" : ");
+                let mv = parts.next().unwrap().to_string();
+                let fen = parts.next().expect("No FEN!").trim_end();
+                let state = StateBuilder::from_fen(fen)
+                    .expect(&format!("Bad FEN! {}", fen).to_string())
+                    .into();
+
+                ps.push((mv, state));
+            }
+        }
+    }
+
+    ps
+}

@@ -12,6 +12,7 @@ use features::{featurize, name_feature, GameResult, NUM_DENSE_FEATURES, NUM_FEAT
 use mcts::GameState;
 use policy_features;
 use policy_features::NUM_POLICY_FEATURES;
+use search::to_uci;
 use shakmaty;
 use state::StateBuilder;
 
@@ -24,6 +25,7 @@ const NUM_ROWS: usize = std::usize::MAX;
 const MIN_ELO: i32 = 1700;
 const MIN_ELO_POLICY: i32 = 2200;
 const NUM_SAMPLES: usize = 4;
+const VALIDATION_RATIO: f32 = 0.1;
 
 struct ValueDataGenerator {
     out_file: Option<BufWriter<File>>,
@@ -174,8 +176,10 @@ pub fn train_policy(in_path: &str, out_path: &str) {
     let out_path = format!("policy_{}", out_path);
 
     let out_file = BufWriter::new(File::create(out_path).expect("create"));
+    let validation_file = BufWriter::new(File::create("policy_validation").expect("create"));
     let mut generator = PolicyDataGenerator {
         out_file,
+        validation_file,
         state: StateBuilder::default(),
         skip: true,
         rng: SeedableRng::seed_from_u64(42),
@@ -189,6 +193,7 @@ pub fn train_policy(in_path: &str, out_path: &str) {
 
 struct PolicyDataGenerator {
     out_file: BufWriter<File>,
+    validation_file: BufWriter<File>,
     state: StateBuilder,
     skip: bool,
     rng: SmallRng,
@@ -256,6 +261,10 @@ impl Visitor for PolicyDataGenerator {
                             |_| true,
                         )
                     }
+                }
+                if self.rng.gen_range(0., 1.) < VALIDATION_RATIO {
+                    let fen = shakmaty::fen::fen(state.shakmaty_board());
+                    writeln!(self.validation_file, "{} : {}", to_uci(m), fen).unwrap();
                 }
             }
             state.make_move(&m);
