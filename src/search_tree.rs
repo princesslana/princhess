@@ -1,4 +1,3 @@
-use atomics::*;
 use mcts::*;
 use options::get_hash_size_mb;
 use policy_features::softmax;
@@ -6,6 +5,7 @@ use search::{GooseMCTS, SCALE};
 use smallvec::SmallVec;
 use state::State;
 use std::ptr::null_mut;
+use std::sync::atomic::{AtomicI64, AtomicPtr, AtomicU32, AtomicUsize, Ordering};
 use transposition_table::{ApproxTable, TranspositionTable};
 
 use log::debug;
@@ -69,18 +69,18 @@ impl<Spec: MCTS> PreviousTable<Spec> {
 }
 
 trait NodeStats {
-    fn get_visits(&self) -> &FakeU32;
+    fn get_visits(&self) -> &AtomicU32;
     fn get_sum_evaluations(&self) -> &AtomicI64;
 
     fn down<Spec: MCTS>(&self, manager: &Spec) {
         self.get_sum_evaluations()
-            .fetch_sub(manager.virtual_loss() as FakeI64, Ordering::Relaxed);
+            .fetch_sub(manager.virtual_loss() as i64, Ordering::Relaxed);
         self.get_visits().fetch_add(1, Ordering::Relaxed);
     }
     fn up<Spec: MCTS>(&self, manager: &Spec, evaln: i64) {
         let delta = evaln + manager.virtual_loss();
         self.get_sum_evaluations()
-            .fetch_add(delta as FakeI64, Ordering::Relaxed);
+            .fetch_add(delta as i64, Ordering::Relaxed);
     }
     fn replace<T: NodeStats>(&self, other: &T) {
         self.get_visits().store(
@@ -95,7 +95,7 @@ trait NodeStats {
 }
 
 impl NodeStats for HotMoveInfo {
-    fn get_visits(&self) -> &FakeU32 {
+    fn get_visits(&self) -> &AtomicU32 {
         &self.visits
     }
     fn get_sum_evaluations(&self) -> &AtomicI64 {
@@ -103,7 +103,7 @@ impl NodeStats for HotMoveInfo {
     }
 }
 impl<Spec: MCTS> NodeStats for SearchNode<Spec> {
-    fn get_visits(&self) -> &FakeU32 {
+    fn get_visits(&self) -> &AtomicU32 {
         &self.visits
     }
     fn get_sum_evaluations(&self) -> &AtomicI64 {
@@ -113,7 +113,7 @@ impl<Spec: MCTS> NodeStats for SearchNode<Spec> {
 
 struct HotMoveInfo {
     sum_evaluations: AtomicI64,
-    visits: FakeU32,
+    visits: AtomicU32,
     move_evaluation: MoveEvaluation,
 }
 struct ColdMoveInfo<Spec: MCTS> {
@@ -144,7 +144,7 @@ pub struct SearchNode<Spec: MCTS> {
     colds: *const [()],
     evaln: StateEvaluation<Spec>,
     sum_evaluations: AtomicI64,
-    visits: FakeU32,
+    visits: AtomicU32,
 }
 
 unsafe impl<Spec: MCTS> Sync for SearchNode<Spec>
@@ -167,7 +167,7 @@ impl<Spec: MCTS> SearchNode<Spec> {
             hots: hots as *const _ as *const [()],
             colds: colds as *const _ as *const [()],
             evaln,
-            visits: FakeU32::default(),
+            visits: AtomicU32::default(),
             sum_evaluations: AtomicI64::default(),
         }
     }
@@ -198,7 +198,7 @@ impl HotMoveInfo {
         Self {
             move_evaluation,
             sum_evaluations: AtomicI64::default(),
-            visits: FakeU32::default(),
+            visits: AtomicU32::default(),
         }
     }
 }

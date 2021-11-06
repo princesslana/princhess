@@ -1,8 +1,8 @@
 use super::*;
-use atomics::*;
 use mcts::MCTS;
 use search_tree::*;
 use state::State;
+use std::sync::atomic::{AtomicPtr, AtomicU64, AtomicUsize, Ordering};
 
 pub unsafe trait TranspositionTable<Spec: MCTS>: Sync + Sized {
     /// **If this function inserts a value, it must return `None`.** Failure to follow
@@ -163,9 +163,9 @@ where
             if key_here == 0 {
                 let key_here = entry
                     .k
-                    .compare_and_swap(0, my_hash as FakeU64, Ordering::Relaxed);
+                    .compare_and_swap(0, my_hash as u64, Ordering::Relaxed);
                 self.size.fetch_add(1, Ordering::Relaxed);
-                if key_here == 0 || key_here == my_hash as FakeU64 {
+                if key_here == 0 || key_here == my_hash as u64 {
                     return get_or_write(&entry.v, value);
                 }
             }

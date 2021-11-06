@@ -3,12 +3,12 @@ pub use search_tree::*;
 use transposition_table::*;
 use tree_policy::*;
 
-use atomics::*;
 use chess;
 use float_ord::FloatOrd;
 use policy_features::evaluate_moves;
 use search::{to_uci, SCALE};
 use state::State;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::Sender;
 use std::sync::{Arc, RwLock};
 use std::thread::JoinHandle;
