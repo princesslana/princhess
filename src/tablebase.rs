@@ -1,10 +1,10 @@
 use arc_swap::ArcSwap;
-use atomics::*;
 use log::debug;
 use once_cell::sync::Lazy;
 use shakmaty::{Chess, Move};
 use shakmaty_syzygy::{Tablebase, Wdl};
 use std::path::Path;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 static TABLEBASE: Lazy<ArcSwap<Tablebase<Chess>>> =

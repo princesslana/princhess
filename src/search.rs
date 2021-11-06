@@ -1,4 +1,3 @@
-use atomics::Ordering;
 use bench::{get_policy_validations, BENCHMARKING_POSITIONS};
 use chess::{Color, MoveGen, Piece};
 use evaluation::GooseEval;
@@ -12,6 +11,7 @@ use policy_features::{evaluate_moves, evaluate_single};
 use search_tree::{empty_previous_table, PreviousTable};
 use shakmaty_syzygy::Syzygy;
 use state::{Move, Outcome, State, StateBuilder};
+use std::sync::atomic::Ordering;
 use std::sync::mpsc::Sender;
 use std::thread;
 use std::time::{Duration, Instant};
