@@ -1,5 +1,5 @@
 [package]
-authors = ["Princess Lana <ianagbip1oti@gmail.com>", "Jacob Jackson <jacobbfjackson@gmail.com>"]
+authors = ["Princess Lana <ianagbip1oti@gmail.com>"]
 build = "src/build.rs"
 name = "princhess"
 version = "0.0.0-dev"
