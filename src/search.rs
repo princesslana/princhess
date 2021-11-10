@@ -71,7 +71,7 @@ impl MCTS for GooseMCTS {
             .max_by_key(|child| {
                 child
                     .average_reward()
-                    .map(|r| r.max(-SCALE).min(SCALE).round() as i64)
+                    .map(|r| r.round() as i64)
                     .unwrap_or(-SCALE as i64)
             })
             .unwrap()

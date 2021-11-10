@@ -549,7 +549,10 @@ impl<Spec: MCTS> SearchTree<Spec> {
         for ((move_info, player), node) in
             path.iter().zip(players.iter()).zip(node_path.iter()).rev()
         {
-            let evaln_value = self.eval.interpret_evaluation_for_player(evaln, player);
+            let mut evaln_value = self.eval.interpret_evaluation_for_player(evaln, player);
+            if evaln_value.abs() > SCALE as i64 {
+                evaln_value -= evaln_value.signum() * (0.01 * SCALE) as i64;
+            }
             node.up(&self.manager, evaln_value);
             move_info.hot.replace(*node);
         }
