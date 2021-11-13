@@ -413,7 +413,7 @@ fn eval_in_cp(eval: f32) -> String {
         let plies = (1.1 - eval.abs()) / 0.001;
         let mvs = plies / 2.;
         let mate_score = (eval.signum() * mvs).round();
-        format!("m {}", mate_score)
+        format!("mate {:+}", mate_score)
     } else {
         // Based upon leela's formula.
         // Tweaked to appear in the range (-1000, 1000)
