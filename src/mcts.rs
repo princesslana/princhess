@@ -17,10 +17,8 @@ use std::time::Instant;
 pub trait MCTS: Sized + Sync {
     type Eval: Evaluator<Self>;
     type TreePolicy: TreePolicy<Self>;
-    type NodeData: Default + Sync + Send;
     type TranspositionTable: TranspositionTable<Self>;
     type ExtraThreadData;
-    type PlayoutData: Default;
 
     /// Virtual loss subtracted from a node's evaluation when a search thread chooses it in a playout,
     /// then added back when the playout is complete.
@@ -59,26 +57,6 @@ pub trait MCTS: Sized + Sync {
         } else {
             CycleBehaviour::PanicWhenCycleDetected
         }
-    }
-    /// Called when a child node is selected in a playout. The default implementation does nothing.
-    fn on_choice_made<'a, 'b>(
-        &self,
-        _data: &mut Self::PlayoutData,
-        _state: &State,
-        _moves: Moves<'a, Self>,
-        _choice: MoveInfoHandle<'a, Self>,
-        _handle: SearchHandle<'a, 'b, Self>,
-    ) {
-    }
-    /// Called before the tree policy is run. If it returns `Some(x)`, the tree policy is ignored
-    /// and `x` is used instead. The default implementation returns `None`.
-    fn override_policy<'a>(
-        &self,
-        _data: &Self::PlayoutData,
-        _state: &State,
-        _moves: Moves<'a, Self>,
-    ) -> Option<MoveInfoHandle<'a, Self>> {
-        None
     }
 }
 
@@ -126,13 +104,6 @@ pub trait Evaluator<Spec: MCTS>: Sync {
         state: &State,
         moves: &MoveList,
     ) -> (Vec<MoveEvaluation>, Self::StateEvaluation);
-
-    fn evaluate_existing_state(
-        &self,
-        state: &State,
-        existing_evaln: &Self::StateEvaluation,
-        handle: SearchHandle<Spec>,
-    ) -> Self::StateEvaluation;
 
     fn interpret_evaluation_for_player(
         &self,
