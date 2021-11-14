@@ -299,28 +299,6 @@ pub fn thousands_separate(x: usize) -> String {
     String::from_utf8(result).unwrap()
 }
 
-#[must_use]
-pub struct AsyncSearch<'a, Spec: 'a + MCTS> {
-    manager: &'a mut MCTSManager<Spec>,
-    stop_signal: Arc<AtomicBool>,
-    threads: Vec<JoinHandle<()>>,
-}
-
-impl<'a, Spec: MCTS> AsyncSearch<'a, Spec> {
-    pub fn halt(self) {}
-    pub fn num_threads(&self) -> usize {
-        self.threads.len()
-    }
-}
-
-impl<'a, Spec: MCTS> Drop for AsyncSearch<'a, Spec> {
-    fn drop(&mut self) {
-        self.stop_signal.store(true, Ordering::SeqCst);
-        drain_join_unwrap(&mut self.threads);
-    }
-}
-
-#[must_use]
 pub struct AsyncSearchOwned<Spec: MCTS> {
     manager: Option<Box<MCTSManager<Spec>>>,
     stop_signal: Arc<AtomicBool>,

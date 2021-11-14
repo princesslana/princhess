@@ -148,10 +148,9 @@ pub struct SearchNode<Spec: MCTS> {
 }
 
 unsafe impl<Spec: MCTS> Sync for SearchNode<Spec> where
-    StateEvaluation<Spec>: Sync
-    // NodeStats: Sync,
-    // for<'a> &'a[HotMoveInfo]: Sync,
-    // for<'a> &'a[ColdMoveInfo<Spec>]: Sync,
+    StateEvaluation<Spec>: Sync // NodeStats: Sync,
+                                // for<'a> &'a[HotMoveInfo]: Sync,
+                                // for<'a> &'a[ColdMoveInfo<Spec>]: Sync
 {
 }
 
@@ -611,14 +610,6 @@ impl<'a, Spec: MCTS> Copy for NodeHandle<'a, Spec> {}
 impl<'a, Spec: MCTS> NodeHandle<'a, Spec> {
     pub fn moves(&self) -> Moves<Spec> {
         self.node.moves()
-    }
-    pub fn into_raw(self) -> *const () {
-        self.node as *const _ as *const ()
-    }
-    pub unsafe fn from_raw(ptr: *const ()) -> Self {
-        NodeHandle {
-            node: &*(ptr as *const SearchNode<Spec>),
-        }
     }
 }
 
