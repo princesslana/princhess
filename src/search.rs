@@ -48,10 +48,8 @@ impl Drop for ThreadSentinel {
 impl MCTS for GooseMCTS {
     type Eval = GooseEval;
     type TreePolicy = AlphaGoPolicy;
-    type NodeData = ();
     type ExtraThreadData = ThreadSentinel;
     type TranspositionTable = ApproxTable<Self>;
-    type PlayoutData = ();
 
     fn node_limit(&self) -> usize {
         4_000_000

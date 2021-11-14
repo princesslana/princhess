@@ -1,6 +1,6 @@
 use chess::*;
 use features::Model;
-use mcts::{Evaluator, SearchHandle};
+use mcts::Evaluator;
 use policy_features::evaluate_moves;
 use search::{GooseMCTS, SCALE};
 use state::{MoveList, Outcome, Player, State};
@@ -33,9 +33,7 @@ impl Evaluator<GooseMCTS> for GooseEval {
         };
         (move_evaluations, state_evaluation)
     }
-    fn evaluate_existing_state(&self, _: &State, evaln: &i64, _: SearchHandle<GooseMCTS>) -> i64 {
-        *evaln
-    }
+
     fn interpret_evaluation_for_player(&self, evaln: &i64, player: &Player) -> i64 {
         match *player {
             Color::White => *evaln,

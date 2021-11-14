@@ -147,13 +147,10 @@ pub struct SearchNode<Spec: MCTS> {
     visits: AtomicU32,
 }
 
-unsafe impl<Spec: MCTS> Sync for SearchNode<Spec>
-where
-    Spec::NodeData: Sync,
-    StateEvaluation<Spec>: Sync,
-    // NodeStats: Sync,
-    // for<'a> &'a[HotMoveInfo]: Sync,
-    // for<'a> &'a[ColdMoveInfo<Spec>]: Sync,
+unsafe impl<Spec: MCTS> Sync for SearchNode<Spec> where
+    StateEvaluation<Spec>: Sync // NodeStats: Sync,
+                                // for<'a> &'a[HotMoveInfo]: Sync,
+                                // for<'a> &'a[ColdMoveInfo<Spec>]: Sync
 {
 }
 
@@ -377,7 +374,6 @@ impl<Spec: MCTS> SearchTree<Spec> {
             return false;
         }
         let mut state = self.root_state.clone();
-        let mut playout_data = Spec::PlayoutData::default();
         let mut path: SmallVec<[MoveInfoHandle<Spec>; LARGE_DEPTH]> = SmallVec::new();
         let mut node_path: SmallVec<[&SearchNode<Spec>; LARGE_DEPTH]> = SmallVec::new();
         let mut players: SmallVec<[Player; LARGE_DEPTH]> = SmallVec::new();
@@ -390,22 +386,9 @@ impl<Spec: MCTS> SearchTree<Spec> {
             if path.len() >= self.manager.max_playout_length() {
                 break;
             }
-            let choice = match self
-                .manager
-                .override_policy(&playout_data, &state, node.moves())
-            {
-                Some(choice) => choice,
-                None => self.tree_policy.choose_child(
-                    &state,
-                    node.moves(),
-                    self.make_handle(tld, &node_path),
-                ),
-            };
-            self.manager.on_choice_made(
-                &mut playout_data,
+            let choice = self.tree_policy.choose_child(
                 &state,
                 node.moves(),
-                choice,
                 self.make_handle(tld, &node_path),
             );
             choice.hot.down(&self.manager);
@@ -458,11 +441,7 @@ impl<Spec: MCTS> SearchTree<Spec> {
         let new_evaln = if did_we_create {
             None
         } else {
-            Some(self.eval.evaluate_existing_state(
-                &state,
-                &node.evaln,
-                self.make_handle(tld, &node_path),
-            ))
+            Some(node.evaln)
         };
         let evaln = new_evaln.as_ref().unwrap_or(&node.evaln);
         self.finish_playout(&path, &node_path, &players, evaln);
@@ -631,14 +610,6 @@ impl<'a, Spec: MCTS> Copy for NodeHandle<'a, Spec> {}
 impl<'a, Spec: MCTS> NodeHandle<'a, Spec> {
     pub fn moves(&self) -> Moves<Spec> {
         self.node.moves()
-    }
-    pub fn into_raw(self) -> *const () {
-        self.node as *const _ as *const ()
-    }
-    pub unsafe fn from_raw(ptr: *const ()) -> Self {
-        NodeHandle {
-            node: &*(ptr as *const SearchNode<Spec>),
-        }
     }
 }
 
