@@ -5,6 +5,8 @@ use policy_features::evaluate_moves;
 use search::{GooseMCTS, SCALE};
 use state::{MoveList, Outcome, Player, State};
 
+const MATE_FACTOR: f32 = 1.1;
+
 pub struct GooseEval {
     model: Model,
 }
@@ -21,7 +23,7 @@ impl Evaluator<GooseMCTS> for GooseEval {
     fn evaluate_new_state(&self, state: &State, moves: &MoveList) -> (Vec<f32>, i64) {
         let move_evaluations = evaluate_moves(state, moves.as_slice());
         let state_evaluation = if moves.len() == 0 {
-            let x = SCALE as i64;
+            let x = (MATE_FACTOR * SCALE) as i64;
             match state.outcome() {
                 Outcome::Draw => 0,
                 Outcome::WhiteWin => x,

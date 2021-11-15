@@ -215,7 +215,7 @@ where
         self.principal_variation(1).get(0).map(|x| x.clone())
     }
 
-    pub fn eval_in_cp(&self) -> i64 {
+    pub fn eval_in_cp(&self) -> String {
         eval_in_cp(
             self.principal_variation_info(1)
                 .get(0)
@@ -239,7 +239,7 @@ where
         let nps = nodes * 1000 / search_time_ms as usize;
 
         let info_str = format!(
-            "info depth {} seldepth {} nodes {} nps {} tbhits {} score cp {} time {} pv{}",
+            "info depth {} seldepth {} nodes {} nps {} tbhits {} score {} time {} pv{}",
             self.tree().average_depth(),
             self.tree().max_depth(),
             nodes,
@@ -273,7 +273,7 @@ where
         moves.sort_by_key(|(h, e)| FloatOrd(h.average_reward().unwrap_or(*e)));
         for (mov, e) in moves {
             println!(
-                "info string {} M: {:>6} P: {:>6} V: {:7} E: {:>6} (cp {:>5})",
+                "info string {} M: {:>6} P: {:>6} V: {:7} E: {:>6} ({:>8})",
                 mov.get_move(),
                 format!("{:3.2}", e * 100.),
                 format!("{:3.2}", mov.move_evaluation() * 100.),
@@ -356,8 +356,16 @@ pub enum CycleBehaviour<Spec: MCTS> {
     UseThisEvalWhenCycleDetected(StateEvaluation<Spec>),
 }
 
-// Based upon leela's formula.
-// Tweaked to appear in thee range (-1000, 1000)
-fn eval_in_cp(eval: f32) -> i64 {
-    (101.139 * (1.47 * eval).tan()) as i64
+// eval here is [0.0, 1.0]
+fn eval_in_cp(eval: f32) -> String {
+    if eval.abs() > 1.0 {
+        let plies = (1.1 - eval.abs()) / 0.001;
+        let mvs = plies / 2.;
+        let mate_score = (eval.signum() * mvs).round();
+        format!("mate {:+}", mate_score)
+    } else {
+        // Based upon leela's formula.
+        // Tweaked to appear in the range (-1000, 1000)
+        format!("cp {}", (101.139 * (1.47 * eval).tan()).round())
+    }
 }
