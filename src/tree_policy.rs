@@ -22,9 +22,9 @@ pub trait TreePolicy<Spec: MCTS<TreePolicy = Self>>: Sync + Sized {
     fn choose_child<'a>(
         &self,
         state: &State,
-        moves: Moves<'a, Spec>,
+        moves: Moves<'a>,
         handle: SearchHandle<Spec>,
-    ) -> MoveInfoHandle<'a, Spec>;
+    ) -> MoveInfoHandle<'a>;
     fn validate_evaluations(&self, _evalns: &[MoveEvaluation]) {}
 }
 
@@ -72,9 +72,9 @@ impl<Spec: MCTS<TreePolicy = Self>> TreePolicy<Spec> for UCTPolicy {
     fn choose_child<'a>(
         &self,
         _: &State,
-        moves: Moves<'a, Spec>,
+        moves: Moves<'a>,
         mut handle: SearchHandle<Spec>,
-    ) -> MoveInfoHandle<'a, Spec> {
+    ) -> MoveInfoHandle<'a> {
         let total_visits = moves.map(|x| x.visits()).sum::<u64>();
         let adjusted_total = (total_visits + 1) as f32;
         let ln_adjusted_total = adjusted_total.ln();
@@ -103,9 +103,9 @@ impl<Spec: MCTS<TreePolicy = Self>> TreePolicy<Spec> for AlphaGoPolicy {
     fn choose_child<'a>(
         &self,
         _: &State,
-        moves: Moves<'a, Spec>,
+        moves: Moves<'a>,
         mut handle: SearchHandle<Spec>,
-    ) -> MoveInfoHandle<'a, Spec> {
+    ) -> MoveInfoHandle<'a> {
         let total_visits = moves.map(|x| x.visits()).sum::<u64>() + 1;
         let sqrt_total_visits = (total_visits as f32).sqrt();
         let explore_coef = self.exploration_constant * sqrt_total_visits;

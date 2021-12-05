@@ -17,7 +17,7 @@ use std::time::Instant;
 pub trait MCTS: Sized + Sync {
     type Eval: Evaluator<Self>;
     type TreePolicy: TreePolicy<Self>;
-    type TranspositionTable: TranspositionTable<Self>;
+    type TranspositionTable: TranspositionTable;
     type ExtraThreadData;
 
     /// Virtual loss subtracted from a node's evaluation when a search thread chooses it in a playout,
@@ -37,10 +37,7 @@ pub trait MCTS: Sized + Sync {
         std::usize::MAX
     }
     /// Rule for selecting the best move once the search is over. Defaults to choosing the child with the most visits.
-    fn select_child_after_search<'a>(
-        &self,
-        children: &[MoveInfoHandle<'a, Self>],
-    ) -> MoveInfoHandle<'a, Self> {
+    fn select_child_after_search<'a>(&self, children: &[MoveInfoHandle<'a>]) -> MoveInfoHandle<'a> {
         *children
             .into_iter()
             .max_by_key(|child| child.visits())
@@ -51,7 +48,7 @@ pub trait MCTS: Sized + Sync {
         1_000_000
     }
 
-    fn cycle_behaviour(&self) -> CycleBehaviour<Self> {
+    fn cycle_behaviour(&self) -> CycleBehaviour {
         if std::mem::size_of::<Self::TranspositionTable>() == 0 {
             CycleBehaviour::Ignore
         } else {
@@ -81,7 +78,7 @@ where
 }
 
 pub type MoveEvaluation = f32;
-pub type StateEvaluation<Spec> = <<Spec as MCTS>::Eval as Evaluator<Spec>>::StateEvaluation;
+pub type StateEvaluation = i64;
 pub type MoveList = <State as GameState>::MoveList;
 pub type Player = <State as GameState>::Player;
 pub type TreePolicyThreadData<Spec> =
@@ -97,19 +94,14 @@ pub trait GameState: Clone {
 }
 
 pub trait Evaluator<Spec: MCTS>: Sync {
-    type StateEvaluation: Sync + Send + Copy;
-
     fn evaluate_new_state(
         &self,
         state: &State,
         moves: &MoveList,
-    ) -> (Vec<MoveEvaluation>, Self::StateEvaluation);
+    ) -> (Vec<MoveEvaluation>, StateEvaluation);
 
-    fn interpret_evaluation_for_player(
-        &self,
-        evaluation: &Self::StateEvaluation,
-        player: &Player,
-    ) -> i64;
+    fn interpret_evaluation_for_player(&self, evaluation: &StateEvaluation, player: &Player)
+        -> i64;
 }
 
 pub struct MCTSManager<Spec: MCTS> {
@@ -191,7 +183,7 @@ where
         }
     }
 
-    pub fn principal_variation_info(&self, num_moves: usize) -> Vec<MoveInfoHandle<Spec>> {
+    pub fn principal_variation_info(&self, num_moves: usize) -> Vec<MoveInfoHandle> {
         self.search_tree.principal_variation(num_moves)
     }
     pub fn principal_variation(&self, num_moves: usize) -> Vec<chess::ChessMove> {
@@ -268,8 +260,7 @@ where
         let state_moves = root_state.available_moves();
         let state_moves_eval = evaluate_moves(root_state, state_moves.as_slice());
 
-        let mut moves: Vec<(MoveInfoHandle<Spec>, f32)> =
-            root_moves.zip(state_moves_eval).collect();
+        let mut moves: Vec<(MoveInfoHandle, f32)> = root_moves.zip(state_moves_eval).collect();
         moves.sort_by_key(|(h, e)| FloatOrd(h.average_reward().unwrap_or(*e)));
         for (mov, e) in moves {
             println!(
@@ -349,11 +340,11 @@ fn drain_join_unwrap(threads: &mut Vec<JoinHandle<()>>) {
     }
 }
 
-pub enum CycleBehaviour<Spec: MCTS> {
+pub enum CycleBehaviour {
     Ignore,
     UseCurrentEvalWhenCycleDetected,
     PanicWhenCycleDetected,
-    UseThisEvalWhenCycleDetected(StateEvaluation<Spec>),
+    UseThisEvalWhenCycleDetected(StateEvaluation),
 }
 
 // eval here is [0.0, 1.0]
