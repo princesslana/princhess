@@ -278,18 +278,6 @@ where
     }
 }
 
-// https://stackoverflow.com/questions/26998485/rust-print-format-number-with-thousand-separator
-pub fn thousands_separate(x: usize) -> String {
-    let s = format!("{}", x);
-    let bytes: Vec<_> = s.bytes().rev().collect();
-    let chunks: Vec<_> = bytes
-        .chunks(3)
-        .map(|chunk| String::from_utf8(chunk.to_vec()).unwrap())
-        .collect();
-    let result: Vec<_> = chunks.join(",").bytes().rev().collect();
-    String::from_utf8(result).unwrap()
-}
-
 pub struct AsyncSearchOwned<Spec: MCTS> {
     manager: Option<Box<MCTSManager<Spec>>>,
     stop_signal: Arc<AtomicBool>,

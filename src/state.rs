@@ -1,8 +1,9 @@
 use chess;
 use mcts::GameState;
+use nn;
 use search::to_uci;
 use shakmaty;
-use shakmaty::Position;
+use shakmaty::{File, Position, Setup};
 use shakmaty_syzygy::Wdl;
 use smallvec::SmallVec;
 use std;
@@ -123,6 +124,12 @@ impl State {
         &self.shakmaty_board
     }
 
+    pub fn features(&self) -> [f32; nn::NUMBER_FEATURES] {
+        let mut features = [0f32; nn::NUMBER_FEATURES];
+        self.featurize(&mut features);
+        features
+    }
+
     pub fn outcome(&self) -> &Outcome {
         &self.outcome
     }
@@ -201,19 +208,38 @@ impl State {
             ..self
         }
     }
-    pub fn queens_off(&self) -> bool {
-        self.queens_off
-    }
-    pub fn move_lists(&self) -> &[Vec<chess::ChessMove>; 2] {
-        &self.move_lists
-    }
-
-    pub fn is_endgame(&self) -> bool {
-        self.queens_off()
-    }
 
     pub fn piece_count(&self) -> u32 {
         self.board().combined().popcnt()
+    }
+
+    pub fn featurize(&self, features: &mut [f32]) {
+        features.fill(0.);
+
+        let turn = self.shakmaty_board().turn();
+        let b = self.shakmaty_board().board();
+
+        let ksq = b.king_of(turn).unwrap();
+
+        let flip_vertical = turn == shakmaty::Color::Black;
+        let flip_horizontal = ksq.file() <= File::D;
+
+        for (sq, pc) in b.pieces() {
+            let adj_sq = match (flip_vertical, flip_horizontal) {
+                (true, true) => sq.flip_vertical().flip_horizontal(),
+                (true, false) => sq.flip_vertical(),
+                (false, true) => sq.flip_horizontal(),
+                (false, false) => sq,
+            };
+
+            let sq_idx = adj_sq as usize;
+            let role_idx = pc.role as usize - 1;
+            let side_idx = if pc.color == turn { 0 } else { 1 };
+
+            let feature_idx = (side_idx * 6 + role_idx) * 64 + sq_idx;
+
+            features[feature_idx] = 1.;
+        }
     }
 }
 
@@ -318,6 +344,7 @@ impl From<StateBuilder> for State {
             );
             state.make_move(&mov);
         }
+
         state
     }
 }

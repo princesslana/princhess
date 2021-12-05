@@ -298,22 +298,21 @@ impl Search {
 
         let state = manager.tree().root_state();
 
-        let eval = GooseEval::new(Model::new());
+        let model = Model::new();
+        let results = model.predict(state);
+
+        let eval = GooseEval::new(model);
 
         let moves = state.available_moves();
-        let (move_eval, state_eval) = eval.evaluate_new_state(state, &moves);
+        let (_, state_eval) = eval.evaluate_new_state(state, &moves);
 
         println!(
-            "cp {} outcome {:?}",
-            (state_eval as f32 / (SCALE / 100.)) as i64,
-            state.outcome()
+            "{:3.2} {:?}",
+            (eval.interpret_evaluation_for_player(&state_eval, &state.board().side_to_move())
+                as f32
+                / (SCALE / 100.)),
+            results
         );
-
-        print!("moves ");
-        for (i, e) in move_eval.iter().enumerate().take(moves.len()) {
-            print!("{}:{:.3} ", moves.as_slice()[i], e);
-        }
-        println!();
     }
 
     pub fn print_info(&self) {
@@ -322,6 +321,23 @@ impl Search {
 
     pub fn print_move_list(&self) {
         self.search.get_manager().print_move_list();
+    }
+
+    pub fn print_features(&self) {
+        let fs = self.search.get_manager().tree().root_state().features();
+
+        let mut idx = 0;
+
+        for _ in 0..12 {
+            for _ in 0..8 {
+                for _ in 0..8 {
+                    print!("{}", if fs[idx] > 0.5 { 1 } else { 0 });
+                    idx += 1;
+                }
+                print!(" ");
+            }
+            println!()
+        }
     }
 
     pub fn bench(&self) {
