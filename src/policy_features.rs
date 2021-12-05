@@ -181,10 +181,7 @@ pub fn featurize(state: &State, mov: &Move) -> FeatureVec {
     for &x in arr.iter() {
         assert!(x == 0 || x == 1);
     }
-    FeatureVec {
-        arr: arr.to_vec(),
-        patterns: Vec::new(),
-    }
+    FeatureVec { arr: arr.to_vec() }
 }
 
 pub fn evaluate_single(state: &State, mov: &Move) -> f32 {

@@ -549,30 +549,6 @@ impl<Spec: MCTS> SearchTree<Spec> {
         }
         result
     }
-
-    pub fn diagnose(&self) -> String {
-        let mut s = String::new();
-        s.push_str(&format!(
-            "{} nodes\n",
-            thousands_separate(self.num_nodes.load(Ordering::Relaxed))
-        ));
-        s.push_str(&format!(
-            "{} transposition table hits\n",
-            thousands_separate(self.transposition_table_hits.load(Ordering::Relaxed))
-        ));
-        s.push_str(&format!(
-            "{} delayed transposition table hits\n",
-            thousands_separate(
-                self.delayed_transposition_table_hits
-                    .load(Ordering::Relaxed)
-            )
-        ));
-        s.push_str(&format!(
-            "{} expansion contention events\n",
-            thousands_separate(self.expansion_contention_events.load(Ordering::Relaxed))
-        ));
-        s
-    }
 }
 
 pub struct NodeHandle<'a> {

@@ -1,4 +1,5 @@
 **/*.rs.bk
+*.h5
 *.libsvm
 *.log
 *.pb
@@ -24,3 +25,6 @@ train/.env
 train/__pycache__
 train/pgn/*
 train_data*
+train/*_weights
+train/*_bias
+train/state_tuning

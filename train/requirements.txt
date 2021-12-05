@@ -1,2 +1,3 @@
 scikit-learn==0.24.2
 black==21.9b
+tensorflow==2.6.1

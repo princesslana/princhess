@@ -15,6 +15,7 @@ extern crate smallvec;
 mod arena;
 mod bench;
 mod mcts;
+mod nn;
 mod options;
 mod search_tree;
 mod tablebase;
