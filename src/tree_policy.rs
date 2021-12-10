@@ -52,17 +52,18 @@ impl UCTPolicy {
 
 #[derive(Clone, Debug)]
 pub struct AlphaGoPolicy {
-    exploration_constant: f32,
+    cpuct: f32,
+    cpuct_base: f32,
+    cpuct_factor: f32,
 }
 
 impl AlphaGoPolicy {
-    pub fn new(exploration_constant: f32) -> Self {
+    pub fn new(cpuct: f32, cpuct_base: f32, cpuct_factor: f32) -> Self {
         Self {
-            exploration_constant,
+            cpuct,
+            cpuct_base,
+            cpuct_factor,
         }
-    }
-    pub fn exploration_constant(&self) -> f32 {
-        self.exploration_constant
     }
 }
 
@@ -108,7 +109,12 @@ impl<Spec: MCTS<TreePolicy = Self>> TreePolicy<Spec> for AlphaGoPolicy {
     ) -> MoveInfoHandle<'a> {
         let total_visits = moves.map(|x| x.visits()).sum::<u64>() + 1;
         let sqrt_total_visits = (total_visits as f32).sqrt();
-        let explore_coef = self.exploration_constant * sqrt_total_visits;
+        let exploration_constant = self.cpuct
+            + self.cpuct_factor
+                * ((total_visits as f32 + self.cpuct_base + 1.0) / self.cpuct_base).ln();
+
+        let explore_coef = exploration_constant * sqrt_total_visits;
+
         handle
             .thread_data()
             .policy_data

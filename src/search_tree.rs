@@ -128,9 +128,7 @@ unsafe impl Pod for SearchNode {}
 
 impl<'a> Clone for MoveInfoHandle<'a> {
     fn clone(&self) -> Self {
-        Self {
-            hot: self.hot,
-        }
+        Self { hot: self.hot }
     }
 }
 impl<'a> Copy for MoveInfoHandle<'a> {}

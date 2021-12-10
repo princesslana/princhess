@@ -1,9 +1,9 @@
-use options::{set_exploration_constant, set_hash_size_mb, set_num_threads};
+use options::{set_cpuct, set_cpuct_base, set_cpuct_factor, set_hash_size_mb, set_num_threads};
 use search::Search;
 use search_tree::{empty_previous_table, print_size_list};
 use state::State;
 use std::io::{stdin, BufRead};
-use std::str::SplitWhitespace;
+use std::str::{FromStr, SplitWhitespace};
 use std::sync::mpsc::{channel, SendError};
 use std::thread;
 use tablebase::set_tablebase_directory;
@@ -79,7 +79,10 @@ pub fn uci() {
     println!("option name Hash type spin min 8 max 65536 default 16");
     println!("option name Threads type spin min 1 max 255 default 1");
     println!("option name SyzygyPath type string");
-    println!("option name ExplorationConstant type spin min 1 max 65536 default 225");
+    println!("option name CPuct type spin min 1 max 4294967296 default 215");
+    println!("option name CPuctBase type spin min 1 max 4294967296 default 1836800");
+    println!("option name CPuctFactor type spin min 1 max 4294967296 default 282");
+
     println!("uciok");
 }
 
@@ -134,28 +137,24 @@ impl UciOption {
                     set_tablebase_directory(path)
                 }
             }
-            "threads" => {
-                if let Some(v) = self.value() {
-                    if let Some(t) = v.parse().ok() {
-                        set_num_threads(t)
-                    }
-                }
-            }
-            "hash" => {
-                if let Some(v) = self.value() {
-                    if let Some(t) = v.parse().ok() {
-                        set_hash_size_mb(t)
-                    }
-                }
-            }
-            "explorationconstant" => {
-                if let Some(v) = self.value() {
-                    if let Some(t) = v.parse().ok() {
-                        set_exploration_constant(t)
-                    }
-                }
-            }
+            "threads" => self.set_option(|t| set_num_threads(t)),
+            "hash" => self.set_option(|t| set_hash_size_mb(t)),
+            "cpuct" => self.set_option(|t| set_cpuct(t)),
+            "cpuctbase" => self.set_option(|t| set_cpuct_base(t)),
+            "cpuctfactor" => self.set_option(|t| set_cpuct_factor(t)),
             _ => warn!("Badly formatted or unknown option"),
+        }
+    }
+
+    fn set_option<F, T>(&self, f: F)
+    where
+        F: FnOnce(T) -> (),
+        T: FromStr,
+    {
+        if let Some(v) = self.value() {
+            if let Some(t) = v.parse().ok() {
+                f(t);
+            }
         }
     }
 }
