@@ -5,7 +5,7 @@ static NUM_THREADS: AtomicUsize = AtomicUsize::new(1);
 static HASH_SIZE_MB: AtomicUsize = AtomicUsize::new(16);
 
 static CPUCT: AtomicU64 = AtomicU64::new(215);
-static CPUCT_BASE: AtomicU64 = AtomicU64::new(1836800);
+static CPUCT_BASE: AtomicU64 = AtomicU64::new(18368);
 static CPUCT_FACTOR: AtomicU64 = AtomicU64::new(282);
 
 pub fn set_num_threads(threads: usize) {

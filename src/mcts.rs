@@ -264,7 +264,7 @@ where
         moves.sort_by_key(|(h, e)| FloatOrd(h.average_reward().unwrap_or(*e)));
         for (mov, e) in moves {
             println!(
-                "info string {} M: {:>6} P: {:>6} V: {:7} E: {:>6} ({:>8})",
+                "info string {:5} M: {:>6} P: {:>6} V: {:7} E: {:>6} ({:>8})",
                 mov.get_move(),
                 format!("{:3.2}", e * 100.),
                 format!("{:3.2}", mov.move_evaluation() * 100.),

@@ -79,9 +79,9 @@ pub fn uci() {
     println!("option name Hash type spin min 8 max 65536 default 16");
     println!("option name Threads type spin min 1 max 255 default 1");
     println!("option name SyzygyPath type string");
-    println!("option name CPuct type spin min 1 max 4294967296 default 215");
-    println!("option name CPuctBase type spin min 1 max 4294967296 default 1836800");
-    println!("option name CPuctFactor type spin min 1 max 4294967296 default 282");
+    println!("option name CPuct type spin min 1 max 65536 default 215");
+    println!("option name CPuctBase type spin min 1 max 65536 default 18368");
+    println!("option name CPuctFactor type spin min 1 max 65536 default 282");
 
     println!("uciok");
 }
