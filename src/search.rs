@@ -27,7 +27,7 @@ pub const SCALE: f32 = 1e9;
 
 fn policy() -> AlphaGoPolicy {
     let cpuct = get_cpuct() as f32 / 100.;
-    let cpuct_base = get_cpuct_base() as f32 / 100.;
+    let cpuct_base = get_cpuct_base() as f32;
     let cpuct_factor = get_cpuct_factor() as f32 / 100.;
 
     AlphaGoPolicy::new(cpuct * SCALE, cpuct_base, cpuct_factor * SCALE)

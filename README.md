@@ -21,7 +21,7 @@ Princhess can be played against on Lichess at https://lichess.org/@/princhess_bo
 
 * **CPuct** - Exploration constant used by PUCT. Defaults to 215. (Divided by 100 before use)
 
-* **CPuctBase** - Base for PUCT growth formula. Defaults to 1836800. (Divided by 100 before use)
+* **CPuctBase** - Base for PUCT growth formula. Defaults to 18368.
 
 * **CPuctFactor** - Multipler for the PUCT growth formula. Defaults to 282. (Dividied by 100 before use)
 
