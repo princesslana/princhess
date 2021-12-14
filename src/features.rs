@@ -27,7 +27,7 @@ impl GameResult {
 }
 
 impl FeatureVec {
-    pub fn write_libsvm<W: Write>(&mut self, f: &mut W, label: i8) {
+    pub fn write_libsvm<W: Write>(&mut self, f: &mut W, label: i16) {
         write!(f, "{}", label).unwrap();
         for (index, value) in self.arr.iter().enumerate() {
             if *value != 0 {
