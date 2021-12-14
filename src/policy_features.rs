@@ -1,6 +1,7 @@
 use chess::*;
 use features::FeatureVec;
 use features_common::*;
+use nn::NN;
 use state::{Move, State};
 
 include!(concat!(env!("OUT_DIR"), "/policy_feature_const.rs"));
@@ -172,16 +173,10 @@ where
     }
 }
 
-pub fn featurize(state: &State, mov: &Move) -> FeatureVec {
-    let mut arr = [0i8; NUM_POLICY_FEATURES];
-    foreach_feature(state, mov, |i, v| {
-        assert!(v == 1);
-        arr[i] += v;
-    });
-    for &x in arr.iter() {
-        assert!(x == 0 || x == 1);
+pub fn featurize(state: &State) -> FeatureVec {
+    FeatureVec {
+        arr: state.features().iter().map(|v| *v as i8).collect(),
     }
-    FeatureVec { arr: arr.to_vec() }
 }
 
 pub fn evaluate_single(state: &State, mov: &Move) -> f32 {
@@ -193,7 +188,19 @@ pub fn evaluate_single(state: &State, mov: &Move) -> f32 {
 }
 
 pub fn evaluate_moves(state: &State, moves: &[Move]) -> Vec<f32> {
-    let mut evalns: Vec<_> = moves.iter().map(|x| evaluate_single(state, x)).collect();
+    let mut from_nn = NN::new_from();
+    let mut to_nn = NN::new_to();
+
+    from_nn.set_inputs(&state.features());
+    to_nn.set_inputs(&state.features());
+
+    let mut evalns: Vec<_> = moves.iter().map(|x| {
+        let from = from_nn.get_output(state.square_to_index(&x.get_source()));
+        let to = to_nn.get_output(state.square_to_index(&x.get_dest()));
+
+        from + to
+    }).collect();
+    //let mut evalns: Vec<_> = moves.iter().map(|x| evaluate_single(state, x)).collect();
     softmax(&mut evalns);
     evalns
 }

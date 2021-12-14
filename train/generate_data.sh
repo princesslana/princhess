@@ -6,6 +6,8 @@ PRINCHESS=${PRINCHESS:-../target/release/princhess}
 
 state_data() {
   echo "Sampling state data..."
+  rm -f model_data/*.libsvm.*
+
   for f in pgn/*.pgn
   do
     echo "Featurizing $f..."
@@ -20,7 +22,6 @@ state_data() {
 
     echo "Splitting data ($split_size)..."
 
-    rm -f model_data/*.libsvm.*
     split -l $split_size train_data.libsvm model_data/$(basename $f).libsvm.
 
     rm train_data.libsvm
@@ -30,6 +31,9 @@ state_data() {
 
 policy_data() {
   echo "Sampling policy data..."
+  rm -f from_data/*.libsvm.*
+  rm -f to_data/*.libsvm.*
+
   for f in pgn/*.pgn
   do
     echo "Featurizing $f..."
@@ -38,17 +42,18 @@ policy_data() {
 
     echo "Calculating split..."
 
-    samples=$(wc -l < policy_train_data.libsvm)
+    samples=$(wc -l < policy_from_sq.libsvm)
     splits=$(( $samples /  1000000 ))
     split_size=$(( $samples / $splits + 1))
 
     echo "Splitting data ($split_size)..."
 
-    rm -f policy_data/*.libsvm.*
-    split -l $split_size policy_train_data.libsvm policy_data/$(basename $f).libsvm.
+    split -l $split_size policy_from_sq.libsvm from_data/$(basename $f).libsvm.
+    split -l $split_size policy_to_sq.libsvm to_data/$(basename $f).libsvm.
 
-    rm policy_train_data.libsvm
-    rm -f policy_data/*.gz
+    rm policy_*.libsvm
+    rm -f from_data/*.gz
+    rm -f to_data/*.gz
   done
 }
 

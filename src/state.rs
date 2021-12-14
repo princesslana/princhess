@@ -184,9 +184,7 @@ impl State {
         }
     }
 
-    pub fn featurize(&self, features: &mut [f32; nn::NUMBER_FEATURES]) {
-        features.fill(0.);
-
+    pub fn shakmaty_square_to_index(&self, sq: &shakmaty::Square) -> usize {
         let turn = self.shakmaty_board().turn();
         let b = self.shakmaty_board().board();
 
@@ -195,15 +193,23 @@ impl State {
         let flip_vertical = turn == shakmaty::Color::Black;
         let flip_horizontal = ksq.file() <= File::D;
 
-        for (sq, pc) in b.pieces() {
-            let adj_sq = match (flip_vertical, flip_horizontal) {
-                (true, true) => sq.flip_vertical().flip_horizontal(),
-                (true, false) => sq.flip_vertical(),
-                (false, true) => sq.flip_horizontal(),
-                (false, false) => sq,
-            };
+        let adj_sq = match (flip_vertical, flip_horizontal) {
+            (true, true) => sq.flip_vertical().flip_horizontal(),
+            (true, false) => sq.flip_vertical(),
+            (false, true) => sq.flip_horizontal(),
+            (false, false) => *sq,
+        };
+        adj_sq as usize
+    }
 
-            let sq_idx = adj_sq as usize;
+    pub fn featurize(&self, features: &mut [f32:: nn::NUMBER_FEATURES]) {
+        features.fill(0.);
+
+        let turn = self.shakmaty_board().turn();
+        let b = self.shakmaty_board().board();
+
+        for (sq, pc) in b.pieces() {
+            let sq_idx = self.shakmaty_square_to_index(&sq);
             let role_idx = pc.role as usize - 1;
             let side_idx = if pc.color == turn { 0 } else { 1 };
 

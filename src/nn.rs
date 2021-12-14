@@ -23,6 +23,26 @@ const EVAL_WEIGHTS: NNWeights = NNWeights {
     output: &EVAL_OUTPUT_WEIGHTS,
 };
 
+const FROM_HIDDEN_BIAS: [f32; NUMBER_HIDDEN] = include!("from_model/hidden_bias");
+const FROM_HIDDEN_WEIGHTS: [[f32; NUMBER_FEATURES]; NUMBER_HIDDEN] = include!("from_model/hidden_weights");
+const FROM_OUTPUT_WEIGHTS: [[f32; NUMBER_HIDDEN]; 64] = include!("from_model/output_weights");
+
+const FROM_WEIGHTS: NNWeights = NNWeights {
+    hidden_bias: &FROM_HIDDEN_BIAS,
+    hidden: &FROM_HIDDEN_WEIGHTS,
+    output: &FROM_OUTPUT_WEIGHTS,
+};
+
+const TO_HIDDEN_BIAS: [f32; NUMBER_HIDDEN] = include!("to_model/hidden_bias");
+const TO_HIDDEN_WEIGHTS: [[f32; NUMBER_FEATURES]; NUMBER_HIDDEN] = include!("to_model/hidden_weights");
+const TO_OUTPUT_WEIGHTS: [[f32; NUMBER_HIDDEN]; 64] = include!("to_model/output_weights");
+
+const TO_WEIGHTS: NNWeights = NNWeights {
+    hidden_bias: &TO_HIDDEN_BIAS,
+    hidden: &TO_HIDDEN_WEIGHTS,
+    output: &TO_OUTPUT_WEIGHTS,
+};
+
 pub struct NN {
     weights: NNWeights,
     hidden_layer: [f32; NUMBER_HIDDEN],
