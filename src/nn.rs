@@ -1,10 +1,12 @@
 pub const NUMBER_FEATURES: usize = 768;
-const NUMBER_HIDDEN: usize = 32;
 
-struct NNWeights {
+const EVAL_HIDDEN: usize = 32;
+const POLICY_HIDDEN: usize = 128;
+
+struct NNWeights<const NH: usize> {
     hidden_bias: &'static [f32],
     hidden: &'static [[f32; NUMBER_FEATURES]],
-    output: &'static [[f32; NUMBER_HIDDEN]],
+    output: &'static [[f32; NH]],
 }
 
 #[allow(clippy::excessive_precision)]
@@ -17,35 +19,43 @@ const EVAL_HIDDEN_WEIGHTS: [[f32; NUMBER_FEATURES]; NUMBER_HIDDEN] =
 #[allow(clippy::excessive_precision)]
 const EVAL_OUTPUT_WEIGHTS: [[f32; NUMBER_HIDDEN]; 1] = include!("model/output_weights");
 
-const EVAL_WEIGHTS: NNWeights = NNWeights {
+const EVAL_WEIGHTS: NNWeights<EVAL_HIDDEN> = NNWeights {
     hidden_bias: &EVAL_HIDDEN_BIAS,
     hidden: &EVAL_HIDDEN_WEIGHTS,
     output: &EVAL_OUTPUT_WEIGHTS,
 };
 
-const FROM_HIDDEN_BIAS: [f32; NUMBER_HIDDEN] = include!("from_model/hidden_bias");
-const FROM_HIDDEN_WEIGHTS: [[f32; NUMBER_FEATURES]; NUMBER_HIDDEN] = include!("from_model/hidden_weights");
-const FROM_OUTPUT_WEIGHTS: [[f32; NUMBER_HIDDEN]; 64] = include!("from_model/output_weights");
+const FROM_HIDDEN_BIAS: [f32; POLICY_HIDDEN] = include!("from_model/hidden_bias");
+const FROM_HIDDEN_WEIGHTS: [[f32; NUMBER_FEATURES]; POLICY_HIDDEN] = include!("from_model/hidden_weights");
+const FROM_OUTPUT_WEIGHTS: [[f32; POLICY_HIDDEN]; 64] = include!("from_model/output_weights");
 
-const FROM_WEIGHTS: NNWeights = NNWeights {
+const FROM_WEIGHTS: NNWeights<POLICY_HIDDEN> = NNWeights {
     hidden_bias: &FROM_HIDDEN_BIAS,
     hidden: &FROM_HIDDEN_WEIGHTS,
     output: &FROM_OUTPUT_WEIGHTS,
 };
 
-const TO_HIDDEN_BIAS: [f32; NUMBER_HIDDEN] = include!("to_model/hidden_bias");
-const TO_HIDDEN_WEIGHTS: [[f32; NUMBER_FEATURES]; NUMBER_HIDDEN] = include!("to_model/hidden_weights");
-const TO_OUTPUT_WEIGHTS: [[f32; NUMBER_HIDDEN]; 64] = include!("to_model/output_weights");
+const TO_HIDDEN_BIAS: [f32; POLICY_HIDDEN] = include!("to_model/hidden_bias");
+const TO_HIDDEN_WEIGHTS: [[f32; NUMBER_FEATURES]; POLICY_HIDDEN] = include!("to_model/hidden_weights");
+const TO_OUTPUT_WEIGHTS: [[f32; POLICY_HIDDEN]; 64] = include!("to_model/output_weights");
 
-const TO_WEIGHTS: NNWeights = NNWeights {
+const TO_WEIGHTS: NNWeights<POLICY_HIDDEN> = NNWeights {
     hidden_bias: &TO_HIDDEN_BIAS,
     hidden: &TO_HIDDEN_WEIGHTS,
     output: &TO_OUTPUT_WEIGHTS,
 };
 
-pub struct NN {
-    weights: NNWeights,
-    hidden_layer: [f32; NUMBER_HIDDEN],
+pub struct NN<const NH: usize> {
+    weights: NNWeights<NH>,
+    hidden_layer: [f32; NH],
+}
+
+pub fn new_eval() -> NN<EVAL_HIDDEN> {
+    NN::new(EVAL_WEIGHTS)
+}
+
+pub fn new_from() -> NN<POLICY_HIDDEN> {
+    NN::new(FROM_WEIGHTS)
 }
 
 impl NN {
@@ -56,10 +66,6 @@ impl NN {
             weights,
             hidden_layer: hidden,
         }
-    }
-
-    pub fn new_eval() -> Self {
-        Self::new(EVAL_WEIGHTS)
     }
 
     pub fn set_inputs(&mut self, inputs: &[f32; NUMBER_FEATURES]) {

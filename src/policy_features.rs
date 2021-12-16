@@ -1,7 +1,7 @@
 use chess::*;
 use features::FeatureVec;
 use features_common::*;
-use nn::NN;
+use nn;
 use state::{Move, State};
 
 include!(concat!(env!("OUT_DIR"), "/policy_feature_const.rs"));
@@ -188,8 +188,8 @@ pub fn evaluate_single(state: &State, mov: &Move) -> f32 {
 }
 
 pub fn evaluate_moves(state: &State, moves: &[Move]) -> Vec<f32> {
-    let mut from_nn = NN::new_from();
-    let mut to_nn = NN::new_to();
+    let mut from_nn = nn::new_from();
+    let mut to_nn = nn::new_to();
 
     from_nn.set_inputs(&state.features());
     to_nn.set_inputs(&state.features());

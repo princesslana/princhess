@@ -1,5 +1,5 @@
 use chess::*;
-use nn::NN;
+use nn;
 use state::State;
 use std::io::Write;
 use std::ops;
@@ -68,7 +68,7 @@ impl Model {
         Model
     }
     pub fn predict(&self, state: &State) -> [f32; NUM_OUTCOMES] {
-        let mut nn = NN::new_eval();
+        let mut nn = nn::new_eval();
         nn.set_inputs(&state.features());
 
         let mut result = [0f32; NUM_OUTCOMES];
