@@ -112,7 +112,7 @@ def train_policy_with_keras(key, files):
     test_data = load_files(test_files)
     train_generator = generate_batches(files=train_files, batch_size=batch_size)
 
-    hidden_layers=32
+    hidden_layers=128
 
     model = keras.Sequential()
     model.add(keras.Input(shape=(768,)))
@@ -127,13 +127,16 @@ def train_policy_with_keras(key, files):
     mc = ModelCheckpoint(
         filepath="checkpoints/" + key + ".768x" + str(hidden_layers) + "x64.e{epoch:03d}-l{val_loss:.2f}-a{val_acc:.2f}.h5",
         verbose=True,
+        monitor="val_loss",
+        save_best_only=True,
     )
+    es = EarlyStopping(monitor='val_loss', patience=15, verbose=True)
 
     model.fit(
         train_generator,
         epochs=500,
         verbose=1,
-        callbacks=[mc],
+        callbacks=[mc, es],
         steps_per_epoch=len(train_files) * 1000000 / batch_size,
         validation_data=test_data
     )
