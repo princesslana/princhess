@@ -112,12 +112,12 @@ def train_policy_with_keras(key, files):
     test_data = load_files(test_files)
     train_generator = generate_batches(files=train_files, batch_size=batch_size)
 
-    hidden_layers=128
+    hidden_layers=256
 
     model = keras.Sequential()
     model.add(keras.Input(shape=(768,)))
     model.add(layers.Dense(hidden_layers, activation="relu", kernel_initializer="he_normal"))
-    model.add(layers.Dense(64, activation="softmax", kernel_initializer="he_normal", use_bias=False))
+    model.add(layers.Dense(4096, activation="softmax", kernel_initializer="he_normal", use_bias=False))
     model.summary()
 
     optimizer = keras.optimizers.Adam(learning_rate=0.001)
@@ -125,7 +125,7 @@ def train_policy_with_keras(key, files):
     model.compile(optimizer=optimizer, loss="sparse_categorical_crossentropy", metrics=["acc"])
 
     mc = ModelCheckpoint(
-        filepath="checkpoints/" + key + ".768x" + str(hidden_layers) + "x64.e{epoch:03d}-l{val_loss:.2f}-a{val_acc:.2f}.h5",
+        filepath="checkpoints/" + key + ".768x" + str(hidden_layers) + "x4096.e{epoch:03d}-l{val_loss:.2f}-a{val_acc:.2f}.h5",
         verbose=True,
         monitor="val_loss",
         save_best_only=True,
@@ -158,5 +158,7 @@ elif train_what == "from":
     train_policy("from_data")
 elif train_what == "to":
     train_policy("to_data")
+elif train_what == "policy":
+    train_policy("policy_data")
 else:
     print("Must specify to train either 'state' or 'policy'")

@@ -188,17 +188,12 @@ pub fn evaluate_single(state: &State, mov: &Move) -> f32 {
 }
 
 pub fn evaluate_moves(state: &State, moves: &[Move]) -> Vec<f32> {
-    let mut from_nn = nn::new_from();
-    let mut to_nn = nn::new_to();
+    let mut p_nn = nn::new_policy();
 
-    from_nn.set_inputs(&state.features());
-    to_nn.set_inputs(&state.features());
+    p_nn.set_inputs(&state.features());
 
     let mut evalns: Vec<_> = moves.iter().map(|x| {
-        let from = from_nn.get_output(state.square_to_index(&x.get_source()));
-        let to = to_nn.get_output(state.square_to_index(&x.get_dest()));
-
-        from + to
+        p_nn.get_output(state.move_to_index(x))
     }).collect();
     //let mut evalns: Vec<_> = moves.iter().map(|x| evaluate_single(state, x)).collect();
     softmax(&mut evalns);
