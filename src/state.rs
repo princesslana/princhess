@@ -213,6 +213,13 @@ impl State {
         self.board().combined().popcnt()
     }
 
+    pub fn move_to_index(&self, mov: &chess::ChessMove) -> usize {
+        let from_sq = self.square_to_index(&mov.get_source());
+        let to_sq = self.square_to_index(&mov.get_dest());
+
+        from_sq * 64 + to_sq
+    }
+
     pub fn square_to_index(&self, sq: &chess::Square) -> usize {
         self.shakmaty_square_to_index(&shakmaty::Square::new(sq.to_int() as u32))
     }

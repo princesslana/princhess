@@ -2,6 +2,7 @@ pub const NUMBER_FEATURES: usize = 768;
 
 const EVAL_HIDDEN: usize = 32;
 const POLICY_HIDDEN: usize = 128;
+const P_HIDDEN: usize = 256;
 
 struct NNWeights<const NH: usize> {
     hidden_bias: &'static [f32],
@@ -20,6 +21,19 @@ const EVAL_WEIGHTS: NNWeights<EVAL_HIDDEN> = NNWeights {
     hidden: &EVAL_HIDDEN_WEIGHTS,
     output: &EVAL_OUTPUT_WEIGHTS,
 };
+
+const POLICY_HIDDEN_BIAS: [f32; P_HIDDEN] = include!("policy/hidden_bias");
+const POLICY_HIDDEN_WEIGHTS: [[f32; NUMBER_FEATURES]; P_HIDDEN] =
+    include!("policy/hidden_weights");
+
+const POLICY_OUTPUT_WEIGHTS: [[f32; P_HIDDEN]; 4096] = include!("policy/output_weights");
+
+const POLICY_WEIGHTS: NNWeights<P_HIDDEN> = NNWeights {
+    hidden_bias: &POLICY_HIDDEN_BIAS,
+    hidden: &POLICY_HIDDEN_WEIGHTS,
+    output: &POLICY_OUTPUT_WEIGHTS,
+};
+
 
 const FROM_HIDDEN_BIAS: [f32; POLICY_HIDDEN] = include!("from_model/hidden_bias");
 const FROM_HIDDEN_WEIGHTS: [[f32; NUMBER_FEATURES]; POLICY_HIDDEN] = include!("from_model/hidden_weights");
@@ -48,6 +62,10 @@ pub struct NN<const NH: usize> {
 
 pub fn new_eval() -> NN<EVAL_HIDDEN> {
     NN::new(EVAL_WEIGHTS)
+}
+
+pub fn new_policy() -> NN<P_HIDDEN> {
+    NN::new(POLICY_WEIGHTS)
 }
 
 pub fn new_from() -> NN<POLICY_HIDDEN> {
