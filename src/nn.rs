@@ -1,8 +1,10 @@
+use log;
+
 pub const NUMBER_FEATURES: usize = 768;
 
 const EVAL_HIDDEN: usize = 32;
 const POLICY_HIDDEN: usize = 128;
-const P_HIDDEN: usize = 256;
+const P_HIDDEN: usize = 32;
 
 struct NNWeights<const NH: usize> {
     hidden_bias: &'static [f32],
@@ -90,9 +92,9 @@ impl NN {
         self.hidden_layer.copy_from_slice(self.weights.hidden_bias);
 
         for i in 0..inputs.len() {
-            if inputs[i] > 0.5 {
-                for j in 0..self.hidden_layer.len() {
-                    self.hidden_layer[j] += self.weights.hidden[j][i];
+            if inputs[i] == 1.0 {
+                for (h, ws) in self.hidden_layer.iter_mut().zip(self.weights.hidden) {
+                    *h += ws[i];
                 }
             }
         }
@@ -101,8 +103,10 @@ impl NN {
     pub fn get_output(&self, idx: usize) -> f32 {
         let mut result = 0.;
 
-        for i in 0..self.hidden_layer.len() {
-            result += self.weights.output[idx][i] * self.hidden_layer[i].max(0.);
+        for (v, w) in self.hidden_layer.iter().zip(self.weights.output[idx].iter()) {
+            if *v > 0. {
+                result += w * v;
+            }
         }
 
         result

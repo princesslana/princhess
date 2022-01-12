@@ -11,7 +11,6 @@ use chess;
 use features::{featurize, GameResult};
 use mcts::GameState;
 use policy_features;
-use policy_features::NUM_POLICY_FEATURES;
 use search::to_uci;
 use shakmaty;
 use state::StateBuilder;
@@ -100,13 +99,6 @@ impl Visitor for ValueDataGenerator {
     fn end_game(&mut self) -> Self::Result {}
 }
 
-fn write_policy_feature_names() {
-    let mut out_file = File::create("policy_train_data_features.txt").expect("create");
-    for i in 0..NUM_POLICY_FEATURES {
-        write!(out_file, "{}\n", policy_features::name_feature(i)).unwrap();
-    }
-}
-
 fn run_value_gen(in_path: &str, out_file: Option<BufWriter<File>>) -> ValueDataGenerator {
     let mut generator = ValueDataGenerator {
         out_file,
@@ -131,7 +123,6 @@ pub fn train_value(in_path: &str, out_path: &str) {
 }
 
 pub fn train(in_path: &str, out_path: &str, policy: bool) {
-    write_policy_feature_names();
     if policy {
         train_policy(in_path, out_path);
     } else {

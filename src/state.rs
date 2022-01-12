@@ -15,8 +15,6 @@ use uci::Tokens;
 pub type Player = chess::Color;
 pub type Move = chess::ChessMove;
 
-pub const NUM_OCCUPIED_KEPT: usize = 4;
-
 pub struct StateBuilder {
     initial_state: shakmaty::Chess,
     crnt_state: shakmaty::Chess,
@@ -90,11 +88,8 @@ pub enum Outcome {
 pub struct State {
     shakmaty_board: shakmaty::Chess,
     board: chess::Board,
-    prev_move: Option<chess::ChessMove>,
-    prev_capture: Option<chess::Piece>,
     prev_state_hashes: SmallVec<[u64; 64]>,
     repetitions: usize,
-    formerly_occupied: [chess::BitBoard; NUM_OCCUPIED_KEPT],
     frozen: bool,
     queens_off: bool,
     move_lists: [Vec<chess::ChessMove>; 2],
@@ -107,12 +102,6 @@ impl State {
     #[cfg(test)]
     pub fn from_fen(fen: &str) -> Option<Self> {
         StateBuilder::from_fen(fen).map(|x| x.into())
-    }
-    pub fn prev_move(&self) -> Option<chess::ChessMove> {
-        self.prev_move
-    }
-    pub fn prev_capture(&self) -> Option<chess::Piece> {
-        self.prev_capture
     }
     pub fn board(&self) -> &chess::Board {
         &self.board
@@ -155,9 +144,6 @@ impl State {
         }
     }
 
-    pub fn formerly_occupied(&self) -> &[chess::BitBoard; NUM_OCCUPIED_KEPT] {
-        &self.formerly_occupied
-    }
     fn check_for_repetition(&mut self) {
         let crnt_hash = self.board.get_hash();
         self.repetitions = max(
@@ -188,18 +174,59 @@ impl State {
         self.board().combined().popcnt()
     }
 
-    pub fn move_to_index(&self, mov: &chess::ChessMove) -> usize {
-        let from_sq = self.square_to_index(&mov.get_source());
-        let to_sq = self.square_to_index(&mov.get_dest());
+    pub fn moves_to_indexes(&self, moves: &[chess::ChessMove]) -> Vec<usize> {
+        let turn = self.shakmaty_board().turn();
+        let b = self.shakmaty_board().board();
 
-        from_sq * 64 + to_sq
+        let ksq = b.king_of(turn).unwrap();
+
+        let flip_vertical = turn == shakmaty::Color::Black;
+        let flip_horizontal = ksq.file() <= File::D;
+        
+        moves.iter().map(|mov| {
+        let from_sq = shakmaty::Square::new(mov.get_source().to_int() as u32);
+        let to_sq = shakmaty::Square::new(mov.get_dest().to_int() as u32);
+
+
+        let (adj_from, adj_to) = match (flip_vertical, flip_horizontal) {
+            (true, true) => (from_sq.flip_vertical().flip_horizontal(), to_sq.flip_vertical().flip_horizontal()),
+            (true, false) => (from_sq.flip_vertical(), to_sq.flip_vertical()),
+            (false, true) => (from_sq.flip_horizontal(), to_sq.flip_horizontal()),
+            (false, false) => (from_sq, to_sq)
+        };
+
+        adj_from as usize * 64 + adj_to as usize
+
+        }).collect()
+    }
+
+    pub fn move_to_index(&self, mov: &chess::ChessMove) -> usize {
+        let from_sq = unsafe { shakmaty::Square::new_unchecked(mov.get_source().to_int() as u32) };
+        let to_sq = unsafe { shakmaty::Square::new_unchecked(mov.get_dest().to_int() as u32) };
+
+        let turn = self.shakmaty_board().turn();
+        let b = self.shakmaty_board().board();
+
+        let ksq = b.king_of(turn).unwrap();
+
+        let flip_vertical = turn == shakmaty::Color::Black;
+        let flip_horizontal = ksq.file() <= File::D;
+
+        let (adj_from, adj_to) = match (flip_vertical, flip_horizontal) {
+            (true, true) => (from_sq.flip_vertical().flip_horizontal(), to_sq.flip_vertical().flip_horizontal()),
+            (true, false) => (from_sq.flip_vertical(), to_sq.flip_vertical()),
+            (false, true) => (from_sq.flip_horizontal(), to_sq.flip_horizontal()),
+            (false, false) => (from_sq, to_sq)
+        };
+
+        adj_from as usize * 64 + adj_to as usize
     }
 
     pub fn square_to_index(&self, sq: &chess::Square) -> usize {
         self.shakmaty_square_to_index(&shakmaty::Square::new(sq.to_int() as u32))
     }
 
-    pub fn shakmaty_square_to_index(&self, sq: &shakmaty::Square) -> usize {
+    fn shakmaty_square_to_index(&self, sq: &shakmaty::Square) -> usize {
         let turn = self.shakmaty_board().turn();
         let b = self.shakmaty_board().board();
 
@@ -312,11 +339,8 @@ impl From<StateBuilder> for State {
         let mut state = State {
             shakmaty_board: sb.initial_state,
             board,
-            prev_move: None,
-            prev_capture: None,
             prev_state_hashes: SmallVec::new(),
             repetitions: 0,
-            formerly_occupied: [*board.combined(); NUM_OCCUPIED_KEPT],
             frozen: false,
             queens_off: false,
             move_lists: [Vec::new(), Vec::new()],
@@ -404,20 +428,15 @@ impl GameState for State {
     }
 
     fn make_move(&mut self, mov: &chess::ChessMove) {
-        self.prev_capture = self.board.piece_on(mov.get_dest());
+        let prev_capture = self.board.piece_on(mov.get_dest());
         let is_pawn_move = (self.board.pieces(chess::Piece::Pawn)
             & chess::BitBoard::from_square(mov.get_source()))
         .0 != 0;
-        if is_pawn_move || self.prev_capture.is_some() {
+        if is_pawn_move || prev_capture.is_some() {
             self.prev_state_hashes.clear();
         } else if !self.frozen {
             self.prev_state_hashes.push(self.board.get_hash());
         }
-        self.prev_move = Some(*mov);
-        for i in (0..(NUM_OCCUPIED_KEPT - 1)).rev() {
-            self.formerly_occupied[i + 1] = self.formerly_occupied[i];
-        }
-        self.formerly_occupied[0] = *self.board.combined();
 
         let shakmaty_move = shakmaty::uci::Uci::from_ascii(to_uci(*mov).as_bytes())
             .unwrap()

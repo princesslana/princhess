@@ -112,7 +112,7 @@ def train_policy_with_keras(key, files):
     test_data = load_files(test_files)
     train_generator = generate_batches(files=train_files, batch_size=batch_size)
 
-    hidden_layers=256
+    hidden_layers=32
 
     model = keras.Sequential()
     model.add(keras.Input(shape=(768,)))
