@@ -32,9 +32,6 @@ pub struct SearchTree<Spec: MCTS> {
     sum_depth: AtomicUsize,
     max_depth: AtomicUsize,
     tb_hits: AtomicUsize,
-    transposition_table_hits: AtomicUsize,
-    delayed_transposition_table_hits: AtomicUsize,
-    expansion_contention_events: AtomicUsize,
 }
 
 pub struct PreviousTable<Spec: MCTS> {
@@ -294,9 +291,6 @@ impl<Spec: MCTS> SearchTree<Spec> {
             max_depth: 1.into(),
             tb_hits: 0.into(),
             arena,
-            transposition_table_hits: 0.into(),
-            delayed_transposition_table_hits: 0.into(),
-            expansion_contention_events: 0.into(),
         }
     }
 
@@ -444,8 +438,6 @@ impl<Spec: MCTS> SearchTree<Spec> {
                 Ordering::Relaxed,
             ) as *const _;
             if child.is_null() {
-                self.transposition_table_hits
-                    .fetch_add(1, Ordering::Relaxed);
                 return Ok((node, false));
             } else {
                 return unsafe { Ok((&*child, false)) };
@@ -468,15 +460,11 @@ impl<Spec: MCTS> SearchTree<Spec> {
                 .child
                 .compare_and_swap(null_mut(), created as *mut _, Ordering::Relaxed);
         if !other_child.is_null() {
-            self.expansion_contention_events
-                .fetch_add(1, Ordering::Relaxed);
             unsafe {
                 return Ok((&*other_child, false));
             }
         }
         if let Some(existing) = self.table.insert(state, created) {
-            self.delayed_transposition_table_hits
-                .fetch_add(1, Ordering::Relaxed);
             let existing_ptr = existing as *const _ as *mut _;
             choice.child.store(existing_ptr, Ordering::Relaxed);
             return Ok((existing, false));
