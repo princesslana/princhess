@@ -29,7 +29,6 @@ pub struct SearchTree<Spec: MCTS> {
     arena: Box<Arena>,
 
     num_nodes: AtomicUsize,
-    sum_depth: AtomicUsize,
     max_depth: AtomicUsize,
     tb_hits: AtomicUsize,
     transposition_table_hits: AtomicUsize,
@@ -290,7 +289,6 @@ impl<Spec: MCTS> SearchTree<Spec> {
             table,
             prev_table,
             num_nodes: 1.into(),
-            sum_depth: 1.into(),
             max_depth: 1.into(),
             tb_hits: 0.into(),
             arena,
@@ -313,10 +311,6 @@ impl<Spec: MCTS> SearchTree<Spec> {
 
     pub fn num_nodes(&self) -> usize {
         self.num_nodes.load(Ordering::SeqCst)
-    }
-
-    pub fn average_depth(&self) -> usize {
-        self.sum_depth.load(Ordering::SeqCst) / self.num_nodes()
     }
 
     pub fn max_depth(&self) -> usize {
@@ -416,8 +410,6 @@ impl<Spec: MCTS> SearchTree<Spec> {
         let evaln = new_evaln.as_ref().unwrap_or(&node.evaln);
         self.finish_playout(&path, &node_path, &players, evaln);
 
-        self.sum_depth.fetch_add(node_path.len(), Ordering::Relaxed);
-
         if state.is_tb_hit() {
             self.tb_hits.fetch_add(1, Ordering::Relaxed);
         }
@@ -483,7 +475,6 @@ impl<Spec: MCTS> SearchTree<Spec> {
         }
         self.num_nodes.fetch_add(1, Ordering::Relaxed);
         let depth = path.len();
-        self.sum_depth.fetch_add(depth, Ordering::Relaxed);
         self.max_depth.fetch_max(depth, Ordering::Relaxed);
         Ok((created, did_we_create))
     }
