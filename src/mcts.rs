@@ -48,14 +48,6 @@ pub trait MCTS: Sized + Sync {
     fn max_playout_length(&self) -> usize {
         1_000_000
     }
-
-    fn cycle_behaviour(&self) -> CycleBehaviour {
-        if std::mem::size_of::<Self::TranspositionTable>() == 0 {
-            CycleBehaviour::Ignore
-        } else {
-            CycleBehaviour::PanicWhenCycleDetected
-        }
-    }
 }
 
 pub struct ThreadData<'a, Spec: MCTS> {
@@ -328,13 +320,6 @@ fn drain_join_unwrap(threads: &mut Vec<JoinHandle<()>>) {
     for x in join_results {
         x.unwrap();
     }
-}
-
-pub enum CycleBehaviour {
-    Ignore,
-    UseCurrentEvalWhenCycleDetected,
-    PanicWhenCycleDetected,
-    UseThisEvalWhenCycleDetected(StateEvaluation),
 }
 
 // eval here is [0.0, 1.0]
