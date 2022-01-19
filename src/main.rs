@@ -3,6 +3,7 @@ extern crate log;
 extern crate arc_swap;
 extern crate chess;
 extern crate crossbeam;
+extern crate fastapprox;
 extern crate float_ord;
 extern crate memmap;
 extern crate once_cell;

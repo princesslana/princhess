@@ -4,6 +4,7 @@ use transposition_table::*;
 use tree_policy::*;
 
 use chess;
+use fastapprox;
 use float_ord::FloatOrd;
 use policy_features::evaluate_moves;
 use search::{to_uci, SCALE};
@@ -228,11 +229,12 @@ where
             .as_millis();
 
         let nodes = self.tree().num_nodes();
+        let depth = fastapprox::faster::ln(nodes as f32).round();
         let nps = nodes * 1000 / search_time_ms as usize;
 
         let info_str = format!(
             "info depth {} seldepth {} nodes {} nps {} tbhits {} score {} time {} pv{}",
-            self.tree().average_depth(),
+            depth,
             self.tree().max_depth(),
             nodes,
             nps,
