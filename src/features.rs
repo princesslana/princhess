@@ -1,4 +1,5 @@
 use chess::*;
+use fastapprox;
 use nn::NN;
 use state::State;
 use std::io::Write;
@@ -78,7 +79,7 @@ impl Model {
         }
 
         for x in &mut result {
-            *x = x.tanh();
+            *x = fastapprox::faster::tanh(*x);
         }
         if state.board().side_to_move() == Color::Black {
             result[0] = -result[0];
