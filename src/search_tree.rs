@@ -28,7 +28,6 @@ pub struct SearchTree<Spec: MCTS> {
     manager: Spec,
     arena: Box<Arena>,
 
-    num_nodes: AtomicUsize,
     max_depth: AtomicUsize,
     tb_hits: AtomicUsize,
     transposition_table_hits: AtomicUsize,
@@ -288,7 +287,6 @@ impl<Spec: MCTS> SearchTree<Spec> {
             eval,
             table,
             prev_table,
-            num_nodes: 1.into(),
             max_depth: 1.into(),
             tb_hits: 0.into(),
             arena,
@@ -310,7 +308,7 @@ impl<Spec: MCTS> SearchTree<Spec> {
     }
 
     pub fn num_nodes(&self) -> usize {
-        self.num_nodes.load(Ordering::SeqCst)
+        self.root_node.moves().map(|m| m.visits()).sum::<u64>() as usize
     }
 
     pub fn max_depth(&self) -> usize {
@@ -328,15 +326,6 @@ impl<Spec: MCTS> SearchTree<Spec> {
     #[inline(never)]
     pub fn playout<'a: 'b, 'b>(&'a self, tld: &'b mut ThreadData<'a, Spec>) -> bool {
         const LARGE_DEPTH: usize = 64;
-        let sentinel = IncreaseSentinel::new(&self.num_nodes);
-        if sentinel.num_nodes >= self.manager.node_limit() {
-            debug!(
-                "Node limit of {} reached. Halting search.",
-                self.spec().node_limit()
-            );
-            println!("info hashfull 1000");
-            return false;
-        }
         let mut state = self.root_state.clone();
         let mut path: SmallVec<[MoveInfoHandle; LARGE_DEPTH]> = SmallVec::new();
         let mut node_path: SmallVec<[&SearchNode; LARGE_DEPTH]> = SmallVec::new();
@@ -473,7 +462,6 @@ impl<Spec: MCTS> SearchTree<Spec> {
             choice.child.store(existing_ptr, Ordering::Relaxed);
             return Ok((existing, false));
         }
-        self.num_nodes.fetch_add(1, Ordering::Relaxed);
         let depth = path.len();
         self.max_depth.fetch_max(depth, Ordering::Relaxed);
         Ok((created, did_we_create))
@@ -662,24 +650,6 @@ impl<'a, 'b, Spec: MCTS> SearchHandle<'a, 'b, Spec> {
     }
     pub fn nth_parent(&self, n: usize) -> Option<NodeHandle<'a>> {
         self.shared.nth_parent(n)
-    }
-}
-
-struct IncreaseSentinel<'a> {
-    x: &'a AtomicUsize,
-    num_nodes: usize,
-}
-
-impl<'a> IncreaseSentinel<'a> {
-    fn new(x: &'a AtomicUsize) -> Self {
-        let num_nodes = x.fetch_add(1, Ordering::Relaxed);
-        Self { x, num_nodes }
-    }
-}
-
-impl<'a> Drop for IncreaseSentinel<'a> {
-    fn drop(&mut self) {
-        self.x.fetch_sub(1, Ordering::Relaxed);
     }
 }
 
