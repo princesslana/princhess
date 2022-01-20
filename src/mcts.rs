@@ -230,12 +230,13 @@ where
 
         let nodes = self.tree().num_nodes();
         let depth = fastapprox::faster::ln(nodes as f32).round();
+        let sel_depth = self.principal_variation(64).len();
         let nps = nodes * 1000 / search_time_ms as usize;
 
         let info_str = format!(
             "info depth {} seldepth {} nodes {} nps {} tbhits {} score {} time {} pv{}",
             depth,
-            self.tree().max_depth(),
+            sel_depth,
             nodes,
             nps,
             self.tree().tb_hits(),
