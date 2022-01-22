@@ -147,6 +147,16 @@ impl Search {
             return Self {
                 search: manager.into(),
             };
+        } else if let Some(mv) = probe_tablebase_best_move(state.shakmaty_board()) {
+            let uci_mv = mv.to_uci(shakmaty::CastlingMode::Standard);
+            println!(
+                "info depth 1 seldepth 1 nodes 1 nps 1 tbhits 1 time 1 pv {}",
+                uci_mv
+            );
+            println!("bestmove {}", uci_mv);
+            return Self {
+                search: manager.into(),
+            };
         }
 
         let mut move_time = None;

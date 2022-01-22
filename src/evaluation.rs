@@ -32,22 +32,15 @@ impl Evaluator<GooseMCTS> for GooseEval {
                 Outcome::BlackWin => -x,
                 Outcome::Ongoing => unreachable!(),
             }
-        } else if state.piece_count() < shakmaty::Chess::MAX_PIECES as u32
-            && state.shakmaty_board().castles().is_empty()
-            && state.shakmaty_board().capture_moves().is_empty()
-        {
-            if let Some(wdl) = probe_tablebase_wdl(state.shakmaty_board()) {
-                tb_hit = true;
-                let win_score = SCALE as i64;
-                match (wdl, state.board().side_to_move()) {
-                    (Wdl::Win, Color::White) => win_score,
-                    (Wdl::Loss, Color::White) => -win_score,
-                    (Wdl::Win, Color::Black) => -win_score,
-                    (Wdl::Loss, Color::Black) => win_score,
-                    _ => 0,
-                }
-            } else {
-                (self.model.score(state) * SCALE as f32) as i64
+        } else if let Some(wdl) = probe_tablebase_wdl(state.shakmaty_board()) {
+            tb_hit = true;
+            let win_score = SCALE as i64;
+            match (wdl, state.board().side_to_move()) {
+                (Wdl::Win, Color::White) => win_score,
+                (Wdl::Loss, Color::White) => -win_score,
+                (Wdl::Win, Color::Black) => -win_score,
+                (Wdl::Loss, Color::Black) => win_score,
+                _ => 0,
             }
         } else {
             (self.model.score(state) * SCALE as f32) as i64
