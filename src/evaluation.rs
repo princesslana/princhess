@@ -3,7 +3,8 @@ use features::Model;
 use mcts::Evaluator;
 use policy_features::evaluate_moves;
 use search::{GooseMCTS, SCALE};
-use shakmaty_syzygy::Wdl;
+use shakmaty::Position;
+use shakmaty_syzygy::{Syzygy, Wdl};
 use state::{MoveList, Outcome, Player, State};
 use tablebase::probe_tablebase_wdl;
 
