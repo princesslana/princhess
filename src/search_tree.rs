@@ -3,10 +3,11 @@ use options::get_hash_size_mb;
 use policy_features::softmax;
 use search::{GooseMCTS, SCALE};
 use smallvec::SmallVec;
-use state::State;
+use state::{convert_move, State};
 use std::mem;
 use std::ptr::null_mut;
 use std::sync::atomic::{AtomicI64, AtomicPtr, AtomicU32, AtomicUsize, Ordering};
+use tablebase::probe_tablebase_best_move;
 use transposition_table::{ApproxTable, TranspositionTable};
 
 use log::debug;
@@ -279,10 +280,18 @@ impl<Spec: MCTS> SearchTree<Spec> {
 
         let _ = prev_table.lookup_into(&state, &mut root_node);
 
+        let tb_move = probe_tablebase_best_move(state.shakmaty_board()).map(|m| convert_move(&m));
+
         let mut avg_rewards: Vec<f32> = root_node
             .moves()
             .into_iter()
-            .map(|m| m.average_reward().unwrap_or(-SCALE) / SCALE)
+            .map(|m| {
+                if Some(*m.get_move()) == tb_move {
+                    1.0
+                } else {
+                    m.average_reward().unwrap_or(-SCALE) / SCALE
+                }
+            })
             .collect();
 
         softmax(&mut avg_rewards);

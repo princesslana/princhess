@@ -263,7 +263,7 @@ fn convert_role(role: shakmaty::Role) -> chess::Piece {
     }
 }
 
-fn convert_move(mov: &shakmaty::Move) -> chess::ChessMove {
+pub fn convert_move(mov: &shakmaty::Move) -> chess::ChessMove {
     match mov {
         &shakmaty::Move::Castle { ref king, ref rook } => {
             let from = convert_square(mov.from().unwrap());

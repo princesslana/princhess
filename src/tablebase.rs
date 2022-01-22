@@ -28,6 +28,10 @@ pub fn probe_tablebase_wdl(pos: &Chess) -> Option<Wdl> {
 }
 
 pub fn probe_tablebase_best_move(pos: &Chess) -> Option<Move> {
+    if pos.board().occupied().count() > Chess::MAX_PIECES {
+        return None;
+    }
+
     match TABLEBASE.load().best_move(pos) {
         Ok(Some((m, _))) => Some(m),
         _ => None,
