@@ -1,16 +1,14 @@
 use bench::{get_policy_validations, BENCHMARKING_POSITIONS};
-use chess::{Color, MoveGen, Piece};
+use chess::{Color, Piece};
 use evaluation::GooseEval;
 use features::Model;
-use float_ord::FloatOrd;
 use mcts::{
     AsyncSearchOwned, CycleBehaviour, Evaluator, GameState, MCTSManager, MoveInfoHandle, MCTS,
 };
 use options::{get_cpuct, get_cpuct_base, get_cpuct_factor, get_num_threads};
-use policy_features::{evaluate_moves, evaluate_single};
+use policy_features::evaluate_moves;
 use search_tree::{empty_previous_table, PreviousTable};
-use shakmaty_syzygy::Syzygy;
-use state::{Move, Outcome, State, StateBuilder};
+use state::{Move, State, StateBuilder};
 use std::sync::atomic::Ordering;
 use std::sync::mpsc::Sender;
 use std::thread;
@@ -149,65 +147,6 @@ impl Search {
             return Self {
                 search: manager.into(),
             };
-        } else if state.piece_count() < shakmaty::Chess::MAX_PIECES as u32 {
-            if let Some(mv) = probe_tablebase_best_move(state.shakmaty_board()) {
-                let uci_mv = mv.to_uci(shakmaty::CastlingMode::Standard);
-                println!(
-                    "info depth 1 seldepth 1 nodes 1 nps 1 tbhits 1 time 1 pv {}",
-                    uci_mv
-                );
-                println!("bestmove {}", uci_mv);
-                return Self {
-                    search: manager.into(),
-                };
-            } else if state.outcome() != &Outcome::Ongoing {
-                // Choose a capture that keeps the outcome the same,
-                // if there's no capture, leave it to move eval
-                // This is a special case for when the tablebase has determined a result
-                // but not a best move
-                let mut move_gen = MoveGen::new_legal(&state.board());
-
-                let targets = state.board().combined();
-                move_gen.set_iterator_mask(*targets);
-
-                for mv in move_gen {
-                    let mut new_state: State =
-                        StateBuilder::from(state.shakmaty_board().clone()).into();
-                    new_state.make_move(&mv);
-
-                    if new_state.outcome() == state.outcome() {
-                        println!(
-                            "info depth 1 seldepth 1 nodes 1 nps 1 tbhits r time 1 pv {}",
-                            to_uci(mv)
-                        );
-                        println!("bestmove {}", to_uci(mv));
-                        return Self {
-                            search: manager.into(),
-                        };
-                    }
-                }
-            }
-        }
-
-        // This shouldn't happen (being asked to search with no moves available).
-        //
-        // One known case is the tablebase determiining a win, but not a best move.
-        //
-        // Just depend upon our move evaluation here.
-        if mvs.len() == 0 {
-            let move_gen = MoveGen::new_legal(&state.board());
-            let mv = move_gen
-                .max_by_key(|m| FloatOrd(evaluate_single(state, m)))
-                .unwrap();
-
-            println!(
-                "info depth 1 seldepth 1 nodes 1 nps 1 tbhits 0 time 1 pv {}",
-                to_uci(mv)
-            );
-            println!("bestmove {}", to_uci(mv));
-            return Self {
-                search: manager.into(),
-            };
         }
 
         let mut move_time = None;
@@ -307,7 +246,7 @@ impl Search {
         let eval = GooseEval::new(model);
 
         let moves = state.available_moves();
-        let (_, state_eval) = eval.evaluate_new_state(state, &moves);
+        let (_, state_eval, _) = eval.evaluate_new_state(state, &moves);
 
         println!(
             "{:3.2} {:?}",
