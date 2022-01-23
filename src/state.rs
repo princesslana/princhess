@@ -4,13 +4,11 @@ use nn;
 use search::to_uci;
 use shakmaty;
 use shakmaty::{File, Position, Setup};
-use shakmaty_syzygy::Wdl;
 use smallvec::SmallVec;
 use std;
 use std::cmp::max;
 use std::iter::IntoIterator;
 use std::str::FromStr;
-use tablebase::probe_tablebase_wdl;
 use transposition_table::TranspositionHash;
 use uci::Tokens;
 
@@ -183,10 +181,6 @@ impl State {
             frozen: true,
             ..self
         }
-    }
-
-    pub fn piece_count(&self) -> u32 {
-        self.board().combined().popcnt()
     }
 
     pub fn featurize(&self, features: &mut [f32]) {

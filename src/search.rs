@@ -13,7 +13,6 @@ use std::sync::atomic::Ordering;
 use std::sync::mpsc::Sender;
 use std::thread;
 use std::time::{Duration, Instant};
-use tablebase::probe_tablebase_best_move;
 use transposition_table::ApproxTable;
 use tree_policy::AlphaGoPolicy;
 use uci::Tokens;
