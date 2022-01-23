@@ -99,7 +99,7 @@ pub trait Evaluator<Spec: MCTS>: Sync {
         &self,
         state: &State,
         moves: &MoveList,
-    ) -> (Vec<MoveEvaluation>, StateEvaluation);
+    ) -> (Vec<MoveEvaluation>, StateEvaluation, bool);
 
     fn interpret_evaluation_for_player(&self, evaluation: &StateEvaluation, player: &Player)
         -> i64;

@@ -25,7 +25,7 @@ pod = "=0.5.0"
 pgn-reader = "=0.19.0"
 rand = "=0.7.3"
 shakmaty = "=0.20.1"
-shakmaty-syzygy = "=0.17.0"
+shakmaty-syzygy = { git = "https://github.com/ianagbip1oti/shakmaty-syzygy", branch = "public_get_wdl" }
 slurp = "=1.0.1"
 smallvec = "=0.6.14"
 

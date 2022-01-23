@@ -224,6 +224,7 @@ fn create_node<'a, 'b, Spec: MCTS>(
     eval: &Spec::Eval,
     policy: &Spec::TreePolicy,
     state: &State,
+    tb_hits: &AtomicUsize,
     ch: CreationHelper<'a, 'b, Spec>,
 ) -> Result<SearchNode, ArenaError> {
     let (allocator, _handle) = match ch {
@@ -236,7 +237,12 @@ fn create_node<'a, 'b, Spec: MCTS>(
         }
     };
     let moves = state.available_moves();
-    let (move_eval, state_eval) = eval.evaluate_new_state(state, &moves);
+    let (move_eval, state_eval, is_tb_hit) = eval.evaluate_new_state(state, &moves);
+
+    if is_tb_hit {
+        tb_hits.fetch_add(1, Ordering::Relaxed);
+    }
+
     policy.validate_evaluations(&move_eval);
     let hots = allocator.alloc_slice(move_eval.len())?;
     let moves_slice = moves.as_slice();
@@ -260,10 +266,13 @@ impl<Spec: MCTS> SearchTree<Spec> {
         prev_table: PreviousTable<Spec>,
     ) -> Self {
         let arena = Box::new(Arena::new(get_hash_size_mb() / 2));
+        let tb_hits = 0.into();
+
         let mut root_node = create_node::<Spec>(
             &eval,
             &tree_policy,
             &state,
+            &tb_hits,
             CreationHelper::Allocator(&arena.allocator()),
         )
         .expect("Unable to create root node");
@@ -290,7 +299,7 @@ impl<Spec: MCTS> SearchTree<Spec> {
             prev_table,
             num_nodes: 1.into(),
             max_depth: 1.into(),
-            tb_hits: 0.into(),
+            tb_hits,
             arena,
             transposition_table_hits: 0.into(),
             delayed_transposition_table_hits: 0.into(),
@@ -410,10 +419,6 @@ impl<Spec: MCTS> SearchTree<Spec> {
         let evaln = new_evaln.as_ref().unwrap_or(&node.evaln);
         self.finish_playout(&path, &node_path, &players, evaln);
 
-        if state.is_tb_hit() {
-            self.tb_hits.fetch_add(1, Ordering::Relaxed);
-        }
-
         true
     }
 
@@ -448,6 +453,7 @@ impl<Spec: MCTS> SearchTree<Spec> {
             &self.eval,
             &self.tree_policy,
             state,
+            &self.tb_hits,
             CreationHelper::Handle(self.make_handle(tld, path)),
         )?;
 

@@ -4,13 +4,11 @@ use nn;
 use search::to_uci;
 use shakmaty;
 use shakmaty::{File, Position, Setup};
-use shakmaty_syzygy::Wdl;
 use smallvec::SmallVec;
 use std;
 use std::cmp::max;
 use std::iter::IntoIterator;
 use std::str::FromStr;
-use tablebase::probe_tablebase_wdl;
 use transposition_table::TranspositionHash;
 use uci::Tokens;
 
@@ -101,7 +99,6 @@ pub struct State {
     queens_off: bool,
     move_lists: [Vec<chess::ChessMove>; 2],
     outcome: Outcome,
-    tb_hit: bool,
 }
 impl State {
     pub fn from_tokens(tokens: Tokens) -> Option<Self> {
@@ -134,12 +131,11 @@ impl State {
         &self.outcome
     }
 
-    pub fn is_tb_hit(&self) -> bool {
-        self.tb_hit
-    }
-
     fn check_outcome(&mut self) {
-        if self.drawn_by_repetition() || self.drawn_by_fifty_move_rule() {
+        if self.drawn_by_repetition()
+            || self.drawn_by_fifty_move_rule()
+            || self.shakmaty_board().is_insufficient_material()
+        {
             self.outcome = Outcome::Draw;
         } else if self.board().status() != chess::BoardStatus::Ongoing {
             self.outcome = match self.board().status() {
@@ -154,29 +150,7 @@ impl State {
                 chess::BoardStatus::Ongoing => unreachable!(),
             }
         } else {
-            self.outcome = match probe_tablebase_wdl(&self.shakmaty_board) {
-                Some(Wdl::Win) => {
-                    self.tb_hit = true;
-                    if self.board().side_to_move() == chess::Color::White {
-                        Outcome::WhiteWin
-                    } else {
-                        Outcome::BlackWin
-                    }
-                }
-                Some(Wdl::Loss) => {
-                    self.tb_hit = true;
-                    if self.board().side_to_move() == chess::Color::White {
-                        Outcome::BlackWin
-                    } else {
-                        Outcome::WhiteWin
-                    }
-                }
-                Some(_) => {
-                    self.tb_hit = true;
-                    Outcome::Draw
-                }
-                None => Outcome::Ongoing,
-            }
+            self.outcome = Outcome::Ongoing;
         }
     }
 
@@ -207,10 +181,6 @@ impl State {
             frozen: true,
             ..self
         }
-    }
-
-    pub fn piece_count(&self) -> u32 {
-        self.board().combined().popcnt()
     }
 
     pub fn featurize(&self, features: &mut [f32]) {
@@ -329,7 +299,6 @@ impl From<StateBuilder> for State {
             queens_off: false,
             move_lists: [Vec::new(), Vec::new()],
             outcome: Outcome::Ongoing,
-            tb_hit: false,
         };
 
         state.check_outcome();
