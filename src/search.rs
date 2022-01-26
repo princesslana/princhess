@@ -13,6 +13,7 @@ use std::sync::atomic::Ordering;
 use std::sync::mpsc::Sender;
 use std::thread;
 use std::time::{Duration, Instant};
+use tablebase::probe_tablebase_best_move;
 use transposition_table::ApproxTable;
 use tree_policy::AlphaGoPolicy;
 use uci::Tokens;
@@ -140,6 +141,16 @@ impl Search {
             let uci_mv = to_uci(mvs.as_slice()[0]);
             println!(
                 "info depth 1 seldepth 1 nodes 1 nps 1 tbhits 0 time 1 pv {}",
+                uci_mv
+            );
+            println!("bestmove {}", uci_mv);
+            return Self {
+                search: manager.into(),
+            };
+        } else if let Some(mv) = probe_tablebase_best_move(state.shakmaty_board()) {
+            let uci_mv = mv.to_uci(shakmaty::CastlingMode::Standard);
+            println!(
+                "info depth 1 seldepth 1 nodes 1 nps 1 tbhits 1 time 1 pv {}",
                 uci_mv
             );
             println!("bestmove {}", uci_mv);
