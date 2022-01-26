@@ -122,7 +122,8 @@ impl State {
     }
 
     pub fn features(&self) -> [f32; nn::NUMBER_FEATURES] {
-        let mut features = [0f32; nn::NUMBER_FEATURES];
+        #[allow(clippy::uninit_assumed_init)]
+        let mut features = unsafe { std::mem::MaybeUninit::uninit().assume_init() };
         self.featurize(&mut features);
         features
     }
@@ -183,7 +184,7 @@ impl State {
         }
     }
 
-    pub fn featurize(&self, features: &mut [f32]) {
+    pub fn featurize(&self, features: &mut [f32; nn::NUMBER_FEATURES]) {
         features.fill(0.);
 
         let turn = self.shakmaty_board().turn();
