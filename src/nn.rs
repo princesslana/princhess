@@ -26,9 +26,11 @@ pub struct NN {
 
 impl NN {
     fn new(weights: NNWeights) -> Self {
+        #[allow(clippy::uninit_assumed_init)]
+        let hidden = unsafe { std::mem::MaybeUninit::uninit().assume_init() };
         Self {
             weights,
-            hidden_layer: [0f32; NUMBER_HIDDEN],
+            hidden_layer: hidden,
         }
     }
 
@@ -36,7 +38,7 @@ impl NN {
         Self::new(EVAL_WEIGHTS)
     }
 
-    pub fn set_inputs(&mut self, inputs: &[f32]) {
+    pub fn set_inputs(&mut self, inputs: &[f32; NUMBER_FEATURES]) {
         self.hidden_layer.copy_from_slice(self.weights.hidden_bias);
 
         for i in 0..inputs.len() {
