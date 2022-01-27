@@ -162,6 +162,7 @@ impl Search {
         let mut move_time = None;
         let mut infinite = false;
         let mut remaining = None;
+        let mut increment = Duration::from_millis(0);
         let mut sudden_death = true;
 
         while let Some(s) = tokens.next() {
@@ -180,6 +181,7 @@ impl Search {
                 "winc" => {
                     if player == Color::White {
                         if let Some(inc) = Self::parse_ms(&mut tokens) {
+                            increment = inc;
                             sudden_death = inc.is_zero();
                         }
                     }
@@ -187,6 +189,7 @@ impl Search {
                 "binc" => {
                     if player == Color::Black {
                         if let Some(inc) = Self::parse_ms(&mut tokens) {
+                            increment = inc;
                             sudden_death = inc.is_zero();
                         }
                     }
@@ -206,13 +209,14 @@ impl Search {
         } else if let Some(mt) = move_time {
             think_time = Some(mt)
         } else if let Some(r) = remaining {
-            let mut t = r / DEFAULT_MOVE_TIME_FRACTION;
+            let mut t = (r + (DEFAULT_MOVE_TIME_FRACTION * increment)) / DEFAULT_MOVE_TIME_FRACTION;
 
             if sudden_death && r < Duration::from_millis(60000) {
                 t = r / 60;
             }
 
-            think_time = Some(t)
+            // Cap think time at 80% of remaining
+            think_time = Some(t.min((4 * r) / 5));
         }
 
         let new_self = Self {
