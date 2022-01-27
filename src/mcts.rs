@@ -212,7 +212,13 @@ where
         eval_in_cp(
             self.principal_variation_info(1)
                 .get(0)
-                .map(|x| (x.sum_rewards() / x.visits() as i64) as f32 / SCALE)
+                .map(|x| {
+                    if x.visits() == 0 {
+                        0.
+                    } else {
+                        (x.sum_rewards() / x.visits() as i64) as f32 / SCALE
+                    }
+                })
                 .unwrap_or(0.0),
         )
     }

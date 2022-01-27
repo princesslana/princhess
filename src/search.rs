@@ -20,6 +20,7 @@ use uci::Tokens;
 
 const DEFAULT_MOVE_TIME_SECS: u64 = 10;
 const DEFAULT_MOVE_TIME_FRACTION: u32 = 15;
+const DEFAULT_MOVE_TIME_OVERHEAD: Duration = Duration::from_millis(500);
 
 pub const SCALE: f32 = 1e9;
 
@@ -209,14 +210,17 @@ impl Search {
         } else if let Some(mt) = move_time {
             think_time = Some(mt)
         } else if let Some(r) = remaining {
-            let mut t = (r + (DEFAULT_MOVE_TIME_FRACTION * increment)) / DEFAULT_MOVE_TIME_FRACTION;
+            let mut t = r / DEFAULT_MOVE_TIME_FRACTION;
+
+            if r - t > increment + DEFAULT_MOVE_TIME_OVERHEAD {
+                t += increment;
+            }
 
             if sudden_death && r < Duration::from_millis(60000) {
                 t = r / 60;
             }
 
-            // Cap think time at 80% of remaining
-            think_time = Some(t.min((4 * r) / 5));
+            think_time = Some(t);
         }
 
         let new_self = Self {
