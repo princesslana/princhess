@@ -197,15 +197,6 @@ impl<'a> MoveInfoHandle<'a> {
         self.hot.sum_evaluations.load(Ordering::Relaxed) as i64
     }
 
-    pub fn child(&self) -> Option<NodeHandle<'a>> {
-        let ptr = self.hot.child.load(Ordering::Relaxed);
-        if ptr.is_null() {
-            None
-        } else {
-            unsafe { Some(NodeHandle { node: &*ptr }) }
-        }
-    }
-
     pub fn average_reward(&self) -> Option<f32> {
         match self.visits() {
             0 => None,
@@ -613,61 +604,9 @@ pub struct SearchHandle<'a: 'b, 'b, Spec: 'a + MCTS> {
     pub shared: SharedSearchHandle<'a, 'b, Spec>,
 }
 
-impl<'a, 'b, Spec: MCTS> SharedSearchHandle<'a, 'b, Spec> {
-    pub fn node(&self) -> NodeHandle<'a> {
-        self.nth_parent(0).unwrap()
-    }
-    pub fn parent(&self) -> Option<NodeHandle<'a>> {
-        self.nth_parent(1)
-    }
-    pub fn grandparent(&self) -> Option<NodeHandle<'a>> {
-        self.nth_parent(2)
-    }
-    pub fn mcts(&self) -> &'a Spec {
-        &self.tree.manager
-    }
-    pub fn tree_policy(&self) -> &'a Spec::TreePolicy {
-        &self.tree.tree_policy
-    }
-    pub fn evaluator(&self) -> &'a Spec::Eval {
-        &self.tree.eval
-    }
-    /// The depth of the current search. A depth of 0 means we are at the root node.
-    pub fn depth(&self) -> usize {
-        self.path.len()
-    }
-    pub fn nth_parent(&self, n: usize) -> Option<NodeHandle<'a>> {
-        if n >= self.path.len() {
-            None
-        } else {
-            Some(NodeHandle {
-                node: self.path[self.path.len() - n - 1],
-            })
-        }
-    }
-}
-
 impl<'a, 'b, Spec: MCTS> SearchHandle<'a, 'b, Spec> {
     pub fn thread_data(&mut self) -> &mut ThreadData<'a, Spec> {
         self.tld
-    }
-    pub fn node(&self) -> NodeHandle<'a> {
-        self.shared.node()
-    }
-    pub fn mcts(&self) -> &'a Spec {
-        self.shared.mcts()
-    }
-    pub fn tree_policy(&self) -> &'a Spec::TreePolicy {
-        self.shared.tree_policy()
-    }
-    pub fn evaluator(&self) -> &'a Spec::Eval {
-        self.shared.evaluator()
-    }
-    pub fn depth(&self) -> usize {
-        self.shared.depth()
-    }
-    pub fn nth_parent(&self, n: usize) -> Option<NodeHandle<'a>> {
-        self.shared.nth_parent(n)
     }
 }
 

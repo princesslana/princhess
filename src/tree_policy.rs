@@ -29,28 +29,6 @@ pub trait TreePolicy<Spec: MCTS<TreePolicy = Self>>: Sync + Sized {
 }
 
 #[derive(Clone, Debug)]
-pub struct UCTPolicy {
-    exploration_constant: f32,
-}
-
-impl UCTPolicy {
-    pub fn new(exploration_constant: f32) -> Self {
-        assert!(
-            exploration_constant > 0.0,
-            "exploration constant is {} (must be positive)",
-            exploration_constant
-        );
-        Self {
-            exploration_constant,
-        }
-    }
-
-    pub fn exploration_constant(&self) -> f32 {
-        self.exploration_constant
-    }
-}
-
-#[derive(Clone, Debug)]
 pub struct AlphaGoPolicy {
     cpuct: f32,
     cpuct_base: f32,
@@ -64,37 +42,6 @@ impl AlphaGoPolicy {
             cpuct_base,
             cpuct_factor,
         }
-    }
-}
-
-impl<Spec: MCTS<TreePolicy = Self>> TreePolicy<Spec> for UCTPolicy {
-    type ThreadLocalData = PolicyRng;
-
-    fn choose_child<'a>(
-        &self,
-        _: &State,
-        moves: Moves<'a>,
-        mut handle: SearchHandle<Spec>,
-    ) -> MoveInfoHandle<'a> {
-        let total_visits = moves.map(|x| x.visits()).sum::<u64>();
-        let adjusted_total = (total_visits + 1) as f32;
-        let ln_adjusted_total = adjusted_total.ln();
-        handle
-            .thread_data()
-            .policy_data
-            .select_by_key(moves, |mov| {
-                let sum_rewards = mov.sum_rewards();
-                let child_visits = mov.visits();
-                // http://mcts.ai/pubs/mcts-survey-master.pdf
-                let explore_term = if child_visits == 0 {
-                    std::f32::INFINITY
-                } else {
-                    2.0 * (ln_adjusted_total / child_visits as f32).sqrt()
-                };
-                let mean_action_value = sum_rewards as f32 / adjusted_total;
-                (self.exploration_constant * explore_term + mean_action_value).into()
-            })
-            .unwrap()
     }
 }
 
