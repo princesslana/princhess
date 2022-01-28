@@ -31,9 +31,6 @@ pub struct SearchTree<Spec: MCTS> {
     num_nodes: AtomicUsize,
     max_depth: AtomicUsize,
     tb_hits: AtomicUsize,
-    transposition_table_hits: AtomicUsize,
-    delayed_transposition_table_hits: AtomicUsize,
-    expansion_contention_events: AtomicUsize,
 }
 
 pub struct PreviousTable<Spec: MCTS> {
@@ -292,9 +289,6 @@ impl<Spec: MCTS> SearchTree<Spec> {
             max_depth: 1.into(),
             tb_hits,
             arena,
-            transposition_table_hits: 0.into(),
-            delayed_transposition_table_hits: 0.into(),
-            expansion_contention_events: 0.into(),
         }
     }
 
@@ -420,24 +414,21 @@ impl<Spec: MCTS> SearchTree<Spec> {
         tld: &mut ThreadData<'a, Spec>,
         path: &[&'a SearchNode],
     ) -> Result<(&'a SearchNode, bool), ArenaError> {
-        let child = choice.child.load(Ordering::Relaxed) as *const _;
+        let child = choice.child.load(Ordering::Relaxed) as *const SearchNode;
         if !child.is_null() {
             return unsafe { Ok((&*child, false)) };
         }
 
         if let Some(node) = self.table.lookup(state) {
-            let child = choice.child.compare_and_swap(
+            return match choice.child.compare_exchange(
                 null_mut(),
                 node as *const _ as *mut _,
                 Ordering::Relaxed,
-            ) as *const _;
-            if child.is_null() {
-                self.transposition_table_hits
-                    .fetch_add(1, Ordering::Relaxed);
-                return Ok((node, false));
-            } else {
-                return unsafe { Ok((&*child, false)) };
-            }
+                Ordering::Relaxed,
+            ) {
+                Ok(_) => Ok((node, false)),
+                Err(other_child) => unsafe { Ok((&*other_child, false)) },
+            };
         }
 
         let mut created_here = create_node(
@@ -452,20 +443,20 @@ impl<Spec: MCTS> SearchTree<Spec> {
 
         let created = tld.allocator.alloc_one()?;
         *created = created_here;
-        let other_child =
-            choice
-                .child
-                .compare_and_swap(null_mut(), created as *mut _, Ordering::Relaxed);
-        if !other_child.is_null() {
-            self.expansion_contention_events
-                .fetch_add(1, Ordering::Relaxed);
-            unsafe {
+
+        match choice.child.compare_exchange(
+            null_mut(),
+            created as *mut _,
+            Ordering::Relaxed,
+            Ordering::Relaxed,
+        ) {
+            Ok(_) => (),
+            Err(other_child) => unsafe {
                 return Ok((&*other_child, false));
-            }
+            },
         }
+
         if let Some(existing) = self.table.insert(state, created) {
-            self.delayed_transposition_table_hits
-                .fetch_add(1, Ordering::Relaxed);
             let existing_ptr = existing as *const _ as *mut _;
             choice.child.store(existing_ptr, Ordering::Relaxed);
             return Ok((existing, false));

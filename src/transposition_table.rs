@@ -109,12 +109,15 @@ unsafe impl<K: TranspositionHash, V> Send for ApproxQuadraticProbingHashTable<K,
 pub type ApproxTable = ApproxQuadraticProbingHashTable<State, SearchNode>;
 
 fn get_or_write<'a, V>(ptr: &AtomicPtr<V>, v: &'a V) -> Option<&'a V> {
-    let result = ptr.compare_and_swap(
+    match ptr.compare_exchange_weak(
         std::ptr::null_mut(),
         v as *const _ as *mut _,
         Ordering::Relaxed,
-    );
-    convert(result)
+        Ordering::Relaxed,
+    ) {
+        Ok(_) => Some(&*v),
+        Err(_) => None,
+    }
 }
 
 fn convert<'a, V>(ptr: *const V) -> Option<&'a V> {
@@ -151,12 +154,16 @@ where
                 return get_or_write(&entry.v, value);
             }
             if key_here == 0 {
-                let key_here = entry
-                    .k
-                    .compare_and_swap(0, my_hash as u64, Ordering::Relaxed);
                 self.size.fetch_add(1, Ordering::Relaxed);
-                if key_here == 0 || key_here == my_hash as u64 {
-                    return get_or_write(&entry.v, value);
+                match entry.k.compare_exchange_weak(
+                    0,
+                    my_hash as u64,
+                    Ordering::Relaxed,
+                    Ordering::Relaxed,
+                ) {
+                    Ok(_) => return get_or_write(&entry.v, value),
+                    Err(h) if h == my_hash => return get_or_write(&entry.v, value),
+                    Err(_) => (),
                 }
             }
             posn += inc;
