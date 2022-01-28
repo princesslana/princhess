@@ -228,7 +228,7 @@ where
             .duration_since(search_start.unwrap())
             .as_millis();
 
-        let nodes = self.tree().num_nodes();
+        let nodes = self.nodes();
         let depth = fastapprox::faster::ln(nodes as f32).round();
         let nps = nodes * 1000 / search_time_ms as usize;
 
