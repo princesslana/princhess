@@ -17,6 +17,7 @@ mod arena;
 mod bench;
 mod mcts;
 mod nn;
+mod numerics;
 mod options;
 mod search_tree;
 mod tablebase;
