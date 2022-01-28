@@ -290,10 +290,6 @@ impl<Spec: MCTS> SearchTree<Spec> {
         }
     }
 
-    pub fn spec(&self) -> &Spec {
-        &self.manager
-    }
-
     pub fn table(self) -> PreviousTable<Spec> {
         PreviousTable {
             table: self.table,
