@@ -99,7 +99,7 @@ impl UciOption {
 
         let mut name = tokens.next()?.to_owned();
 
-        while let Some(t) = tokens.next() {
+        for t in tokens.by_ref() {
             if t == "value" {
                 break;
             }
@@ -109,7 +109,7 @@ impl UciOption {
 
         let mut value = None;
 
-        while let Some(t) = tokens.next() {
+        for t in tokens {
             value = match value {
                 None => Some(t.to_owned()),
                 Some(s) => Some(format!("{} {}", s, t)),
@@ -137,11 +137,11 @@ impl UciOption {
                     set_tablebase_directory(path)
                 }
             }
-            "threads" => self.set_option(|t| set_num_threads(t)),
-            "hash" => self.set_option(|t| set_hash_size_mb(t)),
-            "cpuct" => self.set_option(|t| set_cpuct(t)),
-            "cpuctbase" => self.set_option(|t| set_cpuct_base(t)),
-            "cpuctfactor" => self.set_option(|t| set_cpuct_factor(t)),
+            "threads" => self.set_option(set_num_threads),
+            "hash" => self.set_option(set_hash_size_mb),
+            "cpuct" => self.set_option(set_cpuct),
+            "cpuctbase" => self.set_option(set_cpuct_base),
+            "cpuctfactor" => self.set_option(set_cpuct_factor),
             _ => warn!("Badly formatted or unknown option"),
         }
     }
@@ -152,7 +152,7 @@ impl UciOption {
         T: FromStr,
     {
         if let Some(v) = self.value() {
-            if let Some(t) = v.parse().ok() {
+            if let Ok(t) = v.parse() {
                 f(t);
             }
         }
