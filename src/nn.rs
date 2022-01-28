@@ -45,18 +45,21 @@ impl NN {
 
         for i in 0..inputs.len() {
             if inputs[i] > 0.5 {
-                for j in 0..self.hidden_layer.len() {
-                    self.hidden_layer[j] += self.weights.hidden[j][i];
+                for (h, w) in self.hidden_layer.iter_mut().zip(self.weights.hidden) {
+                    *h += w[i];
                 }
             }
+        }
+        for i in self.hidden_layer.iter_mut() {
+            *i = i.max(0.);
         }
     }
 
     pub fn get_output(&self, idx: usize) -> f32 {
         let mut result = 0.;
 
-        for i in 0..self.hidden_layer.len() {
-            result += self.weights.output[idx][i] * self.hidden_layer[i].max(0.);
+        for (h, w) in self.hidden_layer.iter().zip(self.weights.output[idx]) {
+            result += h * w;
         }
 
         result
