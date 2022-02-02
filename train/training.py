@@ -117,7 +117,7 @@ def train_policy_with_keras(key, files):
     model = keras.Sequential()
     model.add(keras.Input(shape=(768,)))
     model.add(layers.Dense(hidden_layers, activation="relu", kernel_initializer="he_normal"))
-    model.add(layers.Dense(4096, activation="softmax", kernel_initializer="he_normal", use_bias=False))
+    model.add(layers.Dense(4096, activation="linear", kernel_initializer="he_normal", use_bias=False))
     model.summary()
 
     optimizer = keras.optimizers.Adam(learning_rate=0.001)
