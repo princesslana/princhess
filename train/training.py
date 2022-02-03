@@ -23,6 +23,7 @@ classifier = SGDClassifier(
     alpha=1e-6,
 )
 
+
 def split_files_train_and_test(files):
     all_files = list(files)
 
@@ -45,9 +46,9 @@ def generate_batches(files, batch_size):
 
             output, input = sklearn.utils.shuffle(y, x)
 
-            output = numpy.where(output==0, 2, output)
-            output = numpy.where(output==1, 0, output)
-            output = numpy.where(output==-1, 1, output)
+            output = numpy.where(output == 0, 2, output)
+            output = numpy.where(output == 1, 0, output)
+            output = numpy.where(output == -1, 1, output)
 
             for local_index in range(0, input.shape[0], batch_size):
                 input_local = input[local_index : (local_index + batch_size)]
@@ -63,9 +64,9 @@ def load_files(fs):
         print(f"Loading {f}...")
         file_x, file_y = load_svmlight_file(f)
 
-        file_y = numpy.where(file_y==0, 2, file_y)
-        file_y = numpy.where(file_y==1, 0, file_y)
-        file_y = numpy.where(file_y==-1, 1, file_y)
+        file_y = numpy.where(file_y == 0, 2, file_y)
+        file_y = numpy.where(file_y == 1, 0, file_y)
+        file_y = numpy.where(file_y == -1, 1, file_y)
 
         all_x = vstack((all_x, file_x)) if all_x is not None else file_x
         all_y = numpy.concatenate((all_y, file_y)) if all_y is not None else file_y
@@ -73,18 +74,25 @@ def load_files(fs):
     print(f"{len(all_y)} samples loaded.")
     return (all_x.todense(), all_y)
 
+
 def train_state_with_keras(files):
     train_files, test_files = split_files_train_and_test(list(glob.glob(files)))
     batch_size = 256
     test_data = load_files(test_files)
     train_generator = generate_batches(files=train_files, batch_size=batch_size)
 
-    hidden_layers=32
+    hidden_layers = 32
 
     model = keras.Sequential()
     model.add(keras.Input(shape=(768,)))
-    model.add(layers.Dense(hidden_layer, activation="relu", kernel_initializer="he_normal"))
-    model.add(layers.Dense(1, activation="tanh", kernel_initializer="he_normal", use_bias=False))
+    model.add(
+        layers.Dense(hidden_layer, activation="relu", kernel_initializer="he_normal")
+    )
+    model.add(
+        layers.Dense(
+            1, activation="tanh", kernel_initializer="he_normal", use_bias=False
+        )
+    )
     model.summary()
 
     optimizer = keras.optimizers.Adam(learning_rate=0.001)
@@ -92,7 +100,9 @@ def train_state_with_keras(files):
     model.compile(optimizer=optimizer, loss="mean_squared_error")
 
     mc = ModelCheckpoint(
-        filepath="checkpoints/state.768x" + str(hidden_layers) + "x1.e{epoch:03d}-l{val_loss:.2f}.h5",
+        filepath="checkpoints/state.768x"
+        + str(hidden_layers)
+        + "x1.e{epoch:03d}-l{val_loss:.2f}.h5",
         verbose=True,
     )
 
@@ -102,7 +112,7 @@ def train_state_with_keras(files):
         verbose=1,
         callbacks=[mc],
         steps_per_epoch=len(train_files) * 1000000 / batch_size,
-        validation_data=test_data
+        validation_data=test_data,
     )
 
 
@@ -112,25 +122,40 @@ def train_policy_with_keras(key, files):
     test_data = load_files(test_files)
     train_generator = generate_batches(files=train_files, batch_size=batch_size)
 
-    hidden_layers=32
+    hidden_layers = 32
+    output_activation = "relu"
 
     model = keras.Sequential()
     model.add(keras.Input(shape=(768,)))
-    model.add(layers.Dense(hidden_layers, activation="relu", kernel_initializer="he_normal"))
-    model.add(layers.Dense(4096, activation="linear", kernel_initializer="he_normal", use_bias=False))
+    model.add(
+        layers.Dense(hidden_layers, activation="relu", kernel_initializer="he_normal")
+    )
+    model.add(
+        layers.Dense(
+            4096, activation="relu", kernel_initializer="he_normal", use_bias=False
+        )
+    )
     model.summary()
 
     optimizer = keras.optimizers.Adam(learning_rate=0.001)
 
-    model.compile(optimizer=optimizer, loss="sparse_categorical_crossentropy", metrics=["acc"])
+    model.compile(
+        optimizer=optimizer, loss="sparse_categorical_crossentropy", metrics=["acc"]
+    )
 
     mc = ModelCheckpoint(
-        filepath="checkpoints/" + key + ".768x" + str(hidden_layers) + "x4096.e{epoch:03d}-l{val_loss:.2f}-a{val_acc:.2f}.h5",
+        filepath="checkpoints/"
+        + key
+        + ".768x"
+        + str(hidden_layers)
+        + "x4096"
+        + output_activation
+        + ".e{epoch:03d}-l{val_loss:.2f}-a{val_acc:.2f}.h5",
         verbose=True,
         monitor="val_loss",
         save_best_only=True,
     )
-    es = EarlyStopping(monitor='val_loss', patience=15, verbose=True)
+    es = EarlyStopping(monitor="val_loss", patience=15, verbose=True)
 
     model.fit(
         train_generator,
@@ -138,7 +163,7 @@ def train_policy_with_keras(key, files):
         verbose=1,
         callbacks=[mc, es],
         steps_per_epoch=len(train_files) * 1000000 / batch_size,
-        validation_data=test_data
+        validation_data=test_data,
     )
 
 
