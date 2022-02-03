@@ -244,7 +244,7 @@ impl State {
         adj_sq as usize
     }
 
-    pub fn featurize(&self, features: &mut [f32:: nn::NUMBER_FEATURES]) {
+    pub fn featurize(&self, features: &mut [f32; nn::NUMBER_FEATURES]) {
         features.fill(0.);
 
         let turn = self.shakmaty_board().turn();

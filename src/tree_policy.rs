@@ -85,14 +85,6 @@ impl<Spec: MCTS<TreePolicy = Self>> TreePolicy<Spec> for AlphaGoPolicy {
                 x
             );
         }
-        if !evalns.is_empty() {
-            let evaln_sum: f32 = evalns.iter().sum();
-            assert!(
-                (evaln_sum - 1.0).abs() < 0.1,
-                "Sum of evaluations is {} (should sum to 1)",
-                evaln_sum
-            );
-        }
     }
 }
 
