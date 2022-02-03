@@ -26,9 +26,20 @@ pub fn evaluate_moves(state: &State, moves: &[Move]) -> Vec<f32> {
         p_nn.get_output(state.move_to_index(x)).max(0.)
     }).collect();
     //let mut evalns: Vec<_> = moves.iter().map(|x| evaluate_single(state, x)).collect();
-    softmax(&mut evalns);
+    scale(&mut evalns);
 
     evalns
+}
+
+fn scale(arr: &mut [f32]) {
+    let sum = arr.iter().sum::<f32>();
+    if (sum == 0.) {
+        return;
+    }
+    let s = 1.0 / sum;
+    for x in arr.iter_mut() {
+        *x *= s;
+    }
 }
 
 pub fn softmax(arr: &mut [f32]) {
