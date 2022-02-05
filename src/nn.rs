@@ -54,12 +54,9 @@ impl NN {
                 }
             }
         }
-        for i in self.hidden_layer.iter_mut() {
-            *i = i.max(0.);
-        }
     }
 
     pub fn get_output(&self, idx: usize) -> f32 {
-        numerics::unrolled_dot(&self.hidden_layer, &self.weights.output[idx])
+        numerics::unrolled_relu_dot(&self.hidden_layer, &self.weights.output[idx])
     }
 }
