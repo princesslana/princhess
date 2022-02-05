@@ -42,11 +42,11 @@ impl NN {
         Self::new(EVAL_WEIGHTS)
     }
 
-    pub fn set_inputs(&mut self, inputs: &[f32; NUMBER_FEATURES]) {
+    pub fn set_inputs(&mut self, inputs: &[i8; NUMBER_FEATURES]) {
         self.hidden_layer.copy_from_slice(self.weights.hidden_bias);
 
         for i in 0..inputs.len() {
-            if inputs[i] > 0.5 {
+            if inputs[i] == 1 {
                 for j in 0..self.hidden_layer.len() {
                     self.hidden_layer[j] += self.weights.hidden[j][i];
                 }

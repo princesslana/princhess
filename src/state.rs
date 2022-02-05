@@ -121,7 +121,7 @@ impl State {
         &self.shakmaty_board
     }
 
-    pub fn features(&self) -> [f32; nn::NUMBER_FEATURES] {
+    pub fn features(&self) -> [i8; nn::NUMBER_FEATURES] {
         #[allow(clippy::uninit_assumed_init)]
         let mut features = unsafe { std::mem::MaybeUninit::uninit().assume_init() };
         self.featurize(&mut features);
@@ -184,8 +184,8 @@ impl State {
         }
     }
 
-    pub fn featurize(&self, features: &mut [f32; nn::NUMBER_FEATURES]) {
-        features.fill(0.);
+    pub fn featurize(&self, features: &mut [i8; nn::NUMBER_FEATURES]) {
+        features.fill(0);
 
         let turn = self.shakmaty_board().turn();
         let b = self.shakmaty_board().board();
@@ -209,7 +209,7 @@ impl State {
 
             let feature_idx = (side_idx * 6 + role_idx) * 64 + sq_idx;
 
-            features[feature_idx] = 1.;
+            features[feature_idx] = 1;
         }
     }
 }

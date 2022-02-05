@@ -283,7 +283,7 @@ impl Search {
         for _ in 0..12 {
             for _ in 0..8 {
                 for _ in 0..8 {
-                    print!("{}", if fs[idx] > 0.5 { 1 } else { 0 });
+                    print!("{}", fs[idx]);
                     idx += 1;
                 }
                 print!(" ");
