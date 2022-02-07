@@ -29,7 +29,7 @@ def split_files_train_and_test(files):
 
     random.shuffle(all_files)
 
-    split_idx = max(1, len(all_files) // 10)
+    split_idx = min(max(1, len(all_files) // 10), 5)
     test_files = all_files[:split_idx]
     train_files = all_files[split_idx:]
 
@@ -73,7 +73,7 @@ def train_state_with_keras(files):
     test_data = load_files(test_files)
     train_generator = generate_batches(files=train_files, batch_size=batch_size)
 
-    hidden_layers = 64 
+    hidden_layers = 32
 
     model = keras.Sequential()
     model.add(keras.Input(shape=(768,)))

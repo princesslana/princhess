@@ -75,9 +75,8 @@ impl Visitor for ValueDataGenerator {
             None => return,
         };
         let (mut state, moves) = self.state.extract();
-        let freq = NUM_SAMPLES as f64 / moves.len() as f64;
         for (i, m) in moves.into_iter().enumerate() {
-            if i >= 8 && self.rng.gen_range(0., 1.) < freq {
+            if i >= 8 {
                 let mut f = featurize(&state);
                 self.rows_written += 1;
                 if let Some(out_file) = self.out_file.as_mut() {
@@ -86,7 +85,12 @@ impl Visitor for ValueDataGenerator {
                     } else {
                         game_result.flip()
                     };
-                    f.write_libsvm(out_file, crnt_result as i8)
+                    let v = match crnt_result {
+                        GameResult::WhiteWin => 1,
+                        GameResult::BlackWin => -1,
+                        GameResult::Draw => 0,
+                    };
+                    f.write_libsvm(out_file, v)
                 }
             }
             state.make_move(&m);
