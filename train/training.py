@@ -68,9 +68,8 @@ def load_files(fs):
 
 
 def train_state_with_keras(files):
-    train_files, test_files = split_files_train_and_test(list(glob.glob(files)))
+    train_files = list(glob.glob(files))
     batch_size = 256
-    test_data = load_files(test_files)
     train_generator = generate_batches(files=train_files, batch_size=batch_size)
 
     hidden_layers = 32
@@ -94,20 +93,19 @@ def train_state_with_keras(files):
     mc = ModelCheckpoint(
         filepath="checkpoints/state.768x"
         + str(hidden_layers)
-        + "x1.e{epoch:03d}-l{val_loss:.2f}.h5",
+        + "x1.e{epoch:03d}-l{loss:.2f}.h5",
         verbose=True,
-        monitor="val_loss",
+        monitor="loss",
         save_best_only=True,
     )
-    es = EarlyStopping(monitor="val_loss", patience=15, verbose=True)
+    es = EarlyStopping(monitor="loss", patience=10, verbose=True)
 
     model.fit(
         train_generator,
         epochs=500,
         verbose=1,
         callbacks=[mc, es],
-        steps_per_epoch=len(train_files) * 1000000 / batch_size,
-        validation_data=test_data,
+        steps_per_epoch=len(train_files) * 5000000 / batch_size,
     )
 
 
