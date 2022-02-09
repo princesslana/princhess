@@ -217,9 +217,8 @@ impl State {
 impl TranspositionHash for State {
     fn hash(&self) -> u64 {
         match self.repetitions {
-            0 => self.board().get_hash(),
-            1 => self.board().get_hash() ^ 0xDEADBEEF,
-            _ => 1,
+            2 => 1,
+            _ => self.board().get_hash(),
         }
     }
 }
