@@ -16,7 +16,7 @@ COPY bin/run-bot.sh /run-bot.sh
 
 RUN  git clone https://github.com/ShailChoksi/lichess-bot.git /src \
  && cd /src \
- && git checkout 3d0582fc4ffea2a62df633066a5b60e09556070f \
+ && git checkout 6769ef459748cf8626b93a0cff0dc3cbb69837b9 \
  && pip install -r requirements.txt
 
 COPY bin/config.yml /src/config.yml
