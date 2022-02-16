@@ -3,7 +3,7 @@ import numpy
 import random
 import sklearn
 import sys
-from keras.callbacks import EarlyStopping, ModelCheckpoint
+from keras.callbacks import EarlyStopping, ModelCheckpoint, ReduceLROnPlateau
 from numpy import array2string
 from scipy.sparse import vstack
 from sklearn.datasets import load_svmlight_file
@@ -79,9 +79,9 @@ def train_state_with_keras(files):
     model.add(
         layers.Dense(hidden_layers, activation="relu", kernel_initializer="he_normal")
     )
-    model.add(
-        layers.Dense(hidden_layers, activation="relu", kernel_initializer="he_normal")
-    )
+    #model.add(
+    #    layers.Dense(hidden_layers, activation="relu", kernel_initializer="he_normal")
+    #)
     model.add(
         layers.Dense(
             1, activation="tanh", kernel_initializer="he_normal", use_bias=False
@@ -89,7 +89,7 @@ def train_state_with_keras(files):
     )
     model.summary()
 
-    optimizer = keras.optimizers.Adam(learning_rate=0.001)
+    optimizer = keras.optimizers.Adam(learning_rate=0.01)
 
     model.compile(optimizer=optimizer, loss="mean_squared_error")
 
@@ -101,13 +101,14 @@ def train_state_with_keras(files):
         monitor="loss",
         save_best_only=True,
     )
+    rlr = ReduceLROnPlateau(monitor="loss", patience=5, verbose=True)
     es = EarlyStopping(monitor="loss", patience=10, verbose=True)
 
     model.fit(
         train_generator,
         epochs=500,
         verbose=1,
-        callbacks=[mc, es],
+        callbacks=[mc, rlr, es],
         steps_per_epoch=len(train_files) * 5000000 / batch_size,
     )
 
