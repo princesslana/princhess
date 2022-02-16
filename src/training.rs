@@ -24,7 +24,7 @@ use std::str;
 const NUM_ROWS: usize = std::usize::MAX;
 const MIN_ELO: i32 = 1700;
 const MIN_ELO_POLICY: i32 = 2200;
-const NUM_SAMPLES: usize = 2;
+const NUM_SAMPLES: usize = 8;
 const VALIDATION_RATIO: f32 = 0.1;
 
 struct ValueDataGenerator {
@@ -86,7 +86,12 @@ impl Visitor for ValueDataGenerator {
                     } else {
                         game_result.flip()
                     };
-                    f.write_libsvm(out_file, crnt_result as i8)
+                    let v = match crnt_result {
+                        GameResult::WhiteWin => 1,
+                        GameResult::BlackWin => -1,
+                        GameResult::Draw => 0,
+                    };
+                    f.write_libsvm(out_file, v);
                 }
             }
             state.make_move(&m);

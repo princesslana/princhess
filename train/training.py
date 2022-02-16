@@ -73,10 +73,13 @@ def train_state_with_keras(files):
     test_data = load_files(test_files)
     train_generator = generate_batches(files=train_files, batch_size=batch_size)
 
-    hidden_layers = 64 
+    hidden_layers = 32 
 
     model = keras.Sequential()
     model.add(keras.Input(shape=(768,)))
+    model.add(
+        layers.Dense(hidden_layers, activation="relu", kernel_initializer="he_normal")
+    )
     model.add(
         layers.Dense(hidden_layers, activation="relu", kernel_initializer="he_normal")
     )
@@ -93,7 +96,7 @@ def train_state_with_keras(files):
 
     mc = ModelCheckpoint(
         filepath="checkpoints/state.768x"
-        + str(hidden_layers)
+        + str(hidden_layers) + "x" + str(hidden_layers)
         + "x1.e{epoch:03d}-l{val_loss:.2f}.h5",
         verbose=True,
         monitor="val_loss",
