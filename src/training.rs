@@ -24,7 +24,7 @@ use std::str;
 const NUM_ROWS: usize = std::usize::MAX;
 const MIN_ELO: i32 = 1700;
 const MIN_ELO_POLICY: i32 = 2200;
-const NUM_SAMPLES: usize = 2;
+const NUM_SAMPLES: usize = 8;
 const VALIDATION_RATIO: f32 = 0.1;
 
 struct ValueDataGenerator {
@@ -32,6 +32,7 @@ struct ValueDataGenerator {
     state: StateBuilder,
     skip: bool,
     rows_written: usize,
+    rng: SmallRng,
 }
 
 impl Visitor for ValueDataGenerator {
@@ -74,21 +75,24 @@ impl Visitor for ValueDataGenerator {
             None => return,
         };
         let (mut state, moves) = self.state.extract();
-        for m in moves.iter() {
-            let mut f = featurize(&state);
-            self.rows_written += 1;
-            if let Some(out_file) = self.out_file.as_mut() {
-                let crnt_result = if state.board().side_to_move() == chess::Color::White {
-                    game_result
-                } else {
-                    game_result.flip()
-                };
-                let v = match crnt_result {
-                    GameResult::WhiteWin => 1,
-                    GameResult::BlackWin => -1,
-                    GameResult::Draw => 0,
-                };
-                f.write_libsvm(out_file, v)
+        let freq = NUM_SAMPLES as f64 / moves.len() as f64;
+        for (i, m) in moves.into_iter().enumerate() {
+            if i >= 8 && self.rng.gen_range(0., 1.) < freq {
+                let mut f = featurize(&state);
+                self.rows_written += 1;
+                if let Some(out_file) = self.out_file.as_mut() {
+                    let crnt_result = if state.board().side_to_move() == chess::Color::White {
+                        game_result
+                    } else {
+                        game_result.flip()
+                    };
+                    let v = match crnt_result {
+                        GameResult::WhiteWin => 1,
+                        GameResult::BlackWin => -1,
+                        GameResult::Draw => 0,
+                    };
+                    f.write_libsvm(out_file, v);
+                }
             }
             state.make_move(&m);
         }
@@ -114,6 +118,7 @@ fn run_value_gen(in_path: &str, out_file: Option<BufWriter<File>>) -> ValueDataG
         state: StateBuilder::default(),
         skip: true,
         rows_written: 0,
+        rng: SeedableRng::seed_from_u64(42),
     };
 
     let file = File::open(in_path).expect("fopen");
