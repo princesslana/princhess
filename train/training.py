@@ -95,17 +95,14 @@ def train_state_with_keras(files):
         + str(hidden_layers)
         + "x1.e{epoch:03d}-l{loss:.2f}.h5",
         verbose=True,
-        monitor="loss",
-        save_best_only=True,
     )
-    es = EarlyStopping(monitor="loss", patience=10, verbose=True)
 
     model.fit(
         train_generator,
-        epochs=500,
+        epochs=100,
         verbose=1,
-        callbacks=[mc, es],
-        steps_per_epoch=len(train_files) * 5000000 / batch_size,
+        callbacks=[mc],
+        steps_per_epoch=len(train_files) * 1000000 / batch_size,
     )
 
 

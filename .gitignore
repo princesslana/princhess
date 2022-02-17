@@ -19,7 +19,7 @@ out/
 policy_key.txt
 run_goose.sh
 syzygy
-train/*_data/*
+train/*_data*/*
 train/*model
 train/.env
 train/__pycache__

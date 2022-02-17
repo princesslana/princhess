@@ -15,7 +15,7 @@ state_data() {
     echo "Calculating split..."
 
     samples=$(wc -l < train_data.libsvm)
-    splits=$(( $samples / 5000000 ))
+    splits=$(( $samples / 1000000 ))
     split_size=$(( $samples / $splits + 1))
 
     echo "Splitting data ($split_size)..."
@@ -39,7 +39,7 @@ policy_data() {
     echo "Calculating split..."
 
     samples=$(wc -l < policy_train_data.libsvm)
-    splits=$(( $samples / 5000000 ))
+    splits=$(( $samples / 1000000 ))
     split_size=$(( $samples / $splits + 1))
 
     echo "Splitting data ($split_size)..."
