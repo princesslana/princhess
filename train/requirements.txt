@@ -1,3 +1,4 @@
-scikit-learn==0.24.2
 black==21.9b
-tensorflow==2.6.1
+numpy==1.22.2
+scikit-learn==1.0.2
+tensorflow==2.8.0
