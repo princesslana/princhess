@@ -8,6 +8,8 @@ engine:
   polyglot:
     enabled: true
     max_depth: 4
+    min_weight: 0
+    selection: "uniform_random"
     book:
       standard:
         - /books/gm2001.bin
