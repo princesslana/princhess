@@ -80,6 +80,9 @@ def train_state_with_keras(files):
         layers.Dense(hidden_layers, activation="relu", kernel_initializer="he_normal")
     )
     model.add(
+        layers.Dense(hidden_layers, activation="relu", kernel_initializer="he_normal")
+    )
+    model.add(
         layers.Dense(
             1, activation="tanh", kernel_initializer="he_normal", use_bias=False
         )
@@ -92,7 +95,7 @@ def train_state_with_keras(files):
 
     mc = ModelCheckpoint(
         filepath="checkpoints/state.768x"
-        + str(hidden_layers)
+        + str(hidden_layers) + "x" + str(hidden_layers)
         + "x1.e{epoch:03d}-l{loss:.2f}.h5",
         verbose=True,
     )
