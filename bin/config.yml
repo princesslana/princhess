@@ -11,6 +11,7 @@ engine:
     book:
       standard:
         - /books/gm2001.bin
+        - /books/human.bin
   uci_options:
     Threads: 2
     Hash: 1024
@@ -22,6 +23,7 @@ challenge:
   accept_bot: true
   variants:
     - standard
+    - fromPosition
 
   time_controls:
     - bullet
