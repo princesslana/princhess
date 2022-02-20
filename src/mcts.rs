@@ -230,27 +230,24 @@ where
 
         let nodes = self.tree().num_nodes();
         let depth = fastapprox::faster::ln(nodes as f32).round();
+        let pv = self.principal_variation(64);
+        let sel_depth = pv.len();
+        let pv_string: String = pv.into_iter().map(|x| format!(" {}", to_uci(x))).collect();
+
         let nps = nodes * 1000 / search_time_ms as usize;
 
         let info_str = format!(
             "info depth {} seldepth {} nodes {} nps {} tbhits {} score {} time {} pv{}",
             depth,
-            self.tree().max_depth(),
+            sel_depth,
             nodes,
             nps,
             self.tree().tb_hits(),
             self.eval_in_cp(),
             search_time_ms,
-            self.get_pv()
+            pv_string,
         );
         println!("{}", info_str);
-    }
-
-    fn get_pv(&self) -> String {
-        self.principal_variation(10)
-            .into_iter()
-            .map(|x| format!(" {}", to_uci(x)))
-            .collect()
     }
 
     pub fn print_move_list(&self) {

@@ -29,7 +29,6 @@ pub struct SearchTree<Spec: MCTS> {
     arena: Box<Arena>,
 
     num_nodes: AtomicUsize,
-    max_depth: AtomicUsize,
     tb_hits: AtomicUsize,
     transposition_table_hits: AtomicUsize,
     delayed_transposition_table_hits: AtomicUsize,
@@ -289,7 +288,6 @@ impl<Spec: MCTS> SearchTree<Spec> {
             table,
             prev_table,
             num_nodes: 1.into(),
-            max_depth: 1.into(),
             tb_hits,
             arena,
             transposition_table_hits: 0.into(),
@@ -311,10 +309,6 @@ impl<Spec: MCTS> SearchTree<Spec> {
 
     pub fn num_nodes(&self) -> usize {
         self.num_nodes.load(Ordering::SeqCst)
-    }
-
-    pub fn max_depth(&self) -> usize {
-        self.max_depth.load(Ordering::SeqCst)
     }
 
     pub fn tb_hits(&self) -> usize {
@@ -471,8 +465,6 @@ impl<Spec: MCTS> SearchTree<Spec> {
             return Ok((existing, false));
         }
         self.num_nodes.fetch_add(1, Ordering::Relaxed);
-        let depth = path.len();
-        self.max_depth.fetch_max(depth, Ordering::Relaxed);
         Ok((created, did_we_create))
     }
 
