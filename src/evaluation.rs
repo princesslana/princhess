@@ -7,7 +7,7 @@ use shakmaty_syzygy::Wdl;
 use state::{MoveList, Outcome, Player, State};
 use tablebase::probe_tablebase_wdl;
 
-const MATE_FACTOR: f32 = 1.1;
+pub const MATE_FACTOR: f32 = 2.0;
 
 pub struct GooseEval {
     model: Model,

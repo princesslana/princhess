@@ -1,3 +1,4 @@
+use evaluation::MATE_FACTOR;
 use mcts::*;
 use options::get_hash_size_mb;
 use policy_features::softmax;
@@ -475,7 +476,7 @@ impl<Spec: MCTS> SearchTree<Spec> {
         players: &[Player],
         evaln: &StateEvaluation,
     ) {
-        let mut mate_decay = 0.01;
+        let mut mate_decay = (MATE_FACTOR - 1.0) / 100.;
 
         for ((move_info, player), node) in
             path.iter().zip(players.iter()).zip(node_path.iter()).rev()
