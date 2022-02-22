@@ -1,4 +1,5 @@
 use arena::ArenaAllocator;
+use evaluation::MATE_FACTOR;
 pub use search_tree::*;
 use transposition_table::*;
 use tree_policy::*;
@@ -337,7 +338,8 @@ pub enum CycleBehaviour {
 // eval here is [0.0, 1.0]
 fn eval_in_cp(eval: f32) -> String {
     if eval.abs() > 1.0 {
-        let plies = (1.1 - eval.abs()) / 0.001;
+        let mate_decay = (MATE_FACTOR - 1.0) / 100.;
+        let plies = (MATE_FACTOR - eval.abs()) / mate_decay;
         let mvs = plies / 2.;
         let mate_score = (eval.signum() * mvs).round();
         format!("mate {:+}", mate_score)
