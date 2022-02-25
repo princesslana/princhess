@@ -188,6 +188,31 @@ impl State {
         }
     }
 
+    pub fn move_to_index(&self, mov: &chess::ChessMove) -> usize {
+        let from_sq = unsafe { shakmaty::Square::new_unchecked(mov.get_source().to_int() as u32) };
+        let to_sq = unsafe { shakmaty::Square::new_unchecked(mov.get_dest().to_int() as u32) };
+
+        let turn = self.shakmaty_board().turn();
+        let b = self.shakmaty_board().board();
+
+        let ksq = b.king_of(turn).unwrap();
+
+        let flip_vertical = turn == shakmaty::Color::Black;
+        let flip_horizontal = ksq.file() <= File::D;
+
+        let (adj_from, adj_to) = match (flip_vertical, flip_horizontal) {
+            (true, true) => (
+                from_sq.flip_vertical().flip_horizontal(),
+                to_sq.flip_vertical().flip_horizontal(),
+            ),
+            (true, false) => (from_sq.flip_vertical(), to_sq.flip_vertical()),
+            (false, true) => (from_sq.flip_horizontal(), to_sq.flip_horizontal()),
+            (false, false) => (from_sq, to_sq),
+        };
+
+        adj_from as usize * 64 + adj_to as usize
+    }
+
     pub fn featurize(&self, features: &mut [f32; nn::NUMBER_FEATURES]) {
         features.fill(0.);
 

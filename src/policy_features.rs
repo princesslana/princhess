@@ -1,5 +1,4 @@
 use chess::*;
-use features::FeatureVec;
 use features_common::*;
 use state::{Move, State};
 
@@ -172,18 +171,6 @@ where
     }
 }
 
-pub fn featurize(state: &State, mov: &Move) -> FeatureVec {
-    let mut arr = [0i8; NUM_POLICY_FEATURES];
-    foreach_feature(state, mov, |i, v| {
-        assert!(v == 1);
-        arr[i] += v;
-    });
-    for &x in arr.iter() {
-        assert!(x == 0 || x == 1);
-    }
-    FeatureVec { arr: arr.to_vec() }
-}
-
 pub fn evaluate_single(state: &State, mov: &Move) -> f32 {
     let mut result = 0f32;
     foreach_feature(state, mov, |i, _| {
@@ -206,27 +193,6 @@ pub fn softmax(arr: &mut [f32]) {
     for x in arr.iter_mut() {
         *x *= s;
     }
-}
-
-fn name_feature_uc(idx: usize) -> String {
-    if idx >= NUM_ENCODED {
-        INDEX_NAMES[idx - NUM_ENCODED].into()
-    } else {
-        for &r1 in &ROLES {
-            for &r2 in &ROLES {
-                for adv in (-2)..3 {
-                    if encode_axba(r1, r2, adv) == idx {
-                        return format!("{}_x_{}_{}", r1, r2, adv);
-                    }
-                }
-            }
-        }
-        unreachable!()
-    }
-}
-
-pub fn name_feature(idx: usize) -> String {
-    name_feature_uc(idx).to_lowercase()
 }
 
 #[allow(clippy::many_single_char_names)]
