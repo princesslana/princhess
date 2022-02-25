@@ -158,13 +158,11 @@ impl State {
     }
     fn check_for_repetition(&mut self) {
         let crnt_hash = self.board.get_hash();
-        self.repetitions = max(
-            self.repetitions,
-            self.prev_state_hashes
-                .iter()
-                .filter(|h| **h == crnt_hash)
-                .count(),
-        );
+        self.repetitions = self
+            .prev_state_hashes
+            .iter()
+            .filter(|h| **h == crnt_hash)
+            .count();
     }
 
     fn drawn_by_fifty_move_rule(&self) -> bool {
