@@ -1,25 +1,4 @@
 services:
-  elo_test:
-    build:
-      context: .
-      dockerfile: bin/Dockerfile.cutechess-cli
-    command: >
-      -engine cmd=/engines/princhess
-      -engine cmd=/engines/princhess-main name=princhess-main
-      -each proto=uci tc=10+0.1 timemargin=1000
-            option.SyzygyPath=/syzygy option.Hash=256 option.Threads=1
-      -openings file=/books/noob_2moves.epd format=epd order=random
-      -sprt elo0=0 elo1=5 alpha=0.05 beta=0.05
-      -games 2 -repeat -rounds 1000 -ratinginterval 1 -concurrency 2
-      -pgnout /out/elo_test.pgn
-    volumes:
-      - ./target/release/princhess:/engines/princhess
-      - ./target/release/princhess-main:/engines/princhess-main
-      - ./syzygy:/syzygy:ro
-      - ./out:/out
-    environment:
-      RUST_LOG: warn
-
   crash_test:
     build:
       context: .
@@ -35,14 +14,16 @@ services:
       context: .
       dockerfile: bin/Dockerfile.cutechess-cli
     command: >
-      -engine cmd=/engines/princhess-0.4.0
-      -engine cmd=/engines/princhess-0.3.1
+      -engine cmd=/engines/princhess name=princhess-main
+      -engine cmd=/engines/princhess-0.6.0 name=princhess-0.6.0
+      -engine cmd=/engines/princhess-0.5.1 name=princhess-0.5.1
       -each proto=uci tc=10+0.1 timemargin=1000
             option.SyzygyPath=/syzygy option.Hash=256 option.Threads=1
       -openings file=/books/noob_2moves.epd format=epd order=random
       -games 2 -repeat -rounds 250
       -recover -ratinginterval 1 -concurrency 2
     volumes:
+      - ./target/release/princhess:/engines/princhess
       - ./engine/rustic:/engines/rustic
       - ./syzygy:/syzygy:ro
     environment:
