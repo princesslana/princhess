@@ -23,6 +23,22 @@ const EVAL_WEIGHTS: NNWeights = NNWeights {
     output: &EVAL_OUTPUT_WEIGHTS,
 };
 
+#[allow(clippy::excessive_precision)]
+const POLICY_HIDDEN_BIAS: [f32; NUMBER_HIDDEN] = include!("policy/hidden_bias");
+
+#[allow(clippy::excessive_precision)]
+const POLICY_HIDDEN_WEIGHTS: [[f32; NUMBER_FEATURES]; NUMBER_HIDDEN] =
+    include!("policy/hidden_weights");
+
+#[allow(clippy::excessive_precision)]
+const POLICY_OUTPUT_WEIGHTS: [[f32; NUMBER_HIDDEN]; 4096] = include!("policy/output_weights");
+
+const POLICY_WEIGHTS: NNWeights = NNWeights {
+    hidden_bias: &POLICY_HIDDEN_BIAS,
+    hidden: &POLICY_HIDDEN_WEIGHTS,
+    output: &POLICY_OUTPUT_WEIGHTS,
+};
+
 pub struct NN {
     weights: NNWeights,
     hidden_layer: [f32; NUMBER_HIDDEN],
@@ -40,6 +56,10 @@ impl NN {
 
     pub fn new_eval() -> Self {
         Self::new(EVAL_WEIGHTS)
+    }
+
+    pub fn new_policy() -> Self {
+        Self::new(POLICY_WEIGHTS)
     }
 
     pub fn set_inputs(&mut self, inputs: &[f32; NUMBER_FEATURES]) {

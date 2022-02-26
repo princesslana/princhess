@@ -108,12 +108,6 @@ impl State {
     pub fn from_fen(fen: &str) -> Option<Self> {
         StateBuilder::from_fen(fen).map(|x| x.into())
     }
-    pub fn prev_move(&self) -> Option<chess::ChessMove> {
-        self.prev_move
-    }
-    pub fn prev_capture(&self) -> Option<chess::Piece> {
-        self.prev_capture
-    }
     pub fn board(&self) -> &chess::Board {
         &self.board
     }
@@ -155,9 +149,6 @@ impl State {
         }
     }
 
-    pub fn formerly_occupied(&self) -> &[chess::BitBoard; NUM_OCCUPIED_KEPT] {
-        &self.formerly_occupied
-    }
     fn check_for_repetition(&mut self) {
         let crnt_hash = self.board.get_hash();
         self.repetitions = max(
