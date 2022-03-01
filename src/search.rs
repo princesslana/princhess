@@ -208,10 +208,6 @@ impl Search {
         } else if let Some(r) = remaining {
             let mut t = r / DEFAULT_MOVE_TIME_FRACTION;
 
-            if state.is_repetition() {
-                t *= 2;
-            }
-
             if sudden_death && r < Duration::from_millis(60000) {
                 t = r / 60;
             }

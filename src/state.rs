@@ -173,10 +173,6 @@ impl State {
         self.prev_state_hashes.len() >= 100
     }
 
-    pub fn is_repetition(&self) -> bool {
-        self.repetitions > 0
-    }
-
     fn drawn_by_repetition(&self) -> bool {
         self.repetitions >= 2
     }
