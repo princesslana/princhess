@@ -1,9 +1,9 @@
 pub const NUMBER_FEATURES: usize = 768;
-const NUMBER_HIDDEN: usize = 32;
+const NUMBER_HIDDEN: usize = 256;
 
 struct NNWeights {
-    hidden_bias: &'static [f32],
-    hidden: &'static [[f32; NUMBER_FEATURES]],
+    hidden_bias: &'static [f32; NUMBER_HIDDEN],
+    hidden: &'static [[f32; NUMBER_FEATURES]; NUMBER_HIDDEN],
     output: &'static [[f32; NUMBER_HIDDEN]],
 }
 

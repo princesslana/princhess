@@ -72,7 +72,7 @@ def train_state_with_keras(files):
     batch_size = 256
     train_generator = generate_batches(files=train_files, batch_size=batch_size)
 
-    hidden_layers = 32
+    hidden_layers = 256
 
     model = keras.Sequential()
     model.add(keras.Input(shape=(768,)))
@@ -107,13 +107,12 @@ def train_state_with_keras(files):
 
 
 def train_policy_with_keras(key, files):
-    train_files, test_files = split_files_train_and_test(list(glob.glob(files)))
+    train_files = list(glob.glob(files))
     batch_size = 256
-    test_data = load_files(test_files)
     train_generator = generate_batches(files=train_files, batch_size=batch_size)
 
-    hidden_layers = 512 
-    output_activation = "softmax"
+
+    hidden_layers = 256
 
     model = keras.Sequential()
     model.add(keras.Input(shape=(768,)))
@@ -122,7 +121,7 @@ def train_policy_with_keras(key, files):
     )
     model.add(
         layers.Dense(
-            4096, activation=output_activation, kernel_initializer="he_normal", use_bias=False
+            4096, activation="softmax", kernel_initializer="he_normal", use_bias=False
         )
     )
     model.summary()
@@ -139,21 +138,16 @@ def train_policy_with_keras(key, files):
         + ".768x"
         + str(hidden_layers)
         + "x4096"
-        + output_activation
-        + ".e{epoch:03d}-l{val_loss:.2f}-a{val_acc:.2f}.h5",
+        + ".e{epoch:03d}-l{loss:.2f}-a{acc:.2f}.h5",
         verbose=True,
-        monitor="val_loss",
-        save_best_only=True,
     )
-    es = EarlyStopping(monitor="val_loss", patience=15, verbose=True)
 
     model.fit(
         train_generator,
-        epochs=500,
+        epochs=100,
         verbose=1,
-        callbacks=[mc, es],
+        callbacks=[mc],
         steps_per_epoch=len(train_files) * 1000000 / batch_size,
-        validation_data=test_data,
     )
 
 
