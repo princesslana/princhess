@@ -19,7 +19,7 @@ use tree_policy::AlphaGoPolicy;
 use uci::Tokens;
 
 const DEFAULT_MOVE_TIME_SECS: u64 = 10;
-const DEFAULT_MOVE_TIME_FRACTION: u32 = 15;
+const MOVE_OVERHEAD: Duration = Duration::from_millis(300);
 
 pub const SCALE: f32 = 1e9;
 
@@ -129,6 +129,10 @@ impl Search {
             .map(Duration::from_millis)
     }
 
+    fn parse_int(tokens: &mut Tokens) -> Option<u32> {
+        tokens.next().unwrap_or("").parse().ok()
+    }
+
     pub fn go(self, mut tokens: Tokens, sender: &Sender<String>) -> Self {
         let manager = self.stop_and_print_m();
 
@@ -162,7 +166,8 @@ impl Search {
         let mut move_time = None;
         let mut infinite = false;
         let mut remaining = None;
-        let mut sudden_death = true;
+        let mut increment = Duration::ZERO;
+        let mut moves_to_go = 40;
 
         while let Some(s) = tokens.next() {
             match s {
@@ -180,19 +185,21 @@ impl Search {
                 "winc" => {
                     if player == Color::White {
                         if let Some(inc) = Self::parse_ms(&mut tokens) {
-                            sudden_death = inc.is_zero();
+                            increment = inc;
                         }
                     }
                 }
                 "binc" => {
                     if player == Color::Black {
                         if let Some(inc) = Self::parse_ms(&mut tokens) {
-                            sudden_death = inc.is_zero();
+                            increment = inc;
                         }
                     }
                 }
                 "movestogo" => {
-                    sudden_death = false;
+                    if let Some(mtg) = Self::parse_int(&mut tokens) {
+                        moves_to_go = mtg;
+                    }
                 }
                 "infinite" => infinite = true,
                 _ => (),
@@ -206,17 +213,9 @@ impl Search {
         } else if let Some(mt) = move_time {
             think_time = Some(mt)
         } else if let Some(r) = remaining {
-            let mut t = r / DEFAULT_MOVE_TIME_FRACTION;
+            let total = (r + moves_to_go * increment - MOVE_OVERHEAD).max(Duration::from_millis(1));
 
-            if state.is_repetition() {
-                t *= 2;
-            }
-
-            if sudden_death && r < Duration::from_millis(60000) {
-                t = r / 60;
-            }
-
-            think_time = Some(t)
+            think_time = Some((total / 20).min(r / 3));
         }
 
         let new_self = Self {
