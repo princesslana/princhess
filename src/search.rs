@@ -20,6 +20,7 @@ use uci::Tokens;
 
 const DEFAULT_MOVE_TIME_SECS: u64 = 10;
 const MOVE_OVERHEAD: Duration = Duration::from_millis(300);
+const MS: Duration = Duration::from_millis(1);
 
 pub const SCALE: f32 = 1e9;
 
@@ -213,9 +214,11 @@ impl Search {
         } else if let Some(mt) = move_time {
             think_time = Some(mt)
         } else if let Some(r) = remaining {
-            let total = (r + moves_to_go * increment - MOVE_OVERHEAD).max(Duration::from_millis(1));
+            let total = (r + moves_to_go * increment - MOVE_OVERHEAD).max(MS);
 
-            think_time = Some((total / 20).min(r / 3));
+            let t = (total / 20).min((r - MOVE_OVERHEAD) / 3).max(MS);
+
+            think_time = Some(t);
         }
 
         let new_self = Self {
