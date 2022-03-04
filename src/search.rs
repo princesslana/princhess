@@ -216,7 +216,9 @@ impl Search {
         } else if let Some(r) = remaining {
             let total = (r + moves_to_go * increment - MOVE_OVERHEAD).max(MS);
 
-            let t = (total / 20).min((r - MOVE_OVERHEAD) / 3).max(MS);
+            let t = (total / (moves_to_go / 2).max(1))
+                .min((r - MOVE_OVERHEAD) / 3)
+                .max(MS);
 
             think_time = Some(t);
         }
