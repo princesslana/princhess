@@ -72,7 +72,7 @@ def train_state_with_keras(files):
     batch_size = 256
     train_generator = generate_batches(files=train_files, batch_size=batch_size)
 
-    hidden_layers = 32
+    hidden_layers = 64
 
     model = keras.Sequential()
     model.add(keras.Input(shape=(768,)))
