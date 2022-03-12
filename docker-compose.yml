@@ -19,7 +19,7 @@ services:
       -engine cmd=/engines/princhess-0.5.1 name=princhess-0.5.1
       -each proto=uci tc=10+0.1 timemargin=1000
             option.SyzygyPath=/syzygy option.Hash=256 option.Threads=1
-      -openings file=/books/noob_2moves.epd format=epd order=random
+      -openings file=/books/4moves_noob.epd format=epd order=random
       -games 2 -repeat -rounds 250
       -recover -ratinginterval 1 -concurrency 2
     volumes:
@@ -136,9 +136,8 @@ services:
       -engine cmd=/engines/princhess-e099 name=princhess-e099
       -engine cmd=/engines/princhess-e100 name=princhess-e100
       -each proto=uci tc=10+0.1 timemargin=1000
-            option.SyzygyPath=/syzygy option.Hash=256 option.Threads=1
-      -openings file=/books/noob_2moves.epd format=epd order=random
-      -games 2 -repeat -rounds 10 -tournament gauntlet
+            option.SyzygyPath=/syzygy option.Hash=128 option.Threads=1
+      -rounds 20 -tournament gauntlet
       -recover -ratinginterval 10 -concurrency 2
     volumes:
       - ./target/release/:/engines/
@@ -154,8 +153,8 @@ services:
       -engine cmd=/engines/princhess-main name=princhess-main
 
       -each proto=uci tc=10+0.1 timemargin=1000
-            option.SyzygyPath=/syzygy option.Hash=256 option.Threads=1
-      -openings file=/books/noob_2moves.epd format=epd order=random
+            option.SyzygyPath=/syzygy option.Hash=128 option.Threads=1
+      -openings file=/books/4moves_noob.epd format=epd order=random
       -games 2 -repeat -rounds 50 -tournament gauntlet
       -recover -ratinginterval 10 -concurrency 2
     volumes:
