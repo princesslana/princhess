@@ -1,12 +1,14 @@
 FROM debian:buster
 
-RUN apt-get update && apt-get install -y curl libqt5core5a
+RUN apt-get update && apt-get install -y curl libqt5core5a unzip
 
 RUN mkdir /books
 RUN mkdir /engines
 
 COPY bin/gm2001.bin /books/gm2001.bin
-COPY bin/noob_2moves.epd /books/noob_2moves.epd
+
+RUN curl -ssL https://raw.githubusercontent.com/AndyGrant/OpenBench/master/Books/4moves_noob.epd.zip -o /books/4moves_noob.epd.zip
+RUN unzip /books/4moves_noob.epd.zip -d /books
 
 RUN curl -sSL https://github.com/cutechess/cutechess/releases/download/1.2.0/cutechess-cli-1.2.0-linux64.tar.gz | tar zxv
 

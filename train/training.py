@@ -7,21 +7,9 @@ from keras.callbacks import EarlyStopping, ModelCheckpoint
 from numpy import array2string
 from scipy.sparse import vstack
 from sklearn.datasets import load_svmlight_file
-from sklearn.linear_model import SGDClassifier
-from sklearn.neural_network import MLPRegressor
 from tensorflow import keras
 from tensorflow.keras import layers
 import keras_tuner as kt
-
-classifier = SGDClassifier(
-    loss="log",
-    verbose=True,
-    fit_intercept=False,
-    n_jobs=3,
-    eta0=0.01,
-    learning_rate="constant",
-    alpha=1e-6,
-)
 
 
 def split_files_train_and_test(files):
@@ -46,7 +34,11 @@ def generate_batches(files, batch_size):
 
             output, input = sklearn.utils.shuffle(y, x)
 
-            for local_index in range(0, input.shape[0], batch_size):
+            # tweak batch size so we don't have a smaller batch left over
+            batches = input.shape[0] // batch_size
+            actual_batch_size = input.shape[0] // batches + 1
+
+            for local_index in range(0, input.shape[0], actual_batch_size):
                 input_local = input[local_index : (local_index + batch_size)]
                 output_local = output[local_index : (local_index + batch_size)]
 
@@ -69,10 +61,10 @@ def load_files(fs):
 
 def train_state_with_keras(files):
     train_files = list(glob.glob(files))
-    batch_size = 256
+    batch_size = 16384
     train_generator = generate_batches(files=train_files, batch_size=batch_size)
 
-    hidden_layers = 32
+    hidden_layers = 64
 
     model = keras.Sequential()
     model.add(keras.Input(shape=(768,)))
@@ -112,7 +104,7 @@ def train_policy_with_keras(key, files):
     test_data = load_files(test_files)
     train_generator = generate_batches(files=train_files, batch_size=batch_size)
 
-    hidden_layers = 512 
+    hidden_layers = 512
     output_activation = "softmax"
 
     model = keras.Sequential()
@@ -122,7 +114,10 @@ def train_policy_with_keras(key, files):
     )
     model.add(
         layers.Dense(
-            4096, activation=output_activation, kernel_initializer="he_normal", use_bias=False
+            4096,
+            activation=output_activation,
+            kernel_initializer="he_normal",
+            use_bias=False,
         )
     )
     model.summary()

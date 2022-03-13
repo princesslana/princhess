@@ -6,6 +6,9 @@ PRINCHESS=${PRINCHESS:-../target/release/princhess}
 
 state_data() {
   echo "Sampling state data..."
+
+  rm -f model_data/*.libsvm.*
+
   for f in pgn/*.pgn
   do
     echo "Featurizing $f..."
@@ -20,7 +23,6 @@ state_data() {
 
     echo "Splitting data ($split_size)..."
 
-    rm -f model_data/*.libsvm.*
     split -l $split_size train_data.libsvm model_data/$(basename $f).libsvm.
 
     rm train_data.libsvm
@@ -30,6 +32,9 @@ state_data() {
 
 policy_data() {
   echo "Sampling policy data..."
+
+  rm -f policy_data/*.libsvm.*
+
   for f in pgn/*.pgn
   do
     echo "Featurizing $f..."
@@ -44,7 +49,6 @@ policy_data() {
 
     echo "Splitting data ($split_size)..."
 
-    rm -f policy_data/*.libsvm.*
     split -l $split_size policy_train_data.libsvm policy_data/$(basename $f).libsvm.
 
     rm policy_train_data.libsvm
