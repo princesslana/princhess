@@ -137,7 +137,8 @@ services:
       -engine cmd=/engines/princhess-e100 name=princhess-e100
       -each proto=uci tc=10+0.1 timemargin=1000
             option.SyzygyPath=/syzygy option.Hash=128 option.Threads=1
-      -rounds 20 -tournament gauntlet
+      -openings file=/books/first_moves.epd format=epd policy=round
+      -games 2 -rounds 10 -tournament gauntlet
       -recover -ratinginterval 10 -concurrency 2
     volumes:
       - ./target/release/:/engines/
