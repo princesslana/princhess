@@ -12,6 +12,9 @@ from tensorflow.keras import layers
 import keras_tuner as kt
 
 
+DEFAULT_BATCH_SIZE = 16384
+
+
 def split_files_train_and_test(files):
     all_files = list(files)
 
@@ -24,7 +27,7 @@ def split_files_train_and_test(files):
     return train_files, test_files
 
 
-def generate_batches(files, batch_size):
+def generate_batches(files, batch_size=DEFAULT_BATCH_SIZE):
     all_files = files[:]
 
     while True:
@@ -61,10 +64,9 @@ def load_files(fs):
 
 def train_state_with_keras(files):
     train_files = list(glob.glob(files))
-    batch_size = 16384
-    train_generator = generate_batches(files=train_files, batch_size=batch_size)
+    train_generator = generate_batches(files=train_files)
 
-    hidden_layers = 64
+    hidden_layers = 128
 
     model = keras.Sequential()
     model.add(keras.Input(shape=(768,)))
@@ -94,7 +96,7 @@ def train_state_with_keras(files):
         epochs=100,
         verbose=1,
         callbacks=[mc],
-        steps_per_epoch=len(train_files) * 1000000 / batch_size,
+        steps_per_epoch=len(train_files) * 1000000 / DEFAULT_BATCH_SIZE,
     )
 
 
