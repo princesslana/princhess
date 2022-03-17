@@ -49,7 +49,7 @@ pub fn empty_previous_table() -> PreviousTable<GooseMCTS> {
 }
 
 impl<Spec: MCTS> PreviousTable<Spec> {
-    pub fn lookup_into(&self, state: &State, dest: &mut SearchNode) -> bool {
+    pub fn lookup_into(&self, state: &State, dest: &mut SearchNode) {
         if let Some(src) = self.table.lookup(state) {
             dest.replace(src);
             dest.evaln = src.evaln;
@@ -60,9 +60,6 @@ impl<Spec: MCTS> PreviousTable<Spec> {
             for i in 0..lhs.len().min(rhs.len()) {
                 lhs[i].replace(&rhs[i]);
             }
-            true
-        } else {
-            false
         }
     }
 }
@@ -267,7 +264,7 @@ impl<Spec: MCTS> SearchTree<Spec> {
         )
         .expect("Unable to create root node");
 
-        let _ = prev_table.lookup_into(&state, &mut root_node);
+        prev_table.lookup_into(&state, &mut root_node);
 
         let mut avg_rewards: Vec<f32> = root_node
             .moves()
@@ -335,7 +332,6 @@ impl<Spec: MCTS> SearchTree<Spec> {
         let mut path: SmallVec<[MoveInfoHandle; LARGE_DEPTH]> = SmallVec::new();
         let mut node_path: SmallVec<[&SearchNode; LARGE_DEPTH]> = SmallVec::new();
         let mut players: SmallVec<[Player; LARGE_DEPTH]> = SmallVec::new();
-        let mut did_we_create = false;
         let mut node = &self.root_node;
         loop {
             if node.hots().is_empty() {
@@ -357,18 +353,16 @@ impl<Spec: MCTS> SearchTree<Spec> {
                 self.manager.max_playout_length());
             state.make_move(&choice.hot.mov);
 
-            let (new_node, new_did_we_create) =
-                match self.descend(&state, choice.hot, tld, &node_path) {
-                    Ok(r) => r,
-                    Err(ArenaError::Full) => {
-                        debug!("Hash reached max capacity");
-                        println!("info hashfull 1000");
-                        return false;
-                    }
-                };
+            let new_node = match self.descend(&state, choice.hot, tld, &node_path) {
+                Ok(r) => r,
+                Err(ArenaError::Full) => {
+                    debug!("Hash reached max capacity");
+                    println!("info hashfull 1000");
+                    return false;
+                }
+            };
 
             node = new_node;
-            did_we_create = new_did_we_create;
             match self.manager.cycle_behaviour() {
                 CycleBehaviour::Ignore => (),
                 CycleBehaviour::PanicWhenCycleDetected => {
@@ -396,13 +390,8 @@ impl<Spec: MCTS> SearchTree<Spec> {
                 break;
             }
         }
-        let new_evaln = if did_we_create {
-            None
-        } else {
-            Some(node.evaln)
-        };
-        let evaln = new_evaln.as_ref().unwrap_or(&node.evaln);
-        self.finish_playout(&path, &node_path, &players, evaln);
+
+        self.finish_playout(&path, &node_path, &players, &node.evaln);
 
         true
     }
@@ -413,10 +402,10 @@ impl<Spec: MCTS> SearchTree<Spec> {
         choice: &HotMoveInfo,
         tld: &mut ThreadData<'a, Spec>,
         path: &[&'a SearchNode],
-    ) -> Result<(&'a SearchNode, bool), ArenaError> {
+    ) -> Result<&'a SearchNode, ArenaError> {
         let child = choice.child.load(Ordering::Relaxed) as *const _;
         if !child.is_null() {
-            return unsafe { Ok((&*child, false)) };
+            return unsafe { Ok(&*child) };
         }
 
         if let Some(node) = self.table.lookup(state) {
@@ -428,9 +417,9 @@ impl<Spec: MCTS> SearchTree<Spec> {
             if child.is_null() {
                 self.transposition_table_hits
                     .fetch_add(1, Ordering::Relaxed);
-                return Ok((node, false));
+                return Ok(node);
             } else {
-                return unsafe { Ok((&*child, false)) };
+                return unsafe { Ok(&*child) };
             }
         }
 
@@ -442,7 +431,7 @@ impl<Spec: MCTS> SearchTree<Spec> {
             CreationHelper::Handle(self.make_handle(tld, path)),
         )?;
 
-        let did_we_create = !self.prev_table.lookup_into(state, &mut created_here);
+        self.prev_table.lookup_into(state, &mut created_here);
 
         let created = tld.allocator.alloc_one()?;
         *created = created_here;
@@ -454,7 +443,7 @@ impl<Spec: MCTS> SearchTree<Spec> {
             self.expansion_contention_events
                 .fetch_add(1, Ordering::Relaxed);
             unsafe {
-                return Ok((&*other_child, false));
+                return Ok(&*other_child);
             }
         }
         if let Some(existing) = self.table.insert(state, created) {
@@ -462,10 +451,10 @@ impl<Spec: MCTS> SearchTree<Spec> {
                 .fetch_add(1, Ordering::Relaxed);
             let existing_ptr = existing as *const _ as *mut _;
             choice.child.store(existing_ptr, Ordering::Relaxed);
-            return Ok((existing, false));
+            return Ok(existing);
         }
         self.num_nodes.fetch_add(1, Ordering::Relaxed);
-        Ok((created, did_we_create))
+        Ok(created)
     }
 
     fn finish_playout<'a>(
