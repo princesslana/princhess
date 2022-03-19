@@ -96,8 +96,6 @@ pub struct State {
     repetitions: usize,
     formerly_occupied: [chess::BitBoard; NUM_OCCUPIED_KEPT],
     frozen: bool,
-    queens_off: bool,
-    move_lists: [Vec<chess::ChessMove>; 2],
     outcome: Outcome,
 }
 impl State {
@@ -301,8 +299,6 @@ impl From<StateBuilder> for State {
             repetitions: 0,
             formerly_occupied: [*board.combined(); NUM_OCCUPIED_KEPT],
             frozen: false,
-            queens_off: false,
-            move_lists: [Vec::new(), Vec::new()],
             outcome: Outcome::Ongoing,
         };
 
@@ -409,11 +405,6 @@ impl GameState for State {
         self.shakmaty_board = self.shakmaty_board.clone().play(&shakmaty_move).unwrap();
         self.board = self.board.make_move_new(*mov);
         self.check_for_repetition();
-        self.queens_off = self.queens_off || self.board.pieces(chess::Piece::Queen).0 == 0;
-        self.move_lists.swap(0, 1);
-        if self.board.checkers().0 == 0 {
-            self.move_lists[0] = self.available_moves().as_slice().to_vec();
-        }
         self.check_outcome();
     }
 }
