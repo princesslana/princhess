@@ -1,4 +1,5 @@
 use chess::*;
+use nn;
 use nn::NN;
 use state::State;
 use std::io::Write;
@@ -15,7 +16,7 @@ pub enum GameResult {
     BlackWin,
     Draw,
 }
-const NUM_OUTCOMES: usize = 1;
+
 impl GameResult {
     pub fn flip(&self) -> Self {
         match *self {
@@ -27,7 +28,7 @@ impl GameResult {
 }
 
 impl FeatureVec {
-    pub fn write_libsvm<W: Write>(&mut self, f: &mut W, label: i8) {
+    pub fn write_libsvm<W: Write>(&mut self, f: &mut W, label: i64) {
         write!(f, "{}", label).unwrap();
         for (index, value) in self.arr.iter().enumerate() {
             if *value != 0 {
@@ -67,25 +68,21 @@ impl Model {
     pub fn new() -> Self {
         Model
     }
-    pub fn predict(&self, state: &State) -> [f32; NUM_OUTCOMES] {
+    pub fn predict(&self, state: &State, features: &[f32; nn::NUMBER_FEATURES]) -> f32 {
         let mut nn = NN::new_eval();
-        nn.set_inputs(&state.features());
+        nn.set_inputs(features);
 
-        let mut result = [0f32; NUM_OUTCOMES];
+        let mut result = nn.get_output(0);
 
-        for i in 0..result.len() {
-            result[i] = nn.get_output(i);
-        }
+        result = result.tanh();
 
-        for x in &mut result {
-            *x = x.tanh();
-        }
         if state.board().side_to_move() == Color::Black {
-            result[0] = -result[0];
+            result = -result;
         }
+
         result
     }
-    pub fn score(&self, state: &State) -> f32 {
-        self.predict(state)[0]
+    pub fn score(&self, state: &State, features: &[f32; nn::NUMBER_FEATURES]) -> f32 {
+        self.predict(state, features)
     }
 }

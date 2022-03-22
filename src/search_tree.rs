@@ -266,6 +266,7 @@ impl<Spec: MCTS> SearchTree<Spec> {
 
         prev_table.lookup_into(&state, &mut root_node);
 
+        /*
         let mut avg_rewards: Vec<f32> = root_node
             .moves()
             .into_iter()
@@ -275,6 +276,7 @@ impl<Spec: MCTS> SearchTree<Spec> {
         softmax(&mut avg_rewards);
 
         root_node.update_policy(avg_rewards);
+        */
 
         Self {
             root_state: state,
@@ -580,6 +582,10 @@ pub struct SearchHandle<'a: 'b, 'b, Spec: 'a + MCTS> {
 impl<'a, 'b, Spec: MCTS> SearchHandle<'a, 'b, Spec> {
     pub fn thread_data(&mut self) -> &mut ThreadData<'a, Spec> {
         self.tld
+    }
+
+    pub fn is_root(&self) -> bool {
+        self.shared.path.is_empty()
     }
 }
 

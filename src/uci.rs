@@ -1,4 +1,7 @@
-use options::{set_cpuct, set_cpuct_base, set_cpuct_factor, set_hash_size_mb, set_num_threads};
+use options::{
+    set_cpuct, set_cpuct_base, set_cpuct_factor, set_hash_size_mb, set_mate_score, set_num_threads,
+    set_policy_bad_capture_factor, set_policy_good_capture_factor, set_policy_softmax_temp,
+};
 use search::Search;
 use search_tree::{empty_previous_table, print_size_list};
 use state::State;
@@ -66,7 +69,6 @@ pub fn main(commands: Vec<String>) {
                 "info"       => search.print_info(),
                 "features"   => search.print_features(),
                 "bench"      => search.bench(),
-                "evalpolicy" => search.eval_policy(),
                 _ => error!("Unknown command: {} (this engine uses a reduced set of commands from the UCI protocol)", first_word)
             }
         }
@@ -79,9 +81,10 @@ pub fn uci() {
     println!("option name Hash type spin min 8 max 65536 default 16");
     println!("option name Threads type spin min 1 max 255 default 1");
     println!("option name SyzygyPath type string");
-    println!("option name CPuct type spin min 1 max 65536 default 215");
+    println!("option name CPuct type string default 2.15");
     println!("option name CPuctBase type spin min 1 max 65536 default 18368");
-    println!("option name CPuctFactor type spin min 1 max 65536 default 282");
+    println!("option name CPuctFactor type string default 2.82");
+    println!("option name MateScore type string default 1.1");
 
     println!("uciok");
 }
@@ -142,6 +145,10 @@ impl UciOption {
             "cpuct" => self.set_option(set_cpuct),
             "cpuctbase" => self.set_option(set_cpuct_base),
             "cpuctfactor" => self.set_option(set_cpuct_factor),
+            "matescore" => self.set_option(set_mate_score),
+            "policysoftmaxtemp" => self.set_option(set_policy_softmax_temp),
+            "policygoodcapturefactor" => self.set_option(set_policy_good_capture_factor),
+            "policybadcapturefactor" => self.set_option(set_policy_bad_capture_factor),
             _ => warn!("Badly formatted or unknown option"),
         }
     }

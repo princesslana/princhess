@@ -9,6 +9,17 @@ services:
     environment:
       RUST_LOG: warn
 
+  tune:
+    build:
+      context: .
+      dockerfile: bin/Dockerfile.tune
+    volumes:
+      - ./target/release/princhess:/engines/princhess
+      - ./syzygy:/syzygy:ro
+      - ./bin/tuning_config.json:/config/tuning_config.json:ro
+      - ./train/tuning_data:/data
+      - ./train/tuning_plots:/plots
+
   all_versions:
     build:
       context: .
@@ -25,7 +36,6 @@ services:
       -recover -ratinginterval 10 -concurrency 2
     volumes:
       - ./target/release/princhess:/engines/princhess
-      - ./engine/rustic:/engines/rustic
       - ./syzygy:/syzygy:ro
     environment:
       RUST_LOG: warn
@@ -153,6 +163,16 @@ services:
       dockerfile: bin/Dockerfile.cutechess-cli
     command: >
       -engine cmd=/engines/princhess-main name=princhess-main
+      -engine cmd=/engines/princhess-e093 name=princhess-e093
+      -engine cmd=/engines/princhess-e054 name=princhess-e054
+      -engine cmd=/engines/princhess-e029 name=princhess-e029
+      -engine cmd=/engines/princhess-e035 name=princhess-e035
+      -engine cmd=/engines/princhess-e087 name=princhess-e087
+      -engine cmd=/engines/princhess-e085 name=princhess-e085
+      -engine cmd=/engines/princhess-e038 name=princhess-e038
+      -engine cmd=/engines/princhess-e091 name=princhess-e091
+      -engine cmd=/engines/princhess-e073 name=princhess-e073
+      -engine cmd=/engines/princhess-e044 name=princhess-e044
 
       -each proto=uci tc=10+0.1 timemargin=1000
             option.SyzygyPath=/syzygy option.Hash=128 option.Threads=1

@@ -24,6 +24,24 @@ const EVAL_WEIGHTS: NNWeights = NNWeights {
     output: &EVAL_OUTPUT_WEIGHTS,
 };
 
+/*
+#[allow(clippy::excessive_precision)]
+const POLICY_HIDDEN_BIAS: [f32; NUMBER_HIDDEN] = include!("policy/hidden_bias");
+
+#[allow(clippy::excessive_precision)]
+const POLICY_HIDDEN_WEIGHTS: [[f32; NUMBER_FEATURES]; NUMBER_HIDDEN] =
+    include!("policy/hidden_weights");
+
+#[allow(clippy::excessive_precision)]
+const POLICY_OUTPUT_WEIGHTS: [[f32; NUMBER_HIDDEN]; 1792] = include!("policy/output_weights");
+
+const POLICY_WEIGHTS: NNWeights = NNWeights {
+    hidden_bias: &POLICY_HIDDEN_BIAS,
+    hidden: &POLICY_HIDDEN_WEIGHTS,
+    output: &POLICY_OUTPUT_WEIGHTS,
+};
+*/
+
 pub struct NN {
     weights: NNWeights,
     hidden_layer: [f32; NUMBER_HIDDEN],
@@ -58,10 +76,20 @@ impl NN {
     pub fn get_output(&self, idx: usize) -> f32 {
         let mut result = 0.;
 
+        let weights = self.weights.output[idx];
+
         for i in 0..self.hidden_layer.len() {
-            result += self.weights.output[idx][i] * self.hidden_layer[i].max(0.);
+            result += weights[i] * self.hidden_layer[i].max(0.);
         }
 
         result
+    }
+
+    pub fn get_outputs(&self, idxs: &[usize], evalns: &mut [f32]) {
+        for w in 0..self.hidden_layer.len() {
+            for i in 0..idxs.len() {
+                evalns[i] += self.weights.output[idxs[i]][w] * self.hidden_layer[w].max(0.);
+            }
+        }
     }
 }

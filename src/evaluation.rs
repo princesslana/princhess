@@ -1,30 +1,34 @@
 use chess::*;
 use features::Model;
 use mcts::Evaluator;
+use options::get_mate_score;
 use policy_features::evaluate_moves;
 use search::{GooseMCTS, SCALE};
 use shakmaty_syzygy::Wdl;
 use state::{MoveList, Outcome, Player, State};
 use tablebase::probe_tablebase_wdl;
 
-const MATE_FACTOR: f32 = 1.1;
-
 pub struct GooseEval {
     model: Model,
+    mate_score: f32,
 }
 
 impl GooseEval {
     pub fn new(model: Model) -> Self {
-        Self { model }
+        Self {
+            model,
+            mate_score: get_mate_score(),
+        }
     }
 }
 
 impl Evaluator<GooseMCTS> for GooseEval {
     fn evaluate_new_state(&self, state: &State, moves: &MoveList) -> (Vec<f32>, i64, bool) {
-        let move_evaluations = evaluate_moves(state, moves.as_slice());
+        let features = state.features();
+        let move_evaluations = evaluate_moves(state, &features, moves.as_slice());
         let mut tb_hit = false;
         let state_evaluation = if moves.len() == 0 {
-            let x = (MATE_FACTOR * SCALE) as i64;
+            let x = (self.mate_score * SCALE) as i64;
             match state.outcome() {
                 Outcome::Draw => 0,
                 Outcome::WhiteWin => x,
@@ -42,7 +46,7 @@ impl Evaluator<GooseMCTS> for GooseEval {
                 _ => 0,
             }
         } else {
-            (self.model.score(state) * SCALE as f32) as i64
+            (self.model.score(state, &features) * SCALE as f32) as i64
         };
         (move_evaluations, state_evaluation, tb_hit)
     }

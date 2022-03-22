@@ -1,5 +1,6 @@
 use chess;
 use mcts::GameState;
+use move_index;
 use search::to_uci;
 use shakmaty;
 use shakmaty::{File, Position, Setup};
@@ -12,8 +13,6 @@ use uci::Tokens;
 
 pub type Player = chess::Color;
 pub type Move = chess::ChessMove;
-
-pub const NUM_OCCUPIED_KEPT: usize = 4;
 
 const NF_PIECES: usize = 2 * 6 * 64; // color * roles * squares
 const NF_LAST_CAPTURE: usize = 5 * 64; // roles (-king) * squares
@@ -102,7 +101,6 @@ pub struct State {
     prev_capture_sq: Option<shakmaty::Square>,
     prev_state_hashes: SmallVec<[u64; 64]>,
     repetitions: usize,
-    formerly_occupied: [chess::BitBoard; NUM_OCCUPIED_KEPT],
     frozen: bool,
     outcome: Outcome,
 }
@@ -161,9 +159,14 @@ impl State {
         }
     }
 
-    pub fn formerly_occupied(&self) -> &[chess::BitBoard; NUM_OCCUPIED_KEPT] {
-        &self.formerly_occupied
+    pub fn is_check(&self) -> bool {
+        self.shakmaty_board().is_check()
     }
+
+    pub fn is_repetition(&self) -> bool {
+        self.repetitions > 0
+    }
+
     fn check_for_repetition(&mut self) {
         let crnt_hash = self.board.get_hash();
         self.repetitions = self
@@ -188,9 +191,7 @@ impl State {
         }
     }
 
-    pub fn featurize(&self, features: &mut [f32; NUMBER_FEATURES]) {
-        features.fill(0.);
-
+    pub fn feature_flip(&self) -> (bool, bool) {
         let turn = self.shakmaty_board().turn();
         let b = self.shakmaty_board().board();
 
@@ -198,6 +199,17 @@ impl State {
 
         let flip_vertical = turn == shakmaty::Color::Black;
         let flip_horizontal = ksq.file() <= File::D;
+
+        (flip_vertical, flip_horizontal)
+    }
+
+    pub fn featurize(&self, features: &mut [f32; NUMBER_FEATURES]) {
+        features.fill(0.);
+
+        let turn = self.shakmaty_board().turn();
+        let b = self.shakmaty_board().board();
+
+        let (flip_vertical, flip_horizontal) = self.feature_flip();
 
         let flip_square = |sq: shakmaty::Square| match (flip_vertical, flip_horizontal) {
             (true, true) => sq.flip_vertical().flip_horizontal(),
@@ -228,6 +240,29 @@ impl State {
 
             features[OFFSET_LAST_CAPTURE + role_idx * 64 + adj_sq as usize] = 1.
         }
+    }
+
+    pub fn move_to_index(&self, mv: &Move) -> usize {
+        let from_sq = unsafe { shakmaty::Square::new_unchecked(mv.get_source().to_int() as u32) };
+        let to_sq = unsafe { shakmaty::Square::new_unchecked(mv.get_dest().to_int() as u32) };
+
+        let b = self.shakmaty_board().board();
+        let role_idx = b.piece_at(from_sq).unwrap().role as usize - 1;
+
+        let (flip_vertical, flip_horizontal) = self.feature_flip();
+
+        let flip_square = |sq: shakmaty::Square| match (flip_vertical, flip_horizontal) {
+            (true, true) => sq.flip_vertical().flip_horizontal(),
+            (true, false) => sq.flip_vertical(),
+            (false, true) => sq.flip_horizontal(),
+            (false, false) => sq,
+        };
+
+        // 1792
+        move_index::move_to_index(flip_square(from_sq), flip_square(to_sq))
+
+        // 386
+        // role_idx * 64 + flip_square(to_sq) as usize
     }
 }
 
@@ -313,7 +348,6 @@ impl From<StateBuilder> for State {
             prev_capture_sq: None,
             prev_state_hashes: SmallVec::new(),
             repetitions: 0,
-            formerly_occupied: [*board.combined(); NUM_OCCUPIED_KEPT],
             frozen: false,
             outcome: Outcome::Ongoing,
         };
@@ -414,10 +448,6 @@ impl GameState for State {
             self.prev_state_hashes.push(self.board.get_hash());
         }
         self.prev_move = Some(*mov);
-        for i in (0..(NUM_OCCUPIED_KEPT - 1)).rev() {
-            self.formerly_occupied[i + 1] = self.formerly_occupied[i];
-        }
-        self.formerly_occupied[0] = *self.board.combined();
 
         let shakmaty_move = shakmaty::uci::Uci::from_ascii(to_uci(*mov).as_bytes())
             .unwrap()
