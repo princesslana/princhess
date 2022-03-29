@@ -73,7 +73,7 @@ impl<Spec: MCTS<TreePolicy = Self>> TreePolicy<Spec> for UctPolicy {
                 } else {
                     2.0 * (ln_adjusted_total / child_visits as f32).sqrt()
                 };
-                let mean_action_value = sum_rewards as f32 / adjusted_total;
+                let mean_action_value = sum_rewards as f32 / (child_visits  + 1) as f32;
                 (exploration_constant * explore_term + mean_action_value).into()
             })
             .unwrap()
