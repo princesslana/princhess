@@ -6,7 +6,6 @@ use tree_policy::*;
 use chess;
 use fastapprox;
 use float_ord::FloatOrd;
-use policy_features::evaluate_moves;
 use search::{to_uci, SCALE};
 use state::State;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -78,9 +77,7 @@ where
     }
 }
 
-pub type MoveEvaluation = f32;
 pub type StateEvaluation = i64;
-pub type MoveList = <State as GameState>::MoveList;
 pub type Player = <State as GameState>::Player;
 pub type TreePolicyThreadData<Spec> =
     <<Spec as MCTS>::TreePolicy as TreePolicy<Spec>>::ThreadLocalData;
@@ -95,11 +92,7 @@ pub trait GameState: Clone {
 }
 
 pub trait Evaluator<Spec: MCTS>: Sync {
-    fn evaluate_new_state(
-        &self,
-        state: &State,
-        moves: &MoveList,
-    ) -> (Vec<MoveEvaluation>, StateEvaluation, bool);
+    fn evaluate_new_state(&self, state: &State) -> (StateEvaluation, bool);
 
     fn interpret_evaluation_for_player(&self, evaluation: &StateEvaluation, player: &Player)
         -> i64;
@@ -252,21 +245,14 @@ where
 
     pub fn print_move_list(&self) {
         let root_node = self.tree().root_node();
-        let root_state = self.tree().root_state();
-
         let root_moves = root_node.moves();
 
-        let state_moves = root_state.available_moves();
-        let state_moves_eval = evaluate_moves(root_state, state_moves.as_slice());
-
-        let mut moves: Vec<(MoveInfoHandle, f32)> = root_moves.zip(state_moves_eval).collect();
-        moves.sort_by_key(|(h, e)| FloatOrd(h.average_reward().unwrap_or(*e)));
-        for (mov, e) in moves {
+        let mut moves: Vec<MoveInfoHandle> = root_moves.collect();
+        moves.sort_by_key(|h| FloatOrd(h.average_reward().unwrap_or(0.)));
+        for mov in moves {
             println!(
-                "info string {:5} M: {:>6} P: {:>6} V: {:7} E: {:>6} ({:>8})",
+                "info string {:5} V: {:7} E: {:>6} ({:>8})",
                 mov.get_move(),
-                format!("{:3.2}", e * 100.),
-                format!("{:3.2}", mov.move_evaluation() * 100.),
                 mov.visits(),
                 mov.average_reward()
                     .map_or("n/a".to_string(), |r| format!("{:3.2}", r / (SCALE / 100.))),

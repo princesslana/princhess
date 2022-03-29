@@ -1,7 +1,6 @@
 use mcts::*;
 use options::get_hash_size_mb;
-use policy_features::softmax;
-use search::{GooseMCTS, SCALE};
+use search::GooseMCTS;
 use smallvec::SmallVec;
 use state::State;
 use std::mem;
@@ -110,7 +109,6 @@ impl NodeStats for SearchNode {
 struct HotMoveInfo {
     sum_evaluations: AtomicI64,
     visits: AtomicU32,
-    move_evaluation: MoveEvaluation,
     mov: chess::ChessMove,
     child: AtomicPtr<SearchNode>,
 }
@@ -149,13 +147,6 @@ impl SearchNode {
     fn hots(&self) -> &[HotMoveInfo] {
         unsafe { &*(self.hots as *const [HotMoveInfo]) }
     }
-    fn update_policy(&mut self, evals: Vec<f32>) {
-        let mut hots = unsafe { &mut *(self.hots as *mut [HotMoveInfo]) };
-
-        for i in 0..hots.len().min(evals.len()) {
-            hots[i].move_evaluation = evals[i];
-        }
-    }
     pub fn moves(&self) -> Moves {
         Moves {
             hots: self.hots(),
@@ -165,9 +156,8 @@ impl SearchNode {
 }
 
 impl HotMoveInfo {
-    fn new(move_evaluation: MoveEvaluation, mov: chess::ChessMove) -> Self {
+    fn new(mov: chess::ChessMove) -> Self {
         Self {
-            move_evaluation,
             sum_evaluations: AtomicI64::default(),
             visits: AtomicU32::default(),
             mov,
@@ -179,10 +169,6 @@ impl HotMoveInfo {
 impl<'a> MoveInfoHandle<'a> {
     pub fn get_move(&self) -> &'a chess::ChessMove {
         &self.hot.mov
-    }
-
-    pub fn move_evaluation(&self) -> &'a MoveEvaluation {
-        &self.hot.move_evaluation
     }
 
     pub fn visits(&self) -> u64 {
@@ -209,7 +195,6 @@ enum CreationHelper<'a: 'b, 'b, Spec: 'a + MCTS> {
 #[inline(always)]
 fn create_node<'a, 'b, Spec: MCTS>(
     eval: &Spec::Eval,
-    policy: &Spec::TreePolicy,
     state: &State,
     tb_hits: &AtomicUsize,
     ch: CreationHelper<'a, 'b, Spec>,
@@ -224,17 +209,16 @@ fn create_node<'a, 'b, Spec: MCTS>(
         }
     };
     let moves = state.available_moves();
-    let (move_eval, state_eval, is_tb_hit) = eval.evaluate_new_state(state, &moves);
+    let (state_eval, is_tb_hit) = eval.evaluate_new_state(state);
 
     if is_tb_hit {
         tb_hits.fetch_add(1, Ordering::Relaxed);
     }
 
-    policy.validate_evaluations(&move_eval);
-    let hots = allocator.alloc_slice(move_eval.len())?;
+    let hots = allocator.alloc_slice(moves.len())?;
     let moves_slice = moves.as_slice();
     for (i, x) in hots.iter_mut().enumerate() {
-        *x = HotMoveInfo::new(move_eval[i], moves_slice[i]);
+        *x = HotMoveInfo::new(moves_slice[i]);
     }
     Ok(SearchNode::new(hots, state_eval))
 }
@@ -257,7 +241,6 @@ impl<Spec: MCTS> SearchTree<Spec> {
 
         let mut root_node = create_node::<Spec>(
             &eval,
-            &tree_policy,
             &state,
             &tb_hits,
             CreationHelper::Allocator(&arena.allocator()),
@@ -265,16 +248,6 @@ impl<Spec: MCTS> SearchTree<Spec> {
         .expect("Unable to create root node");
 
         prev_table.lookup_into(&state, &mut root_node);
-
-        let mut avg_rewards: Vec<f32> = root_node
-            .moves()
-            .into_iter()
-            .map(|m| m.average_reward().unwrap_or(-SCALE) / SCALE)
-            .collect();
-
-        softmax(&mut avg_rewards);
-
-        root_node.update_policy(avg_rewards);
 
         Self {
             root_state: state,
@@ -425,7 +398,6 @@ impl<Spec: MCTS> SearchTree<Spec> {
 
         let mut created_here = create_node(
             &self.eval,
-            &self.tree_policy,
             state,
             &self.tb_hits,
             CreationHelper::Handle(self.make_handle(tld, path)),

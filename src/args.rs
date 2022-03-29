@@ -5,7 +5,6 @@ pub struct Options {
     pub log_file_path: String,
     pub train_pgn: Option<String>,
     pub train_output_path: String,
-    pub policy: bool,
     pub extra: Vec<String>,
 }
 
@@ -15,7 +14,6 @@ impl Default for Options {
             log_file_path: "sashimi.log".into(),
             train_pgn: None,
             train_output_path: "train_data.libsvm".into(),
-            policy: false,
             extra: Vec::new(),
         }
     }
@@ -34,11 +32,6 @@ pub fn init() {
             &["-o", "--output"],
             Store,
             "train output path",
-        );
-        ap.refer(&mut options.policy).add_option(
-            &["-p", "--policy"],
-            StoreTrue,
-            "output policy data instead of value data",
         );
         ap.refer(&mut options.log_file_path)
             .add_option(&["--log"], Store, "log file path");
