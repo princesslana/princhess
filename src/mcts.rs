@@ -6,6 +6,7 @@ use tree_policy::*;
 use chess;
 use fastapprox;
 use float_ord::FloatOrd;
+use options::get_mate_score;
 use policy_features::evaluate_moves;
 use search::{to_uci, SCALE};
 use state::State;
@@ -337,7 +338,8 @@ pub enum CycleBehaviour {
 // eval here is [0.0, 1.0]
 fn eval_in_cp(eval: f32) -> String {
     if eval.abs() > 1.0 {
-        let plies = (1.1 - eval.abs()) / 0.001;
+        let mate_score = get_mate_score();
+        let plies = (mate_score - eval.abs()) / ((mate_score - 1.0) / 100.);
         let mvs = plies / 2.;
         let mate_score = (eval.signum() * mvs).round();
         format!("mate {:+}", mate_score)
