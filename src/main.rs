@@ -26,7 +26,6 @@ mod tree_policy;
 mod args;
 mod evaluation;
 mod features;
-mod features_common;
 mod policy_features;
 mod search;
 mod state;
@@ -40,7 +39,7 @@ fn main() {
     pretty_env_logger::init();
 
     if let Some(ref train_pgn) = options.train_pgn {
-        training::train(train_pgn, &options.train_output_path, options.policy);
+        training::train(train_pgn, &options.train_output_path);
     } else {
         info!("Init.");
         uci::main(options.extra.clone());

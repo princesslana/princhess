@@ -1,4 +1,7 @@
-use options::{set_cpuct, set_cpuct_base, set_cpuct_factor, set_hash_size_mb, set_num_threads};
+use options::{
+    set_cpuct, set_cpuct_base, set_cpuct_factor, set_hash_size_mb, set_num_threads,
+    set_policy_update_frequency,
+};
 use search::Search;
 use search_tree::{empty_previous_table, print_size_list};
 use state::State;
@@ -142,6 +145,7 @@ impl UciOption {
             "cpuct" => self.set_option(set_cpuct),
             "cpuctbase" => self.set_option(set_cpuct_base),
             "cpuctfactor" => self.set_option(set_cpuct_factor),
+            "policyupdatefrequency" => self.set_option(set_policy_update_frequency),
             _ => warn!("Badly formatted or unknown option"),
         }
     }
