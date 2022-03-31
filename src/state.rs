@@ -14,8 +14,6 @@ use uci::Tokens;
 pub type Player = chess::Color;
 pub type Move = chess::ChessMove;
 
-pub const NUM_OCCUPIED_KEPT: usize = 4;
-
 pub struct StateBuilder {
     initial_state: shakmaty::Chess,
     crnt_state: shakmaty::Chess,
@@ -89,11 +87,8 @@ pub enum Outcome {
 pub struct State {
     shakmaty_board: shakmaty::Chess,
     board: chess::Board,
-    prev_move: Option<chess::ChessMove>,
-    prev_capture: Option<chess::Piece>,
     prev_state_hashes: SmallVec<[u64; 64]>,
     repetitions: usize,
-    formerly_occupied: [chess::BitBoard; NUM_OCCUPIED_KEPT],
     frozen: bool,
     outcome: Outcome,
 }
@@ -104,12 +99,6 @@ impl State {
     #[cfg(test)]
     pub fn from_fen(fen: &str) -> Option<Self> {
         StateBuilder::from_fen(fen).map(|x| x.into())
-    }
-    pub fn prev_move(&self) -> Option<chess::ChessMove> {
-        self.prev_move
-    }
-    pub fn prev_capture(&self) -> Option<chess::Piece> {
-        self.prev_capture
     }
     pub fn board(&self) -> &chess::Board {
         &self.board
@@ -152,9 +141,6 @@ impl State {
         }
     }
 
-    pub fn formerly_occupied(&self) -> &[chess::BitBoard; NUM_OCCUPIED_KEPT] {
-        &self.formerly_occupied
-    }
     fn check_for_repetition(&mut self) {
         let crnt_hash = self.board.get_hash();
         self.repetitions = self
@@ -286,11 +272,8 @@ impl From<StateBuilder> for State {
         let mut state = State {
             shakmaty_board: sb.initial_state,
             board,
-            prev_move: None,
-            prev_capture: None,
             prev_state_hashes: SmallVec::new(),
             repetitions: 0,
-            formerly_occupied: [*board.combined(); NUM_OCCUPIED_KEPT],
             frozen: false,
             outcome: Outcome::Ongoing,
         };
@@ -376,20 +359,15 @@ impl GameState for State {
     }
 
     fn make_move(&mut self, mov: &chess::ChessMove) {
-        self.prev_capture = self.board.piece_on(mov.get_dest());
+        let prev_capture = self.board.piece_on(mov.get_dest());
         let is_pawn_move = (self.board.pieces(chess::Piece::Pawn)
             & chess::BitBoard::from_square(mov.get_source()))
         .0 != 0;
-        if is_pawn_move || self.prev_capture.is_some() {
+        if is_pawn_move || prev_capture.is_some() {
             self.prev_state_hashes.clear();
         } else if !self.frozen {
             self.prev_state_hashes.push(self.board.get_hash());
         }
-        self.prev_move = Some(*mov);
-        for i in (0..(NUM_OCCUPIED_KEPT - 1)).rev() {
-            self.formerly_occupied[i + 1] = self.formerly_occupied[i];
-        }
-        self.formerly_occupied[0] = *self.board.combined();
 
         let shakmaty_move = shakmaty::uci::Uci::from_ascii(to_uci(*mov).as_bytes())
             .unwrap()
