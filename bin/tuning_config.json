@@ -18,7 +18,7 @@
     }
   ],
   "parameter_ranges": {
-    "MateScore": "Real(1.0, 2.0)"
+    "PolicyUpdateFrequency": "Integer(1, 20000)"
   },
   "_parameter_ranges": {
     "CPuct": "Real(0.0, 5.0)",
