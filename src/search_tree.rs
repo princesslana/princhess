@@ -1,7 +1,6 @@
 use mcts::*;
 use options::get_hash_size_mb;
-use policy_features::softmax;
-use search::{GooseMCTS, SCALE};
+use search::GooseMCTS;
 use smallvec::SmallVec;
 use state::State;
 use std::mem;
@@ -149,13 +148,6 @@ impl SearchNode {
     fn hots(&self) -> &[HotMoveInfo] {
         unsafe { &*(self.hots as *const [HotMoveInfo]) }
     }
-    fn update_policy(&mut self, evals: Vec<f32>) {
-        let mut hots = unsafe { &mut *(self.hots as *mut [HotMoveInfo]) };
-
-        for i in 0..hots.len().min(evals.len()) {
-            hots[i].move_evaluation = evals[i];
-        }
-    }
     pub fn moves(&self) -> Moves {
         Moves {
             hots: self.hots(),
@@ -255,7 +247,7 @@ impl<Spec: MCTS> SearchTree<Spec> {
         let arena = Box::new(Arena::new(get_hash_size_mb() / 2));
         let tb_hits = 0.into();
 
-        let mut root_node = create_node::<Spec>(
+        let root_node = create_node::<Spec>(
             &eval,
             &tree_policy,
             &state,
@@ -263,18 +255,6 @@ impl<Spec: MCTS> SearchTree<Spec> {
             CreationHelper::Allocator(&arena.allocator()),
         )
         .expect("Unable to create root node");
-
-        prev_table.lookup_into(&state, &mut root_node);
-
-        let mut avg_rewards: Vec<f32> = root_node
-            .moves()
-            .into_iter()
-            .map(|m| m.average_reward().unwrap_or(-SCALE) / SCALE)
-            .collect();
-
-        softmax(&mut avg_rewards);
-
-        root_node.update_policy(avg_rewards);
 
         Self {
             root_state: state,
