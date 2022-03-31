@@ -27,12 +27,6 @@ pub trait MCTS: Sized + Sync {
     fn virtual_loss(&self) -> i64 {
         0
     }
-    /// The number of times a node must be visited before expanding its children.
-    /// Defaults to 1.
-    /// It only makes sense to use a value other than 1 if your evaluation can change on successive calls.
-    fn visits_before_expansion(&self) -> u64 {
-        1
-    }
     /// Maximum number of nodes beyond which calling `playout` will do nothing. Defaults to `std::usize::MAX`.
     fn node_limit(&self) -> usize {
         std::usize::MAX

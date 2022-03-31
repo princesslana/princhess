@@ -149,7 +149,15 @@ impl SearchNode {
     fn hots(&self) -> &[HotMoveInfo] {
         unsafe { &*(self.hots as *const [HotMoveInfo]) }
     }
-    fn update_policy(&mut self, evals: Vec<f32>) {
+    fn update_policy(&self) {
+        let mut evals: Vec<f32> = self
+            .moves()
+            .into_iter()
+            .map(|m| m.average_reward().unwrap_or(-SCALE) / SCALE)
+            .collect();
+
+        softmax(&mut evals);
+
         let mut hots = unsafe { &mut *(self.hots as *mut [HotMoveInfo]) };
 
         for i in 0..hots.len().min(evals.len()) {
@@ -265,17 +273,6 @@ impl<Spec: MCTS> SearchTree<Spec> {
         .expect("Unable to create root node");
 
         prev_table.lookup_into(&state, &mut root_node);
-
-        let mut avg_rewards: Vec<f32> = root_node
-            .moves()
-            .into_iter()
-            .map(|m| m.average_reward().unwrap_or(-SCALE) / SCALE)
-            .collect();
-
-        softmax(&mut avg_rewards);
-
-        root_node.update_policy(avg_rewards);
-
         Self {
             root_state: state,
             root_node,
@@ -340,6 +337,11 @@ impl<Spec: MCTS> SearchTree<Spec> {
             if path.len() >= self.manager.max_playout_length() {
                 break;
             }
+
+            if node.get_visits().load(Ordering::Relaxed) % 100 == 0 {
+                node.update_policy();
+            }
+
             let choice = self.tree_policy.choose_child(
                 &state,
                 node.moves(),
@@ -384,14 +386,13 @@ impl<Spec: MCTS> SearchTree<Spec> {
             };
             node_path.push(node);
             node.down(&self.manager);
-            if node.get_visits().load(Ordering::Relaxed) as u64
-                <= self.manager.visits_before_expansion()
-            {
+            if node.get_visits().load(Ordering::Relaxed) == 1 {
                 break;
             }
         }
 
         self.finish_playout(&path, &node_path, &players, &node.evaln);
+        self.root_node.get_visits().fetch_add(1, Ordering::Relaxed);
 
         true
     }
