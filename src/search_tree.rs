@@ -264,6 +264,8 @@ impl<Spec: MCTS> SearchTree<Spec> {
         )
         .expect("Unable to create root node");
 
+        table.insert(&state, &root_node);
+
         prev_table.lookup_into(&state, &mut root_node);
 
         let mut avg_rewards: Vec<f32> = root_node
