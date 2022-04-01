@@ -19,8 +19,8 @@
   ],
   "parameter_ranges": {
     "PolicyUpdateFrequency": "Integer(1, 30000)",
-    "CPuct": "Real(0.0, 5.0)",
-    "CPuctFactor": "Real(-5.0, 5.0)"
+    "PolicyUpdateFactor": "Integer(-15000, 5000)",
+    "CPuct": "Real(0.0, 5.0)"
   },
   "_parameter_ranges": {
     "CPuct": "Real(0.0, 5.0)",
