@@ -1,0 +1,22 @@
+FROM debian:buster
+
+RUN apt-get update \
+ && apt-get install -y gcc g++ gfortran python3-dev libopenblas-dev liblapack-dev \
+ && apt-get install -y curl libhdf5-serial-dev libqt5core5a netcdf-bin libnetcdf-dev python3-pip unzip
+
+RUN pip3 install chess-tuning-tools
+
+RUN mkdir /books
+RUN mkdir /engines
+RUN mkdir /data
+
+COPY bin/gm2001.bin /books/gm2001.bin
+COPY bin/first_moves.epd /books/first_moves.epd
+
+RUN curl -ssL https://raw.githubusercontent.com/AndyGrant/OpenBench/master/Books/4moves_noob.epd.zip -o /books/4moves_noob.epd.zip
+RUN unzip /books/4moves_noob.epd.zip -d /books
+
+RUN curl -sSL https://github.com/cutechess/cutechess/releases/download/1.2.0/cutechess-cli-1.2.0-linux64.tar.gz | tar zxv
+RUN ln -sf /cutechess-cli/cutechess-cli /usr/local/bin/cutechess-cli
+
+CMD ["tune", "local", "--verbose", "-c", "/config/tuning_config.json", "-d", "/data/data.npz", "--logfile", "/data/log.txt", "--model-path", "/data/model.pkl"]

@@ -82,9 +82,10 @@ pub fn uci() {
     println!("option name Hash type spin min 8 max 65536 default 16");
     println!("option name Threads type spin min 1 max 255 default 1");
     println!("option name SyzygyPath type string");
-    println!("option name CPuct type spin min 1 max 65536 default 215");
+    println!("option name CPuct type string default 2.15");
     println!("option name CPuctBase type spin min 1 max 65536 default 18368");
-    println!("option name CPuctFactor type spin min 1 max 65536 default 282");
+    println!("option name CPuctFactor tpye strnig default 2.82");
+    println!("option name MateScore type string default 1.1");
 
     println!("uciok");
 }
@@ -146,6 +147,7 @@ impl UciOption {
             "cpuctbase" => self.set_option(set_cpuct_base),
             "cpuctfactor" => self.set_option(set_cpuct_factor),
             "policyupdatefrequency" => self.set_option(set_policy_update_frequency),
+            "matescore" => self.set_option(set_mate_score),
             _ => warn!("Badly formatted or unknown option"),
         }
     }
