@@ -12,9 +12,6 @@ static CPUCT_FACTOR: Lazy<RwLock<f32>> = Lazy::new(|| RwLock::new(2.82));
 
 static MATE_SCORE: Lazy<RwLock<f32>> = Lazy::new(|| RwLock::new(1.1));
 
-static POLICY_UPDATE_FREQUENCY: AtomicU32 = AtomicU32::new(100);
-static POLICY_UPDATE_FACTOR: Lazy<RwLock<f32>> = Lazy::new(|| RwLock::new(-0.5));
-
 pub fn set_num_threads(threads: usize) {
     NUM_THREADS.store(threads, Ordering::Relaxed);
 }
@@ -67,22 +64,4 @@ pub fn set_mate_score(m: f32) {
 pub fn get_mate_score() -> f32 {
     let ms = MATE_SCORE.read().unwrap();
     *ms
-}
-
-pub fn set_policy_update_frequency(u: u32) {
-    POLICY_UPDATE_FREQUENCY.store(u, Ordering::Relaxed);
-}
-
-pub fn get_policy_update_frequency() -> u32 {
-    POLICY_UPDATE_FREQUENCY.load(Ordering::Relaxed)
-}
-
-pub fn set_policy_update_factor(f: f32) {
-    let mut puf = POLICY_UPDATE_FACTOR.write().unwrap();
-    *puf = f
-}
-
-pub fn get_policy_update_factor() -> f32 {
-    let puf = POLICY_UPDATE_FACTOR.read().unwrap();
-    *puf
 }

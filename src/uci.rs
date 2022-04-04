@@ -146,8 +146,6 @@ impl UciOption {
             "cpuct" => self.set_option(set_cpuct),
             "cpuctbase" => self.set_option(set_cpuct_base),
             "cpuctfactor" => self.set_option(set_cpuct_factor),
-            "policyupdatefrequency" => self.set_option(set_policy_update_frequency),
-            "policyupdatefactor" => self.set_option(set_policy_update_factor),
             "matescore" => self.set_option(set_mate_score),
             _ => warn!("Badly formatted or unknown option"),
         }

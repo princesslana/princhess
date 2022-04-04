@@ -1,5 +1,5 @@
 use mcts::*;
-use options::{get_hash_size_mb, get_policy_update_factor, get_policy_update_frequency};
+use options::get_hash_size_mb;
 use policy_features::softmax;
 use search::{GooseMCTS, SCALE};
 use smallvec::SmallVec;
@@ -316,8 +316,6 @@ impl<Spec: MCTS> SearchTree<Spec> {
     #[inline(never)]
     pub fn playout<'a: 'b, 'b>(&'a self, tld: &'b mut ThreadData<'a, Spec>) -> bool {
         const LARGE_DEPTH: usize = 64;
-        let update_frequency = get_policy_update_frequency() as i32;
-        let update_factor = (get_policy_update_factor() * update_frequency as f32) as i32;
         let sentinel = IncreaseSentinel::new(&self.num_nodes);
         if sentinel.num_nodes >= self.manager.node_limit() {
             debug!(
@@ -340,12 +338,7 @@ impl<Spec: MCTS> SearchTree<Spec> {
                 break;
             }
 
-            if node.get_visits().load(Ordering::Relaxed)
-                % (update_frequency + update_factor * path.len() as i32).max(1) as u32
-                == 0
-            {
-                node.update_policy();
-            }
+            node.update_policy();
 
             let choice = self.tree_policy.choose_child(
                 &state,
