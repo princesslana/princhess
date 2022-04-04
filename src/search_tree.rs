@@ -317,7 +317,7 @@ impl<Spec: MCTS> SearchTree<Spec> {
     pub fn playout<'a: 'b, 'b>(&'a self, tld: &'b mut ThreadData<'a, Spec>) -> bool {
         const LARGE_DEPTH: usize = 64;
         let update_frequency = get_policy_update_frequency() as i32;
-        let update_factor = get_policy_update_factor();
+        let update_factor = (get_policy_update_factor() * update_frequency as f32) as i32;
         let sentinel = IncreaseSentinel::new(&self.num_nodes);
         if sentinel.num_nodes >= self.manager.node_limit() {
             debug!(

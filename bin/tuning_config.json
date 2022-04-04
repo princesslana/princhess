@@ -2,7 +2,7 @@
   "engines": [
     {
       "command": "/engines/princhess",
-      "fixed_parametrs": {
+      "fixed_parameters": {
         "Threads": 1,
         "Hash": 128,
         "SyzygyPath": "/syzygy"
@@ -10,7 +10,7 @@
     },
     {
       "command": "/engines/princhess",
-      "fixed_parametrs": {
+      "fixed_parameters": {
         "Threads": 1,
         "Hash": 128,
         "SyzygyPath": "/syzygy"
@@ -19,8 +19,8 @@
   ],
   "parameter_ranges": {
     "PolicyUpdateFrequency": "Integer(1, 30000)",
-    "PolicyUpdateFactor": "Integer(-15000, 5000)",
-    "CPuct": "Real(0.0, 5.0)"
+    "PolicyUpdateFactor": "Real(-1.0, 1.0)",
+    "CPuct": "Real(0.0, 10.0)"
   },
   "_parameter_ranges": {
     "CPuct": "Real(0.0, 5.0)",
@@ -30,12 +30,14 @@
   },
   "engine1_tc": "10+0.1",
   "engine2_tc": "10+0.1",
-  "opening_file": "/books/first_moves.epd",
+  "timemargin": 1000,
+  "opening_file": "/books/4moves_noob.epd",
   "adjudicate_draws": false,
   "adjudicate_resign": false,
   "adjudicate_tb": false,
   "concurrency": 2,
-  "result_every": 1
+  "result_every": 1,
+  "acq_function": "ts"
 }
 
 
