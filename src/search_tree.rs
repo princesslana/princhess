@@ -338,7 +338,9 @@ impl<Spec: MCTS> SearchTree<Spec> {
                 break;
             }
 
-            node.update_policy();
+            if path.len() > 0 {
+                node.update_policy();
+            }
 
             let choice = self.tree_policy.choose_child(
                 &state,
