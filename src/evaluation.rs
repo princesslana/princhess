@@ -23,7 +23,7 @@ impl Evaluator<GooseMCTS> for GooseEval {
     fn evaluate_new_state(&self, state: &State, moves: &MoveList) -> (Vec<f32>, i64, bool) {
         let move_evaluations = evaluate_moves(state, moves.as_slice());
         let mut tb_hit = false;
-        let state_evaluation = if moves.len() == 0 {
+        let mut state_evaluation = if moves.len() == 0 {
             let x = (MATE_FACTOR * SCALE) as i64;
             match state.outcome() {
                 Outcome::Draw => 0,
@@ -44,6 +44,11 @@ impl Evaluator<GooseMCTS> for GooseEval {
         } else {
             (self.model.score(state) * SCALE as f32) as i64
         };
+
+        if state.is_repetition() {
+            state_evaluation = state_evaluation / 2;
+        }
+
         (move_evaluations, state_evaluation, tb_hit)
     }
 

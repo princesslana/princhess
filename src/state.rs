@@ -6,7 +6,6 @@ use shakmaty;
 use shakmaty::{File, Position, Setup};
 use smallvec::SmallVec;
 use std;
-use std::cmp::max;
 use std::iter::IntoIterator;
 use std::str::FromStr;
 use transposition_table::TranspositionHash;
@@ -156,6 +155,7 @@ impl State {
     pub fn formerly_occupied(&self) -> &[chess::BitBoard; NUM_OCCUPIED_KEPT] {
         &self.formerly_occupied
     }
+
     fn check_for_repetition(&mut self) {
         let crnt_hash = self.board.get_hash();
         self.repetitions = self
