@@ -6,7 +6,6 @@ use shakmaty;
 use shakmaty::{File, Position, Setup};
 use smallvec::SmallVec;
 use std;
-use std::cmp::max;
 use std::iter::IntoIterator;
 use std::str::FromStr;
 use transposition_table::TranspositionHash;
@@ -167,10 +166,6 @@ impl State {
 
     fn drawn_by_fifty_move_rule(&self) -> bool {
         self.prev_state_hashes.len() >= 100
-    }
-
-    pub fn is_repetition(&self) -> bool {
-        self.repetitions > 0
     }
 
     fn drawn_by_repetition(&self) -> bool {
