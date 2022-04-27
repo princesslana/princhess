@@ -382,10 +382,12 @@ impl<Spec: MCTS> SearchTree<Spec> {
                     }
                 }
             };
+
             node_path.push(node);
             node.down(&self.manager);
+
             if node.get_visits().load(Ordering::Relaxed) as u64
-                <= self.manager.visits_before_expansion()
+                <= self.manager.visits_before_expansion() && !state.is_check()
             {
                 break;
             }

@@ -119,6 +119,10 @@ impl State {
         &self.shakmaty_board
     }
 
+    pub fn is_check(&self) -> bool {
+        self.shakmaty_board().is_check()
+    }
+
     pub fn features(&self) -> [f32; nn::NUMBER_FEATURES] {
         #[allow(clippy::uninit_assumed_init)]
         let mut features = unsafe { std::mem::MaybeUninit::uninit().assume_init() };
