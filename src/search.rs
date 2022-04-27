@@ -2,9 +2,8 @@ use bench::{get_policy_validations, BENCHMARKING_POSITIONS};
 use chess::{Color, Piece};
 use evaluation::GooseEval;
 use features::Model;
-use mcts::{
-    AsyncSearchOwned, CycleBehaviour, Evaluator, GameState, MCTSManager, MoveInfoHandle, MCTS,
-};
+use float_ord::FloatOrd;
+use mcts::{AsyncSearchOwned, Evaluator, GameState, MCTSManager, MoveInfoHandle, MCTS};
 use options::{get_cpuct, get_cpuct_base, get_cpuct_factor, get_num_threads};
 use policy_features::evaluate_moves;
 use search_tree::{empty_previous_table, PreviousTable};
@@ -57,9 +56,6 @@ impl MCTS for GooseMCTS {
     }
     fn virtual_loss(&self) -> i64 {
         SCALE as i64
-    }
-    fn cycle_behaviour(&self) -> CycleBehaviour {
-        CycleBehaviour::UseThisEvalWhenCycleDetected(0)
     }
     fn select_child_after_search<'a>(&self, children: &[MoveInfoHandle<'a>]) -> MoveInfoHandle<'a> {
         *children
