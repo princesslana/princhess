@@ -353,7 +353,7 @@ impl<Spec: MCTS> SearchTree<Spec> {
                 self.manager.max_playout_length());
             state.make_move(&choice.hot.mov);
 
-            let new_node = match self.descend(&state, choice.hot, tld, &node_path) {
+            node = match self.descend(&state, choice.hot, tld, &node_path) {
                 Ok(r) => r,
                 Err(ArenaError::Full) => {
                     debug!("Hash reached max capacity");
@@ -362,26 +362,11 @@ impl<Spec: MCTS> SearchTree<Spec> {
                 }
             };
 
-            node = new_node;
-            match self.manager.cycle_behaviour() {
-                CycleBehaviour::Ignore => (),
-                CycleBehaviour::PanicWhenCycleDetected => {
-                    if is_cycle(&node_path, node) {
-                        panic!("cycle detected! you should do one of the following:\n- make states acyclic\n- remove transposition table\n- change cycle_behaviour()");
-                    }
-                }
-                CycleBehaviour::UseCurrentEvalWhenCycleDetected => {
-                    if is_cycle(&node_path, node) {
-                        break;
-                    }
-                }
-                CycleBehaviour::UseThisEvalWhenCycleDetected(e) => {
-                    if is_cycle(&node_path, node) {
-                        self.finish_playout(&path, &node_path, &players, &e);
-                        return true;
-                    }
-                }
-            };
+            if is_cycle(&node_path, node) {
+                self.finish_playout(&path, &node_path, &players, &0);
+                return true;
+            }
+
             node_path.push(node);
             node.down(&self.manager);
             if node.get_visits().load(Ordering::Relaxed) == 1 {
