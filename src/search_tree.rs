@@ -273,6 +273,9 @@ impl<Spec: MCTS> SearchTree<Spec> {
         .expect("Unable to create root node");
 
         prev_table.lookup_into(&state, &mut root_node);
+
+        root_node.update_policy();
+
         Self {
             root_state: state,
             root_node,
@@ -338,7 +341,9 @@ impl<Spec: MCTS> SearchTree<Spec> {
                 break;
             }
 
-            node.update_policy();
+            if path.len() > 0 {
+                node.update_policy();
+            }
 
             let choice = self.tree_policy.choose_child(
                 &state,

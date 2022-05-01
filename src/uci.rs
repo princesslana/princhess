@@ -1,6 +1,5 @@
 use options::{
-    set_cpuct, set_cpuct_base, set_cpuct_factor, set_hash_size_mb, set_num_threads,
-    set_policy_update_frequency, set_mate_score, set_policy_update_factor
+    set_cpuct, set_cpuct_base, set_cpuct_factor, set_hash_size_mb, set_mate_score, set_num_threads,
 };
 use search::Search;
 use search_tree::{empty_previous_table, print_size_list};
