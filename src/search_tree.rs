@@ -363,7 +363,7 @@ impl<Spec: MCTS> SearchTree<Spec> {
             };
 
             if is_cycle(&node_path, node) {
-                self.finish_playout(&path, &node_path, &players, &0);
+                self.finish_playout(&path, &node_path, &players, &(-SCALE as i64));
                 return true;
             }
 
