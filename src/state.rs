@@ -91,6 +91,7 @@ pub struct State {
     board: chess::Board,
     prev_move: Option<chess::ChessMove>,
     prev_capture: Option<chess::Piece>,
+    prev_capture_sq: Option<shakmaty::Square>,
     prev_state_hashes: SmallVec<[u64; 64]>,
     repetitions: usize,
     formerly_occupied: [chess::BitBoard; NUM_OCCUPIED_KEPT],
@@ -206,6 +207,10 @@ impl State {
 
             features[feature_idx] = 1.;
         }
+
+        if let Some(sq) = self.prev_capture_sq {
+            features[768 + sq as usize] = 1.
+        }
     }
 }
 
@@ -288,6 +293,7 @@ impl From<StateBuilder> for State {
             board,
             prev_move: None,
             prev_capture: None,
+            prev_capture_sq: None,
             prev_state_hashes: SmallVec::new(),
             repetitions: 0,
             formerly_occupied: [*board.combined(); NUM_OCCUPIED_KEPT],
@@ -377,6 +383,11 @@ impl GameState for State {
 
     fn make_move(&mut self, mov: &chess::ChessMove) {
         self.prev_capture = self.board.piece_on(mov.get_dest());
+
+        self.prev_capture_sq = self
+            .prev_capture
+            .map(|_| shakmaty::Square::new(mov.get_dest().to_index() as u32));
+
         let is_pawn_move = (self.board.pieces(chess::Piece::Pawn)
             & chess::BitBoard::from_square(mov.get_source()))
         .0 != 0;
