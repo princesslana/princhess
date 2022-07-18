@@ -209,7 +209,14 @@ impl State {
         }
 
         if let Some(sq) = self.prev_capture_sq {
-            features[768 + sq as usize] = 1.
+            let adj_sq = match (flip_vertical, flip_horizontal) {
+                (true, true) => sq.flip_vertical().flip_horizontal(),
+                (true, false) => sq.flip_vertical(),
+                (false, true) => sq.flip_horizontal(),
+                (false, false) => sq,
+            };
+
+            features[768 + adj_sq as usize] = 1.
         }
     }
 }
