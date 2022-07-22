@@ -210,10 +210,11 @@ impl State {
             features[feature_idx] = 1.;
         }
 
-        if let Some(sq) = self.prev_capture_sq {
+        if let Some((sq, pc)) = self.prev_capture_sq.zip(self.prev_capture) {
             let adj_sq = flip_square(sq);
+            let role_idx = pc.to_index();
 
-            features[768 + adj_sq as usize] = 1.
+            features[768 + role_idx * 64 + adj_sq as usize] = 1.
         }
     }
 }

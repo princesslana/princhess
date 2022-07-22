@@ -13,7 +13,7 @@ from tensorflow import keras
 from tensorflow.keras import layers
 from tensorflow.nn import softmax_cross_entropy_with_logits
 
-INPUT_SIZE = 768 + 64
+INPUT_SIZE = 768 + (5 * 64)
 
 DEFAULT_BATCH_SIZE = 16384
 DEFAULT_HIDDEN_LAYERS = 128

@@ -1,4 +1,4 @@
-pub const NUMBER_FEATURES: usize = 768 + 64;
+pub const NUMBER_FEATURES: usize = 768 + (5 * 64);
 const NUMBER_HIDDEN: usize = 128;
 
 struct NNWeights {
