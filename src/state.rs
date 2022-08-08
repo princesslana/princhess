@@ -191,13 +191,15 @@ impl State {
         let flip_vertical = turn == shakmaty::Color::Black;
         let flip_horizontal = ksq.file() <= File::D;
 
+        let flip_square = |sq: shakmaty::Square| match (flip_vertical, flip_horizontal) {
+            (true, true) => sq.flip_vertical().flip_horizontal(),
+            (true, false) => sq.flip_vertical(),
+            (false, true) => sq.flip_horizontal(),
+            (false, false) => sq,
+        };
+
         for (sq, pc) in b.pieces() {
-            let adj_sq = match (flip_vertical, flip_horizontal) {
-                (true, true) => sq.flip_vertical().flip_horizontal(),
-                (true, false) => sq.flip_vertical(),
-                (false, true) => sq.flip_horizontal(),
-                (false, false) => sq,
-            };
+            let adj_sq = flip_square(sq);
 
             let sq_idx = adj_sq as usize;
             let role_idx = pc.role as usize - 1;
@@ -208,8 +210,11 @@ impl State {
             features[feature_idx] = 1.;
         }
 
-        if let Some(sq) = self.prev_capture_sq {
-            features[768 + sq as usize] = 1.
+        if let Some((sq, pc)) = self.prev_capture_sq.zip(self.prev_capture) {
+            let adj_sq = flip_square(sq);
+            let role_idx = pc.to_index();
+
+            features[768 + role_idx * 64 + adj_sq as usize] = 1.
         }
     }
 }
