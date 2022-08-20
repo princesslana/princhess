@@ -25,6 +25,7 @@ challenge:
   accept_bot: true
   variants:
     - standard
+    - fromPosition
   time_controls:
     - bullet
     - blitz
