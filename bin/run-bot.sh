@@ -6,5 +6,5 @@ cd src
 
 echo "token: $LICHESS_TOKEN" >> config.yml
 
-python lichess-bot.py
+python lichess-bot.py -v
 
