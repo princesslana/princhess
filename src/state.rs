@@ -1,6 +1,5 @@
 use chess;
 use mcts::GameState;
-use nn;
 use search::to_uci;
 use shakmaty;
 use shakmaty::{File, Position, Setup};
@@ -15,6 +14,15 @@ pub type Player = chess::Color;
 pub type Move = chess::ChessMove;
 
 pub const NUM_OCCUPIED_KEPT: usize = 4;
+
+const NF_PIECES: usize = 2 * 6 * 64; // color * roles * squares
+const NF_LAST_CAPTURE: usize = 5 * 64; // roles (-king) * squares
+const NF_THREATS: usize = 2 * 6 * 64; // color * roles * suquares
+
+const OFFSET_LAST_CAPTURE: usize = NF_PIECES;
+const OFFSET_THREATS: usize = NF_PIECES + NF_LAST_CAPTURE;
+
+pub const NUMBER_FEATURES: usize = NF_PIECES + NF_LAST_CAPTURE + NF_THREATS;
 
 pub struct StateBuilder {
     initial_state: shakmaty::Chess,
@@ -119,7 +127,7 @@ impl State {
         &self.shakmaty_board
     }
 
-    pub fn features(&self) -> [f32; nn::NUMBER_FEATURES] {
+    pub fn features(&self) -> [f32; NUMBER_FEATURES] {
         #[allow(clippy::uninit_assumed_init)]
         let mut features = unsafe { std::mem::MaybeUninit::uninit().assume_init() };
         self.featurize(&mut features);
@@ -180,7 +188,7 @@ impl State {
         }
     }
 
-    pub fn featurize(&self, features: &mut [f32; nn::NUMBER_FEATURES]) {
+    pub fn featurize(&self, features: &mut [f32; NUMBER_FEATURES]) {
         features.fill(0.);
 
         let turn = self.shakmaty_board().turn();
@@ -208,13 +216,17 @@ impl State {
             let feature_idx = (side_idx * 6 + role_idx) * 64 + sq_idx;
 
             features[feature_idx] = 1.;
+
+            if b.attacks_to(sq, !turn, b.occupied()).any() {
+                features[OFFSET_THREATS + feature_idx] = 1.;
+            }
         }
 
         if let Some((sq, pc)) = self.prev_capture_sq.zip(self.prev_capture) {
             let adj_sq = flip_square(sq);
             let role_idx = pc.to_index();
 
-            features[768 + role_idx * 64 + adj_sq as usize] = 1.
+            features[OFFSET_LAST_CAPTURE + role_idx * 64 + adj_sq as usize] = 1.
         }
     }
 }

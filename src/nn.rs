@@ -1,9 +1,11 @@
-pub const NUMBER_FEATURES: usize = 768 + (5 * 64);
+use state;
+
+const NUMBER_INPUTS: usize = state::NUMBER_FEATURES;
 const NUMBER_HIDDEN: usize = 128;
 
 struct NNWeights {
     hidden_bias: &'static [f32],
-    hidden: &'static [[f32; NUMBER_FEATURES]],
+    hidden: &'static [[f32; NUMBER_INPUTS]],
     output: &'static [[f32; NUMBER_HIDDEN]],
 }
 
@@ -11,8 +13,7 @@ struct NNWeights {
 const EVAL_HIDDEN_BIAS: [f32; NUMBER_HIDDEN] = include!("model/hidden_bias");
 
 #[allow(clippy::excessive_precision)]
-const EVAL_HIDDEN_WEIGHTS: [[f32; NUMBER_FEATURES]; NUMBER_HIDDEN] =
-    include!("model/hidden_weights");
+const EVAL_HIDDEN_WEIGHTS: [[f32; NUMBER_INPUTS]; NUMBER_HIDDEN] = include!("model/hidden_weights");
 
 #[allow(clippy::excessive_precision)]
 const EVAL_OUTPUT_WEIGHTS: [[f32; NUMBER_HIDDEN]; 1] = include!("model/output_weights");
@@ -42,7 +43,7 @@ impl NN {
         Self::new(EVAL_WEIGHTS)
     }
 
-    pub fn set_inputs(&mut self, inputs: &[f32; NUMBER_FEATURES]) {
+    pub fn set_inputs(&mut self, inputs: &[f32; state::NUMBER_FEATURES]) {
         self.hidden_layer.copy_from_slice(self.weights.hidden_bias);
 
         for i in 0..inputs.len() {
