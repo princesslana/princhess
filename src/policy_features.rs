@@ -1,17 +1,18 @@
-use nn;
-use nn::NN;
 use options::{
     get_policy_bad_capture_factor, get_policy_good_capture_factor, get_policy_softmax_temp,
 };
 use shakmaty::Setup;
+use state;
 use state::{Move, State};
 
+const NUMBER_INPUTS: usize = state::NUMBER_FEATURES;
+
 #[allow(clippy::excessive_precision)]
-const POLICY_WEIGHTS: [[f32; nn::NUMBER_FEATURES]; 1792] = include!("policy/output_weights");
+const POLICY_WEIGHTS: [[f32; NUMBER_INPUTS]; 1792] = include!("policy/output_weights");
 
 /*
 const HIDDEN_BIAS: [f32; 32] = include!("policy/hidden_bias_1");
-const HIDDEN_WEIGHTS: [[f32; nn::NUMBER_FEATURES]; 32] = include!("policy/hidden_weights_1");
+const HIDDEN_WEIGHTS: [[f32; nn::NUMBER_INPUTS]; 32] = include!("policy/hidden_weights_1");
 */
 
 fn piece_eval(pc: chess::Piece) -> u16 {
@@ -27,7 +28,7 @@ fn piece_eval(pc: chess::Piece) -> u16 {
 
 pub fn evaluate_moves(
     state: &State,
-    features: &[f32; nn::NUMBER_FEATURES],
+    features: &[f32; state::NUMBER_FEATURES],
     moves: &[Move],
 ) -> Vec<f32> {
     let mut evalns = Vec::with_capacity(moves.len());
@@ -47,7 +48,7 @@ pub fn evaluate_moves(
     let mut move_idxs = Vec::with_capacity(moves.len());
 
     /*
-    let mut hidden: [f32; nn::NUMBER_FEATURES + 32] = unsafe { std::mem::MaybeUninit::uninit().assume_init() };
+    let mut hidden: [f32; nn::NUMBER_INPUTS + 32] = unsafe { std::mem::MaybeUninit::uninit().assume_init() };
     */
 
     for m in 0..moves.len() {
@@ -107,10 +108,10 @@ pub fn evaluate_moves(
 }
 
 pub fn softmax(arr: &mut [f32]) {
-    let t = get_policy_softmax_temp();
+    //let t = get_policy_softmax_temp();
 
     for x in arr.iter_mut() {
-        *x = fastapprox::faster::exp(*x / t);
+        *x = fastapprox::faster::exp(*x);
     }
     let s = 1.0 / arr.iter().sum::<f32>();
     for x in arr.iter_mut() {

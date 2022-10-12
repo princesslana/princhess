@@ -1,6 +1,7 @@
 use chess::*;
 use nn;
 use nn::NN;
+use state;
 use state::State;
 use std::io::Write;
 use std::ops;
@@ -68,7 +69,7 @@ impl Model {
     pub fn new() -> Self {
         Model
     }
-    pub fn predict(&self, state: &State, features: &[f32; nn::NUMBER_FEATURES]) -> f32 {
+    pub fn predict(&self, state: &State, features: &[f32; state::NUMBER_FEATURES]) -> f32 {
         let mut nn = NN::new_eval();
         nn.set_inputs(features);
 
@@ -82,7 +83,7 @@ impl Model {
 
         result
     }
-    pub fn score(&self, state: &State, features: &[f32; nn::NUMBER_FEATURES]) -> f32 {
+    pub fn score(&self, state: &State, features: &[f32; state::NUMBER_FEATURES]) -> f32 {
         self.predict(state, features)
     }
 }

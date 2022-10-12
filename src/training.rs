@@ -190,11 +190,7 @@ impl Visitor for PolicyDataGenerator {
         let (mut state, moves) = self.state.extract();
         let freq = NUM_SAMPLES_POLICY as f64 / moves.len() as f64;
         for (i, m) in moves.into_iter().enumerate() {
-            if i >= 8
-                && !state.is_repetition()
-                && !state.is_check()
-                && self.rng.gen_range(0., 1.) < freq
-            {
+            if i >= 8 && self.rng.gen_range(0., 1.) < freq {
                 let mut board_features = state.features();
 
                 let mut move_features = [0f32; 1792];
