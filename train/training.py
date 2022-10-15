@@ -125,18 +125,19 @@ def square_sigmoid(inp):
 
 
 # 0 - illegal movoe
-# 1 - played move
-# 2 - legal, not played move
+# 127 - played move
+# 0 < x < 127 - legal, not played move
 #
-# therefore > 0.5 = all legal, > 1.5 = legal but not played
+# therefore > 0 = all legal
 def correct_policy(target, output):
     output = tf.cast(output, tf.float32)
 
-    move_is_legal = tf.greater_equal(target, 0.5)
+    move_is_legal = tf.greater_equal(target, 0.0)
     output = tf.where(move_is_legal, output, tf.zeros_like(output) - 1.0e10)
 
-    legal_not_played = tf.greater_equal(target, 1.5)
-    target = tf.where(legal_not_played, tf.zeros_like(target), target)
+    #legal_not_played = tf.greater_equal(target, 1.5)
+    #target = tf.where(move_is_legal, target / 127, target)
+    target = target / 127
 
     return target, output
 

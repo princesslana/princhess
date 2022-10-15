@@ -10,6 +10,7 @@ use self::rand::{Rng, SeedableRng};
 use chess;
 use features::{featurize, FeatureVec, GameResult};
 use mcts::GameState;
+use policy_features::evaluate_moves;
 use shakmaty;
 use state::StateBuilder;
 
@@ -22,7 +23,7 @@ const NUM_ROWS: usize = std::usize::MAX;
 const MIN_ELO: i32 = 1700;
 const MIN_ELO_POLICY: i32 = 2200;
 const NUM_SAMPLES: usize = 8;
-const NUM_SAMPLES_POLICY: usize = 16;
+const NUM_SAMPLES_POLICY: usize = 8;
 
 struct ValueDataGenerator {
     out_file: BufWriter<File>,
@@ -192,14 +193,17 @@ impl Visitor for PolicyDataGenerator {
         for (i, m) in moves.into_iter().enumerate() {
             if i >= 8 && self.rng.gen_range(0., 1.) < freq {
                 let mut board_features = state.features();
+                let moves = state.available_moves();
+
+                let move_evals = evaluate_moves(&state, &board_features, moves.as_slice());
 
                 let mut move_features = [0f32; 1792];
 
-                for m in state.available_moves() {
-                    move_features[state.move_to_index(&m)] = 2.;
+                for (e, m) in move_evals.iter().zip(moves) {
+                    move_features[state.move_to_index(&m)] = *e * 127.;
                 }
 
-                move_features[state.move_to_index(&m)] = 1.;
+                move_features[state.move_to_index(&m)] = 127.;
 
                 let mut f_vec = FeatureVec {
                     arr: move_features

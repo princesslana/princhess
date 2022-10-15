@@ -6,7 +6,7 @@ use std::sync::RwLock;
 static NUM_THREADS: AtomicUsize = AtomicUsize::new(1);
 static HASH_SIZE_MB: AtomicUsize = AtomicUsize::new(16);
 
-static CPUCT: Lazy<RwLock<f32>> = Lazy::new(|| RwLock::new(1.41));
+static CPUCT: Lazy<RwLock<f32>> = Lazy::new(|| RwLock::new(2.15));
 static CPUCT_BASE: AtomicU64 = AtomicU64::new(18368);
 static CPUCT_FACTOR: Lazy<RwLock<f32>> = Lazy::new(|| RwLock::new(2.82));
 
