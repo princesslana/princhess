@@ -119,7 +119,9 @@ def train_state(files, model, start_epoch):
 def square_sigmoid(inp):
     # Equalivalent to 1 if inp > 0.5 else 0
     half = tf.constant(0.5, inp.dtype.base_dtype)
-    return tf.keras.activations.relu(tf.add(inp, half), max_value=1.0, threshold=1.0, alpha=0.0)
+    return tf.keras.activations.relu(
+        tf.add(inp, half), max_value=1.0, threshold=1.0, alpha=0.0
+    )
 
     # return tf.where(tf.less_equal(inp, 0), tf.zeros_like(inp), tf.ones_like(inp))
 
@@ -135,8 +137,8 @@ def correct_policy(target, output):
     move_is_legal = tf.greater_equal(target, 0.0)
     output = tf.where(move_is_legal, output, tf.zeros_like(output) - 1.0e10)
 
-    #legal_not_played = tf.greater_equal(target, 1.5)
-    #target = tf.where(move_is_legal, target / 127, target)
+    # legal_not_played = tf.greater_equal(target, 1.5)
+    # target = tf.where(move_is_legal, target / 127, target)
     target = target / 127
 
     return target, output
@@ -247,9 +249,7 @@ if __name__ == "__main__":
     if model_file:
         model = keras.models.load_model(
             model_file,
-            custom_objects=dict(
-                softmax_cross_entropy_with_logits_v2=softmax_cross_entropy_with_logits
-            ),
+            custom_objects=dict(policy_loss=policy_loss, policy_acc=policy_acc),
         )
 
     if train_what == "state":

@@ -1,3 +1,4 @@
+use float_ord::FloatOrd;
 use options::{
     get_policy_bad_capture_factor, get_policy_good_capture_factor, get_policy_softmax_temp,
 };
@@ -32,6 +33,10 @@ pub fn evaluate_moves(
     moves: &[Move],
 ) -> Vec<f32> {
     let mut evalns = Vec::with_capacity(moves.len());
+
+    if moves.len() == 0 {
+        return evalns;
+    }
     /*let mut nn = NN::new_policy();
 
     nn.set_inputs(features);
@@ -109,9 +114,18 @@ pub fn evaluate_moves(
 
 pub fn softmax(arr: &mut [f32]) {
     //let t = get_policy_softmax_temp();
+    //
+
+    let mut max = arr[0];
+    for f in arr.iter() {
+        if *f > max {
+            max = *f;
+        }
+    }
+    //let max = arr.iter().max_by_key(|f| FloatOrd(**f)).unwrap();
 
     for x in arr.iter_mut() {
-        *x = fastapprox::faster::exp(*x);
+        *x = fastapprox::faster::exp(*x - max);
     }
     let s = 1.0 / arr.iter().sum::<f32>();
     for x in arr.iter_mut() {

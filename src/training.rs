@@ -10,7 +10,7 @@ use self::rand::{Rng, SeedableRng};
 use chess;
 use features::{featurize, FeatureVec, GameResult};
 use mcts::GameState;
-use policy_features::evaluate_moves;
+use policy_features::{evaluate_moves, softmax};
 use shakmaty;
 use state::StateBuilder;
 
@@ -190,20 +190,30 @@ impl Visitor for PolicyDataGenerator {
     fn outcome(&mut self, _: Option<Outcome>) {
         let (mut state, moves) = self.state.extract();
         let freq = NUM_SAMPLES_POLICY as f64 / moves.len() as f64;
-        for (i, m) in moves.into_iter().enumerate() {
+        for (i, made) in moves.into_iter().enumerate() {
             if i >= 8 && self.rng.gen_range(0., 1.) < freq {
                 let mut board_features = state.features();
                 let moves = state.available_moves();
 
-                let move_evals = evaluate_moves(&state, &board_features, moves.as_slice());
+                let mut move_evals = evaluate_moves(&state, &board_features, moves.as_slice());
+
+                for (e, m) in move_evals.iter_mut().zip(moves.as_slice()) {
+                    if made == *m {
+                        *e = 1.
+                    }
+                }
+
+                let s = 1. / move_evals.iter().sum::<f32>();
+
+                for e in move_evals.iter_mut() {
+                    *e *= s;
+                }
 
                 let mut move_features = [0f32; 1792];
 
-                for (e, m) in move_evals.iter().zip(moves) {
-                    move_features[state.move_to_index(&m)] = *e * 127.;
+                for (e, m) in move_evals.iter().zip(moves.as_slice()) {
+                    move_features[state.move_to_index(&m)] = (*e * 127.).max(1.);
                 }
-
-                move_features[state.move_to_index(&m)] = 127.;
 
                 let mut f_vec = FeatureVec {
                     arr: move_features
@@ -215,7 +225,7 @@ impl Visitor for PolicyDataGenerator {
 
                 f_vec.write_libsvm(&mut self.out_file, 0);
             }
-            state.make_move(&m);
+            state.make_move(&made);
         }
     }
     fn end_game(&mut self) -> Self::Result {}
