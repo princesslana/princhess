@@ -1,4 +1,4 @@
-use bench::{get_policy_validations, BENCHMARKING_POSITIONS};
+use bench::BENCHMARKING_POSITIONS;
 use chess::{Color, Piece};
 use evaluation::GooseEval;
 use features::Model;
@@ -6,7 +6,6 @@ use mcts::{
     AsyncSearchOwned, CycleBehaviour, Evaluator, GameState, MCTSManager, MoveInfoHandle, MCTS,
 };
 use options::{get_cpuct, get_cpuct_base, get_cpuct_factor, get_num_threads};
-use policy_features::evaluate_moves;
 use search_tree::{empty_previous_table, PreviousTable};
 use state::{Move, State, StateBuilder};
 use std::sync::atomic::Ordering;
@@ -24,9 +23,9 @@ const DEFAULT_MOVE_TIME_FRACTION: u32 = 15;
 pub const SCALE: f32 = 1e9;
 
 fn policy() -> AlphaGoPolicy {
-    let cpuct = get_cpuct() as f32 / 100.;
+    let cpuct = get_cpuct();
     let cpuct_base = get_cpuct_base() as f32;
-    let cpuct_factor = get_cpuct_factor() as f32 / 100.;
+    let cpuct_factor = get_cpuct_factor();
 
     AlphaGoPolicy::new(cpuct * SCALE, cpuct_base, cpuct_factor * SCALE)
 }
@@ -251,7 +250,8 @@ impl Search {
         let state = manager.tree().root_state();
 
         let model = Model::new();
-        let results = model.predict(state);
+        let features = state.features();
+        let results = model.predict(state, &features);
 
         let eval = GooseEval::new(model);
 
@@ -322,47 +322,6 @@ impl Search {
 
         println!("info nodes {}", nodes,);
         println!("info nps {}", nodes * 1000 / search_time_ms as usize)
-    }
-
-    pub fn eval_policy(&self) {
-        let mut correct = 0;
-        let mut attempts = 0;
-
-        for (mv, s) in get_policy_validations() {
-            let move_list = s.available_moves();
-            let moves = move_list.as_slice();
-            let evals = evaluate_moves(&s, &moves);
-
-            let mut max_eval = evals[0];
-            let mut best_move = moves[0];
-
-            for (e, m) in evals.iter().zip(moves) {
-                if e > &max_eval {
-                    best_move = *m;
-                    max_eval = *e;
-                }
-            }
-
-            attempts += 1;
-            if to_uci(best_move) == mv {
-                correct += 1;
-            }
-
-            if attempts % 100000 == 0 {
-                println!(
-                    "info string {}/{} ({:.2}%)",
-                    correct,
-                    attempts,
-                    correct as f32 / attempts as f32 * 100.
-                );
-            }
-        }
-        println!(
-            "info string {}/{} ({:.2}%)",
-            correct,
-            attempts,
-            correct as f32 / attempts as f32 * 100.
-        );
     }
 }
 

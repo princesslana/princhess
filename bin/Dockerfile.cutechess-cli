@@ -1,6 +1,14 @@
-FROM debian:buster
+FROM debian:bullseye
 
-RUN apt-get update && apt-get install -y curl libqt5core5a unzip
+RUN apt-get update \
+ && apt-get install -y curl git build-essential cmake qtbase5-dev qtbase5-dev-tools libqt5svg5-dev unzip
+
+RUN git clone https://github.com/cutechess/cutechess.git \
+ && cd cutechess \
+ && mkdir build \
+ && cd build \
+ && cmake .. \
+ && make
 
 RUN mkdir /books
 RUN mkdir /engines
@@ -11,12 +19,4 @@ COPY bin/first_moves.epd /books/first_moves.epd
 RUN curl -ssL https://raw.githubusercontent.com/AndyGrant/OpenBench/master/Books/4moves_noob.epd.zip -o /books/4moves_noob.epd.zip
 RUN unzip /books/4moves_noob.epd.zip -d /books
 
-RUN curl -sSL https://github.com/cutechess/cutechess/releases/download/1.2.0/cutechess-cli-1.2.0-linux64.tar.gz | tar zxv
-
-RUN curl -sSL https://github.com/princesslana/princhess/releases/download/0.3.1/princhess -o /engines/princhess-0.3.1 && chmod +x /engines/princhess-0.3.1
-RUN curl -sSL https://github.com/princesslana/princhess/releases/download/0.4.0/princhess -o /engines/princhess-0.4.0 && chmod +x /engines/princhess-0.4.0
-RUN curl -sSL https://github.com/princesslana/princhess/releases/download/0.5.1/princhess -o /engines/princhess-0.5.1 && chmod +x /engines/princhess-0.5.1
-RUN curl -sSL https://github.com/princesslana/princhess/releases/download/0.6.0/princhess -o /engines/princhess-0.6.0 && chmod +x /engines/princhess-0.6.0
-RUN curl -sSL https://github.com/princesslana/princhess/releases/download/0.7.0/princhess -o /engines/princhess-0.7.0 && chmod +x /engines/princhess-0.7.0
-
-ENTRYPOINT ["cutechess-cli/cutechess-cli"]
+ENTRYPOINT ["cutechess/build/cutechess-cli"]

@@ -248,11 +248,12 @@ where
     pub fn print_move_list(&self) {
         let root_node = self.tree().root_node();
         let root_state = self.tree().root_state();
+        let root_features = root_state.features();
 
         let root_moves = root_node.moves();
 
         let state_moves = root_state.available_moves();
-        let state_moves_eval = evaluate_moves(root_state, state_moves.as_slice());
+        let state_moves_eval = evaluate_moves(&root_state, &root_features, state_moves.as_slice());
 
         let mut moves: Vec<(MoveInfoHandle, f32)> = root_moves.zip(state_moves_eval).collect();
         moves.sort_by_key(|(h, e)| FloatOrd(h.average_reward().unwrap_or(*e)));

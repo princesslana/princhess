@@ -3,10 +3,25 @@
 set -e
 set -x
 
-for e in $(seq -w 1 100)
+case $1 in
+  state)
+    what=state
+    where=src/model
+    ;;
+  policy)
+    what=
+    where=src/policy
+    ;;
+  *)
+    echo "Must specify state or policy"
+    exit
+    ;;
+esac
+
+for e in $(seq -w 001 100)
 do
   echo "Building princess-e$e..."
-  cp train/state*e$e*.h5/* src/model
+  cp train/$what*e$e*.h5/* $where
   cargo build --release
   cp target/release/princhess{,-e$e}
 done

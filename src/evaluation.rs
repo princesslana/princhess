@@ -21,7 +21,8 @@ impl GooseEval {
 
 impl Evaluator<GooseMCTS> for GooseEval {
     fn evaluate_new_state(&self, state: &State, moves: &MoveList) -> (Vec<f32>, i64, bool) {
-        let move_evaluations = evaluate_moves(state, moves.as_slice());
+        let features = state.features();
+        let move_evaluations = evaluate_moves(state, &features, moves.as_slice());
         let mut tb_hit = false;
         let state_evaluation = if moves.len() == 0 {
             let x = (MATE_FACTOR * SCALE) as i64;
@@ -42,7 +43,7 @@ impl Evaluator<GooseMCTS> for GooseEval {
                 _ => 0,
             }
         } else {
-            (self.model.score(state) * SCALE as f32) as i64
+            (self.model.score(state, &features) * SCALE as f32) as i64
         };
         (move_evaluations, state_evaluation, tb_hit)
     }

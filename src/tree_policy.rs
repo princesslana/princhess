@@ -62,10 +62,17 @@ impl<Spec: MCTS<TreePolicy = Self>> TreePolicy<Spec> for AlphaGoPolicy {
 
         let explore_coef = exploration_constant * sqrt_total_visits;
 
+        let is_root = handle.is_root();
+
         handle
             .thread_data()
             .policy_data
             .select_by_key(moves, |mov| {
+                if let Some(pc) = mov.get_move().get_promotion() {
+                    if !is_root && pc != chess::Piece::Queen {
+                        return std::f32::NEG_INFINITY.into();
+                    }
+                }
                 let sum_rewards = mov.sum_rewards() as f32;
                 let child_visits = mov.visits();
                 let policy_evaln = *mov.move_evaluation() as f32;
@@ -83,14 +90,6 @@ impl<Spec: MCTS<TreePolicy = Self>> TreePolicy<Spec> for AlphaGoPolicy {
                 x >= -1e-6,
                 "Move evaluation is {} (must be non-negative)",
                 x
-            );
-        }
-        if !evalns.is_empty() {
-            let evaln_sum: f32 = evalns.iter().sum();
-            assert!(
-                (evaln_sum - 1.0).abs() < 0.1,
-                "Sum of evaluations is {} (should sum to 1)",
-                evaln_sum
             );
         }
     }

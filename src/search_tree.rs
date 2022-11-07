@@ -581,6 +581,10 @@ impl<'a, 'b, Spec: MCTS> SearchHandle<'a, 'b, Spec> {
     pub fn thread_data(&mut self) -> &mut ThreadData<'a, Spec> {
         self.tld
     }
+
+    pub fn is_root(&self) -> bool {
+        self.shared.path.is_empty()
+    }
 }
 
 struct IncreaseSentinel<'a> {
