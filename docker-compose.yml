@@ -9,7 +9,7 @@ services:
     environment:
       RUST_LOG: warn
 
-  sprt:
+  sprt_gain:
     build:
       context: .
       dockerfile: bin/Dockerfile.cutechess-cli
@@ -20,6 +20,21 @@ services:
       -each proto=uci tc=10+0.1 timemargin=1000
             option.SyzygyPath=/syzygy option.Hash=128 option.Threads=1
       -sprt elo0=-2.5 elo1=5 alpha=0.05 beta=0.05
+      -openings file=/books/4moves_noob.epd format=epd order=random
+      -games 2 -repeat -rounds 10000
+      -recover -ratinginterval 10 -concurrency 6
+
+  sprt_equal:
+    build:
+      context: .
+      dockerfile: bin/Dockerfile.cutechess-cli
+    command:
+      -engine cmd=/engines/princhess name=princhess
+      -engine cmd=/engines/princhess-main name=princhess-main
+
+      -each proto=uci tc=10+0.1 timemargin=1000
+            option.SyzygyPath=/syzygy option.Hash=128 option.Threads=1
+      -sprt elo0=-10 elo1=-2.5 alpha=0.05 beta=0.05
       -openings file=/books/4moves_noob.epd format=epd order=random
       -games 2 -repeat -rounds 10000
       -recover -ratinginterval 10 -concurrency 6

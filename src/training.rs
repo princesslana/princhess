@@ -20,7 +20,7 @@ use std::str;
 
 const NUM_ROWS: usize = std::usize::MAX;
 const MIN_ELO: i32 = 1700;
-const MIN_ELO_POLICY: i32 = 2500;
+const MIN_ELO_POLICY: i32 = 1700;
 const NUM_SAMPLES: usize = 8;
 const NUM_SAMPLES_POLICY: usize = 16;
 
