@@ -1,4 +1,4 @@
 black==21.9b
-numpy==1.22.2
+numpy==1.23.4
 scikit-learn==1.0.2
-tensorflow==2.8.0
+tensorflow-macos==2.10.0

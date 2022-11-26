@@ -49,6 +49,7 @@ policy_data() {
 
     echo "Splitting data ($split_size)..."
 
+    mkdir -p policy_data
     split -l $split_size policy_train_data.libsvm policy_data/$(basename $f).libsvm.
 
     rm policy_train_data.libsvm

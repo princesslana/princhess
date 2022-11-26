@@ -66,7 +66,6 @@ pub fn main(commands: Vec<String>) {
                 "info"       => search.print_info(),
                 "features"   => search.print_features(),
                 "bench"      => search.bench(),
-                "evalpolicy" => search.eval_policy(),
                 _ => error!("Unknown command: {} (this engine uses a reduced set of commands from the UCI protocol)", first_word)
             }
         }
@@ -79,9 +78,9 @@ pub fn uci() {
     println!("option name Hash type spin min 8 max 65536 default 16");
     println!("option name Threads type spin min 1 max 255 default 1");
     println!("option name SyzygyPath type string");
-    println!("option name CPuct type spin min 1 max 65536 default 215");
+    println!("option name CPuct type string default 2.15");
     println!("option name CPuctBase type spin min 1 max 65536 default 18368");
-    println!("option name CPuctFactor type spin min 1 max 65536 default 282");
+    println!("option name CPuctFactor type string default 2.82");
 
     println!("uciok");
 }

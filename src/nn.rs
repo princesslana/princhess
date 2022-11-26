@@ -58,8 +58,10 @@ impl NN {
     pub fn get_output(&self, idx: usize) -> f32 {
         let mut result = 0.;
 
+        let weights = self.weights.output[idx];
+
         for i in 0..self.hidden_layer.len() {
-            result += self.weights.output[idx][i] * self.hidden_layer[i].max(0.);
+            result += weights[i] * self.hidden_layer[i].max(0.);
         }
 
         result
