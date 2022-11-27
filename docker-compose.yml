@@ -23,6 +23,11 @@ services:
       -openings file=/books/4moves_noob.epd format=epd order=random
       -games 2 -repeat -rounds 10000
       -recover -ratinginterval 10 -concurrency 6
+    volumes:
+      - ./target/release/princhess:/engines/princhess
+      - ./target/release/princhess-main:/engines/princhess-main
+      - ./syzygy:/syzygy:ro
+
 
   sprt_equal:
     build:
@@ -38,7 +43,6 @@ services:
       -openings file=/books/4moves_noob.epd format=epd order=random
       -games 2 -repeat -rounds 10000
       -recover -ratinginterval 10 -concurrency 6
-
     volumes:
       - ./target/release/princhess:/engines/princhess
       - ./target/release/princhess-main:/engines/princhess-main
