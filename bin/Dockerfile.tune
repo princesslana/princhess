@@ -14,7 +14,7 @@ RUN git clone https://github.com/cutechess/cutechess.git \
 
 RUN cp cutechess/build/cutechess-cli /usr/local/bin/cutechess-cli
 
-RUN pip3 install chess-tuning-tools
+RUN pip3 install chess-tuning-tools==0.8.3
 
 RUN mkdir /books
 RUN mkdir /engines

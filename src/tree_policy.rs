@@ -31,17 +31,11 @@ pub trait TreePolicy<Spec: MCTS<TreePolicy = Self>>: Sync + Sized {
 #[derive(Clone, Debug)]
 pub struct AlphaGoPolicy {
     cpuct: f32,
-    cpuct_base: f32,
-    cpuct_factor: f32,
 }
 
 impl AlphaGoPolicy {
-    pub fn new(cpuct: f32, cpuct_base: f32, cpuct_factor: f32) -> Self {
-        Self {
-            cpuct,
-            cpuct_base,
-            cpuct_factor,
-        }
+    pub fn new(cpuct: f32) -> Self {
+        Self { cpuct }
     }
 }
 
@@ -56,9 +50,7 @@ impl<Spec: MCTS<TreePolicy = Self>> TreePolicy<Spec> for AlphaGoPolicy {
     ) -> MoveInfoHandle<'a> {
         let total_visits = moves.map(|x| x.visits()).sum::<u64>() + 1;
         let sqrt_total_visits = (total_visits as f32).sqrt();
-        let exploration_constant = self.cpuct
-            + self.cpuct_factor
-                * ((total_visits as f32 + self.cpuct_base + 1.0) / self.cpuct_base).ln();
+        let exploration_constant = self.cpuct;
 
         let explore_coef = exploration_constant * sqrt_total_visits;
 

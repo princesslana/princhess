@@ -1,4 +1,4 @@
-use options::{set_cpuct, set_cpuct_base, set_cpuct_factor, set_hash_size_mb, set_num_threads};
+use options::{set_cpuct, set_hash_size_mb, set_num_threads};
 use search::Search;
 use search_tree::{empty_previous_table, print_size_list};
 use state::State;
@@ -78,9 +78,7 @@ pub fn uci() {
     println!("option name Hash type spin min 8 max 65536 default 16");
     println!("option name Threads type spin min 1 max 255 default 1");
     println!("option name SyzygyPath type string");
-    println!("option name CPuct type string default 2.15");
-    println!("option name CPuctBase type spin min 1 max 65536 default 18368");
-    println!("option name CPuctFactor type string default 2.82");
+    println!("option name CPuct type string default 1.79");
 
     println!("uciok");
 }
@@ -139,8 +137,6 @@ impl UciOption {
             "threads" => self.set_option(set_num_threads),
             "hash" => self.set_option(set_hash_size_mb),
             "cpuct" => self.set_option(set_cpuct),
-            "cpuctbase" => self.set_option(set_cpuct_base),
-            "cpuctfactor" => self.set_option(set_cpuct_factor),
             _ => warn!("Badly formatted or unknown option"),
         }
     }

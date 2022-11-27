@@ -5,7 +5,7 @@ use features::Model;
 use mcts::{
     AsyncSearchOwned, CycleBehaviour, Evaluator, GameState, MCTSManager, MoveInfoHandle, MCTS,
 };
-use options::{get_cpuct, get_cpuct_base, get_cpuct_factor, get_num_threads};
+use options::{get_cpuct, get_num_threads};
 use search_tree::{empty_previous_table, PreviousTable};
 use state::{Move, State, StateBuilder};
 use std::sync::atomic::Ordering;
@@ -24,10 +24,8 @@ pub const SCALE: f32 = 1e9;
 
 fn policy() -> AlphaGoPolicy {
     let cpuct = get_cpuct();
-    let cpuct_base = get_cpuct_base() as f32;
-    let cpuct_factor = get_cpuct_factor();
 
-    AlphaGoPolicy::new(cpuct * SCALE, cpuct_base, cpuct_factor * SCALE)
+    AlphaGoPolicy::new(cpuct * SCALE)
 }
 
 pub struct GooseMCTS;
