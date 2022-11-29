@@ -21,6 +21,7 @@ esac
 for e in $(seq -w 001 100)
 do
   echo "Building princess-e$e..."
+  rm $where/*
   cp train/$what*e$e*.h5/* $where
   cargo build --release
   cp target/release/princhess{,-e$e}
