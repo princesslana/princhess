@@ -1,8 +1,8 @@
 use arc_swap::ArcSwap;
 use log::debug;
 use once_cell::sync::Lazy;
-use shakmaty::{Chess, Move, Position, Setup};
-use shakmaty_syzygy::{Syzygy, Tablebase, Wdl};
+use shakmaty::{Chess, Move};
+use shakmaty_syzygy::{Tablebase, Wdl};
 use std::path::Path;
 use std::sync::Arc;
 
@@ -17,14 +17,7 @@ pub fn set_tablebase_directory<P: AsRef<Path>>(path: P) {
 }
 
 pub fn probe_tablebase_wdl(pos: &Chess) -> Option<Wdl> {
-    if pos.board().occupied().count() > Chess::MAX_PIECES
-        || pos.castles().any()
-        || !pos.capture_moves().is_empty()
-    {
-        return None;
-    }
-
-    TABLEBASE.load().get_wdl(pos).ok()
+    TABLEBASE.load().probe_wdl_after_zeroing(pos).ok()
 }
 
 pub fn probe_tablebase_best_move(pos: &Chess) -> Option<Move> {

@@ -13,7 +13,8 @@ struct NNWeights {
 const EVAL_HIDDEN_BIAS: [f32; NUMBER_HIDDEN] = include!("model/hidden_bias_0");
 
 #[allow(clippy::excessive_precision)]
-const EVAL_HIDDEN_WEIGHTS: [[f32; NUMBER_INPUTS]; NUMBER_HIDDEN] = include!("model/hidden_weights_0");
+const EVAL_HIDDEN_WEIGHTS: [[f32; NUMBER_INPUTS]; NUMBER_HIDDEN] =
+    include!("model/hidden_weights_0");
 
 #[allow(clippy::excessive_precision)]
 const EVAL_OUTPUT_WEIGHTS: [[f32; NUMBER_HIDDEN]; 1] = include!("model/output_weights");
