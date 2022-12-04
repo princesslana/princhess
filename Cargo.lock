@@ -231,12 +231,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "lazy_static"
-version = "1.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e2abad23fbc42b3700f2f279844dc832adb2b2eb069b2df918f455c4e18cc646"
-
-[[package]]
 name = "libc"
 version = "0.2.101"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -297,16 +291,6 @@ name = "nodrop"
 version = "0.1.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "72ef4a56884ca558e5ddb05a1d1e7e1bfd9a68d9ed024c21704cc98872dae1bb"
-
-[[package]]
-name = "num-integer"
-version = "0.1.44"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d2cc698a63b549a70bc047073d2949cce27cd1c7b0a4a862d08a8031bc2801db"
-dependencies = [
- "autocfg",
- "num-traits",
-]
 
 [[package]]
 name = "num-traits"
@@ -534,15 +518,14 @@ dependencies = [
 
 [[package]]
 name = "shakmaty-syzygy"
-version = "0.17.0"
-source = "git+https://github.com/ianagbip1oti/shakmaty-syzygy?branch=public_get_wdl#549027bd16c3e6d3bbe6a1fa5ab5b9e6cadf6e65"
+version = "0.18.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8721c3ffc42a133d4ae2d50a108009b76030ce224bfef8552b4d7f20cacc86eb"
 dependencies = [
  "arrayvec 0.7.1",
  "bitflags",
  "byteorder",
  "itertools",
- "lazy_static",
- "num-integer",
  "once_cell",
  "positioned-io-preview",
  "rustc-hash",

@@ -131,6 +131,7 @@ impl<'a> Copy for MoveInfoHandle<'a> {}
 pub struct SearchNode {
     hots: *const [()],
     evaln: StateEvaluation,
+    tablebase: bool,
     sum_evaluations: AtomicI64,
     visits: AtomicU32,
 }
@@ -138,10 +139,11 @@ pub struct SearchNode {
 unsafe impl Sync for SearchNode {}
 
 impl SearchNode {
-    fn new<'a>(hots: &'a [HotMoveInfo], evaln: StateEvaluation) -> Self {
+    fn new<'a>(hots: &'a [HotMoveInfo], evaln: StateEvaluation, tablebase: bool) -> Self {
         Self {
             hots: hots as *const _ as *const [()],
             evaln,
+            tablebase,
             visits: AtomicU32::default(),
             sum_evaluations: AtomicI64::default(),
         }
@@ -236,7 +238,7 @@ fn create_node<'a, 'b, Spec: MCTS>(
     for (i, x) in hots.iter_mut().enumerate() {
         *x = HotMoveInfo::new(move_eval[i], moves_slice[i]);
     }
-    Ok(SearchNode::new(hots, state_eval))
+    Ok(SearchNode::new(hots, state_eval, is_tb_hit))
 }
 
 fn is_cycle<T>(past: &[&T], current: &T) -> bool {
@@ -335,6 +337,10 @@ impl<Spec: MCTS> SearchTree<Spec> {
         let mut node = &self.root_node;
         loop {
             if node.hots().is_empty() {
+                break;
+            }
+            // We need path.len() check for when the root node is a tablebase position
+            if node.tablebase && path.len() > 2 {
                 break;
             }
             if path.len() >= self.manager.max_playout_length() {
