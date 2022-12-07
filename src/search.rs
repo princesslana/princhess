@@ -81,7 +81,7 @@ impl Search {
         prev_table: PreviousTable<GooseMCTS>,
     ) -> MCTSManager<GooseMCTS> {
         MCTSManager::new(
-            state.freeze(),
+            state,
             GooseMCTS,
             GooseEval::new(Model::new()),
             policy(),
@@ -298,7 +298,7 @@ impl Search {
             let state: State = StateBuilder::from_fen(fen).unwrap().into();
 
             let manager = MCTSManager::new(
-                state.freeze(),
+                state,
                 GooseMCTS,
                 GooseEval::new(Model::new()),
                 policy(),

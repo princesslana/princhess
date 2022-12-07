@@ -101,7 +101,6 @@ pub struct State {
     prev_capture_sq: Option<shakmaty::Square>,
     prev_state_hashes: SmallVec<[u64; 64]>,
     repetitions: usize,
-    frozen: bool,
     outcome: Outcome,
 }
 impl State {
@@ -168,13 +167,6 @@ impl State {
 
     fn drawn_by_repetition(&self) -> bool {
         self.repetitions >= 2
-    }
-
-    pub fn freeze(self) -> Self {
-        Self {
-            frozen: true,
-            ..self
-        }
     }
 
     pub fn feature_flip(&self) -> (bool, bool) {
@@ -327,7 +319,6 @@ impl From<StateBuilder> for State {
             prev_capture_sq: None,
             prev_state_hashes: SmallVec::new(),
             repetitions: 0,
-            frozen: false,
             outcome: Outcome::Ongoing,
         };
 
@@ -423,9 +414,8 @@ impl GameState for State {
         .0 != 0;
         if is_pawn_move || self.prev_capture.is_some() {
             self.prev_state_hashes.clear();
-        } else if !self.frozen {
-            self.prev_state_hashes.push(self.board.get_hash());
         }
+        self.prev_state_hashes.push(self.board.get_hash());
         self.prev_move = Some(*mov);
 
         let shakmaty_move = shakmaty::uci::Uci::from_ascii(to_uci(*mov).as_bytes())
