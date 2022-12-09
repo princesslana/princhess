@@ -241,10 +241,6 @@ fn create_node<'a, 'b, Spec: MCTS>(
     Ok(SearchNode::new(hots, state_eval, is_tb_hit))
 }
 
-fn is_cycle<T>(past: &[&T], current: &T) -> bool {
-    past.iter().any(|x| std::ptr::eq(*x, current))
-}
-
 impl<Spec: MCTS> SearchTree<Spec> {
     pub fn new(
         state: State,
@@ -369,25 +365,7 @@ impl<Spec: MCTS> SearchTree<Spec> {
             };
 
             node = new_node;
-            match self.manager.cycle_behaviour() {
-                CycleBehaviour::Ignore => (),
-                CycleBehaviour::PanicWhenCycleDetected => {
-                    if is_cycle(&node_path, node) {
-                        panic!("cycle detected! you should do one of the following:\n- make states acyclic\n- remove transposition table\n- change cycle_behaviour()");
-                    }
-                }
-                CycleBehaviour::UseCurrentEvalWhenCycleDetected => {
-                    if is_cycle(&node_path, node) {
-                        break;
-                    }
-                }
-                CycleBehaviour::UseThisEvalWhenCycleDetected(e) => {
-                    if is_cycle(&node_path, node) {
-                        self.finish_playout(&path, &node_path, &players, &e);
-                        return true;
-                    }
-                }
-            };
+
             node_path.push(node);
             node.down(&self.manager);
             if node.get_visits().load(Ordering::Relaxed) == 1 {
