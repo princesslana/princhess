@@ -109,12 +109,16 @@ unsafe impl<K: TranspositionHash, V> Send for ApproxQuadraticProbingHashTable<K,
 pub type ApproxTable = ApproxQuadraticProbingHashTable<State, SearchNode>;
 
 fn get_or_write<'a, V>(ptr: &AtomicPtr<V>, v: &'a V) -> Option<&'a V> {
-    let result = ptr.compare_and_swap(
+    let result = ptr.compare_exchange(
         std::ptr::null_mut(),
         v as *const _ as *mut _,
         Ordering::Relaxed,
+        Ordering::Relaxed,
     );
-    convert(result)
+    match result {
+        Ok(_) => None,
+        Err(p) => unsafe { Some(&*p) },
+    }
 }
 
 fn convert<'a, V>(ptr: *const V) -> Option<&'a V> {
@@ -151,13 +155,18 @@ where
                 return get_or_write(&entry.v, value);
             }
             if key_here == 0 {
-                let key_here = entry
-                    .k
-                    .compare_and_swap(0, my_hash as u64, Ordering::Relaxed);
+                let key_here = entry.k.compare_exchange(
+                    0,
+                    my_hash as u64,
+                    Ordering::Relaxed,
+                    Ordering::Relaxed,
+                );
                 self.size.fetch_add(1, Ordering::Relaxed);
-                if key_here == 0 || key_here == my_hash as u64 {
-                    return get_or_write(&entry.v, value);
-                }
+                match key_here {
+                    Ok(_) => get_or_write(&entry.v, value),
+                    Err(v) if v == my_hash => get_or_write(&entry.v, value),
+                    _ => None,
+                };
             }
             posn += inc;
             posn &= self.mask;
