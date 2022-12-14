@@ -1,6 +1,7 @@
 #[macro_use]
 extern crate log;
 extern crate arc_swap;
+extern crate arrayvec;
 extern crate chess;
 extern crate crossbeam;
 extern crate fastapprox;

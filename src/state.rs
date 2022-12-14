@@ -1,4 +1,6 @@
+use arrayvec::ArrayVec;
 use chess;
+use chess::MoveGen;
 use mcts::GameState;
 use move_index;
 use search::to_uci;
@@ -6,13 +8,13 @@ use shakmaty;
 use shakmaty::{File, Position, Setup};
 use smallvec::SmallVec;
 use std;
-use std::iter::IntoIterator;
 use std::str::FromStr;
 use transposition_table::TranspositionHash;
 use uci::Tokens;
 
 pub type Player = chess::Color;
 pub type Move = chess::ChessMove;
+pub type MoveList = ArrayVec<Move, 256>;
 
 const NF_PIECES: usize = 2 * 6 * 64; // color * roles * squares
 const NF_LAST_CAPTURE: usize = 5 * 64; // roles (-king) * squares
@@ -339,50 +341,6 @@ impl From<StateBuilder> for State {
     }
 }
 
-pub struct MoveList {
-    arr: [chess::ChessMove; 256],
-    len: usize,
-}
-
-impl MoveList {
-    pub fn as_slice(&self) -> &[chess::ChessMove] {
-        &self.arr[..self.len]
-    }
-    pub fn len(&self) -> usize {
-        self.len
-    }
-}
-
-pub struct MoveListIterator {
-    arr: [chess::ChessMove; 256],
-    len: usize,
-    pos: usize,
-}
-
-impl Iterator for MoveListIterator {
-    type Item = chess::ChessMove;
-    fn next(&mut self) -> Option<chess::ChessMove> {
-        self.pos += 1;
-        if self.pos <= self.len {
-            unsafe { Some(*self.arr.get_unchecked(self.pos - 1)) }
-        } else {
-            None
-        }
-    }
-}
-
-impl IntoIterator for MoveList {
-    type Item = chess::ChessMove;
-    type IntoIter = MoveListIterator;
-    fn into_iter(self) -> MoveListIterator {
-        MoveListIterator {
-            pos: 0,
-            arr: self.arr,
-            len: self.len,
-        }
-    }
-}
-
 impl GameState for State {
     type Player = Player;
     type MoveList = MoveList;
@@ -392,14 +350,13 @@ impl GameState for State {
     }
 
     fn available_moves(&self) -> MoveList {
-        #[allow(clippy::uninit_assumed_init)]
-        let mut arr = unsafe { std::mem::MaybeUninit::uninit().assume_init() };
-        let len = if self.outcome() != &Outcome::Ongoing {
-            0
-        } else {
-            self.board.enumerate_moves(&mut arr)
-        };
-        MoveList { arr, len }
+        let mut moves = MoveList::new();
+        if self.outcome() == &Outcome::Ongoing {
+            for m in MoveGen::new_legal(self.board()) {
+                moves.push(m);
+            }
+        }
+        moves
     }
 
     fn make_move(&mut self, mov: &chess::ChessMove) {
