@@ -1,9 +1,6 @@
-use arrayvec::ArrayVec;
 use chess;
-use chess::MoveGen;
 use mcts::GameState;
 use move_index;
-use search::to_uci;
 use shakmaty;
 use shakmaty::{File, Position, Setup};
 use smallvec::SmallVec;
@@ -13,8 +10,8 @@ use transposition_table::TranspositionHash;
 use uci::Tokens;
 
 pub type Player = chess::Color;
-pub type Move = chess::ChessMove;
-pub type MoveList = ArrayVec<Move, 256>;
+pub type Move = shakmaty::Move;
+pub type MoveList = shakmaty::MoveList;
 
 const NF_PIECES: usize = 2 * 6 * 64; // color * roles * squares
 const NF_LAST_CAPTURE: usize = 5 * 64; // roles (-king) * squares
@@ -81,7 +78,7 @@ impl StateBuilder {
 
     pub fn extract(&self) -> (State, Vec<Move>) {
         let state = StateBuilder::from(self.initial_state.clone()).into();
-        let moves = self.moves.iter().map(|m| convert_move(m)).collect();
+        let moves = self.moves.to_vec();
         (state, moves)
     }
 }
@@ -98,8 +95,7 @@ pub enum Outcome {
 pub struct State {
     shakmaty_board: shakmaty::Chess,
     board: chess::Board,
-    prev_move: Option<chess::ChessMove>,
-    prev_capture: Option<chess::Piece>,
+    prev_capture: Option<shakmaty::Role>,
     prev_capture_sq: Option<shakmaty::Square>,
     prev_state_hashes: SmallVec<[u64; 64]>,
     repetitions: usize,
@@ -216,15 +212,15 @@ impl State {
 
         if let Some((sq, pc)) = self.prev_capture_sq.zip(self.prev_capture) {
             let adj_sq = flip_square(sq);
-            let role_idx = pc.to_index();
+            let role_idx = pc as usize - 1;
 
             features[OFFSET_LAST_CAPTURE + role_idx * 64 + adj_sq as usize] = 1.
         }
     }
 
     pub fn move_to_index(&self, mv: &Move) -> usize {
-        let from_sq = unsafe { shakmaty::Square::new_unchecked(mv.get_source().to_int() as u32) };
-        let to_sq = unsafe { shakmaty::Square::new_unchecked(mv.get_dest().to_int() as u32) };
+        let from_sq = mv.from().unwrap();
+        let to_sq = mv.to();
 
         let (flip_vertical, flip_horizontal) = self.feature_flip();
 
@@ -316,7 +312,6 @@ impl From<StateBuilder> for State {
         let mut state = State {
             shakmaty_board: sb.initial_state,
             board,
-            prev_move: None,
             prev_capture: None,
             prev_capture_sq: None,
             prev_state_hashes: SmallVec::new(),
@@ -327,13 +322,6 @@ impl From<StateBuilder> for State {
         state.check_outcome();
 
         for mov in sb.moves {
-            let mov = convert_move(&mov);
-            assert!(
-                state.board().legal(mov),
-                "{} is illegal on the following board:\n{}",
-                mov,
-                state.board()
-            );
             state.make_move(&mov);
         }
 
@@ -350,37 +338,28 @@ impl GameState for State {
     }
 
     fn available_moves(&self) -> MoveList {
-        let mut moves = MoveList::new();
         if self.outcome() == &Outcome::Ongoing {
-            for m in MoveGen::new_legal(self.board()) {
-                moves.push(m);
-            }
+            self.shakmaty_board().legal_moves()
+        } else {
+            MoveList::new()
         }
-        moves
     }
 
-    fn make_move(&mut self, mov: &chess::ChessMove) {
-        self.prev_capture = self.board.piece_on(mov.get_dest());
+    fn make_move(&mut self, mov: &shakmaty::Move) {
+        let b = self.shakmaty_board.board();
 
-        self.prev_capture_sq = self
-            .prev_capture
-            .map(|_| shakmaty::Square::new(mov.get_dest().to_index() as u32));
+        self.prev_capture = b.role_at(mov.to());
+        self.prev_capture_sq = self.prev_capture_sq.map(|_| mov.to());
 
-        let is_pawn_move = (self.board.pieces(chess::Piece::Pawn)
-            & chess::BitBoard::from_square(mov.get_source()))
-        .0 != 0;
+        let is_pawn_move = b.pawns().contains(mov.from().unwrap());
+
         if is_pawn_move || self.prev_capture.is_some() {
             self.prev_state_hashes.clear();
         }
         self.prev_state_hashes.push(self.board.get_hash());
-        self.prev_move = Some(*mov);
 
-        let shakmaty_move = shakmaty::uci::Uci::from_ascii(to_uci(*mov).as_bytes())
-            .unwrap()
-            .to_move(&self.shakmaty_board)
-            .unwrap();
-        self.shakmaty_board = self.shakmaty_board.clone().play(&shakmaty_move).unwrap();
-        self.board = self.board.make_move_new(*mov);
+        self.shakmaty_board.play_unchecked(&mov);
+        self.board = self.board.make_move_new(convert_move(mov));
         self.check_for_repetition();
         self.check_outcome();
     }

@@ -3,7 +3,6 @@ pub use search_tree::*;
 use transposition_table::*;
 use tree_policy::*;
 
-use chess;
 use fastapprox;
 use float_ord::FloatOrd;
 use policy_features::evaluate_moves;
@@ -74,11 +73,11 @@ pub type TreePolicyThreadData<Spec> =
 
 pub trait GameState: Clone {
     type Player: Sync;
-    type MoveList: std::iter::IntoIterator<Item = chess::ChessMove>;
+    type MoveList: std::iter::IntoIterator<Item = shakmaty::Move>;
 
     fn current_player(&self) -> Self::Player;
     fn available_moves(&self) -> Self::MoveList;
-    fn make_move(&mut self, mov: &chess::ChessMove);
+    fn make_move(&mut self, mov: &shakmaty::Move);
 }
 
 pub trait Evaluator<Spec: MCTS>: Sync {
@@ -174,7 +173,7 @@ where
     pub fn principal_variation_info(&self, num_moves: usize) -> Vec<MoveInfoHandle> {
         self.search_tree.principal_variation(num_moves)
     }
-    pub fn principal_variation(&self, num_moves: usize) -> Vec<chess::ChessMove> {
+    pub fn principal_variation(&self, num_moves: usize) -> Vec<shakmaty::Move> {
         self.search_tree
             .principal_variation(num_moves)
             .into_iter()
@@ -191,7 +190,7 @@ where
         self.search_tree.table()
     }
 
-    pub fn best_move(&self) -> Option<chess::ChessMove> {
+    pub fn best_move(&self) -> Option<shakmaty::Move> {
         self.principal_variation(1).get(0).map(|x| x.clone())
     }
 
@@ -245,7 +244,7 @@ where
         let root_moves = root_node.moves();
 
         let state_moves = root_state.available_moves();
-        let state_moves_eval = evaluate_moves(&root_state, &root_features, state_moves.as_slice());
+        let state_moves_eval = evaluate_moves(&root_state, &root_features, &state_moves);
 
         let mut moves: Vec<(MoveInfoHandle, f32)> = root_moves.zip(state_moves_eval).collect();
         moves.sort_by_key(|(h, e)| FloatOrd(h.average_reward().unwrap_or(*e)));

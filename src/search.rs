@@ -1,5 +1,5 @@
 use bench::BENCHMARKING_POSITIONS;
-use chess::{Color, Piece};
+use chess::Color;
 use evaluation::GooseEval;
 use features::Model;
 use mcts::{AsyncSearchOwned, Evaluator, GameState, MCTSManager, MoveInfoHandle, MCTS};
@@ -130,7 +130,7 @@ impl Search {
         let mvs = state.available_moves();
 
         if mvs.len() == 1 {
-            let uci_mv = to_uci(mvs.as_slice()[0]);
+            let uci_mv = to_uci(mvs[0].clone());
             println!(
                 "info depth 1 seldepth 1 nodes 1 nps 1 tbhits 0 time 1 pv {}",
                 uci_mv
@@ -319,13 +319,5 @@ impl Search {
 }
 
 pub fn to_uci(mov: Move) -> String {
-    let promo = match mov.get_promotion() {
-        Some(Piece::Queen) => "q",
-        Some(Piece::Rook) => "r",
-        Some(Piece::Knight) => "n",
-        Some(Piece::Bishop) => "b",
-        Some(_) => unreachable!(),
-        None => "",
-    };
-    format!("{}{}{}", mov.get_source(), mov.get_dest(), promo)
+    mov.to_uci(shakmaty::CastlingMode::Standard).to_string()
 }
