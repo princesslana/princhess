@@ -2,6 +2,7 @@ use mcts::*;
 use options::get_hash_size_mb;
 use policy_features::softmax;
 use search::{GooseMCTS, SCALE};
+use shakmaty::Position;
 use smallvec::SmallVec;
 use state::State;
 use std::mem;
@@ -222,8 +223,17 @@ fn create_node<'a, 'b, Spec: MCTS>(
             (allocator, Some(x))
         }
     };
-    let moves = state.available_moves();
-    let (move_eval, state_eval, is_tb_hit) = eval.evaluate_new_state(state, &moves);
+    let mut moves = MoveList::new();
+
+    let (move_eval, state_eval, is_tb_hit) = if state.drawn_by_repetition()
+        || state.drawn_by_fifty_move_rule()
+        || state.shakmaty_board().is_insufficient_material()
+    {
+        (Vec::with_capacity(0), 0, false)
+    } else {
+        moves = state.available_moves();
+        eval.evaluate_new_state(state, &moves)
+    };
 
     if is_tb_hit {
         tb_hits.fetch_add(1, Ordering::Relaxed);

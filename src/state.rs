@@ -83,14 +83,6 @@ impl StateBuilder {
     }
 }
 
-#[derive(Clone, Eq, PartialEq, Debug)]
-pub enum Outcome {
-    WhiteWin,
-    BlackWin,
-    Draw,
-    Ongoing,
-}
-
 #[derive(Clone)]
 pub struct State {
     shakmaty_board: shakmaty::Chess,
@@ -99,7 +91,6 @@ pub struct State {
     prev_capture_sq: Option<shakmaty::Square>,
     prev_state_hashes: SmallVec<[u64; 64]>,
     repetitions: usize,
-    outcome: Outcome,
 }
 impl State {
     pub fn from_tokens(tokens: Tokens) -> Option<Self> {
@@ -123,33 +114,6 @@ impl State {
         features
     }
 
-    pub fn outcome(&self) -> &Outcome {
-        &self.outcome
-    }
-
-    fn check_outcome(&mut self) {
-        if self.drawn_by_repetition()
-            || self.drawn_by_fifty_move_rule()
-            || self.shakmaty_board().is_insufficient_material()
-        {
-            self.outcome = Outcome::Draw;
-        } else if self.board().status() != chess::BoardStatus::Ongoing {
-            self.outcome = match self.board().status() {
-                chess::BoardStatus::Stalemate => Outcome::Draw,
-                chess::BoardStatus::Checkmate => {
-                    if self.board().side_to_move() == chess::Color::Black {
-                        Outcome::WhiteWin
-                    } else {
-                        Outcome::BlackWin
-                    }
-                }
-                chess::BoardStatus::Ongoing => unreachable!(),
-            }
-        } else {
-            self.outcome = Outcome::Ongoing;
-        }
-    }
-
     fn check_for_repetition(&mut self) {
         let crnt_hash = self.board.get_hash();
         self.repetitions = self
@@ -159,11 +123,11 @@ impl State {
             .count();
     }
 
-    fn drawn_by_fifty_move_rule(&self) -> bool {
+    pub fn drawn_by_fifty_move_rule(&self) -> bool {
         self.prev_state_hashes.len() >= 100
     }
 
-    fn drawn_by_repetition(&self) -> bool {
+    pub fn drawn_by_repetition(&self) -> bool {
         self.repetitions >= 2
     }
 
@@ -316,10 +280,7 @@ impl From<StateBuilder> for State {
             prev_capture_sq: None,
             prev_state_hashes: SmallVec::new(),
             repetitions: 0,
-            outcome: Outcome::Ongoing,
         };
-
-        state.check_outcome();
 
         for mov in sb.moves {
             state.make_move(&mov);
@@ -338,11 +299,7 @@ impl GameState for State {
     }
 
     fn available_moves(&self) -> MoveList {
-        if self.outcome() == &Outcome::Ongoing {
-            self.shakmaty_board().legal_moves()
-        } else {
-            MoveList::new()
-        }
+        self.shakmaty_board().legal_moves()
     }
 
     fn make_move(&mut self, mov: &shakmaty::Move) {
@@ -361,26 +318,5 @@ impl GameState for State {
         self.shakmaty_board.play_unchecked(&mov);
         self.board = self.board.make_move_new(convert_move(mov));
         self.check_for_repetition();
-        self.check_outcome();
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use shakmaty::san::San;
-    use std::str::FromStr;
-
-    #[test]
-    fn threefold_repetition() {
-        let mut state = StateBuilder::default();
-        let moves = &["Nf3", "Nf6", "Ng1", "Ng8", "Nf3", "Nf6", "Ng1", "Ng8"];
-        for m in moves {
-            let m = San::from_str(m).expect("make san");
-            let m = m.to_move(state.chess()).expect("convert san");
-            state.make_move(m);
-        }
-        let state = State::from(state);
-        assert!(state.outcome() == &Outcome::Draw);
     }
 }
