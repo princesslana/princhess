@@ -1,5 +1,5 @@
 use state;
-use state::{Move, State};
+use state::{MoveList, State};
 
 const NUMBER_INPUTS: usize = state::NUMBER_FEATURES;
 
@@ -9,7 +9,7 @@ const POLICY_WEIGHTS: [[f32; NUMBER_INPUTS]; 1792] = include!("policy/output_wei
 pub fn evaluate_moves(
     state: &State,
     features: &[f32; state::NUMBER_FEATURES],
-    moves: &[Move],
+    moves: &MoveList,
 ) -> Vec<f32> {
     let mut evalns = Vec::with_capacity(moves.len());
 

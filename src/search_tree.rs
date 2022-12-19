@@ -108,7 +108,7 @@ struct HotMoveInfo {
     sum_evaluations: AtomicI64,
     visits: AtomicU32,
     move_evaluation: MoveEvaluation,
-    mov: chess::ChessMove,
+    mov: shakmaty::Move,
     child: AtomicPtr<SearchNode>,
 }
 pub struct MoveInfoHandle<'a> {
@@ -164,7 +164,7 @@ impl SearchNode {
 }
 
 impl HotMoveInfo {
-    fn new(move_evaluation: MoveEvaluation, mov: chess::ChessMove) -> Self {
+    fn new(move_evaluation: MoveEvaluation, mov: shakmaty::Move) -> Self {
         Self {
             move_evaluation,
             sum_evaluations: AtomicI64::default(),
@@ -176,7 +176,7 @@ impl HotMoveInfo {
 }
 
 impl<'a> MoveInfoHandle<'a> {
-    pub fn get_move(&self) -> &'a chess::ChessMove {
+    pub fn get_move(&self) -> &'a shakmaty::Move {
         &self.hot.mov
     }
 
@@ -231,9 +231,8 @@ fn create_node<'a, 'b, Spec: MCTS>(
 
     policy.validate_evaluations(&move_eval);
     let hots = allocator.alloc_slice(move_eval.len())?;
-    let moves_slice = moves.as_slice();
     for (i, x) in hots.iter_mut().enumerate() {
-        *x = HotMoveInfo::new(move_eval[i], moves_slice[i]);
+        *x = HotMoveInfo::new(move_eval[i], moves[i].clone());
     }
     Ok(SearchNode::new(hots, state_eval, is_tb_hit))
 }

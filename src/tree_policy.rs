@@ -60,8 +60,8 @@ impl<Spec: MCTS<TreePolicy = Self>> TreePolicy<Spec> for AlphaGoPolicy {
             .thread_data()
             .policy_data
             .select_by_key(moves, |mov| {
-                if let Some(pc) = mov.get_move().get_promotion() {
-                    if !is_root && pc != chess::Piece::Queen {
+                if let Some(pc) = mov.get_move().promotion() {
+                    if !is_root && pc != shakmaty::Role::Queen {
                         return std::f32::NEG_INFINITY.into();
                     }
                 }
