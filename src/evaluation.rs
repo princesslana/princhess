@@ -1,10 +1,11 @@
 use chess::*;
 use features::Model;
-use mcts::Evaluator;
+use mcts::{Evaluator, GameState};
 use policy_features::evaluate_moves;
 use search::{GooseMCTS, SCALE};
+use shakmaty::Position;
 use shakmaty_syzygy::Wdl;
-use state::{MoveList, Outcome, Player, State};
+use state::{MoveList, Player, State};
 use tablebase::probe_tablebase_wdl;
 
 const MATE_FACTOR: f32 = 1.1;
@@ -26,11 +27,13 @@ impl Evaluator<GooseMCTS> for GooseEval {
         let mut tb_hit = false;
         let state_evaluation = if moves.len() == 0 {
             let x = (MATE_FACTOR * SCALE) as i64;
-            match state.outcome() {
-                Outcome::Draw => 0,
-                Outcome::WhiteWin => x,
-                Outcome::BlackWin => -x,
-                Outcome::Ongoing => unreachable!(),
+            if state.shakmaty_board().is_check() {
+                match state.current_player() {
+                    chess::Color::White => -x,
+                    chess::Color::Black => x,
+                }
+            } else {
+                0
             }
         } else if let Some(wdl) = probe_tablebase_wdl(state.shakmaty_board()) {
             tb_hit = true;
