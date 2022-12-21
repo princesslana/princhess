@@ -2,12 +2,7 @@ use state;
 
 const NUMBER_INPUTS: usize = state::NUMBER_FEATURES;
 const NUMBER_HIDDEN: usize = 128;
-
-struct NNWeights {
-    hidden_bias: &'static [f32],
-    hidden: &'static [[f32; NUMBER_INPUTS]],
-    output: &'static [[f32; NUMBER_HIDDEN]],
-}
+const NUMBER_OUTPUTS: usize = 1;
 
 #[allow(clippy::excessive_precision)]
 const EVAL_HIDDEN_BIAS: [f32; NUMBER_HIDDEN] = include!("model/hidden_bias_0");
@@ -17,49 +12,36 @@ const EVAL_HIDDEN_WEIGHTS: [[f32; NUMBER_INPUTS]; NUMBER_HIDDEN] =
     include!("model/hidden_weights_0");
 
 #[allow(clippy::excessive_precision)]
-const EVAL_OUTPUT_WEIGHTS: [[f32; NUMBER_HIDDEN]; 1] = include!("model/output_weights");
-
-const EVAL_WEIGHTS: NNWeights = NNWeights {
-    hidden_bias: &EVAL_HIDDEN_BIAS,
-    hidden: &EVAL_HIDDEN_WEIGHTS,
-    output: &EVAL_OUTPUT_WEIGHTS,
-};
+const EVAL_OUTPUT_WEIGHTS: [[f32; NUMBER_HIDDEN]; NUMBER_OUTPUTS] =
+    include!("model/output_weights");
 
 pub struct NN {
-    weights: NNWeights,
     hidden_layer: [f32; NUMBER_HIDDEN],
 }
 
 impl NN {
-    fn new(weights: NNWeights) -> Self {
+    pub fn new() -> Self {
         #[allow(clippy::uninit_assumed_init)]
-        let hidden = unsafe { std::mem::MaybeUninit::uninit().assume_init() };
-        Self {
-            weights,
-            hidden_layer: hidden,
-        }
-    }
-
-    pub fn new_eval() -> Self {
-        Self::new(EVAL_WEIGHTS)
+        let hidden_layer = unsafe { std::mem::MaybeUninit::uninit().assume_init() };
+        Self { hidden_layer }
     }
 
     pub fn set_inputs(&mut self, inputs: &[f32; state::NUMBER_FEATURES]) {
-        self.hidden_layer.copy_from_slice(self.weights.hidden_bias);
+        self.hidden_layer.copy_from_slice(&EVAL_HIDDEN_BIAS);
 
         for i in 0..inputs.len() {
             if inputs[i] > 0.5 {
                 for j in 0..self.hidden_layer.len() {
-                    self.hidden_layer[j] += self.weights.hidden[j][i];
+                    self.hidden_layer[j] += EVAL_HIDDEN_WEIGHTS[j][i];
                 }
             }
         }
     }
 
-    pub fn get_output(&self, idx: usize) -> f32 {
+    pub fn get_output(&self) -> f32 {
         let mut result = 0.;
 
-        let weights = self.weights.output[idx];
+        let weights = EVAL_OUTPUT_WEIGHTS[0];
 
         for i in 0..self.hidden_layer.len() {
             result += weights[i] * self.hidden_layer[i].max(0.);
