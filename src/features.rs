@@ -69,10 +69,9 @@ impl Model {
         Model
     }
     pub fn predict(&self, state: &State, features: &[f32; state::NUMBER_FEATURES]) -> f32 {
-        let mut nn = NN::new();
-        nn.set_inputs(features);
+        let nn = NN::new();
 
-        let mut result = nn.get_output();
+        let mut result = nn.get_output(features);
 
         result = result.tanh();
 
