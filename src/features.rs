@@ -1,6 +1,3 @@
-use chess::*;
-use nn::NN;
-use state;
 use state::State;
 use std::io::Write;
 use std::ops;
@@ -59,29 +56,5 @@ impl ops::Sub<FeatureVec> for FeatureVec {
 pub fn featurize(state: &State) -> FeatureVec {
     FeatureVec {
         arr: state.features().iter().map(|v| *v as i8).collect(),
-    }
-}
-
-pub struct Model;
-
-impl Model {
-    pub fn new() -> Self {
-        Model
-    }
-    pub fn predict(&self, state: &State, features: &[f32; state::NUMBER_FEATURES]) -> f32 {
-        let nn = NN::new();
-
-        let mut result = nn.get_output(features);
-
-        result = result.tanh();
-
-        if state.board().side_to_move() == Color::Black {
-            result = -result;
-        }
-
-        result
-    }
-    pub fn score(&self, state: &State, features: &[f32; state::NUMBER_FEATURES]) -> f32 {
-        self.predict(state, features)
     }
 }

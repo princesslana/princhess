@@ -1,8 +1,7 @@
 use bench::BENCHMARKING_POSITIONS;
 use chess::Color;
 use evaluation::GooseEval;
-use features::Model;
-use mcts::{AsyncSearchOwned, Evaluator, GameState, MCTSManager, MoveInfoHandle, MCTS};
+use mcts::{AsyncSearchOwned, GameState, MCTSManager, MoveInfoHandle, MCTS};
 use options::{get_cpuct, get_num_threads};
 use search_tree::{empty_previous_table, PreviousTable};
 use state::{Move, State, StateBuilder};
@@ -78,7 +77,7 @@ impl Search {
         MCTSManager::new(
             state,
             GooseMCTS,
-            GooseEval::new(Model::new()),
+            GooseEval::new(),
             policy(),
             ApproxTable::enough_to_hold(GooseMCTS.node_limit()),
             prev_table,
@@ -237,29 +236,6 @@ impl Search {
         new_self
     }
 
-    pub fn print_eval(&self) {
-        let manager = self.search.get_manager();
-
-        let state = manager.tree().root_state();
-
-        let model = Model::new();
-        let features = state.features();
-        let results = model.predict(state, &features);
-
-        let eval = GooseEval::new(model);
-
-        let moves = state.available_moves();
-        let (_, state_eval, _) = eval.evaluate_new_state(state, &moves);
-
-        println!(
-            "{:3.2} {:?}",
-            (eval.interpret_evaluation_for_player(&state_eval, &state.board().side_to_move())
-                as f32
-                / (SCALE / 100.)),
-            results
-        );
-    }
-
     pub fn print_info(&self) {
         self.search.get_manager().print_info();
     }
@@ -295,7 +271,7 @@ impl Search {
             let manager = MCTSManager::new(
                 state,
                 GooseMCTS,
-                GooseEval::new(Model::new()),
+                GooseEval::new(),
                 policy(),
                 ApproxTable::enough_to_hold(GooseMCTS.node_limit()),
                 empty_previous_table(),
