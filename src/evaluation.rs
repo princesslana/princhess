@@ -4,8 +4,9 @@ use policy_features::evaluate_moves;
 use search::{GooseMCTS, SCALE};
 use shakmaty::Position;
 use shakmaty_syzygy::Wdl;
-use state;
-use state::{MoveList, Player, State};
+use state::{self, MoveList, Player, State};
+use std::mem::{self, MaybeUninit};
+use std::ptr;
 use tablebase::probe_tablebase_wdl;
 
 const MATE_FACTOR: f32 = 1.1;
@@ -74,8 +75,17 @@ const EVAL_OUTPUT_WEIGHTS: [[f32; NUMBER_HIDDEN]; NUMBER_OUTPUTS] =
 
 fn evaluate_state(state: &State, features: &[f32; state::NUMBER_FEATURES]) -> f32 {
     #[allow(clippy::uninit_assumed_init)]
-    let mut hidden_layer: [f32; NUMBER_HIDDEN] =
-        unsafe { std::mem::MaybeUninit::uninit().assume_init() };
+    let mut hidden_layer: [f32; NUMBER_HIDDEN] = unsafe {
+        let mut out: [MaybeUninit<f32>; NUMBER_HIDDEN] = MaybeUninit::uninit().assume_init();
+
+        ptr::copy_nonoverlapping(
+            EVAL_HIDDEN_BIAS.as_ptr(),
+            out.as_mut_ptr().cast::<f32>(),
+            NUMBER_HIDDEN,
+        );
+
+        mem::transmute(out)
+    };
 
     hidden_layer.copy_from_slice(&EVAL_HIDDEN_BIAS);
 
