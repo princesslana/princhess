@@ -18,7 +18,6 @@ mod arena;
 mod bench;
 mod mcts;
 mod move_index;
-mod nn;
 mod options;
 mod search_tree;
 mod tablebase;
