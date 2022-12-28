@@ -1,6 +1,6 @@
 use chess::*;
+use math;
 use mcts::{Evaluator, GameState};
-use policy_features::evaluate_moves;
 use search::{GooseMCTS, SCALE};
 use shakmaty::Position;
 use shakmaty_syzygy::Wdl;
@@ -22,7 +22,7 @@ impl GooseEval {
 impl Evaluator<GooseMCTS> for GooseEval {
     fn evaluate_new_state(&self, state: &State, moves: &MoveList) -> (Vec<f32>, i64, bool) {
         let features = state.features();
-        let move_evaluations = evaluate_moves(state, &features, moves);
+        let move_evaluations = evaluate_policy(state, &features, moves);
         let mut tb_hit = false;
         let state_evaluation = if moves.len() == 0 {
             let x = (MATE_FACTOR * SCALE) as i64;
@@ -58,7 +58,7 @@ impl Evaluator<GooseMCTS> for GooseEval {
     }
 }
 
-const NUMBER_INPUTS: usize = state::NUMBER_FEATURES;
+const STATE_NUMBER_INPUTS: usize = state::NUMBER_FEATURES;
 const NUMBER_HIDDEN: usize = 128;
 const NUMBER_OUTPUTS: usize = 1;
 
@@ -66,7 +66,7 @@ const NUMBER_OUTPUTS: usize = 1;
 const EVAL_HIDDEN_BIAS: [f32; NUMBER_HIDDEN] = include!("model/hidden_bias_0");
 
 #[allow(clippy::excessive_precision)]
-const EVAL_HIDDEN_WEIGHTS: [[f32; NUMBER_INPUTS]; NUMBER_HIDDEN] =
+const EVAL_HIDDEN_WEIGHTS: [[f32; STATE_NUMBER_INPUTS]; NUMBER_HIDDEN] =
     include!("model/hidden_weights_0");
 
 #[allow(clippy::excessive_precision)]
@@ -112,4 +112,40 @@ fn evaluate_state(state: &State, features: &[f32; state::NUMBER_FEATURES]) -> f3
     }
 
     result
+}
+
+const POLICY_NUMBER_INPUTS: usize = state::NUMBER_FEATURES;
+
+#[allow(clippy::excessive_precision)]
+const POLICY_WEIGHTS: [[f32; POLICY_NUMBER_INPUTS]; 1792] = include!("policy/output_weights");
+
+fn evaluate_policy(
+    state: &State,
+    features: &[f32; state::NUMBER_FEATURES],
+    moves: &MoveList,
+) -> Vec<f32> {
+    let mut evalns = Vec::with_capacity(moves.len());
+
+    if moves.len() == 0 {
+        return evalns;
+    }
+
+    let mut move_idxs = Vec::with_capacity(moves.len());
+
+    for m in 0..moves.len() {
+        move_idxs.push(state.move_to_index(&moves[m]));
+        evalns.push(0.);
+    }
+
+    for f in 0..features.len() {
+        if features[f] > 0.5 {
+            for m in 0..moves.len() {
+                evalns[m] += POLICY_WEIGHTS[move_idxs[m]][f];
+            }
+        }
+    }
+
+    math::softmax(&mut evalns);
+
+    evalns
 }

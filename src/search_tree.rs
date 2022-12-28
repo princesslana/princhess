@@ -1,6 +1,6 @@
+use math;
 use mcts::*;
 use options::get_hash_size_mb;
-use policy_features::softmax;
 use search::{GooseMCTS, SCALE};
 use shakmaty::Position;
 use smallvec::SmallVec;
@@ -276,7 +276,7 @@ impl<Spec: MCTS> SearchTree<Spec> {
             .map(|m| m.average_reward().unwrap_or(-SCALE) / SCALE)
             .collect();
 
-        softmax(&mut avg_rewards);
+        math::softmax(&mut avg_rewards);
 
         root_node.update_policy(avg_rewards);
 
