@@ -3,9 +3,9 @@ pub use search_tree::*;
 use transposition_table::*;
 use tree_policy::*;
 
+use evaluation::GooseEval;
 use fastapprox;
 use float_ord::FloatOrd;
-use policy_features::evaluate_moves;
 use search::{to_uci, SCALE};
 use state::State;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -239,12 +239,13 @@ where
     pub fn print_move_list(&self) {
         let root_node = self.tree().root_node();
         let root_state = self.tree().root_state();
-        let root_features = root_state.features();
+
+        let eval = GooseEval::new();
 
         let root_moves = root_node.moves();
 
         let state_moves = root_state.available_moves();
-        let state_moves_eval = evaluate_moves(&root_state, &root_features, &state_moves);
+        let (state_moves_eval, _, _) = eval.evaluate_new_state(&root_state, &state_moves);
 
         let mut moves: Vec<(MoveInfoHandle, f32)> = root_moves.zip(state_moves_eval).collect();
         moves.sort_by_key(|(h, e)| FloatOrd(h.average_reward().unwrap_or(*e)));

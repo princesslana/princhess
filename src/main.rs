@@ -16,6 +16,7 @@ extern crate smallvec;
 
 mod arena;
 mod bench;
+mod math;
 mod mcts;
 mod move_index;
 mod options;
@@ -27,7 +28,6 @@ mod tree_policy;
 mod args;
 mod evaluation;
 mod features;
-mod policy_features;
 mod search;
 mod state;
 mod training;
