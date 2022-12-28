@@ -4,7 +4,6 @@ use move_index;
 use shakmaty;
 use shakmaty::{File, Position, Setup};
 use smallvec::SmallVec;
-use std;
 use std::str::FromStr;
 use transposition_table::TranspositionHash;
 use uci::Tokens;
@@ -107,13 +106,6 @@ impl State {
         &self.shakmaty_board
     }
 
-    pub fn features(&self) -> [f32; NUMBER_FEATURES] {
-        #[allow(clippy::uninit_assumed_init)]
-        let mut features = unsafe { std::mem::MaybeUninit::uninit().assume_init() };
-        self.featurize(&mut features);
-        features
-    }
-
     fn check_for_repetition(&mut self) {
         let crnt_hash = self.board.get_hash();
         self.repetitions = self
@@ -143,8 +135,8 @@ impl State {
         (flip_vertical, flip_horizontal)
     }
 
-    pub fn featurize(&self, features: &mut [f32; NUMBER_FEATURES]) {
-        features.fill(0.);
+    pub fn features(&self) -> [f32; NUMBER_FEATURES] {
+        let mut features = [0f32; NUMBER_FEATURES];
 
         let turn = self.shakmaty_board().turn();
         let b = self.shakmaty_board().board();
@@ -180,6 +172,7 @@ impl State {
 
             features[OFFSET_LAST_CAPTURE + role_idx * 64 + adj_sq as usize] = 1.
         }
+        features
     }
 
     pub fn move_to_index(&self, mv: &Move) -> usize {
