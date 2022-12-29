@@ -67,7 +67,7 @@ impl<Spec: Mcts<TreePolicy = Self>> TreePolicy<Spec> for AlphaGoPolicy {
                 }
                 let sum_rewards = mov.sum_rewards() as f32;
                 let child_visits = mov.visits();
-                let policy_evaln = *mov.move_evaluation() as f32;
+                let policy_evaln = *mov.move_evaluation();
                 Fraction(
                     sum_rewards + explore_coef * policy_evaln,
                     (child_visits + 1) as f32,

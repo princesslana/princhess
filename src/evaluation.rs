@@ -45,7 +45,7 @@ impl Evaluator<GooseMcts> for GooseEval {
                 _ => 0,
             }
         } else {
-            (evaluate_state(state, &features) * SCALE as f32) as i64
+            (evaluate_state(state, &features) * SCALE) as i64
         };
         (move_evaluations, state_evaluation, tb_hit)
     }

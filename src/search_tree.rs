@@ -68,13 +68,13 @@ trait NodeStats {
 
     fn down<Spec: Mcts>(&self, manager: &Spec) {
         self.get_sum_evaluations()
-            .fetch_sub(manager.virtual_loss() as i64, Ordering::Relaxed);
+            .fetch_sub(manager.virtual_loss(), Ordering::Relaxed);
         self.get_visits().fetch_add(1, Ordering::Relaxed);
     }
     fn up<Spec: Mcts>(&self, manager: &Spec, evaln: i64) {
         let delta = evaln + manager.virtual_loss();
         self.get_sum_evaluations()
-            .fetch_add(delta as i64, Ordering::Relaxed);
+            .fetch_add(delta, Ordering::Relaxed);
     }
     fn replace<T: NodeStats>(&self, other: &T) {
         self.get_visits().store(
@@ -190,7 +190,7 @@ impl<'a> MoveInfoHandle<'a> {
     }
 
     pub fn sum_rewards(&self) -> i64 {
-        self.hot.sum_evaluations.load(Ordering::Relaxed) as i64
+        self.hot.sum_evaluations.load(Ordering::Relaxed)
     }
 
     pub fn average_reward(&self) -> Option<f32> {
