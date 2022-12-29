@@ -3,6 +3,8 @@ use search_tree::*;
 use state::State;
 use std::sync::atomic::{AtomicPtr, AtomicU64, AtomicUsize, Ordering};
 
+/// # Safety
+/// TranspositionTable uses many unsafe operations for performance
 pub unsafe trait TranspositionTable: Sync + Sized {
     /// **If this function inserts a value, it must return `None`.** Failure to follow
     /// this rule will lead to memory safety violation.

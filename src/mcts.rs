@@ -14,7 +14,7 @@ use std::sync::{Arc, RwLock};
 use std::thread::JoinHandle;
 use std::time::Instant;
 
-pub trait MCTS: Sized + Sync {
+pub trait Mcts: Sized + Sync {
     type Eval: Evaluator<Self>;
     type TreePolicy: TreePolicy<Self>;
     type TranspositionTable: TranspositionTable;
@@ -33,10 +33,7 @@ pub trait MCTS: Sized + Sync {
     }
     /// Rule for selecting the best move once the search is over. Defaults to choosing the child with the most visits.
     fn select_child_after_search<'a>(&self, children: &[MoveInfoHandle<'a>]) -> MoveInfoHandle<'a> {
-        *children
-            .into_iter()
-            .max_by_key(|child| child.visits())
-            .unwrap()
+        *children.iter().max_by_key(|child| child.visits()).unwrap()
     }
     /// `playout` panics when this length is exceeded. Defaults to one million.
     fn max_playout_length(&self) -> usize {
@@ -44,13 +41,13 @@ pub trait MCTS: Sized + Sync {
     }
 }
 
-pub struct ThreadData<'a, Spec: MCTS> {
+pub struct ThreadData<'a, Spec: Mcts> {
     pub policy_data: TreePolicyThreadData<Spec>,
     pub extra_data: Spec::ExtraThreadData,
     pub allocator: ArenaAllocator<'a>,
 }
 
-impl<'a, Spec: MCTS> ThreadData<'a, Spec>
+impl<'a, Spec: Mcts> ThreadData<'a, Spec>
 where
     TreePolicyThreadData<Spec>: Default,
     Spec::ExtraThreadData: Default,
@@ -69,7 +66,7 @@ pub type StateEvaluation = i64;
 pub type MoveList = <State as GameState>::MoveList;
 pub type Player = <State as GameState>::Player;
 pub type TreePolicyThreadData<Spec> =
-    <<Spec as MCTS>::TreePolicy as TreePolicy<Spec>>::ThreadLocalData;
+    <<Spec as Mcts>::TreePolicy as TreePolicy<Spec>>::ThreadLocalData;
 
 pub trait GameState: Clone {
     type Player: Sync;
@@ -80,7 +77,7 @@ pub trait GameState: Clone {
     fn make_move(&mut self, mov: &shakmaty::Move);
 }
 
-pub trait Evaluator<Spec: MCTS>: Sync {
+pub trait Evaluator<Spec: Mcts>: Sync {
     fn evaluate_new_state(
         &self,
         state: &State,
@@ -91,12 +88,12 @@ pub trait Evaluator<Spec: MCTS>: Sync {
         -> i64;
 }
 
-pub struct MCTSManager<Spec: MCTS> {
+pub struct MctsManager<Spec: Mcts> {
     search_tree: SearchTree<Spec>,
     search_start: RwLock<Option<Instant>>,
 }
 
-impl<Spec: MCTS> MCTSManager<Spec>
+impl<Spec: Mcts> MctsManager<Spec>
 where
     TreePolicyThreadData<Spec>: Default,
     Spec::ExtraThreadData: Default,
@@ -178,7 +175,7 @@ where
             .principal_variation(num_moves)
             .into_iter()
             .map(|x| x.get_move())
-            .map(|x| x.clone())
+            .cloned()
             .collect()
     }
 
@@ -191,7 +188,7 @@ where
     }
 
     pub fn best_move(&self) -> Option<shakmaty::Move> {
-        self.principal_variation(1).get(0).map(|x| x.clone())
+        self.principal_variation(1).get(0).cloned()
     }
 
     pub fn eval_in_cp(&self) -> String {
@@ -245,7 +242,7 @@ where
         let root_moves = root_node.moves();
 
         let state_moves = root_state.available_moves();
-        let (state_moves_eval, _, _) = eval.evaluate_new_state(&root_state, &state_moves);
+        let (state_moves_eval, _, _) = eval.evaluate_new_state(root_state, &state_moves);
 
         let mut moves: Vec<(MoveInfoHandle, f32)> = root_moves.zip(state_moves_eval).collect();
         moves.sort_by_key(|(h, e)| FloatOrd(h.average_reward().unwrap_or(*e)));
@@ -259,28 +256,28 @@ where
                 mov.average_reward()
                     .map_or("n/a".to_string(), |r| format!("{:3.2}", r / (SCALE / 100.))),
                 mov.average_reward()
-                    .map_or("n/a".to_string(), |r| format!("{}", eval_in_cp(r / SCALE)))
+                    .map_or("n/a".to_string(), |r| eval_in_cp(r / SCALE))
             );
         }
     }
 }
 
-pub struct AsyncSearchOwned<Spec: MCTS> {
-    manager: Option<Box<MCTSManager<Spec>>>,
+pub struct AsyncSearchOwned<Spec: Mcts> {
+    manager: Option<Box<MctsManager<Spec>>>,
     stop_signal: Arc<AtomicBool>,
     threads: Vec<JoinHandle<()>>,
 }
 
-impl<Spec: MCTS> AsyncSearchOwned<Spec> {
+impl<Spec: Mcts> AsyncSearchOwned<Spec> {
     fn stop_threads(&mut self) {
         self.stop_signal.store(true, Ordering::SeqCst);
         drain_join_unwrap(&mut self.threads);
     }
-    pub fn halt(mut self) -> MCTSManager<Spec> {
+    pub fn halt(mut self) -> MctsManager<Spec> {
         self.stop_threads();
         *self.manager.take().unwrap()
     }
-    pub fn get_manager(&self) -> &MCTSManager<Spec> {
+    pub fn get_manager(&self) -> &MctsManager<Spec> {
         self.manager.as_ref().unwrap()
     }
     pub fn get_stop_signal(&self) -> &Arc<AtomicBool> {
@@ -291,15 +288,15 @@ impl<Spec: MCTS> AsyncSearchOwned<Spec> {
     }
 }
 
-impl<Spec: MCTS> Drop for AsyncSearchOwned<Spec> {
+impl<Spec: Mcts> Drop for AsyncSearchOwned<Spec> {
     fn drop(&mut self) {
         self.stop_threads();
     }
 }
 
-impl<Spec: MCTS> From<MCTSManager<Spec>> for AsyncSearchOwned<Spec> {
-    /// An `MCTSManager` is an `AsyncSearchOwned` with zero threads searching.
-    fn from(m: MCTSManager<Spec>) -> Self {
+impl<Spec: Mcts> From<MctsManager<Spec>> for AsyncSearchOwned<Spec> {
+    /// An `MctsManager` is an `AsyncSearchOwned` with zero threads searching.
+    fn from(m: MctsManager<Spec>) -> Self {
         Self {
             manager: Some(Box::new(m)),
             stop_signal: Arc::new(AtomicBool::new(false)),

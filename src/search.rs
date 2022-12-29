@@ -1,7 +1,7 @@
 use bench::BENCHMARKING_POSITIONS;
 use chess::Color;
 use evaluation::GooseEval;
-use mcts::{AsyncSearchOwned, GameState, MCTSManager, MoveInfoHandle, MCTS};
+use mcts::{AsyncSearchOwned, GameState, Mcts, MctsManager, MoveInfoHandle};
 use options::{get_cpuct, get_num_threads};
 use search_tree::{empty_previous_table, PreviousTable};
 use state::{Move, State, StateBuilder};
@@ -25,7 +25,7 @@ fn policy() -> AlphaGoPolicy {
     AlphaGoPolicy::new(cpuct * SCALE)
 }
 
-pub struct GooseMCTS;
+pub struct GooseMcts;
 pub struct ThreadSentinel;
 
 impl Default for ThreadSentinel {
@@ -40,7 +40,7 @@ impl Drop for ThreadSentinel {
     }
 }
 
-impl MCTS for GooseMCTS {
+impl Mcts for GooseMcts {
     type Eval = GooseEval;
     type TreePolicy = AlphaGoPolicy;
     type ExtraThreadData = ThreadSentinel;
@@ -54,7 +54,7 @@ impl MCTS for GooseMCTS {
     }
     fn select_child_after_search<'a>(&self, children: &[MoveInfoHandle<'a>]) -> MoveInfoHandle<'a> {
         *children
-            .into_iter()
+            .iter()
             .max_by_key(|child| {
                 child
                     .average_reward()
@@ -66,34 +66,34 @@ impl MCTS for GooseMCTS {
 }
 
 pub struct Search {
-    search: AsyncSearchOwned<GooseMCTS>,
+    search: AsyncSearchOwned<GooseMcts>,
 }
 
 impl Search {
     pub fn create_manager(
         state: State,
-        prev_table: PreviousTable<GooseMCTS>,
-    ) -> MCTSManager<GooseMCTS> {
-        MCTSManager::new(
+        prev_table: PreviousTable<GooseMcts>,
+    ) -> MctsManager<GooseMcts> {
+        MctsManager::new(
             state,
-            GooseMCTS,
+            GooseMcts,
             GooseEval::new(),
             policy(),
-            ApproxTable::enough_to_hold(GooseMCTS.node_limit()),
+            ApproxTable::enough_to_hold(GooseMcts.node_limit()),
             prev_table,
         )
     }
 
-    pub fn new(state: State, prev_table: PreviousTable<GooseMCTS>) -> Self {
+    pub fn new(state: State, prev_table: PreviousTable<GooseMcts>) -> Self {
         let search = Self::create_manager(state, prev_table).into();
         Self { search }
     }
 
-    pub fn table(self) -> PreviousTable<GooseMCTS> {
+    pub fn table(self) -> PreviousTable<GooseMcts> {
         let manager = self.stop_and_print_m();
         manager.table()
     }
-    fn stop_and_print_m(self) -> MCTSManager<GooseMCTS> {
+    fn stop_and_print_m(self) -> MctsManager<GooseMcts> {
         if self.search.num_threads() == 0 {
             return self.search.halt();
         }
@@ -252,7 +252,7 @@ impl Search {
         for _ in 0..12 {
             for _ in 0..8 {
                 for _ in 0..8 {
-                    print!("{}", if fs[idx] > 0.5 { 1 } else { 0 });
+                    print!("{}", i32::from(fs[idx] > 0.5));
                     idx += 1;
                 }
                 print!(" ");
@@ -268,12 +268,12 @@ impl Search {
         for fen in BENCHMARKING_POSITIONS {
             let state: State = StateBuilder::from_fen(fen).unwrap().into();
 
-            let manager = MCTSManager::new(
+            let manager = MctsManager::new(
                 state,
-                GooseMCTS,
+                GooseMcts,
                 GooseEval::new(),
                 policy(),
-                ApproxTable::enough_to_hold(GooseMCTS.node_limit()),
+                ApproxTable::enough_to_hold(GooseMcts.node_limit()),
                 empty_previous_table(),
             );
 
