@@ -142,7 +142,7 @@ impl UciOption {
 
     fn set_option<F, T>(&self, f: F)
     where
-        F: FnOnce(T) -> (),
+        F: FnOnce(T),
         T: FromStr,
     {
         if let Some(v) = self.value() {

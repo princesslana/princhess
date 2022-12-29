@@ -197,7 +197,7 @@ impl Visitor for PolicyDataGenerator {
                 let mut move_features = [0f32; 1792];
 
                 for m in moves.as_slice() {
-                    move_features[state.move_to_index(&m)] = 2.
+                    move_features[state.move_to_index(m)] = 2.
                 }
 
                 move_features[state.move_to_index(&made)] = 1.;

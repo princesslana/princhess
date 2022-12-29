@@ -308,7 +308,7 @@ impl GameState for State {
         }
         self.prev_state_hashes.push(self.board.get_hash());
 
-        self.shakmaty_board.play_unchecked(&mov);
+        self.shakmaty_board.play_unchecked(mov);
         self.board = self.board.make_move_new(convert_move(mov));
         self.check_for_repetition();
     }

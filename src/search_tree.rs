@@ -1,7 +1,7 @@
 use math;
 use mcts::*;
 use options::get_hash_size_mb;
-use search::{GooseMCTS, SCALE};
+use search::{GooseMcts, SCALE};
 use shakmaty::Position;
 use smallvec::SmallVec;
 use state::State;
@@ -17,9 +17,9 @@ use tree_policy::TreePolicy;
 
 use arena::{Arena, ArenaAllocator, ArenaError};
 
-/// You're not intended to use this class (use an `MCTSManager` instead),
+/// You're not intended to use this class (use an `MctsManager` instead),
 /// but you can use it if you want to manage the threads yourself.
-pub struct SearchTree<Spec: MCTS> {
+pub struct SearchTree<Spec: Mcts> {
     root_node: SearchNode,
     root_state: State,
     tree_policy: Spec::TreePolicy,
@@ -33,20 +33,20 @@ pub struct SearchTree<Spec: MCTS> {
     tb_hits: AtomicUsize,
 }
 
-pub struct PreviousTable<Spec: MCTS> {
+pub struct PreviousTable<Spec: Mcts> {
     table: Spec::TranspositionTable,
     #[allow(dead_code)]
     arena: Box<Arena>,
 }
 
-pub fn empty_previous_table() -> PreviousTable<GooseMCTS> {
+pub fn empty_previous_table() -> PreviousTable<GooseMcts> {
     PreviousTable {
         table: ApproxTable::enough_to_hold(0),
         arena: Box::new(Arena::new(2)),
     }
 }
 
-impl<Spec: MCTS> PreviousTable<Spec> {
+impl<Spec: Mcts> PreviousTable<Spec> {
     pub fn lookup_into(&self, state: &State, dest: &mut SearchNode) {
         if let Some(src) = self.table.lookup(state) {
             dest.replace(src);
@@ -66,12 +66,12 @@ trait NodeStats {
     fn get_visits(&self) -> &AtomicU32;
     fn get_sum_evaluations(&self) -> &AtomicI64;
 
-    fn down<Spec: MCTS>(&self, manager: &Spec) {
+    fn down<Spec: Mcts>(&self, manager: &Spec) {
         self.get_sum_evaluations()
             .fetch_sub(manager.virtual_loss() as i64, Ordering::Relaxed);
         self.get_visits().fetch_add(1, Ordering::Relaxed);
     }
-    fn up<Spec: MCTS>(&self, manager: &Spec, evaln: i64) {
+    fn up<Spec: Mcts>(&self, manager: &Spec, evaln: i64) {
         let delta = evaln + manager.virtual_loss();
         self.get_sum_evaluations()
             .fetch_add(delta as i64, Ordering::Relaxed);
@@ -137,7 +137,7 @@ pub struct SearchNode {
 unsafe impl Sync for SearchNode {}
 
 impl SearchNode {
-    fn new<'a>(hots: &'a [HotMoveInfo], evaln: StateEvaluation, tablebase: bool) -> Self {
+    fn new(hots: &[HotMoveInfo], evaln: StateEvaluation, tablebase: bool) -> Self {
         Self {
             hots: hots as *const _ as *const [()],
             evaln,
@@ -201,13 +201,13 @@ impl<'a> MoveInfoHandle<'a> {
     }
 }
 
-enum CreationHelper<'a: 'b, 'b, Spec: 'a + MCTS> {
+enum CreationHelper<'a: 'b, 'b, Spec: 'a + Mcts> {
     Handle(SearchHandle<'a, 'b, Spec>),
     Allocator(&'b ArenaAllocator<'a>),
 }
 
 #[inline(always)]
-fn create_node<'a, 'b, Spec: MCTS>(
+fn create_node<'a, 'b, Spec: Mcts>(
     eval: &Spec::Eval,
     policy: &Spec::TreePolicy,
     state: &State,
@@ -247,7 +247,7 @@ fn create_node<'a, 'b, Spec: MCTS>(
     Ok(SearchNode::new(hots, state_eval, is_tb_hit))
 }
 
-impl<Spec: MCTS> SearchTree<Spec> {
+impl<Spec: Mcts> SearchTree<Spec> {
     pub fn new(
         state: State,
         manager: Spec,
@@ -542,25 +542,25 @@ impl<'a> Iterator for Moves<'a> {
     }
 }
 
-pub struct SharedSearchHandle<'a: 'b, 'b, Spec: 'a + MCTS> {
+pub struct SharedSearchHandle<'a: 'b, 'b, Spec: 'a + Mcts> {
     tree: &'a SearchTree<Spec>,
     path: &'b [&'a SearchNode],
 }
-impl<'a: 'b, 'b, Spec: 'a + MCTS> Clone for SharedSearchHandle<'a, 'b, Spec> {
+impl<'a: 'b, 'b, Spec: 'a + Mcts> Clone for SharedSearchHandle<'a, 'b, Spec> {
     fn clone(&self) -> Self {
         let tree = self.tree;
         let path = self.path;
         Self { tree, path }
     }
 }
-impl<'a: 'b, 'b, Spec: 'a + MCTS> Copy for SharedSearchHandle<'a, 'b, Spec> {}
+impl<'a: 'b, 'b, Spec: 'a + Mcts> Copy for SharedSearchHandle<'a, 'b, Spec> {}
 
-pub struct SearchHandle<'a: 'b, 'b, Spec: 'a + MCTS> {
+pub struct SearchHandle<'a: 'b, 'b, Spec: 'a + Mcts> {
     pub tld: &'b mut ThreadData<'a, Spec>,
     pub shared: SharedSearchHandle<'a, 'b, Spec>,
 }
 
-impl<'a, 'b, Spec: MCTS> SearchHandle<'a, 'b, Spec> {
+impl<'a, 'b, Spec: Mcts> SearchHandle<'a, 'b, Spec> {
     pub fn thread_data(&mut self) -> &mut ThreadData<'a, Spec> {
         self.tld
     }

@@ -1,7 +1,7 @@
 use chess::*;
 use math;
 use mcts::{Evaluator, GameState};
-use search::{GooseMCTS, SCALE};
+use search::{GooseMcts, SCALE};
 use shakmaty::Position;
 use shakmaty_syzygy::Wdl;
 use state::{self, MoveList, Player, State};
@@ -19,12 +19,12 @@ impl GooseEval {
     }
 }
 
-impl Evaluator<GooseMCTS> for GooseEval {
+impl Evaluator<GooseMcts> for GooseEval {
     fn evaluate_new_state(&self, state: &State, moves: &MoveList) -> (Vec<f32>, i64, bool) {
         let features = state.features();
         let move_evaluations = evaluate_policy(state, &features, moves);
         let mut tb_hit = false;
-        let state_evaluation = if moves.len() == 0 {
+        let state_evaluation = if moves.is_empty() {
             let x = (MATE_FACTOR * SCALE) as i64;
             if state.shakmaty_board().is_check() {
                 match state.current_player() {
@@ -63,18 +63,17 @@ const NUMBER_HIDDEN: usize = 128;
 const NUMBER_OUTPUTS: usize = 1;
 
 #[allow(clippy::excessive_precision)]
-const EVAL_HIDDEN_BIAS: [f32; NUMBER_HIDDEN] = include!("model/hidden_bias_0");
+static EVAL_HIDDEN_BIAS: [f32; NUMBER_HIDDEN] = include!("model/hidden_bias_0");
 
 #[allow(clippy::excessive_precision)]
-const EVAL_HIDDEN_WEIGHTS: [[f32; STATE_NUMBER_INPUTS]; NUMBER_HIDDEN] =
+static EVAL_HIDDEN_WEIGHTS: [[f32; STATE_NUMBER_INPUTS]; NUMBER_HIDDEN] =
     include!("model/hidden_weights_0");
 
 #[allow(clippy::excessive_precision)]
-const EVAL_OUTPUT_WEIGHTS: [[f32; NUMBER_HIDDEN]; NUMBER_OUTPUTS] =
+static EVAL_OUTPUT_WEIGHTS: [[f32; NUMBER_HIDDEN]; NUMBER_OUTPUTS] =
     include!("model/output_weights");
 
 fn evaluate_state(state: &State, features: &[f32; state::NUMBER_FEATURES]) -> f32 {
-    #[allow(clippy::uninit_assumed_init)]
     let mut hidden_layer: [f32; NUMBER_HIDDEN] = unsafe {
         let mut out: [MaybeUninit<f32>; NUMBER_HIDDEN] = MaybeUninit::uninit().assume_init();
 
@@ -89,8 +88,8 @@ fn evaluate_state(state: &State, features: &[f32; state::NUMBER_FEATURES]) -> f3
 
     hidden_layer.copy_from_slice(&EVAL_HIDDEN_BIAS);
 
-    for i in 0..features.len() {
-        if features[i] > 0.5 {
+    for (i, f) in features.iter().enumerate() {
+        if *f > 0.5 {
             for j in 0..hidden_layer.len() {
                 hidden_layer[j] += EVAL_HIDDEN_WEIGHTS[j][i];
             }
@@ -117,7 +116,7 @@ fn evaluate_state(state: &State, features: &[f32; state::NUMBER_FEATURES]) -> f3
 const POLICY_NUMBER_INPUTS: usize = state::NUMBER_FEATURES;
 
 #[allow(clippy::excessive_precision)]
-const POLICY_WEIGHTS: [[f32; POLICY_NUMBER_INPUTS]; 1792] = include!("policy/output_weights");
+static POLICY_WEIGHTS: [[f32; POLICY_NUMBER_INPUTS]; 1792] = include!("policy/output_weights");
 
 fn evaluate_policy(
     state: &State,
@@ -126,7 +125,7 @@ fn evaluate_policy(
 ) -> Vec<f32> {
     let mut evalns = Vec::with_capacity(moves.len());
 
-    if moves.len() == 0 {
+    if moves.is_empty() {
         return evalns;
     }
 
@@ -137,10 +136,10 @@ fn evaluate_policy(
         evalns.push(0.);
     }
 
-    for f in 0..features.len() {
-        if features[f] > 0.5 {
+    for (i, f) in features.iter().enumerate() {
+        if *f > 0.5 {
             for m in 0..moves.len() {
-                evalns[m] += POLICY_WEIGHTS[move_idxs[m]][f];
+                evalns[m] += POLICY_WEIGHTS[move_idxs[m]][i];
             }
         }
     }

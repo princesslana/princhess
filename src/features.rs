@@ -32,7 +32,7 @@ impl FeatureVec {
                 write!(f, " {}:{}", index + 1, value).unwrap();
             }
         }
-        write!(f, "\n").unwrap();
+        writeln!(f).unwrap();
     }
 }
 
