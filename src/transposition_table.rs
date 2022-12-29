@@ -148,7 +148,7 @@ where
         let mut posn = my_hash as usize & self.mask;
         for inc in 1..(PROBE_LIMIT + 1) {
             let entry = unsafe { self.arr.get_unchecked(posn) };
-            let key_here = entry.k.load(Ordering::Relaxed) as u64;
+            let key_here = entry.k.load(Ordering::Relaxed);
             if key_here == my_hash {
                 let value_here = entry.v.load(Ordering::Relaxed);
                 if !value_here.is_null() {
@@ -157,12 +157,10 @@ where
                 return get_or_write(&entry.v, value);
             }
             if key_here == 0 {
-                let key_here = entry.k.compare_exchange(
-                    0,
-                    my_hash as u64,
-                    Ordering::Relaxed,
-                    Ordering::Relaxed,
-                );
+                let key_here =
+                    entry
+                        .k
+                        .compare_exchange(0, my_hash, Ordering::Relaxed, Ordering::Relaxed);
                 self.size.fetch_add(1, Ordering::Relaxed);
                 match key_here {
                     Ok(_) => get_or_write(&entry.v, value),
@@ -180,7 +178,7 @@ where
         let mut posn = my_hash as usize & self.mask;
         for inc in 1..(PROBE_LIMIT + 1) {
             let entry = unsafe { self.arr.get_unchecked(posn) };
-            let key_here = entry.k.load(Ordering::Relaxed) as u64;
+            let key_here = entry.k.load(Ordering::Relaxed);
             if key_here == my_hash {
                 return convert(entry.v.load(Ordering::Relaxed));
             }
