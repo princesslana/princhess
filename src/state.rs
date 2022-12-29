@@ -95,10 +95,6 @@ impl State {
     pub fn from_tokens(tokens: Tokens) -> Option<Self> {
         StateBuilder::from_tokens(tokens).map(|x| x.into())
     }
-    #[cfg(test)]
-    pub fn from_fen(fen: &str) -> Option<Self> {
-        StateBuilder::from_fen(fen).map(|x| x.into())
-    }
     pub fn board(&self) -> &chess::Board {
         &self.board
     }

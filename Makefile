@@ -1,5 +1,4 @@
 
-
 rule:
-	cargo build --release
-	mv target/release/princhess princhess
+	cargo rustc --release -- -D warnings
+	cargo clippy -- -D warnings
