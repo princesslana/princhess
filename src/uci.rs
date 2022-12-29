@@ -152,14 +152,3 @@ impl UciOption {
         }
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    #[test]
-    fn en_passant() {
-        let s = String::from("startpos moves g1f3 g8f6 d2d4 b8c6 b1c3 e7e6 c1g5 h7h6 g5h4 g7g5 h4g3 f8b4 d1d3 g5g4 f3d2 e8g8 e1c1 d7d6 a2a3 b4a5 d2c4 a5c3 d3c3 c8d7 c3b3 b7b6 g3h4 a7a5 a3a4 d8e7 c4e3 h6h5 g2g3 d6d5 f1g2 f8b8 c2c4 b6b5 c4b5 c6b4 c1b1 c7c6 b5c6 b4c6 b3c3 b8b4 c3a3 a8b8 d1d3 b4b2 a3b2 b8b2 b1b2 e7b4 d3b3 b4d4 b2b1 c6b4 h1d1 d4e5 d1c1 d7a4 b3a3 a4b5 f2f4 g4f3");
-        let tokens = s.split_whitespace();
-        State::from_tokens(tokens).unwrap();
-    }
-}
