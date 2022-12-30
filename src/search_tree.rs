@@ -1,3 +1,4 @@
+use evaluation;
 use math;
 use mcts::*;
 use options::get_hash_size_mb;
@@ -25,7 +26,6 @@ pub struct SearchTree<Spec: Mcts> {
     tree_policy: Spec::TreePolicy,
     table: Spec::TranspositionTable,
     prev_table: PreviousTable<Spec>,
-    eval: Spec::Eval,
     manager: Spec,
     arena: Box<Arena>,
 
@@ -208,7 +208,6 @@ enum CreationHelper<'a: 'b, 'b, Spec: 'a + Mcts> {
 
 #[inline(always)]
 fn create_node<'a, 'b, Spec: Mcts>(
-    eval: &Spec::Eval,
     policy: &Spec::TreePolicy,
     state: &State,
     tb_hits: &AtomicUsize,
@@ -232,7 +231,7 @@ fn create_node<'a, 'b, Spec: Mcts>(
         (Vec::with_capacity(0), 0, false)
     } else {
         moves = state.available_moves();
-        eval.evaluate_new_state(state, &moves)
+        evaluation::evaluate_new_state(state, &moves)
     };
 
     if is_tb_hit {
@@ -252,7 +251,6 @@ impl<Spec: Mcts> SearchTree<Spec> {
         state: State,
         manager: Spec,
         tree_policy: Spec::TreePolicy,
-        eval: Spec::Eval,
         table: Spec::TranspositionTable,
         prev_table: PreviousTable<Spec>,
     ) -> Self {
@@ -260,7 +258,6 @@ impl<Spec: Mcts> SearchTree<Spec> {
         let tb_hits = 0.into();
 
         let mut root_node = create_node::<Spec>(
-            &eval,
             &tree_policy,
             &state,
             &tb_hits,
@@ -285,7 +282,6 @@ impl<Spec: Mcts> SearchTree<Spec> {
             root_node,
             manager,
             tree_policy,
-            eval,
             table,
             prev_table,
             num_nodes: 1.into(),
@@ -406,7 +402,6 @@ impl<Spec: Mcts> SearchTree<Spec> {
         }
 
         let mut created_here = create_node(
-            &self.eval,
             &self.tree_policy,
             state,
             &self.tb_hits,
@@ -448,7 +443,7 @@ impl<Spec: Mcts> SearchTree<Spec> {
         for ((move_info, player), node) in
             path.iter().zip(players.iter()).zip(node_path.iter()).rev()
         {
-            let evaln_value = self.eval.interpret_evaluation_for_player(evaln, player);
+            let evaln_value = evaluation::interpret_evaluation_for_player(evaln, player);
             node.up(&self.manager, evaln_value);
             move_info.hot.replace(*node);
         }

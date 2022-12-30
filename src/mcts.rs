@@ -3,7 +3,7 @@ pub use search_tree::*;
 use transposition_table::*;
 use tree_policy::*;
 
-use evaluation::GooseEval;
+use evaluation;
 use fastapprox;
 use float_ord::FloatOrd;
 use search::{to_uci, SCALE};
@@ -15,7 +15,6 @@ use std::thread::JoinHandle;
 use std::time::Instant;
 
 pub trait Mcts: Sized + Sync {
-    type Eval: Evaluator<Self>;
     type TreePolicy: TreePolicy<Self>;
     type TranspositionTable: TranspositionTable;
     type ExtraThreadData;
@@ -77,17 +76,6 @@ pub trait GameState: Clone {
     fn make_move(&mut self, mov: &shakmaty::Move);
 }
 
-pub trait Evaluator<Spec: Mcts>: Sync {
-    fn evaluate_new_state(
-        &self,
-        state: &State,
-        moves: &MoveList,
-    ) -> (Vec<MoveEvaluation>, StateEvaluation, bool);
-
-    fn interpret_evaluation_for_player(&self, evaluation: &StateEvaluation, player: &Player)
-        -> i64;
-}
-
 pub struct MctsManager<Spec: Mcts> {
     search_tree: SearchTree<Spec>,
     search_start: RwLock<Option<Instant>>,
@@ -101,12 +89,11 @@ where
     pub fn new(
         state: State,
         manager: Spec,
-        eval: Spec::Eval,
         tree_policy: Spec::TreePolicy,
         table: Spec::TranspositionTable,
         prev_table: PreviousTable<Spec>,
     ) -> Self {
-        let search_tree = SearchTree::new(state, manager, tree_policy, eval, table, prev_table);
+        let search_tree = SearchTree::new(state, manager, tree_policy, table, prev_table);
         Self {
             search_tree,
             search_start: RwLock::new(None),
@@ -237,12 +224,10 @@ where
         let root_node = self.tree().root_node();
         let root_state = self.tree().root_state();
 
-        let eval = GooseEval::new();
-
         let root_moves = root_node.moves();
 
         let state_moves = root_state.available_moves();
-        let (state_moves_eval, _, _) = eval.evaluate_new_state(root_state, &state_moves);
+        let (state_moves_eval, _, _) = evaluation::evaluate_new_state(root_state, &state_moves);
 
         let mut moves: Vec<(MoveInfoHandle, f32)> = root_moves.zip(state_moves_eval).collect();
         moves.sort_by_key(|(h, e)| FloatOrd(h.average_reward().unwrap_or(*e)));

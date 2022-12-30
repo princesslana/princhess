@@ -1,6 +1,5 @@
 use bench::BENCHMARKING_POSITIONS;
 use chess::Color;
-use evaluation::GooseEval;
 use mcts::{AsyncSearchOwned, GameState, Mcts, MctsManager, MoveInfoHandle};
 use options::{get_cpuct, get_num_threads};
 use search_tree::{empty_previous_table, PreviousTable};
@@ -41,7 +40,6 @@ impl Drop for ThreadSentinel {
 }
 
 impl Mcts for GooseMcts {
-    type Eval = GooseEval;
     type TreePolicy = AlphaGoPolicy;
     type ExtraThreadData = ThreadSentinel;
     type TranspositionTable = ApproxTable;
@@ -77,7 +75,6 @@ impl Search {
         MctsManager::new(
             state,
             GooseMcts,
-            GooseEval::new(),
             policy(),
             ApproxTable::enough_to_hold(GooseMcts.node_limit()),
             prev_table,
@@ -271,7 +268,6 @@ impl Search {
             let manager = MctsManager::new(
                 state,
                 GooseMcts,
-                GooseEval::new(),
                 policy(),
                 ApproxTable::enough_to_hold(GooseMcts.node_limit()),
                 empty_previous_table(),
