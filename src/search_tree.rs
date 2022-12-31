@@ -1,9 +1,10 @@
+use chess;
 use evaluation;
 use math;
 use mcts::*;
 use options::get_hash_size_mb;
 use search::{GooseMcts, SCALE};
-use shakmaty::Position;
+use shakmaty::{MoveList, Position};
 use smallvec::SmallVec;
 use state::State;
 use std::mem;
@@ -328,7 +329,7 @@ impl<Spec: Mcts> SearchTree<Spec> {
         let mut state = self.root_state.clone();
         let mut path: SmallVec<[MoveInfoHandle; LARGE_DEPTH]> = SmallVec::new();
         let mut node_path: SmallVec<[&SearchNode; LARGE_DEPTH]> = SmallVec::new();
-        let mut players: SmallVec<[Player; LARGE_DEPTH]> = SmallVec::new();
+        let mut players: SmallVec<[chess::Color; LARGE_DEPTH]> = SmallVec::new();
         let mut node = &self.root_node;
         loop {
             if node.hots().is_empty() {
@@ -437,7 +438,7 @@ impl<Spec: Mcts> SearchTree<Spec> {
         &'a self,
         path: &[MoveInfoHandle],
         node_path: &[&'a SearchNode],
-        players: &[Player],
+        players: &[chess::Color],
         evaln: &StateEvaluation,
     ) {
         for ((move_info, player), node) in

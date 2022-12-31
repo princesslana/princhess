@@ -9,7 +9,6 @@ use self::rand::{Rng, SeedableRng};
 
 use chess;
 use features::{featurize, FeatureVec, GameResult};
-use mcts::GameState;
 use shakmaty;
 use state::StateBuilder;
 

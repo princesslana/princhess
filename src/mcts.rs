@@ -62,19 +62,8 @@ where
 
 pub type MoveEvaluation = f32;
 pub type StateEvaluation = i64;
-pub type MoveList = <State as GameState>::MoveList;
-pub type Player = <State as GameState>::Player;
 pub type TreePolicyThreadData<Spec> =
     <<Spec as Mcts>::TreePolicy as TreePolicy<Spec>>::ThreadLocalData;
-
-pub trait GameState: Clone {
-    type Player: Sync;
-    type MoveList: std::iter::IntoIterator<Item = shakmaty::Move>;
-
-    fn current_player(&self) -> Self::Player;
-    fn available_moves(&self) -> Self::MoveList;
-    fn make_move(&mut self, mov: &shakmaty::Move);
-}
 
 pub struct MctsManager<Spec: Mcts> {
     search_tree: SearchTree<Spec>,
