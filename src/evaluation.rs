@@ -1,6 +1,5 @@
 use chess::*;
 use math;
-use mcts::GameState;
 use search::SCALE;
 use shakmaty::Position;
 use shakmaty_syzygy::Wdl;

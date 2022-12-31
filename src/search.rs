@@ -1,6 +1,6 @@
 use bench::BENCHMARKING_POSITIONS;
 use chess::Color;
-use mcts::{AsyncSearchOwned, GameState, Mcts, MctsManager, MoveInfoHandle};
+use mcts::{AsyncSearchOwned, Mcts, MctsManager, MoveInfoHandle};
 use options::{get_cpuct, get_num_threads};
 use search_tree::{empty_previous_table, PreviousTable};
 use state::{Move, State, StateBuilder};

@@ -1,5 +1,4 @@
 use chess;
-use mcts::GameState;
 use move_index;
 use shakmaty;
 use shakmaty::{File, Position, Setup};
@@ -100,6 +99,32 @@ impl State {
     }
     pub fn shakmaty_board(&self) -> &shakmaty::Chess {
         &self.shakmaty_board
+    }
+
+    pub fn current_player(&self) -> Player {
+        self.board.side_to_move()
+    }
+
+    pub fn available_moves(&self) -> MoveList {
+        self.shakmaty_board().legal_moves()
+    }
+
+    pub fn make_move(&mut self, mov: &shakmaty::Move) {
+        let b = self.shakmaty_board.board();
+
+        self.prev_capture = b.role_at(mov.to());
+        self.prev_capture_sq = self.prev_capture_sq.map(|_| mov.to());
+
+        let is_pawn_move = b.pawns().contains(mov.from().unwrap());
+
+        if is_pawn_move || self.prev_capture.is_some() {
+            self.prev_state_hashes.clear();
+        }
+        self.prev_state_hashes.push(self.board.get_hash());
+
+        self.shakmaty_board.play_unchecked(mov);
+        self.board = self.board.make_move_new(convert_move(mov));
+        self.check_for_repetition();
     }
 
     fn check_for_repetition(&mut self) {
@@ -276,36 +301,5 @@ impl From<StateBuilder> for State {
         }
 
         state
-    }
-}
-
-impl GameState for State {
-    type Player = Player;
-    type MoveList = MoveList;
-
-    fn current_player(&self) -> Player {
-        self.board.side_to_move()
-    }
-
-    fn available_moves(&self) -> MoveList {
-        self.shakmaty_board().legal_moves()
-    }
-
-    fn make_move(&mut self, mov: &shakmaty::Move) {
-        let b = self.shakmaty_board.board();
-
-        self.prev_capture = b.role_at(mov.to());
-        self.prev_capture_sq = self.prev_capture_sq.map(|_| mov.to());
-
-        let is_pawn_move = b.pawns().contains(mov.from().unwrap());
-
-        if is_pawn_move || self.prev_capture.is_some() {
-            self.prev_state_hashes.clear();
-        }
-        self.prev_state_hashes.push(self.board.get_hash());
-
-        self.shakmaty_board.play_unchecked(mov);
-        self.board = self.board.make_move_new(convert_move(mov));
-        self.check_for_repetition();
     }
 }
