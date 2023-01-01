@@ -1,10 +1,9 @@
-use chess;
 use evaluation;
 use math;
 use mcts::*;
 use options::get_hash_size_mb;
 use search::{GooseMcts, SCALE};
-use shakmaty::{MoveList, Position};
+use shakmaty::{Color, MoveList, Position};
 use smallvec::SmallVec;
 use state::State;
 use std::mem;
@@ -329,7 +328,7 @@ impl<Spec: Mcts> SearchTree<Spec> {
         let mut state = self.root_state.clone();
         let mut path: SmallVec<[MoveInfoHandle; LARGE_DEPTH]> = SmallVec::new();
         let mut node_path: SmallVec<[&SearchNode; LARGE_DEPTH]> = SmallVec::new();
-        let mut players: SmallVec<[chess::Color; LARGE_DEPTH]> = SmallVec::new();
+        let mut players: SmallVec<[Color; LARGE_DEPTH]> = SmallVec::new();
         let mut node = &self.root_node;
         loop {
             if node.hots().is_empty() {
@@ -348,7 +347,7 @@ impl<Spec: Mcts> SearchTree<Spec> {
                 self.make_handle(tld, &node_path),
             );
             choice.hot.down(&self.manager);
-            players.push(state.current_player());
+            players.push(state.side_to_move());
             path.push(choice);
             assert!(path.len() <= self.manager.max_playout_length(),
                 "playout length exceeded maximum of {} (maybe the transposition table is creating an infinite loop?)",
@@ -438,7 +437,7 @@ impl<Spec: Mcts> SearchTree<Spec> {
         &'a self,
         path: &[MoveInfoHandle],
         node_path: &[&'a SearchNode],
-        players: &[chess::Color],
+        players: &[Color],
         evaln: &StateEvaluation,
     ) {
         for ((move_info, player), node) in

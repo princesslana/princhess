@@ -1,13 +1,12 @@
 use chess;
 use move_index;
 use shakmaty;
-use shakmaty::{File, Position, Setup};
+use shakmaty::{Color, File, Position, Setup};
 use smallvec::SmallVec;
 use std::str::FromStr;
 use transposition_table::TranspositionHash;
 use uci::Tokens;
 
-pub type Player = chess::Color;
 pub type Move = shakmaty::Move;
 pub type MoveList = shakmaty::MoveList;
 
@@ -101,8 +100,8 @@ impl State {
         &self.shakmaty_board
     }
 
-    pub fn current_player(&self) -> Player {
-        self.board.side_to_move()
+    pub fn side_to_move(&self) -> Color {
+        self.shakmaty_board.turn()
     }
 
     pub fn available_moves(&self) -> MoveList {
@@ -145,12 +144,12 @@ impl State {
     }
 
     pub fn feature_flip(&self) -> (bool, bool) {
-        let turn = self.shakmaty_board().turn();
+        let stm = self.side_to_move();
         let b = self.shakmaty_board().board();
 
-        let ksq = b.king_of(turn).unwrap();
+        let ksq = b.king_of(stm).unwrap();
 
-        let flip_vertical = turn == shakmaty::Color::Black;
+        let flip_vertical = stm == Color::Black;
         let flip_horizontal = ksq.file() <= File::D;
 
         (flip_vertical, flip_horizontal)
@@ -159,7 +158,7 @@ impl State {
     pub fn features(&self) -> [f32; NUMBER_FEATURES] {
         let mut features = [0f32; NUMBER_FEATURES];
 
-        let turn = self.shakmaty_board().turn();
+        let stm = self.side_to_move();
         let b = self.shakmaty_board().board();
 
         let (flip_vertical, flip_horizontal) = self.feature_flip();
@@ -176,13 +175,13 @@ impl State {
 
             let sq_idx = adj_sq as usize;
             let role_idx = pc.role as usize - 1;
-            let side_idx = usize::from(pc.color != turn);
+            let side_idx = usize::from(pc.color != stm);
 
             let feature_idx = (side_idx * 6 + role_idx) * 64 + sq_idx;
 
             features[feature_idx] = 1.;
 
-            if b.attacks_to(sq, !turn, b.occupied()).any() {
+            if b.attacks_to(sq, !stm, b.occupied()).any() {
                 features[OFFSET_THREATS + feature_idx] = 1.;
             }
         }
