@@ -1,8 +1,8 @@
 use bench::BENCHMARKING_POSITIONS;
-use chess::Color;
 use mcts::{AsyncSearchOwned, Mcts, MctsManager, MoveInfoHandle};
 use options::{get_cpuct, get_num_threads};
 use search_tree::{empty_previous_table, PreviousTable};
+use shakmaty::Color;
 use state::{Move, State, StateBuilder};
 use std::sync::atomic::Ordering;
 use std::sync::mpsc::Sender;
@@ -121,7 +121,7 @@ impl Search {
         let manager = self.stop_and_print_m();
 
         let state = manager.tree().root_state();
-        let player = state.current_player();
+        let stm = state.side_to_move();
 
         let mvs = state.available_moves();
 
@@ -156,24 +156,24 @@ impl Search {
             match s {
                 "movetime" => move_time = Self::parse_ms(&mut tokens),
                 "wtime" => {
-                    if player == Color::White {
+                    if stm == Color::White {
                         remaining = Self::parse_ms(&mut tokens)
                     }
                 }
                 "btime" => {
-                    if player == Color::Black {
+                    if stm == Color::Black {
                         remaining = Self::parse_ms(&mut tokens)
                     }
                 }
                 "winc" => {
-                    if player == Color::White {
+                    if stm == Color::White {
                         if let Some(inc) = Self::parse_ms(&mut tokens) {
                             sudden_death = inc.is_zero();
                         }
                     }
                 }
                 "binc" => {
-                    if player == Color::Black {
+                    if stm == Color::Black {
                         if let Some(inc) = Self::parse_ms(&mut tokens) {
                             sudden_death = inc.is_zero();
                         }
