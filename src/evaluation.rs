@@ -14,36 +14,29 @@ pub fn evaluate_new_state(state: &State, moves: &MoveList) -> (Vec<f32>, i64, bo
     let move_evaluations = evaluate_policy(state, &features, moves);
     let mut tb_hit = false;
     let state_evaluation = if moves.is_empty() {
-        let x = (MATE_FACTOR * SCALE) as i64;
         if state.shakmaty_board().is_check() {
-            match state.side_to_move() {
-                Color::White => -x,
-                Color::Black => x,
-            }
+            (-MATE_FACTOR * SCALE) as i64
         } else {
             0
         }
     } else if let Some(wdl) = probe_tablebase_wdl(state.shakmaty_board()) {
         tb_hit = true;
         let win_score = SCALE as i64;
-        match (wdl, state.side_to_move()) {
-            (Wdl::Win, Color::White) => win_score,
-            (Wdl::Loss, Color::White) => -win_score,
-            (Wdl::Win, Color::Black) => -win_score,
-            (Wdl::Loss, Color::Black) => win_score,
+        match wdl {
+            Wdl::Win => win_score,
+            Wdl::Loss => -win_score,
             _ => 0,
         }
     } else {
-        (evaluate_state(state, &features) * SCALE) as i64
+        (evaluate_state(&features) * SCALE) as i64
     };
-    (move_evaluations, state_evaluation, tb_hit)
-}
 
-pub fn interpret_evaluation_for_player(evaln: &i64, color: &Color) -> i64 {
-    match *color {
-        Color::White => *evaln,
-        Color::Black => -*evaln,
-    }
+    let stm_multiplier = if state.side_to_move() == Color::White {
+        1
+    } else {
+        -1
+    };
+    (move_evaluations, stm_multiplier * state_evaluation, tb_hit)
 }
 
 const STATE_NUMBER_INPUTS: usize = state::NUMBER_FEATURES;
@@ -61,7 +54,7 @@ static EVAL_HIDDEN_WEIGHTS: [[f32; STATE_NUMBER_INPUTS]; NUMBER_HIDDEN] =
 static EVAL_OUTPUT_WEIGHTS: [[f32; NUMBER_HIDDEN]; NUMBER_OUTPUTS] =
     include!("model/output_weights");
 
-fn evaluate_state(state: &State, features: &[f32; state::NUMBER_FEATURES]) -> f32 {
+fn evaluate_state(features: &[f32; state::NUMBER_FEATURES]) -> f32 {
     let mut hidden_layer: [f32; NUMBER_HIDDEN] = unsafe {
         let mut out: [MaybeUninit<f32>; NUMBER_HIDDEN] = MaybeUninit::uninit().assume_init();
 
@@ -92,13 +85,7 @@ fn evaluate_state(state: &State, features: &[f32; state::NUMBER_FEATURES]) -> f3
         result += weights[i] * hidden_layer[i].max(0.);
     }
 
-    result = result.tanh();
-
-    if state.side_to_move() == Color::Black {
-        result = -result;
-    }
-
-    result
+    result.tanh()
 }
 
 const POLICY_NUMBER_INPUTS: usize = state::NUMBER_FEATURES;
