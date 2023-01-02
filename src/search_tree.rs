@@ -328,7 +328,6 @@ impl<Spec: Mcts> SearchTree<Spec> {
         let mut state = self.root_state.clone();
         let mut path: SmallVec<[MoveInfoHandle; LARGE_DEPTH]> = SmallVec::new();
         let mut node_path: SmallVec<[&SearchNode; LARGE_DEPTH]> = SmallVec::new();
-        let mut players: SmallVec<[Color; LARGE_DEPTH]> = SmallVec::new();
         let mut node = &self.root_node;
         loop {
             if node.hots().is_empty() {
@@ -347,7 +346,6 @@ impl<Spec: Mcts> SearchTree<Spec> {
                 self.make_handle(tld, &node_path),
             );
             choice.hot.down(&self.manager);
-            players.push(state.side_to_move());
             path.push(choice);
             assert!(path.len() <= self.manager.max_playout_length(),
                 "playout length exceeded maximum of {} (maybe the transposition table is creating an infinite loop?)",
@@ -372,7 +370,17 @@ impl<Spec: Mcts> SearchTree<Spec> {
             }
         }
 
-        self.finish_playout(&path, &node_path, &players, &node.evaln);
+        let last_move_was_black = state.side_to_move() == Color::White;
+
+        self.finish_playout(
+            &path,
+            &node_path,
+            if last_move_was_black {
+                -node.evaln
+            } else {
+                node.evaln
+            },
+        );
 
         true
     }
@@ -437,15 +445,13 @@ impl<Spec: Mcts> SearchTree<Spec> {
         &'a self,
         path: &[MoveInfoHandle],
         node_path: &[&'a SearchNode],
-        players: &[Color],
-        evaln: &StateEvaluation,
+        evaln: StateEvaluation,
     ) {
-        for ((move_info, player), node) in
-            path.iter().zip(players.iter()).zip(node_path.iter()).rev()
-        {
-            let evaln_value = evaluation::interpret_evaluation_for_player(evaln, player);
+        let mut evaln_value = evaln;
+        for (move_info, node) in path.iter().zip(node_path.iter()).rev() {
             node.up(&self.manager, evaln_value);
             move_info.hot.replace(*node);
+            evaln_value = -evaln_value;
         }
     }
 
