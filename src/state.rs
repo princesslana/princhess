@@ -170,12 +170,15 @@ impl State {
             (false, false) => sq,
         };
 
-        for (sq, pc) in b.pieces() {
+        for sq in b.occupied() {
+            let role = b.role_at(sq).unwrap();
+            let color = b.color_at(sq).unwrap();
+
             let adj_sq = flip_square(sq);
 
             let sq_idx = adj_sq as usize;
-            let role_idx = pc.role as usize - 1;
-            let side_idx = usize::from(pc.color != stm);
+            let role_idx = role as usize - 1;
+            let side_idx = usize::from(color != stm);
 
             let feature_idx = (side_idx * 6 + role_idx) * 64 + sq_idx;
 
