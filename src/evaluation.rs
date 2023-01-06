@@ -1,8 +1,8 @@
 use math;
 use search::SCALE;
-use shakmaty::{Color, Position};
+use shakmaty::{Color, MoveList, Position};
 use shakmaty_syzygy::Wdl;
-use state::{self, MoveList, State};
+use state::{self, State};
 use std::mem::{self, MaybeUninit};
 use std::ptr;
 use tablebase::probe_tablebase_wdl;
@@ -14,12 +14,12 @@ pub fn evaluate_new_state(state: &State, moves: &MoveList) -> (Vec<f32>, i64, bo
     let move_evaluations = evaluate_policy(state, &features, moves);
     let mut tb_hit = false;
     let state_evaluation = if moves.is_empty() {
-        if state.shakmaty_board().is_check() {
+        if state.board().is_check() {
             (-MATE_FACTOR * SCALE) as i64
         } else {
             0
         }
-    } else if let Some(wdl) = probe_tablebase_wdl(state.shakmaty_board()) {
+    } else if let Some(wdl) = probe_tablebase_wdl(state.board()) {
         tb_hit = true;
         let win_score = SCALE as i64;
         match wdl {

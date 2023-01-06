@@ -2,7 +2,6 @@
 extern crate log;
 extern crate arc_swap;
 extern crate arrayvec;
-extern crate chess;
 extern crate crossbeam;
 extern crate fastapprox;
 extern crate float_ord;
@@ -10,6 +9,7 @@ extern crate memmap;
 extern crate once_cell;
 extern crate pod;
 extern crate pretty_env_logger;
+extern crate rand;
 extern crate shakmaty;
 extern crate shakmaty_syzygy;
 extern crate smallvec;
