@@ -2,8 +2,8 @@ use bench::BENCHMARKING_POSITIONS;
 use mcts::{AsyncSearchOwned, Mcts, MctsManager, MoveInfoHandle};
 use options::{get_cpuct, get_num_threads};
 use search_tree::{empty_previous_table, PreviousTable};
-use shakmaty::Color;
-use state::{Move, State, StateBuilder};
+use shakmaty::{Color, Move};
+use state::{State, StateBuilder};
 use std::sync::atomic::Ordering;
 use std::sync::mpsc::Sender;
 use std::thread;
@@ -135,7 +135,7 @@ impl Search {
             return Self {
                 search: manager.into(),
             };
-        } else if let Some(mv) = probe_tablebase_best_move(state.shakmaty_board()) {
+        } else if let Some(mv) = probe_tablebase_best_move(state.board()) {
             let uci_mv = mv.to_uci(shakmaty::CastlingMode::Standard);
             println!(
                 "info depth 1 seldepth 1 nodes 1 nps 1 tbhits 1 time 1 pv {}",

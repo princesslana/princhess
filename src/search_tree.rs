@@ -226,7 +226,7 @@ fn create_node<'a, 'b, Spec: Mcts>(
 
     let (move_eval, state_eval, is_tb_hit) = if state.drawn_by_repetition()
         || state.drawn_by_fifty_move_rule()
-        || state.shakmaty_board().is_insufficient_material()
+        || state.board().is_insufficient_material()
     {
         (Vec::with_capacity(0), 0, false)
     } else {

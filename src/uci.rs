@@ -50,7 +50,7 @@ pub fn main(commands: Vec<String>) {
                 }
                 "position"   => {
                     if let Some(state) = State::from_tokens(tokens) {
-                        debug!("\n{}", state.board());
+                        debug!("\n{:?}", state.board());
                         let prev_table = search.table();
                         search = Search::new(state, prev_table);
                     } else {

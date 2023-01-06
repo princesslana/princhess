@@ -7,9 +7,8 @@ use self::pgn_reader::{BufferedReader, Outcome, RawHeader, SanPlus, Skip, Visito
 use self::rand::rngs::SmallRng;
 use self::rand::{Rng, SeedableRng};
 
-use chess;
 use features::{featurize, FeatureVec, GameResult};
-use shakmaty;
+use shakmaty::{self, Color};
 use state::StateBuilder;
 
 use std;
@@ -76,7 +75,7 @@ impl Visitor for ValueDataGenerator {
             if i >= 8 && self.rng.gen_range(0., 1.) < freq {
                 let mut f = featurize(&state);
                 self.rows_written += 1;
-                let crnt_result = if state.board().side_to_move() == chess::Color::White {
+                let crnt_result = if state.side_to_move() == Color::White {
                     game_result
                 } else {
                     game_result.flip()
