@@ -1,5 +1,5 @@
-use shakmaty::zobrist::{ZobristHash, ZobristValue};
-use shakmaty::{self, Chess, Color, File, Move, MoveList, Piece, Position, Setup};
+use shakmaty::zobrist::{Zobrist64, ZobristHash, ZobristValue};
+use shakmaty::{self, Chess, Color, EnPassantMode, File, Move, MoveList, Piece, Position};
 use smallvec::SmallVec;
 use transposition_table::TranspositionHash;
 use uci::Tokens;
@@ -33,7 +33,7 @@ impl StateBuilder {
         Some(
             fen.parse::<shakmaty::fen::Fen>()
                 .ok()?
-                .position::<shakmaty::Chess>(shakmaty::CastlingMode::Standard)
+                .into_position::<shakmaty::Chess>(shakmaty::CastlingMode::Standard)
                 .ok()?
                 .into(),
         )
@@ -81,7 +81,7 @@ pub struct State {
     prev_capture_sq: Option<shakmaty::Square>,
     prev_state_hashes: SmallVec<[u64; 64]>,
     repetitions: usize,
-    hash: u64,
+    hash: Zobrist64,
 }
 impl State {
     pub fn from_tokens(tokens: Tokens) -> Option<Self> {
@@ -97,7 +97,7 @@ impl State {
     }
 
     fn hash(&self) -> u64 {
-        self.hash
+        self.hash.0
     }
 
     pub fn available_moves(&self) -> MoveList {
@@ -132,11 +132,11 @@ impl State {
                 promotion: None,
             } => {
                 let pc = Piece { color, role: *role };
-                self.hash ^= u64::zobrist_for_piece(*from, pc);
-                self.hash ^= u64::zobrist_for_piece(*to, pc);
+                self.hash ^= Zobrist64::zobrist_for_piece(*from, pc);
+                self.hash ^= Zobrist64::zobrist_for_piece(*to, pc);
 
                 if let Some(captured) = capture {
-                    self.hash ^= u64::zobrist_for_piece(
+                    self.hash ^= Zobrist64::zobrist_for_piece(
                         *to,
                         Piece {
                             color: !color,
@@ -145,9 +145,9 @@ impl State {
                     );
                 }
 
-                self.hash ^= u64::zobrist_for_white_turn();
+                self.hash ^= Zobrist64::zobrist_for_white_turn();
             }
-            _ => self.hash = self.board.zobrist_hash(),
+            _ => self.hash = self.board.zobrist_hash(EnPassantMode::Legal),
         };
     }
 
@@ -276,7 +276,7 @@ impl From<shakmaty::Chess> for StateBuilder {
 
 impl From<StateBuilder> for State {
     fn from(sb: StateBuilder) -> Self {
-        let hash = sb.initial_state.zobrist_hash();
+        let hash = sb.initial_state.zobrist_hash(EnPassantMode::Legal);
 
         let mut state = State {
             board: sb.initial_state,
