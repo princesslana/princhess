@@ -162,7 +162,7 @@ def policy_acc(target, output):
 
 
 def train_policy(files, model, start_epoch):
-    outputs = 1792
+    outputs = 384
     train_files = list(glob.glob(files))
     train_generator = generate_batches(files=train_files, categories=outputs)
 

@@ -1,4 +1,3 @@
-use move_index;
 use shakmaty::zobrist::{ZobristHash, ZobristValue};
 use shakmaty::{self, Chess, Color, File, Move, MoveList, Piece, Position, Setup};
 use smallvec::SmallVec;
@@ -225,7 +224,6 @@ impl State {
     }
 
     pub fn move_to_index(&self, mv: &Move) -> usize {
-        let from_sq = mv.from().unwrap();
         let to_sq = mv.to();
 
         let (flip_vertical, flip_horizontal) = self.feature_flip();
@@ -237,7 +235,10 @@ impl State {
             (false, false) => sq,
         };
 
-        move_index::move_to_index(flip_square(from_sq), flip_square(to_sq))
+        let role_idx = mv.role() as usize - 1;
+        let to_idx = flip_square(to_sq) as usize;
+
+        role_idx * 64 + to_idx
     }
 }
 
