@@ -91,7 +91,7 @@ fn evaluate_state(features: &[f32; state::NUMBER_FEATURES]) -> f32 {
 const POLICY_NUMBER_INPUTS: usize = state::NUMBER_FEATURES;
 
 #[allow(clippy::excessive_precision)]
-static POLICY_WEIGHTS: [[f32; POLICY_NUMBER_INPUTS]; 1792] = include!("policy/output_weights");
+static POLICY_WEIGHTS: [[f32; POLICY_NUMBER_INPUTS]; 384] = include!("policy/output_weights");
 
 fn evaluate_policy(
     state: &State,

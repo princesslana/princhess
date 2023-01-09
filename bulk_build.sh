@@ -9,7 +9,7 @@ case $1 in
     where=src/model
     ;;
   policy)
-    what=
+    what=policy
     where=src/policy
     ;;
   *)
