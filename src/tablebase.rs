@@ -1,7 +1,7 @@
 use arc_swap::ArcSwap;
 use log::debug;
 use once_cell::sync::Lazy;
-use shakmaty::{Chess, Move};
+use shakmaty::{Chess, Move, Setup};
 use shakmaty_syzygy::{Tablebase, Wdl};
 use std::path::Path;
 use std::sync::Arc;
@@ -17,12 +17,22 @@ pub fn set_tablebase_directory<P: AsRef<Path>>(path: P) {
 }
 
 pub fn probe_tablebase_wdl(pos: &Chess) -> Option<Wdl> {
-    TABLEBASE.load().probe_wdl_after_zeroing(pos).ok()
+    let tb = TABLEBASE.load();
+    if pos.board().occupied().count() > tb.max_pieces() {
+        None
+    } else {
+        tb.probe_wdl_after_zeroing(pos).ok()
+    }
 }
 
 pub fn probe_tablebase_best_move(pos: &Chess) -> Option<Move> {
-    match TABLEBASE.load().best_move(pos) {
-        Ok(Some((m, _))) => Some(m),
-        _ => None,
+    let tb = TABLEBASE.load();
+    if pos.board().occupied().count() > tb.max_pieces() {
+        None
+    } else {
+        match tb.best_move(pos) {
+            Ok(Some((m, _))) => Some(m),
+            _ => None,
+        }
     }
 }
