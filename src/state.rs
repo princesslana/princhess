@@ -161,7 +161,7 @@ impl State {
     }
 
     pub fn drawn_by_fifty_move_rule(&self) -> bool {
-        self.prev_state_hashes.len() >= 100
+        self.prev_state_hashes.len() > 100
     }
 
     pub fn drawn_by_repetition(&self) -> bool {
