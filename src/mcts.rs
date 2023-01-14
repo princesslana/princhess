@@ -17,7 +17,6 @@ use std::time::Instant;
 pub trait Mcts: Sized + Sync {
     type TreePolicy: TreePolicy<Self>;
     type TranspositionTable: TranspositionTable;
-    type ExtraThreadData;
 
     /// Virtual loss subtracted from a node's evaluation when a search thread chooses it in a playout,
     /// then added back when the playout is complete.
@@ -42,19 +41,16 @@ pub trait Mcts: Sized + Sync {
 
 pub struct ThreadData<'a, Spec: Mcts> {
     pub policy_data: TreePolicyThreadData<Spec>,
-    pub extra_data: Spec::ExtraThreadData,
     pub allocator: ArenaAllocator<'a>,
 }
 
 impl<'a, Spec: Mcts> ThreadData<'a, Spec>
 where
     TreePolicyThreadData<Spec>: Default,
-    Spec::ExtraThreadData: Default,
 {
     fn create(tree: &'a SearchTree<Spec>) -> Self {
         Self {
             policy_data: Default::default(),
-            extra_data: Default::default(),
             allocator: tree.arena().allocator(),
         }
     }
@@ -73,7 +69,6 @@ pub struct MctsManager<Spec: Mcts> {
 impl<Spec: Mcts> MctsManager<Spec>
 where
     TreePolicyThreadData<Spec>: Default,
-    Spec::ExtraThreadData: Default,
 {
     pub fn new(
         state: State,

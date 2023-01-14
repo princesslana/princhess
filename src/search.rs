@@ -25,23 +25,9 @@ fn policy() -> AlphaGoPolicy {
 }
 
 pub struct GooseMcts;
-pub struct ThreadSentinel;
-
-impl Default for ThreadSentinel {
-    fn default() -> Self {
-        info!("Search thread created.");
-        ThreadSentinel
-    }
-}
-impl Drop for ThreadSentinel {
-    fn drop(&mut self) {
-        info!("Search thread destroyed.");
-    }
-}
 
 impl Mcts for GooseMcts {
     type TreePolicy = AlphaGoPolicy;
-    type ExtraThreadData = ThreadSentinel;
     type TranspositionTable = ApproxTable;
 
     fn node_limit(&self) -> usize {
