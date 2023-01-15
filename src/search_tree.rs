@@ -2,14 +2,14 @@ use evaluation;
 use math;
 use mcts::*;
 use options::get_hash_size_mb;
-use search::{GooseMcts, SCALE};
+use search::SCALE;
 use shakmaty::{Color, MoveList, Position};
 use smallvec::SmallVec;
 use state::State;
 use std::mem;
 use std::ptr::null_mut;
 use std::sync::atomic::{AtomicI64, AtomicPtr, AtomicU32, AtomicUsize, Ordering};
-use transposition_table::{ApproxTable, TranspositionTable};
+use transposition_table::ApproxTable;
 
 use log::debug;
 use pod::Pod;
@@ -24,8 +24,8 @@ pub struct SearchTree<Spec: Mcts> {
     root_node: SearchNode,
     root_state: State,
     tree_policy: Spec::TreePolicy,
-    table: Spec::TranspositionTable,
-    prev_table: PreviousTable<Spec>,
+    table: ApproxTable,
+    prev_table: PreviousTable,
     manager: Spec,
     arena: Box<Arena>,
 
@@ -33,20 +33,20 @@ pub struct SearchTree<Spec: Mcts> {
     tb_hits: AtomicUsize,
 }
 
-pub struct PreviousTable<Spec: Mcts> {
-    table: Spec::TranspositionTable,
+pub struct PreviousTable {
+    table: ApproxTable,
     #[allow(dead_code)]
     arena: Box<Arena>,
 }
 
-pub fn empty_previous_table() -> PreviousTable<GooseMcts> {
+pub fn empty_previous_table() -> PreviousTable {
     PreviousTable {
         table: ApproxTable::enough_to_hold(0),
         arena: Box::new(Arena::new(2)),
     }
 }
 
-impl<Spec: Mcts> PreviousTable<Spec> {
+impl PreviousTable {
     pub fn lookup_into(&self, state: &State, dest: &mut SearchNode) {
         if let Some(src) = self.table.lookup(state) {
             dest.replace(src);
@@ -251,8 +251,8 @@ impl<Spec: Mcts> SearchTree<Spec> {
         state: State,
         manager: Spec,
         tree_policy: Spec::TreePolicy,
-        table: Spec::TranspositionTable,
-        prev_table: PreviousTable<Spec>,
+        table: ApproxTable,
+        prev_table: PreviousTable,
     ) -> Self {
         let arena = Box::new(Arena::new(get_hash_size_mb() / 2));
         let tb_hits = 0.into();
@@ -294,7 +294,7 @@ impl<Spec: Mcts> SearchTree<Spec> {
         &self.manager
     }
 
-    pub fn table(self) -> PreviousTable<Spec> {
+    pub fn table(self) -> PreviousTable {
         PreviousTable {
             table: self.table,
             arena: self.arena,
