@@ -28,7 +28,6 @@ pub struct GooseMcts;
 
 impl Mcts for GooseMcts {
     type TreePolicy = AlphaGoPolicy;
-    type TranspositionTable = ApproxTable;
 
     fn node_limit(&self) -> usize {
         4_000_000
@@ -54,10 +53,7 @@ pub struct Search {
 }
 
 impl Search {
-    pub fn create_manager(
-        state: State,
-        prev_table: PreviousTable<GooseMcts>,
-    ) -> MctsManager<GooseMcts> {
+    pub fn create_manager(state: State, prev_table: PreviousTable) -> MctsManager<GooseMcts> {
         MctsManager::new(
             state,
             GooseMcts,
@@ -67,12 +63,12 @@ impl Search {
         )
     }
 
-    pub fn new(state: State, prev_table: PreviousTable<GooseMcts>) -> Self {
+    pub fn new(state: State, prev_table: PreviousTable) -> Self {
         let search = Self::create_manager(state, prev_table).into();
         Self { search }
     }
 
-    pub fn table(self) -> PreviousTable<GooseMcts> {
+    pub fn table(self) -> PreviousTable {
         let manager = self.stop_and_print_m();
         manager.table()
     }

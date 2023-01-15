@@ -16,7 +16,6 @@ use std::time::Instant;
 
 pub trait Mcts: Sized + Sync {
     type TreePolicy: TreePolicy<Self>;
-    type TranspositionTable: TranspositionTable;
 
     /// Virtual loss subtracted from a node's evaluation when a search thread chooses it in a playout,
     /// then added back when the playout is complete.
@@ -74,8 +73,8 @@ where
         state: State,
         manager: Spec,
         tree_policy: Spec::TreePolicy,
-        table: Spec::TranspositionTable,
-        prev_table: PreviousTable<Spec>,
+        table: ApproxTable,
+        prev_table: PreviousTable,
     ) -> Self {
         let search_tree = SearchTree::new(state, manager, tree_policy, table, prev_table);
         Self {
@@ -154,7 +153,7 @@ where
         &self.search_tree
     }
 
-    pub fn table(self) -> PreviousTable<Spec> {
+    pub fn table(self) -> PreviousTable {
         self.search_tree.table()
     }
 
