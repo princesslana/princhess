@@ -1,10 +1,10 @@
+use arrayvec::ArrayVec;
 use evaluation;
 use math;
 use mcts::*;
 use options::get_hash_size_mb;
 use search::SCALE;
 use shakmaty::{Color, MoveList, Position};
-use smallvec::SmallVec;
 use state::State;
 use std::mem;
 use std::ptr::null_mut;
@@ -17,6 +17,8 @@ use pod::Pod;
 use tree_policy::TreePolicy;
 
 use arena::{Arena, ArenaAllocator, ArenaError};
+
+const MAX_PLAYOUT_LENGTH: usize = 256;
 
 /// You're not intended to use this class (use an `MctsManager` instead),
 /// but you can use it if you want to manage the threads yourself.
@@ -315,7 +317,6 @@ impl<Spec: Mcts> SearchTree<Spec> {
 
     #[inline(never)]
     pub fn playout<'a: 'b, 'b>(&'a self, tld: &'b mut ThreadData<'a, Spec>) -> bool {
-        const LARGE_DEPTH: usize = 64;
         let sentinel = IncreaseSentinel::new(&self.num_nodes);
         if sentinel.num_nodes >= self.manager.node_limit() {
             debug!(
@@ -326,8 +327,8 @@ impl<Spec: Mcts> SearchTree<Spec> {
             return false;
         }
         let mut state = self.root_state.clone();
-        let mut path: SmallVec<[MoveInfoHandle; LARGE_DEPTH]> = SmallVec::new();
-        let mut node_path: SmallVec<[&SearchNode; LARGE_DEPTH]> = SmallVec::new();
+        let mut path: ArrayVec<MoveInfoHandle, MAX_PLAYOUT_LENGTH> = ArrayVec::new();
+        let mut node_path: ArrayVec<&SearchNode, MAX_PLAYOUT_LENGTH> = ArrayVec::new();
         let mut node = &self.root_node;
         loop {
             if node.hots().is_empty() {
@@ -337,7 +338,7 @@ impl<Spec: Mcts> SearchTree<Spec> {
             if node.tablebase && path.len() > 2 {
                 break;
             }
-            if path.len() >= self.manager.max_playout_length() {
+            if path.len() >= MAX_PLAYOUT_LENGTH {
                 break;
             }
             let choice = self.tree_policy.choose_child(
@@ -347,9 +348,6 @@ impl<Spec: Mcts> SearchTree<Spec> {
             );
             choice.hot.down(&self.manager);
             path.push(choice);
-            assert!(path.len() <= self.manager.max_playout_length(),
-                "playout length exceeded maximum of {} (maybe the transposition table is creating an infinite loop?)",
-                self.manager.max_playout_length());
             state.make_move(&choice.hot.mov);
 
             let new_node = match self.descend(&state, choice.hot, tld, &node_path) {
