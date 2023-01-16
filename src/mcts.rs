@@ -32,10 +32,6 @@ pub trait Mcts: Sized + Sync {
     fn select_child_after_search<'a>(&self, children: &[MoveInfoHandle<'a>]) -> MoveInfoHandle<'a> {
         *children.iter().max_by_key(|child| child.visits()).unwrap()
     }
-    /// `playout` panics when this length is exceeded. Defaults to one million.
-    fn max_playout_length(&self) -> usize {
-        1_000_000
-    }
 }
 
 pub struct ThreadData<'a, Spec: Mcts> {
