@@ -1,6 +1,6 @@
 use options::{set_cpuct, set_hash_size_mb, set_num_threads};
 use search::Search;
-use search_tree::{empty_previous_table, print_size_list};
+use search_tree::{print_size_list, TranspositionTable};
 use state::State;
 use std::io::{stdin, BufRead};
 use std::str::{FromStr, SplitWhitespace};
@@ -15,7 +15,7 @@ const ENGINE_AUTHOR: &str = "Princess Lana";
 const VERSION: Option<&'static str> = option_env!("CARGO_PKG_VERSION");
 
 pub fn main(commands: Vec<String>) {
-    let mut search = Search::new(State::default(), empty_previous_table());
+    let mut search = Search::new(State::default(), TranspositionTable::empty());
     let (sender, receiver) = channel();
     for cmd in commands {
         sender.send(cmd).unwrap();
@@ -46,7 +46,7 @@ pub fn main(commands: Vec<String>) {
                     }
                 }
                 "ucinewgame" => {
-                    search = Search::new(State::default(), empty_previous_table());
+                    search = Search::new(State::default(), TranspositionTable::empty());
                 }
                 "position"   => {
                     if let Some(state) = State::from_tokens(tokens) {

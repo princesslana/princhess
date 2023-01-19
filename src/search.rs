@@ -1,7 +1,7 @@
 use bench::BENCHMARKING_POSITIONS;
 use mcts::{AsyncSearchOwned, Mcts, MctsManager, MoveInfoHandle};
 use options::{get_cpuct, get_num_threads};
-use search_tree::{empty_previous_table, PreviousTable};
+use search_tree::TranspositionTable;
 use shakmaty::{Color, Move};
 use state::{State, StateBuilder};
 use std::sync::atomic::Ordering;
@@ -53,7 +53,7 @@ pub struct Search {
 }
 
 impl Search {
-    pub fn create_manager(state: State, prev_table: PreviousTable) -> MctsManager<GooseMcts> {
+    pub fn create_manager(state: State, prev_table: TranspositionTable) -> MctsManager<GooseMcts> {
         MctsManager::new(
             state,
             GooseMcts,
@@ -63,12 +63,12 @@ impl Search {
         )
     }
 
-    pub fn new(state: State, prev_table: PreviousTable) -> Self {
+    pub fn new(state: State, prev_table: TranspositionTable) -> Self {
         let search = Self::create_manager(state, prev_table).into();
         Self { search }
     }
 
-    pub fn table(self) -> PreviousTable {
+    pub fn table(self) -> TranspositionTable {
         let manager = self.stop_and_print_m();
         manager.table()
     }
@@ -252,7 +252,7 @@ impl Search {
                 GooseMcts,
                 policy(),
                 ApproxTable::enough_to_hold(GooseMcts.node_limit()),
-                empty_previous_table(),
+                TranspositionTable::empty(),
             );
 
             manager.playout_sync();

@@ -26,29 +26,40 @@ pub struct SearchTree<Spec: Mcts> {
     root_node: SearchNode,
     root_state: State,
     tree_policy: Spec::TreePolicy,
-    table: ApproxTable,
-    prev_table: PreviousTable,
+    current_table: TranspositionTable,
+    previous_table: TranspositionTable,
     manager: Spec,
-    arena: Box<Arena>,
 
     num_nodes: AtomicUsize,
     tb_hits: AtomicUsize,
 }
 
-pub struct PreviousTable {
+pub struct TranspositionTable {
     table: ApproxTable,
     #[allow(dead_code)]
     arena: Box<Arena>,
 }
 
-pub fn empty_previous_table() -> PreviousTable {
-    PreviousTable {
-        table: ApproxTable::enough_to_hold(0),
-        arena: Box::new(Arena::new(2)),
+impl TranspositionTable {
+    pub fn empty() -> Self {
+        Self {
+            table: ApproxTable::enough_to_hold(0),
+            arena: Box::new(Arena::new(2)),
+        }
     }
-}
 
-impl PreviousTable {
+    pub fn new(table: ApproxTable, arena: Box<Arena>) -> Self {
+        Self { table, arena }
+    }
+
+    pub fn insert<'a>(&'a self, key: &State, value: &'a SearchNode) -> Option<&'a SearchNode> {
+        self.table.insert(key, value)
+    }
+
+    pub fn lookup<'a>(&'a self, key: &State) -> Option<&'a SearchNode> {
+        self.table.lookup(key)
+    }
+
     pub fn lookup_into(&self, state: &State, dest: &mut SearchNode) {
         if let Some(src) = self.table.lookup(state) {
             dest.replace(src);
@@ -254,7 +265,7 @@ impl<Spec: Mcts> SearchTree<Spec> {
         manager: Spec,
         tree_policy: Spec::TreePolicy,
         table: ApproxTable,
-        prev_table: PreviousTable,
+        previous_table: TranspositionTable,
     ) -> Self {
         let arena = Box::new(Arena::new(get_hash_size_mb() / 2));
         let tb_hits = 0.into();
@@ -267,7 +278,7 @@ impl<Spec: Mcts> SearchTree<Spec> {
         )
         .expect("Unable to create root node");
 
-        prev_table.lookup_into(&state, &mut root_node);
+        previous_table.lookup_into(&state, &mut root_node);
 
         let mut avg_rewards: Vec<f32> = root_node
             .moves()
@@ -284,11 +295,10 @@ impl<Spec: Mcts> SearchTree<Spec> {
             root_node,
             manager,
             tree_policy,
-            table,
-            prev_table,
+            current_table: TranspositionTable::new(table, arena),
+            previous_table,
             num_nodes: 1.into(),
             tb_hits,
-            arena,
         }
     }
 
@@ -296,11 +306,8 @@ impl<Spec: Mcts> SearchTree<Spec> {
         &self.manager
     }
 
-    pub fn table(self) -> PreviousTable {
-        PreviousTable {
-            table: self.table,
-            arena: self.arena,
-        }
+    pub fn table(self) -> TranspositionTable {
+        self.current_table
     }
 
     pub fn num_nodes(&self) -> usize {
@@ -312,7 +319,7 @@ impl<Spec: Mcts> SearchTree<Spec> {
     }
 
     pub fn arena(&self) -> &Arena {
-        &self.arena
+        &self.current_table.arena
     }
 
     #[inline(never)]
@@ -395,7 +402,7 @@ impl<Spec: Mcts> SearchTree<Spec> {
             return unsafe { Ok(&*child) };
         }
 
-        if let Some(node) = self.table.lookup(state) {
+        if let Some(node) = self.current_table.lookup(state) {
             return match choice.child.compare_exchange(
                 null_mut(),
                 node as *const _ as *mut _,
@@ -414,7 +421,7 @@ impl<Spec: Mcts> SearchTree<Spec> {
             CreationHelper::Handle(self.make_handle(tld, path)),
         )?;
 
-        self.prev_table.lookup_into(state, &mut created_here);
+        self.previous_table.lookup_into(state, &mut created_here);
 
         let created = tld.allocator.alloc_one()?;
         *created = created_here;
@@ -430,7 +437,7 @@ impl<Spec: Mcts> SearchTree<Spec> {
             }
         }
 
-        if let Some(existing) = self.table.insert(state, created) {
+        if let Some(existing) = self.current_table.insert(state, created) {
             let existing_ptr = existing as *const _ as *mut _;
             choice.child.store(existing_ptr, Ordering::Relaxed);
             return Ok(existing);
