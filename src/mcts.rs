@@ -70,7 +70,7 @@ where
         manager: Spec,
         tree_policy: Spec::TreePolicy,
         table: ApproxTable,
-        prev_table: PreviousTable,
+        prev_table: TranspositionTable,
     ) -> Self {
         let search_tree = SearchTree::new(state, manager, tree_policy, table, prev_table);
         Self {
@@ -149,7 +149,7 @@ where
         &self.search_tree
     }
 
-    pub fn table(self) -> PreviousTable {
+    pub fn table(self) -> TranspositionTable {
         self.search_tree.table()
     }
 
