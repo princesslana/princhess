@@ -26,6 +26,8 @@ pub struct SearchTree<Spec: Mcts> {
     root_node: SearchNode,
     root_state: State,
     tree_policy: Spec::TreePolicy,
+    #[allow(dead_code)]
+    root_table: TranspositionTable,
     current_table: TranspositionTable,
     previous_table: TranspositionTable,
     manager: Spec,
@@ -267,14 +269,16 @@ impl<Spec: Mcts> SearchTree<Spec> {
         table: ApproxTable,
         previous_table: TranspositionTable,
     ) -> Self {
-        let arena = Box::new(Arena::new(get_hash_size_mb() / 2));
         let tb_hits = 0.into();
+
+        let root_table =
+            TranspositionTable::new(ApproxTable::enough_to_hold(256), Box::new(Arena::new(2)));
 
         let mut root_node = create_node::<Spec>(
             &tree_policy,
             &state,
             &tb_hits,
-            CreationHelper::Allocator(&arena.allocator()),
+            CreationHelper::Allocator(&root_table.arena.allocator()),
         )
         .expect("Unable to create root node");
 
@@ -290,12 +294,15 @@ impl<Spec: Mcts> SearchTree<Spec> {
 
         root_node.update_policy(avg_rewards);
 
+        let current_arena = Box::new(Arena::new(get_hash_size_mb() / 2));
+
         Self {
             root_state: state,
             root_node,
             manager,
             tree_policy,
-            current_table: TranspositionTable::new(table, arena),
+            root_table,
+            current_table: TranspositionTable::new(table, current_arena),
             previous_table,
             num_nodes: 1.into(),
             tb_hits,
