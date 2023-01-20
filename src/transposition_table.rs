@@ -121,7 +121,7 @@ where
                         .k
                         .compare_exchange(0, my_hash, Ordering::Relaxed, Ordering::Relaxed);
                 self.size.fetch_add(1, Ordering::Relaxed);
-                match key_here {
+                return match key_here {
                     Ok(_) => get_or_write(&entry.v, value),
                     Err(v) if v == my_hash => get_or_write(&entry.v, value),
                     _ => None,
