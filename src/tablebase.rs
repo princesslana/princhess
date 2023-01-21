@@ -1,7 +1,7 @@
 use arc_swap::ArcSwap;
 use log::debug;
 use once_cell::sync::Lazy;
-use shakmaty::{Chess, Move, Setup};
+use shakmaty::{Chess, Move, Position};
 use shakmaty_syzygy::{Tablebase, Wdl};
 use std::path::Path;
 use std::sync::Arc;

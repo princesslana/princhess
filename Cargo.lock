@@ -380,8 +380,7 @@ checksum = "08d43f7aa6b08d49f382cde6a7982047c3426db949b1424bc4b7ec9ae12c6ce2"
 [[package]]
 name = "shakmaty"
 version = "0.23.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f4cd635d633ee708d7aca53e1a1a013fda5c3824e4b8306abb1f1d663543e9a4"
+source = "git+https://github.com/niklasf/shakmaty?rev=71521853a1d3dd62c751a6c99002b74050d3dff7#71521853a1d3dd62c751a6c99002b74050d3dff7"
 dependencies = [
  "arrayvec",
  "bitflags 1.3.2",

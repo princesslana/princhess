@@ -23,10 +23,13 @@ pretty_env_logger = "=0.4.0"
 pod = "=0.5.0"
 pgn-reader = "=0.22.0"
 rand = { version = "=0.7.3", features = ["small_rng"] }
-shakmaty = "=0.23.0"
+shakmaty = "0.23.0"
 shakmaty-syzygy = "=0.21.0"
 slurp = "=1.0.1"
 smallvec = "=0.6.14"
+
+[patch.crates-io]
+shakmaty = { git = "https://github.com/niklasf/shakmaty", rev = "71521853a1d3dd62c751a6c99002b74050d3dff7" }
 
 [profile.release]
 lto = true
