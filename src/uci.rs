@@ -64,7 +64,6 @@ pub fn main(commands: Vec<String>) {
                 "sizelist"   => print_size_list(),
                 "info"       => search.print_info(),
                 "features"   => search.print_features(),
-                "bench"      => search.bench(),
                 _ => error!("Unknown command: {} (this engine uses a reduced set of commands from the UCI protocol)", first_word)
             }
         }

@@ -3,12 +3,13 @@ use evaluation;
 use math;
 use mcts::*;
 use options::get_hash_size_mb;
-use search::SCALE;
+use search::{GooseMcts, SCALE};
 use shakmaty::{Color, MoveList, Position};
 use state::State;
 use std::mem;
 use std::ptr::null_mut;
-use std::sync::atomic::{AtomicI64, AtomicPtr, AtomicU32, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI64, AtomicPtr, AtomicU32, AtomicUsize, Ordering};
+use std::sync::Mutex;
 use transposition_table::ApproxTable;
 
 use log::debug;
@@ -28,10 +29,12 @@ pub struct SearchTree<Spec: Mcts> {
     tree_policy: Spec::TreePolicy,
     #[allow(dead_code)]
     root_table: TranspositionTable,
-    current_table: TranspositionTable,
-    previous_table: TranspositionTable,
+    left_table: TranspositionTable,
+    right_table: TranspositionTable,
+    is_left_current: AtomicBool,
     manager: Spec,
 
+    flip_lock: Mutex<()>,
     num_nodes: AtomicUsize,
     tb_hits: AtomicUsize,
 }
@@ -44,14 +47,19 @@ pub struct TranspositionTable {
 
 impl TranspositionTable {
     pub fn empty() -> Self {
-        Self {
-            table: ApproxTable::enough_to_hold(0),
-            arena: Box::new(Arena::new(2)),
-        }
+        let table = ApproxTable::enough_to_hold(GooseMcts.node_limit());
+        let arena = Box::new(Arena::new(get_hash_size_mb() / 2));
+
+        Self { table, arena }
     }
 
     pub fn new(table: ApproxTable, arena: Box<Arena>) -> Self {
         Self { table, arena }
+    }
+
+    pub fn clear(&self) {
+        self.table.clear();
+        self.arena.clear();
     }
 
     pub fn insert<'a>(&'a self, key: &State, value: &'a SearchNode) -> Option<&'a SearchNode> {
@@ -177,6 +185,13 @@ impl SearchNode {
             index: 0,
         }
     }
+    pub fn clear_children_links(&self) {
+        let hots = unsafe { &*(self.hots as *mut [HotMoveInfo]) };
+
+        for h in hots {
+            h.child.store(null_mut(), Ordering::SeqCst);
+        }
+    }
 }
 
 impl HotMoveInfo {
@@ -217,7 +232,7 @@ impl<'a> MoveInfoHandle<'a> {
 }
 
 enum CreationHelper<'a: 'b, 'b, Spec: 'a + Mcts> {
-    Handle(SearchHandle<'a, 'b, Spec>),
+    Handle(bool, SearchHandle<'a, 'b, Spec>),
     Allocator(&'b ArenaAllocator<'a>),
 }
 
@@ -230,10 +245,15 @@ fn create_node<'a, 'b, Spec: Mcts>(
 ) -> Result<SearchNode, ArenaError> {
     let (allocator, _handle) = match ch {
         CreationHelper::Allocator(x) => (x, None),
-        CreationHelper::Handle(x) => {
+        CreationHelper::Handle(is_left, x) => {
             // this is safe because nothing will move into x.tld.allocator
             // since ThreadData.allocator is a private field
-            let allocator = unsafe { &*(&x.tld.allocator as *const _) };
+            let allocator_ref = if is_left {
+                &x.tld.allocator.0
+            } else {
+                &x.tld.allocator.1
+            };
+            let allocator = unsafe { &*(allocator_ref as *const _) };
             (allocator, Some(x))
         }
     };
@@ -302,8 +322,10 @@ impl<Spec: Mcts> SearchTree<Spec> {
             manager,
             tree_policy,
             root_table,
-            current_table: TranspositionTable::new(table, current_arena),
-            previous_table,
+            left_table: TranspositionTable::new(table, current_arena),
+            right_table: previous_table,
+            is_left_current: AtomicBool::new(true),
+            flip_lock: Default::default(),
             num_nodes: 1.into(),
             tb_hits,
         }
@@ -313,8 +335,40 @@ impl<Spec: Mcts> SearchTree<Spec> {
         &self.manager
     }
 
+    fn is_left_current(&self) -> bool {
+        self.is_left_current.load(Ordering::Relaxed)
+    }
+
+    fn current_table(&self) -> &TranspositionTable {
+        if self.is_left_current() {
+            &self.left_table
+        } else {
+            &self.right_table
+        }
+    }
+
+    fn previous_table(&self) -> &TranspositionTable {
+        if self.is_left_current() {
+            &self.right_table
+        } else {
+            &self.left_table
+        }
+    }
+
+    fn flip_tables(&self) {
+        self.previous_table().clear();
+        self.is_left_current.store(
+            !self.is_left_current.load(Ordering::SeqCst),
+            Ordering::SeqCst,
+        );
+    }
+
     pub fn table(self) -> TranspositionTable {
-        self.current_table
+        if self.is_left_current() {
+            self.left_table
+        } else {
+            self.right_table
+        }
     }
 
     pub fn num_nodes(&self) -> usize {
@@ -325,8 +379,8 @@ impl<Spec: Mcts> SearchTree<Spec> {
         self.tb_hits.load(Ordering::SeqCst)
     }
 
-    pub fn arena(&self) -> &Arena {
-        &self.current_table.arena
+    pub fn arenas(&self) -> (&Arena, &Arena) {
+        (&self.left_table.arena, &self.right_table.arena)
     }
 
     #[inline(never)]
@@ -337,7 +391,7 @@ impl<Spec: Mcts> SearchTree<Spec> {
                 "Node limit of {} reached. Halting search.",
                 self.spec().node_limit()
             );
-            println!("info hashfull 1000");
+            println!("info hashfull 10000");
             return false;
         }
         let mut state = self.root_state.clone();
@@ -345,6 +399,9 @@ impl<Spec: Mcts> SearchTree<Spec> {
         let mut node_path: ArrayVec<&SearchNode, MAX_PLAYOUT_LENGTH> = ArrayVec::new();
         let mut node = &self.root_node;
         loop {
+            {
+                let _lock = self.flip_lock.lock().unwrap();
+            }
             if node.hots().is_empty() {
                 break;
             }
@@ -367,9 +424,12 @@ impl<Spec: Mcts> SearchTree<Spec> {
             let new_node = match self.descend(&state, choice.hot, tld, &node_path) {
                 Ok(r) => r,
                 Err(ArenaError::Full) => {
-                    debug!("Hash reached max capacity");
-                    println!("info hashfull 1000");
-                    return false;
+                    let _lock = self.flip_lock.lock().unwrap();
+                    if self.current_table().arena.full() {
+                        self.flip_tables();
+                        self.root_node.clear_children_links();
+                    }
+                    return true;
                 }
             };
 
@@ -409,7 +469,7 @@ impl<Spec: Mcts> SearchTree<Spec> {
             return unsafe { Ok(&*child) };
         }
 
-        if let Some(node) = self.current_table.lookup(state) {
+        if let Some(node) = self.current_table().lookup(state) {
             return match choice.child.compare_exchange(
                 null_mut(),
                 node as *const _ as *mut _,
@@ -421,16 +481,23 @@ impl<Spec: Mcts> SearchTree<Spec> {
             };
         }
 
+        let is_left_current = self.is_left_current();
+
         let mut created_here = create_node(
             &self.tree_policy,
             state,
             &self.tb_hits,
-            CreationHelper::Handle(self.make_handle(tld, path)),
+            CreationHelper::Handle(is_left_current, self.make_handle(tld, path)),
         )?;
 
-        self.previous_table.lookup_into(state, &mut created_here);
+        self.previous_table().lookup_into(state, &mut created_here);
 
-        let created = tld.allocator.alloc_one()?;
+        let created = if is_left_current {
+            tld.allocator.0.alloc_one()?
+        } else {
+            tld.allocator.1.alloc_one()?
+        };
+
         *created = created_here;
         let other_child = choice.child.compare_exchange(
             null_mut(),
@@ -444,7 +511,7 @@ impl<Spec: Mcts> SearchTree<Spec> {
             }
         }
 
-        if let Some(existing) = self.current_table.insert(state, created) {
+        if let Some(existing) = self.current_table().insert(state, created) {
             let existing_ptr = existing as *const _ as *mut _;
             choice.child.store(existing_ptr, Ordering::Relaxed);
             return Ok(existing);

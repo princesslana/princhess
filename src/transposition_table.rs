@@ -46,6 +46,7 @@ impl<K: TranspositionHash, V> ApproxQuadraticProbingHashTable<K, V> {
             capacity.count_ones() == 1,
             "the capacity must be a power of 2"
         );
+        debug!("Creating approx table with capacity {}", capacity);
         let arr = vec![Entry16::default(); capacity].into_boxed_slice();
         let mask = capacity - 1;
         Self {
@@ -61,6 +62,14 @@ impl<K: TranspositionHash, V> ApproxQuadraticProbingHashTable<K, V> {
             capacity <<= 1;
         }
         Self::new(capacity)
+    }
+
+    pub fn clear(&self) {
+        for entry in self.arr.iter() {
+            entry.k.store(0, Ordering::Relaxed);
+            entry.v.store(std::ptr::null_mut(), Ordering::Relaxed);
+        }
+        self.size.store(0, Ordering::Relaxed);
     }
 }
 
@@ -132,6 +141,7 @@ where
         }
         None
     }
+
     pub fn lookup<'a>(&'a self, key: &State) -> Option<&'a SearchNode> {
         let my_hash = key.hash();
         let mut posn = my_hash as usize & self.mask;

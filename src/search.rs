@@ -1,13 +1,12 @@
-use bench::BENCHMARKING_POSITIONS;
 use mcts::{AsyncSearchOwned, Mcts, MctsManager, MoveInfoHandle};
 use options::{get_cpuct, get_num_threads};
 use search_tree::TranspositionTable;
 use shakmaty::{Color, Move};
-use state::{State, StateBuilder};
+use state::State;
 use std::sync::atomic::Ordering;
 use std::sync::mpsc::Sender;
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use tablebase::probe_tablebase_best_move;
 use transposition_table::ApproxTable;
 use tree_policy::AlphaGoPolicy;
@@ -238,37 +237,6 @@ impl Search {
             }
             println!()
         }
-    }
-
-    pub fn bench(&self) {
-        let bench_start = Instant::now();
-        let mut nodes = 0;
-        let mut search_time_ms = 0;
-        for fen in BENCHMARKING_POSITIONS {
-            let state: State = StateBuilder::from_fen(fen).unwrap().into();
-
-            let manager = MctsManager::new(
-                state,
-                GooseMcts,
-                policy(),
-                ApproxTable::enough_to_hold(GooseMcts.node_limit()),
-                TranspositionTable::empty(),
-            );
-
-            manager.playout_sync();
-
-            nodes += manager.nodes();
-            search_time_ms = Instant::now().duration_since(bench_start).as_millis();
-
-            println!(
-                "info string {}/{}",
-                nodes,
-                nodes * 1000 / search_time_ms as usize
-            );
-        }
-
-        println!("info nodes {}", nodes,);
-        println!("info nps {}", nodes * 1000 / search_time_ms as usize)
     }
 }
 
