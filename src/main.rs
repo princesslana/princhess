@@ -15,7 +15,6 @@ extern crate shakmaty_syzygy;
 extern crate smallvec;
 
 mod arena;
-mod bench;
 mod math;
 mod mcts;
 mod options;
