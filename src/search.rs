@@ -13,7 +13,9 @@ use tree_policy::AlphaGoPolicy;
 use uci::Tokens;
 
 const DEFAULT_MOVE_TIME_SECS: u64 = 10;
-const DEFAULT_MOVE_TIME_FRACTION: u32 = 15;
+const DEFAULT_MOVE_TIME_FRACTION: u32 = 20;
+
+const MOVE_OVERHEAD: Duration = Duration::from_millis(50);
 
 pub const SCALE: f32 = 1e9;
 
@@ -129,9 +131,9 @@ impl Search {
         }
 
         let mut move_time = None;
+        let mut increment = Duration::ZERO;
         let mut infinite = false;
         let mut remaining = None;
-        let mut sudden_death = true;
 
         while let Some(s) = tokens.next() {
             match s {
@@ -148,20 +150,13 @@ impl Search {
                 }
                 "winc" => {
                     if stm == Color::White {
-                        if let Some(inc) = Self::parse_ms(&mut tokens) {
-                            sudden_death = inc.is_zero();
-                        }
+                        increment = Self::parse_ms(&mut tokens).unwrap_or(Duration::ZERO);
                     }
                 }
                 "binc" => {
                     if stm == Color::Black {
-                        if let Some(inc) = Self::parse_ms(&mut tokens) {
-                            sudden_death = inc.is_zero();
-                        }
+                        increment = Self::parse_ms(&mut tokens).unwrap_or(Duration::ZERO);
                     }
-                }
-                "movestogo" => {
-                    sudden_death = false;
                 }
                 "infinite" => infinite = true,
                 _ => (),
@@ -175,13 +170,15 @@ impl Search {
         } else if let Some(mt) = move_time {
             think_time = Some(mt)
         } else if let Some(r) = remaining {
-            let mut t = r / DEFAULT_MOVE_TIME_FRACTION;
+            think_time = if increment.is_zero() && r < Duration::from_millis(60000) {
+                Some(r / 60)
+            } else {
+                let ideal_think_time =
+                    (r + 20 * increment - MOVE_OVERHEAD) / DEFAULT_MOVE_TIME_FRACTION;
+                let max_think_time = r / 3;
 
-            if sudden_death && r < Duration::from_millis(60000) {
-                t = r / 60;
+                Some(ideal_think_time.min(max_think_time))
             }
-
-            think_time = Some(t)
         }
 
         let new_self = Self {
