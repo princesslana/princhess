@@ -1,7 +1,7 @@
 use mcts::{AsyncSearchOwned, Mcts, MctsManager, MoveInfoHandle};
-use options::{get_cpuct, get_num_threads};
+use options::{get_cpuct, get_num_threads, is_chess960};
 use search_tree::TranspositionTable;
-use shakmaty::{Color, Move};
+use shakmaty::{CastlingMode, Color, Move};
 use state::State;
 use std::sync::atomic::Ordering;
 use std::sync::mpsc::Sender;
@@ -119,7 +119,7 @@ impl Search {
                 search: manager.into(),
             };
         } else if let Some(mv) = probe_tablebase_best_move(state.board()) {
-            let uci_mv = mv.to_uci(shakmaty::CastlingMode::Standard);
+            let uci_mv = mv.to_uci(CastlingMode::from_chess960(is_chess960()));
             println!(
                 "info depth 1 seldepth 1 nodes 1 nps 1 tbhits 1 time 1 pv {}",
                 uci_mv
@@ -238,5 +238,6 @@ impl Search {
 }
 
 pub fn to_uci(mov: Move) -> String {
-    mov.to_uci(shakmaty::CastlingMode::Standard).to_string()
+    mov.to_uci(CastlingMode::from_chess960(is_chess960()))
+        .to_string()
 }

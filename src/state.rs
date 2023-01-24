@@ -1,5 +1,8 @@
+use options::is_chess960;
+use shakmaty::fen::Fen;
+use shakmaty::uci::Uci;
 use shakmaty::zobrist::{ZobristHash, ZobristValue};
-use shakmaty::{self, Chess, Color, File, Move, MoveList, Piece, Position, Setup};
+use shakmaty::{self, CastlingMode, Chess, Color, File, Move, MoveList, Piece, Position, Setup};
 use smallvec::SmallVec;
 use transposition_table::TranspositionHash;
 use uci::Tokens;
@@ -14,26 +17,26 @@ const OFFSET_THREATS: usize = NF_PIECES + NF_LAST_CAPTURE;
 pub const NUMBER_FEATURES: usize = NF_PIECES + NF_LAST_CAPTURE + NF_THREATS;
 
 pub struct StateBuilder {
-    initial_state: shakmaty::Chess,
-    crnt_state: shakmaty::Chess,
-    moves: Vec<shakmaty::Move>,
+    initial_state: Chess,
+    crnt_state: Chess,
+    moves: Vec<Move>,
 }
 
 impl StateBuilder {
-    pub fn chess(&self) -> &shakmaty::Chess {
+    pub fn chess(&self) -> &Chess {
         &self.crnt_state
     }
 
-    pub fn make_move(&mut self, mov: shakmaty::Move) {
+    pub fn make_move(&mut self, mov: Move) {
         self.crnt_state = self.crnt_state.clone().play(&mov).unwrap();
         self.moves.push(mov);
     }
 
     pub fn from_fen(fen: &str) -> Option<Self> {
         Some(
-            fen.parse::<shakmaty::fen::Fen>()
+            fen.parse::<Fen>()
                 .ok()?
-                .position::<shakmaty::Chess>(shakmaty::CastlingMode::Standard)
+                .position::<Chess>(CastlingMode::from_chess960(is_chess960()))
                 .ok()?
                 .into(),
         )
@@ -60,7 +63,7 @@ impl StateBuilder {
             None => (),
         };
         for mov_str in tokens {
-            let uci = mov_str.parse::<shakmaty::uci::Uci>().ok()?;
+            let uci = mov_str.parse::<Uci>().ok()?;
             let mov = uci.to_move(result.chess()).ok()?;
             result.make_move(mov);
         }

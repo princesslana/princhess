@@ -1,12 +1,14 @@
 use once_cell::sync::Lazy;
 use std::cmp::max;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::RwLock;
 
 static NUM_THREADS: AtomicUsize = AtomicUsize::new(1);
 static HASH_SIZE_MB: AtomicUsize = AtomicUsize::new(16);
 
 static CPUCT: Lazy<RwLock<f32>> = Lazy::new(|| RwLock::new(1.79));
+
+static CHESS960: AtomicBool = AtomicBool::new(false);
 
 pub fn set_num_threads(threads: usize) {
     NUM_THREADS.store(threads, Ordering::Relaxed);
@@ -32,4 +34,12 @@ pub fn set_cpuct(c: f32) {
 pub fn get_cpuct() -> f32 {
     let cp = CPUCT.read().unwrap();
     *cp
+}
+
+pub fn set_chess960(c: bool) {
+    CHESS960.store(c, Ordering::Relaxed);
+}
+
+pub fn is_chess960() -> bool {
+    CHESS960.load(Ordering::Relaxed)
 }

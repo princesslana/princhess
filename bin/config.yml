@@ -26,6 +26,7 @@ challenge:
   variants:
     - standard
     - fromPosition
+    - chess960
   time_controls:
     - bullet
     - blitz
