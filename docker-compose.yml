@@ -5,8 +5,8 @@ services:
       dockerfile: bin/Dockerfile.cutechess-cli
     command:
       -engine cmd=/engines/princhess-main name=princhess-main
+      -engine cmd=/engines/princhess-0.9.0 name=princhess-0.9.0
       -engine cmd=/engines/princhess-0.8.0 name=princhess-0.8.0
-      -engine cmd=/engines/princhess-0.7.0 name=princhess-0.7.0
 
       -each proto=uci tc=10+0.1 timemargin=1000
             option.SyzygyPath=/syzygy option.Hash=128 option.Threads=1
@@ -16,8 +16,8 @@ services:
     volumes:
       - ./target/release/princhess:/engines/princhess
       - ./target/release/princhess-main:/engines/princhess-main
+      - ./target/release/princhess-0.9.0:/engines/princhess-0.9.0
       - ./target/release/princhess-0.8.0:/engines/princhess-0.8.0
-      - ./target/release/princhess-0.7.0:/engines/princhess-0.7.0
       - ./syzygy:/syzygy:ro
 
   sprt_gain:
