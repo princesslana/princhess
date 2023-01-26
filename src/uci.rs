@@ -1,12 +1,13 @@
 use options::{set_chess960, set_cpuct, set_hash_size_mb, set_num_threads};
 use search::Search;
-use search_tree::{print_size_list, TranspositionTable};
+use search_tree::print_size_list;
 use state::State;
 use std::io::{stdin, BufRead};
 use std::str::{FromStr, SplitWhitespace};
 use std::sync::mpsc::{channel, SendError};
 use std::thread;
 use tablebase::set_tablebase_directory;
+use transposition_table::TranspositionTable;
 
 pub type Tokens<'a> = SplitWhitespace<'a>;
 

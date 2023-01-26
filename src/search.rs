@@ -1,6 +1,5 @@
 use mcts::{AsyncSearchOwned, Mcts, MctsManager, MoveInfoHandle};
 use options::{get_cpuct, get_num_threads, is_chess960};
-use search_tree::TranspositionTable;
 use shakmaty::{CastlingMode, Color, Move};
 use state::State;
 use std::sync::atomic::Ordering;
@@ -8,7 +7,7 @@ use std::sync::mpsc::Sender;
 use std::thread;
 use std::time::Duration;
 use tablebase::probe_tablebase_best_move;
-use transposition_table::ApproxTable;
+use transposition_table::TranspositionTable;
 use tree_policy::AlphaGoPolicy;
 use uci::Tokens;
 
@@ -59,7 +58,7 @@ impl Search {
             state,
             GooseMcts,
             policy(),
-            ApproxTable::enough_to_hold(GooseMcts.node_limit()),
+            TranspositionTable::empty(),
             prev_table,
         )
     }
