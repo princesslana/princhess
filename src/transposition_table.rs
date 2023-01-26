@@ -1,4 +1,9 @@
 use super::*;
+use arena::Arena;
+use mcts::Mcts;
+use options::get_hash_size_mb;
+use search::GooseMcts;
+use search_tree::NodeStats;
 use search_tree::*;
 use state::State;
 use std::sync::atomic::{AtomicPtr, AtomicU64, AtomicUsize, Ordering};
@@ -7,7 +12,61 @@ pub trait TranspositionHash {
     fn hash(&self) -> u64;
 }
 
-pub struct ApproxQuadraticProbingHashTable<K: TranspositionHash, V> {
+pub struct TranspositionTable {
+    table: ApproxTable,
+    #[allow(dead_code)]
+    arena: Box<Arena>,
+}
+
+impl TranspositionTable {
+    pub fn empty() -> Self {
+        let table = ApproxTable::enough_to_hold(GooseMcts.node_limit());
+        let arena = Box::new(Arena::new(get_hash_size_mb() / 2));
+
+        Self::new(table, arena)
+    }
+
+    pub fn for_root() -> Self {
+        Self::new(ApproxTable::enough_to_hold(256), Box::new(Arena::new(2)))
+    }
+
+    fn new(table: ApproxTable, arena: Box<Arena>) -> Self {
+        Self { table, arena }
+    }
+
+    pub fn arena(&self) -> &Arena {
+        &self.arena
+    }
+
+    pub fn clear(&self) {
+        self.table.clear();
+        self.arena.clear();
+    }
+
+    pub fn insert<'a>(&'a self, key: &State, value: &'a SearchNode) -> Option<&'a SearchNode> {
+        self.table.insert(key, value)
+    }
+
+    pub fn lookup<'a>(&'a self, key: &State) -> Option<&'a SearchNode> {
+        self.table.lookup(key)
+    }
+
+    pub fn lookup_into(&self, state: &State, dest: &mut SearchNode) {
+        if let Some(src) = self.table.lookup(state) {
+            dest.replace(src);
+            dest.set_evaln(src.evaln());
+
+            let lhs = dest.hots();
+            let rhs = src.hots();
+
+            for i in 0..lhs.len().min(rhs.len()) {
+                lhs[i].replace(&rhs[i]);
+            }
+        }
+    }
+}
+
+struct ApproxQuadraticProbingHashTable<K: TranspositionHash, V> {
     arr: Box<[Entry16<K, V>]>,
     capacity: usize,
     mask: usize,
@@ -76,7 +135,7 @@ impl<K: TranspositionHash, V> ApproxQuadraticProbingHashTable<K, V> {
 unsafe impl<K: TranspositionHash, V> Sync for ApproxQuadraticProbingHashTable<K, V> {}
 unsafe impl<K: TranspositionHash, V> Send for ApproxQuadraticProbingHashTable<K, V> {}
 
-pub type ApproxTable = ApproxQuadraticProbingHashTable<State, SearchNode>;
+type ApproxTable = ApproxQuadraticProbingHashTable<State, SearchNode>;
 
 fn get_or_write<'a, V>(ptr: &AtomicPtr<V>, v: &'a V) -> Option<&'a V> {
     let result = ptr.compare_exchange(

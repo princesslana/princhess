@@ -2,15 +2,14 @@ use arrayvec::ArrayVec;
 use evaluation;
 use math;
 use mcts::*;
-use options::get_hash_size_mb;
-use search::{GooseMcts, SCALE};
+use search::SCALE;
 use shakmaty::{Color, MoveList, Position};
 use state::State;
 use std::mem;
 use std::ptr::null_mut;
 use std::sync::atomic::{AtomicBool, AtomicI64, AtomicPtr, AtomicU32, AtomicUsize, Ordering};
 use std::sync::Mutex;
-use transposition_table::ApproxTable;
+use transposition_table::TranspositionTable;
 
 use log::debug;
 use pod::Pod;
@@ -39,53 +38,7 @@ pub struct SearchTree<Spec: Mcts> {
     tb_hits: AtomicUsize,
 }
 
-pub struct TranspositionTable {
-    table: ApproxTable,
-    #[allow(dead_code)]
-    arena: Box<Arena>,
-}
-
-impl TranspositionTable {
-    pub fn empty() -> Self {
-        let table = ApproxTable::enough_to_hold(GooseMcts.node_limit());
-        let arena = Box::new(Arena::new(get_hash_size_mb() / 2));
-
-        Self { table, arena }
-    }
-
-    pub fn new(table: ApproxTable, arena: Box<Arena>) -> Self {
-        Self { table, arena }
-    }
-
-    pub fn clear(&self) {
-        self.table.clear();
-        self.arena.clear();
-    }
-
-    pub fn insert<'a>(&'a self, key: &State, value: &'a SearchNode) -> Option<&'a SearchNode> {
-        self.table.insert(key, value)
-    }
-
-    pub fn lookup<'a>(&'a self, key: &State) -> Option<&'a SearchNode> {
-        self.table.lookup(key)
-    }
-
-    pub fn lookup_into(&self, state: &State, dest: &mut SearchNode) {
-        if let Some(src) = self.table.lookup(state) {
-            dest.replace(src);
-            dest.evaln = src.evaln;
-
-            let lhs = dest.hots();
-            let rhs = src.hots();
-
-            for i in 0..lhs.len().min(rhs.len()) {
-                lhs[i].replace(&rhs[i]);
-            }
-        }
-    }
-}
-
-trait NodeStats {
+pub trait NodeStats {
     fn get_visits(&self) -> &AtomicU32;
     fn get_sum_evaluations(&self) -> &AtomicI64;
 
@@ -128,7 +81,7 @@ impl NodeStats for SearchNode {
     }
 }
 
-struct HotMoveInfo {
+pub struct HotMoveInfo {
     sum_evaluations: AtomicI64,
     visits: AtomicU32,
     move_evaluation: MoveEvaluation,
@@ -169,9 +122,19 @@ impl SearchNode {
             sum_evaluations: AtomicI64::default(),
         }
     }
-    fn hots(&self) -> &[HotMoveInfo] {
+
+    pub fn evaln(&self) -> StateEvaluation {
+        self.evaln
+    }
+
+    pub fn set_evaln(&mut self, evaln: StateEvaluation) {
+        self.evaln = evaln;
+    }
+
+    pub fn hots(&self) -> &[HotMoveInfo] {
         unsafe { &*(self.hots as *const [HotMoveInfo]) }
     }
+
     fn update_policy(&mut self, evals: Vec<f32>) {
         let mut hots = unsafe { &mut *(self.hots as *mut [HotMoveInfo]) };
 
@@ -179,12 +142,14 @@ impl SearchNode {
             hots[i].move_evaluation = evals[i];
         }
     }
+
     pub fn moves(&self) -> Moves {
         Moves {
             hots: self.hots(),
             index: 0,
         }
     }
+
     pub fn clear_children_links(&self) {
         let hots = unsafe { &*(self.hots as *mut [HotMoveInfo]) };
 
@@ -286,19 +251,18 @@ impl<Spec: Mcts> SearchTree<Spec> {
         state: State,
         manager: Spec,
         tree_policy: Spec::TreePolicy,
-        table: ApproxTable,
+        current_table: TranspositionTable,
         previous_table: TranspositionTable,
     ) -> Self {
         let tb_hits = 0.into();
 
-        let root_table =
-            TranspositionTable::new(ApproxTable::enough_to_hold(256), Box::new(Arena::new(2)));
+        let root_table = TranspositionTable::for_root();
 
         let mut root_node = create_node::<Spec>(
             &tree_policy,
             &state,
             &tb_hits,
-            CreationHelper::Allocator(&root_table.arena.allocator()),
+            CreationHelper::Allocator(&root_table.arena().allocator()),
         )
         .expect("Unable to create root node");
 
@@ -314,15 +278,13 @@ impl<Spec: Mcts> SearchTree<Spec> {
 
         root_node.update_policy(avg_rewards);
 
-        let current_arena = Box::new(Arena::new(get_hash_size_mb() / 2));
-
         Self {
             root_state: state,
             root_node,
             manager,
             tree_policy,
             root_table,
-            left_table: TranspositionTable::new(table, current_arena),
+            left_table: current_table,
             right_table: previous_table,
             is_left_current: AtomicBool::new(true),
             flip_lock: Default::default(),
@@ -380,7 +342,7 @@ impl<Spec: Mcts> SearchTree<Spec> {
     }
 
     pub fn arenas(&self) -> (&Arena, &Arena) {
-        (&self.left_table.arena, &self.right_table.arena)
+        (self.left_table.arena(), self.right_table.arena())
     }
 
     #[inline(never)]
@@ -425,7 +387,7 @@ impl<Spec: Mcts> SearchTree<Spec> {
                 Ok(r) => r,
                 Err(ArenaError::Full) => {
                     let _lock = self.flip_lock.lock().unwrap();
-                    if self.current_table().arena.full() {
+                    if self.current_table().arena().full() {
                         self.flip_tables();
                         self.root_node.clear_children_links();
                     }
