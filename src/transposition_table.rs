@@ -1,12 +1,12 @@
 use super::*;
 use arena::Arena;
-use mcts::Mcts;
 use options::get_hash_size_mb;
-use search::GooseMcts;
 use search_tree::NodeStats;
 use search_tree::*;
 use state::State;
 use std::sync::atomic::{AtomicPtr, AtomicU64, AtomicUsize, Ordering};
+
+const APPROX_TABLE_SIZE: usize = 1 << 21;
 
 pub trait TranspositionHash {
     fn hash(&self) -> u64;
@@ -20,7 +20,7 @@ pub struct TranspositionTable {
 
 impl TranspositionTable {
     pub fn empty() -> Self {
-        let table = ApproxTable::enough_to_hold(GooseMcts.node_limit());
+        let table = ApproxTable::enough_to_hold(APPROX_TABLE_SIZE);
         let arena = Box::new(Arena::new(get_hash_size_mb() / 2));
 
         Self::new(table, arena)
