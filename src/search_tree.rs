@@ -329,11 +329,11 @@ impl<Spec: Mcts> SearchTree<Spec> {
     }
 
     pub fn num_nodes(&self) -> usize {
-        self.num_nodes.load(Ordering::SeqCst)
+        self.num_nodes.load(Ordering::Relaxed)
     }
 
     pub fn tb_hits(&self) -> usize {
-        self.tb_hits.load(Ordering::SeqCst)
+        self.tb_hits.load(Ordering::Relaxed)
     }
 
     pub fn arenas(&self) -> (&Arena, &Arena) {
@@ -342,6 +342,7 @@ impl<Spec: Mcts> SearchTree<Spec> {
 
     #[inline(never)]
     pub fn playout<'a: 'b, 'b>(&'a self, tld: &'b mut ThreadData<'a, Spec>) -> bool {
+        self.num_nodes.fetch_add(1, Ordering::Relaxed);
         let mut state = self.root_state.clone();
         let mut path: ArrayVec<MoveInfoHandle, MAX_PLAYOUT_LENGTH> = ArrayVec::new();
         let mut node_path: ArrayVec<&SearchNode, MAX_PLAYOUT_LENGTH> = ArrayVec::new();
