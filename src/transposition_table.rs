@@ -1,36 +1,36 @@
-use super::*;
 use arena::Arena;
-use mcts::Mcts;
+use dashmap::DashMap;
+use nohash_hasher::BuildNoHashHasher;
 use options::get_hash_size_mb;
-use search::GooseMcts;
-use search_tree::NodeStats;
-use search_tree::*;
+use search_tree::{NodeStats, SearchNode};
 use state::State;
-use std::sync::atomic::{AtomicPtr, AtomicU64, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicPtr, Ordering};
 
 pub trait TranspositionHash {
     fn hash(&self) -> u64;
 }
 
+type Table = DashMap<u64, AtomicPtr<SearchNode>, BuildNoHashHasher<u64>>;
+
 pub struct TranspositionTable {
-    table: ApproxTable,
+    table: Table,
     #[allow(dead_code)]
     arena: Box<Arena>,
 }
 
 impl TranspositionTable {
     pub fn empty() -> Self {
-        let table = ApproxTable::enough_to_hold(GooseMcts.node_limit());
+        let table = Table::default();
         let arena = Box::new(Arena::new(get_hash_size_mb() / 2));
 
         Self::new(table, arena)
     }
 
     pub fn for_root() -> Self {
-        Self::new(ApproxTable::enough_to_hold(256), Box::new(Arena::new(2)))
+        Self::new(Table::default(), Box::new(Arena::new(2)))
     }
 
-    fn new(table: ApproxTable, arena: Box<Arena>) -> Self {
+    fn new(table: Table, arena: Box<Arena>) -> Self {
         Self { table, arena }
     }
 
@@ -44,15 +44,30 @@ impl TranspositionTable {
     }
 
     pub fn insert<'a>(&'a self, key: &State, value: &'a SearchNode) -> Option<&'a SearchNode> {
-        self.table.insert(key, value)
+        let hash = key.hash();
+        if hash == 0 {
+            return None;
+        }
+
+        if let Some(value_here) = self.table.get(&hash) {
+            unsafe { Some(&*value_here.load(Ordering::Relaxed)) }
+        } else {
+            self.table
+                .insert(hash, AtomicPtr::new(value as *const _ as *mut _));
+            Some(value)
+        }
     }
 
     pub fn lookup<'a>(&'a self, key: &State) -> Option<&'a SearchNode> {
-        self.table.lookup(key)
+        let hash = key.hash();
+
+        self.table
+            .get(&hash)
+            .map(|v| unsafe { &*v.load(Ordering::Relaxed) })
     }
 
     pub fn lookup_into(&self, state: &State, dest: &mut SearchNode) {
-        if let Some(src) = self.table.lookup(state) {
+        if let Some(src) = self.lookup(state) {
             dest.replace(src);
             dest.set_evaln(src.evaln());
 
@@ -63,159 +78,5 @@ impl TranspositionTable {
                 lhs[i].replace(&rhs[i]);
             }
         }
-    }
-}
-
-struct ApproxQuadraticProbingHashTable<K: TranspositionHash, V> {
-    arr: Box<[Entry16<K, V>]>,
-    capacity: usize,
-    mask: usize,
-    size: AtomicUsize,
-}
-
-struct Entry16<K: TranspositionHash, V> {
-    k: AtomicU64,
-    v: AtomicPtr<V>,
-    _marker: std::marker::PhantomData<K>,
-}
-
-impl<K: TranspositionHash, V> Default for Entry16<K, V> {
-    fn default() -> Self {
-        Self {
-            k: Default::default(),
-            v: Default::default(),
-            _marker: Default::default(),
-        }
-    }
-}
-impl<K: TranspositionHash, V> Clone for Entry16<K, V> {
-    fn clone(&self) -> Self {
-        Self {
-            k: AtomicU64::new(self.k.load(Ordering::Relaxed)),
-            v: AtomicPtr::new(self.v.load(Ordering::Relaxed)),
-            _marker: Default::default(),
-        }
-    }
-}
-
-impl<K: TranspositionHash, V> ApproxQuadraticProbingHashTable<K, V> {
-    pub fn new(capacity: usize) -> Self {
-        assert!(std::mem::size_of::<Entry16<K, V>>() <= 16);
-        assert!(
-            capacity.count_ones() == 1,
-            "the capacity must be a power of 2"
-        );
-        debug!("Creating approx table with capacity {}", capacity);
-        let arr = vec![Entry16::default(); capacity].into_boxed_slice();
-        let mask = capacity - 1;
-        Self {
-            arr,
-            mask,
-            capacity,
-            size: AtomicUsize::default(),
-        }
-    }
-    pub fn enough_to_hold(num: usize) -> Self {
-        let mut capacity = 1;
-        while capacity * 2 < num * 3 {
-            capacity <<= 1;
-        }
-        Self::new(capacity)
-    }
-
-    pub fn clear(&self) {
-        for entry in self.arr.iter() {
-            entry.k.store(0, Ordering::Relaxed);
-            entry.v.store(std::ptr::null_mut(), Ordering::Relaxed);
-        }
-        self.size.store(0, Ordering::Relaxed);
-    }
-}
-
-unsafe impl<K: TranspositionHash, V> Sync for ApproxQuadraticProbingHashTable<K, V> {}
-unsafe impl<K: TranspositionHash, V> Send for ApproxQuadraticProbingHashTable<K, V> {}
-
-type ApproxTable = ApproxQuadraticProbingHashTable<State, SearchNode>;
-
-fn get_or_write<'a, V>(ptr: &AtomicPtr<V>, v: &'a V) -> Option<&'a V> {
-    let result = ptr.compare_exchange(
-        std::ptr::null_mut(),
-        v as *const _ as *mut _,
-        Ordering::Relaxed,
-        Ordering::Relaxed,
-    );
-    match result {
-        Ok(_) => None,
-        Err(p) => unsafe { Some(&*p) },
-    }
-}
-
-fn convert<'a, V>(ptr: *const V) -> Option<&'a V> {
-    if ptr.is_null() {
-        None
-    } else {
-        unsafe { Some(&*ptr) }
-    }
-}
-
-const PROBE_LIMIT: usize = 16;
-
-impl ApproxTable
-where
-    State: TranspositionHash,
-{
-    pub fn insert<'a>(&'a self, key: &State, value: &'a SearchNode) -> Option<&'a SearchNode> {
-        if self.size.load(Ordering::Relaxed) * 3 > self.capacity * 2 {
-            return self.lookup(key);
-        }
-        let my_hash = key.hash();
-        if my_hash == 0 {
-            return None;
-        }
-        let mut posn = my_hash as usize & self.mask;
-        for inc in 1..(PROBE_LIMIT + 1) {
-            let entry = unsafe { self.arr.get_unchecked(posn) };
-            let key_here = entry.k.load(Ordering::Relaxed);
-            if key_here == my_hash {
-                let value_here = entry.v.load(Ordering::Relaxed);
-                if !value_here.is_null() {
-                    return unsafe { Some(&*value_here) };
-                }
-                return get_or_write(&entry.v, value);
-            }
-            if key_here == 0 {
-                let key_here =
-                    entry
-                        .k
-                        .compare_exchange(0, my_hash, Ordering::Relaxed, Ordering::Relaxed);
-                self.size.fetch_add(1, Ordering::Relaxed);
-                return match key_here {
-                    Ok(_) => get_or_write(&entry.v, value),
-                    Err(v) if v == my_hash => get_or_write(&entry.v, value),
-                    _ => None,
-                };
-            }
-            posn += inc;
-            posn &= self.mask;
-        }
-        None
-    }
-
-    pub fn lookup<'a>(&'a self, key: &State) -> Option<&'a SearchNode> {
-        let my_hash = key.hash();
-        let mut posn = my_hash as usize & self.mask;
-        for inc in 1..(PROBE_LIMIT + 1) {
-            let entry = unsafe { self.arr.get_unchecked(posn) };
-            let key_here = entry.k.load(Ordering::Relaxed);
-            if key_here == my_hash {
-                return convert(entry.v.load(Ordering::Relaxed));
-            }
-            if key_here == 0 {
-                return None;
-            }
-            posn += inc;
-            posn &= self.mask;
-        }
-        None
     }
 }

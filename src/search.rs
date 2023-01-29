@@ -29,9 +29,6 @@ pub struct GooseMcts;
 impl Mcts for GooseMcts {
     type TreePolicy = AlphaGoPolicy;
 
-    fn node_limit(&self) -> usize {
-        4_000_000
-    }
     fn virtual_loss(&self) -> i64 {
         SCALE as i64
     }

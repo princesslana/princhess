@@ -11,7 +11,6 @@ use std::sync::atomic::{AtomicBool, AtomicI64, AtomicPtr, AtomicU32, AtomicUsize
 use std::sync::Mutex;
 use transposition_table::TranspositionTable;
 
-use log::debug;
 use pod::Pod;
 
 use tree_policy::TreePolicy;
@@ -293,10 +292,6 @@ impl<Spec: Mcts> SearchTree<Spec> {
         }
     }
 
-    pub fn spec(&self) -> &Spec {
-        &self.manager
-    }
-
     fn is_left_current(&self) -> bool {
         self.is_left_current.load(Ordering::Relaxed)
     }
@@ -347,15 +342,6 @@ impl<Spec: Mcts> SearchTree<Spec> {
 
     #[inline(never)]
     pub fn playout<'a: 'b, 'b>(&'a self, tld: &'b mut ThreadData<'a, Spec>) -> bool {
-        let sentinel = IncreaseSentinel::new(&self.num_nodes);
-        if sentinel.num_nodes >= self.manager.node_limit() {
-            debug!(
-                "Node limit of {} reached. Halting search.",
-                self.spec().node_limit()
-            );
-            println!("info hashfull 10000");
-            return false;
-        }
         let mut state = self.root_state.clone();
         let mut path: ArrayVec<MoveInfoHandle, MAX_PLAYOUT_LENGTH> = ArrayVec::new();
         let mut node_path: ArrayVec<&SearchNode, MAX_PLAYOUT_LENGTH> = ArrayVec::new();
@@ -609,24 +595,6 @@ impl<'a, 'b, Spec: Mcts> SearchHandle<'a, 'b, Spec> {
 
     pub fn is_root(&self) -> bool {
         self.shared.path.is_empty()
-    }
-}
-
-struct IncreaseSentinel<'a> {
-    x: &'a AtomicUsize,
-    num_nodes: usize,
-}
-
-impl<'a> IncreaseSentinel<'a> {
-    fn new(x: &'a AtomicUsize) -> Self {
-        let num_nodes = x.fetch_add(1, Ordering::Relaxed);
-        Self { x, num_nodes }
-    }
-}
-
-impl<'a> Drop for IncreaseSentinel<'a> {
-    fn drop(&mut self) {
-        self.x.fetch_sub(1, Ordering::Relaxed);
     }
 }
 

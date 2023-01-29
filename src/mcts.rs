@@ -24,10 +24,6 @@ pub trait Mcts: Sized + Sync {
         0
     }
 
-    /// Maximum number of nodes beyond which calling `playout` will do nothing. Defaults to `std::usize::MAX`.
-    fn node_limit(&self) -> usize {
-        std::usize::MAX
-    }
     /// Rule for selecting the best move once the search is over. Defaults to choosing the child with the most visits.
     fn select_child_after_search<'a>(&self, children: &[MoveInfoHandle<'a>]) -> MoveInfoHandle<'a> {
         *children.iter().max_by_key(|child| child.visits()).unwrap()
