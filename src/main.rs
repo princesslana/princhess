@@ -14,7 +14,6 @@ extern crate pretty_env_logger;
 extern crate rand;
 extern crate shakmaty;
 extern crate shakmaty_syzygy;
-extern crate smallvec;
 
 mod arena;
 mod math;
