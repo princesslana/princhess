@@ -1,9 +1,9 @@
+use arrayvec::ArrayVec;
 use options::is_chess960;
 use shakmaty::fen::Fen;
 use shakmaty::uci::Uci;
 use shakmaty::zobrist::{ZobristHash, ZobristValue};
 use shakmaty::{self, CastlingMode, Chess, Color, File, Move, MoveList, Piece, Position, Setup};
-use smallvec::SmallVec;
 use transposition_table::TranspositionHash;
 use uci::Tokens;
 
@@ -82,7 +82,7 @@ pub struct State {
     board: Chess,
     prev_capture: Option<shakmaty::Role>,
     prev_capture_sq: Option<shakmaty::Square>,
-    prev_state_hashes: SmallVec<[u64; 64]>,
+    prev_state_hashes: ArrayVec<u64, 101>,
     repetitions: usize,
     hash: u64,
 }
@@ -285,7 +285,7 @@ impl From<StateBuilder> for State {
             board: sb.initial_state,
             prev_capture: None,
             prev_capture_sq: None,
-            prev_state_hashes: SmallVec::new(),
+            prev_state_hashes: ArrayVec::new(),
             repetitions: 0,
             hash,
         };

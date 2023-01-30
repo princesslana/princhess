@@ -223,15 +223,13 @@ fn create_node<'a, 'b, Spec: Mcts>(
     };
     let mut moves = MoveList::new();
 
-    let (move_eval, state_eval, is_tb_hit) = if state.drawn_by_repetition()
-        || state.drawn_by_fifty_move_rule()
-        || state.board().is_insufficient_material()
-    {
-        (Vec::with_capacity(0), 0, false)
-    } else {
-        moves = state.available_moves();
-        evaluation::evaluate_new_state(state, &moves)
-    };
+    let (move_eval, state_eval, is_tb_hit) =
+        if state.drawn_by_repetition() || state.board().is_insufficient_material() {
+            (Vec::with_capacity(0), 0, false)
+        } else {
+            moves = state.available_moves();
+            evaluation::evaluate_new_state(state, &moves)
+        };
 
     if is_tb_hit {
         tb_hits.fetch_add(1, Ordering::Relaxed);
@@ -351,7 +349,7 @@ impl<Spec: Mcts> SearchTree<Spec> {
             {
                 let _lock = self.flip_lock.lock().unwrap();
             }
-            if node.hots().is_empty() {
+            if node.hots().is_empty() || state.drawn_by_fifty_move_rule() {
                 break;
             }
             // We need path.len() check for when the root node is a tablebase position
@@ -393,15 +391,15 @@ impl<Spec: Mcts> SearchTree<Spec> {
 
         let last_move_was_black = state.side_to_move() == Color::White;
 
-        self.finish_playout(
-            &path,
-            &node_path,
-            if last_move_was_black {
-                -node.evaln
-            } else {
-                node.evaln
-            },
-        );
+        let evaln = if state.drawn_by_fifty_move_rule() {
+            0
+        } else if last_move_was_black {
+            -node.evaln
+        } else {
+            node.evaln
+        };
+
+        self.finish_playout(&path, &node_path, evaln);
 
         true
     }
