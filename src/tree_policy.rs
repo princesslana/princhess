@@ -1,52 +1,26 @@
 extern crate rand;
-use self::rand::rngs::SmallRng;
-use self::rand::{Rng, SeedableRng};
 
-use mcts::{Mcts, MoveEvaluation};
+use mcts::Mcts;
 
-use search_tree::*;
+use search_tree::{MoveInfoHandle, Moves, SearchHandle};
 use state::State;
-use std;
-
-pub struct Fraction(pub f32, pub f32);
-
-impl From<f32> for Fraction {
-    fn from(x: f32) -> Fraction {
-        Fraction(x, 1.)
-    }
-}
-
-pub trait TreePolicy<Spec: Mcts<TreePolicy = Self>>: Sync + Sized {
-    type ThreadLocalData: Default;
-
-    fn choose_child<'a>(
-        &self,
-        state: &State,
-        moves: Moves<'a>,
-        handle: SearchHandle<Spec>,
-    ) -> MoveInfoHandle<'a>;
-    fn validate_evaluations(&self, _evalns: &[MoveEvaluation]) {}
-}
+use std::f32;
 
 #[derive(Clone, Debug)]
-pub struct AlphaGoPolicy {
+pub struct Puct {
     cpuct: f32,
 }
 
-impl AlphaGoPolicy {
+impl Puct {
     pub fn new(cpuct: f32) -> Self {
         Self { cpuct }
     }
-}
 
-impl<Spec: Mcts<TreePolicy = Self>> TreePolicy<Spec> for AlphaGoPolicy {
-    type ThreadLocalData = PolicyRng;
-
-    fn choose_child<'a>(
+    pub fn choose_child<'a, Spec: Mcts>(
         &self,
         _: &State,
         moves: Moves<'a>,
-        mut handle: SearchHandle<Spec>,
+        handle: SearchHandle<Spec>,
     ) -> MoveInfoHandle<'a> {
         let total_visits = moves.map(|x| x.visits()).sum::<u64>() + 1;
         let sqrt_total_visits = (total_visits as f32).sqrt();
@@ -56,27 +30,41 @@ impl<Spec: Mcts<TreePolicy = Self>> TreePolicy<Spec> for AlphaGoPolicy {
 
         let is_root = handle.is_root();
 
-        handle
-            .thread_data()
-            .policy_data
-            .select_by_key(moves, |mov| {
-                if let Some(pc) = mov.get_move().promotion() {
-                    if !is_root && pc != shakmaty::Role::Queen {
-                        return std::f32::NEG_INFINITY.into();
-                    }
+        let mut best_score = (f32::NEG_INFINITY, 1.);
+        let mut choice = None;
+
+        for mov in moves {
+            if let Some(pc) = mov.get_move().promotion() {
+                if !is_root && pc != shakmaty::Role::Queen {
+                    continue;
                 }
-                let sum_rewards = mov.sum_rewards() as f32;
-                let child_visits = mov.visits();
-                let policy_evaln = *mov.move_evaluation();
-                Fraction(
-                    sum_rewards + explore_coef * policy_evaln,
-                    (child_visits + 1) as f32,
-                )
-            })
-            .unwrap()
+            }
+
+            let sum_rewards = mov.sum_rewards() as f32;
+            let child_visits = mov.visits();
+            let policy_evaln = *mov.move_evaluation();
+
+            let numerator = sum_rewards + explore_coef * policy_evaln;
+            let denominator = (child_visits + 1) as f32;
+
+            if choice.is_none() {
+                choice = Some(mov);
+                best_score = (numerator, denominator);
+            } else {
+                let a = numerator * best_score.1;
+                let b = denominator * best_score.0;
+
+                if a > b {
+                    choice = Some(mov);
+                    best_score = (numerator, denominator);
+                }
+            }
+        }
+
+        choice.unwrap()
     }
 
-    fn validate_evaluations(&self, evalns: &[f32]) {
+    pub fn validate_evaluations(&self, evalns: &[f32]) {
         for &x in evalns {
             assert!(
                 x >= -1e-6,
@@ -84,49 +72,5 @@ impl<Spec: Mcts<TreePolicy = Self>> TreePolicy<Spec> for AlphaGoPolicy {
                 x
             );
         }
-    }
-}
-
-#[derive(Clone)]
-pub struct PolicyRng {
-    pub rng: SmallRng,
-}
-
-impl PolicyRng {
-    pub fn new() -> Self {
-        let rng = SeedableRng::seed_from_u64(42);
-        Self { rng }
-    }
-
-    pub fn select_by_key<T, Iter, KeyFn>(&mut self, elts: Iter, mut key_fn: KeyFn) -> Option<T>
-    where
-        Iter: Iterator<Item = T>,
-        KeyFn: FnMut(&T) -> Fraction,
-    {
-        let mut choice = None;
-        let mut num_optimal: u32 = 0;
-        let mut best_so_far: Fraction = std::f32::NEG_INFINITY.into();
-        for elt in elts {
-            let score = key_fn(&elt);
-            let a = score.0 * best_so_far.1;
-            let b = score.1 * best_so_far.0;
-            if a > b {
-                choice = Some(elt);
-                num_optimal = 1;
-                best_so_far = score;
-            } else if (a - b).abs() < std::f32::EPSILON {
-                num_optimal += 1;
-                if self.rng.gen_bool(1.0 / num_optimal as f64) {
-                    choice = Some(elt);
-                }
-            }
-        }
-        choice
-    }
-}
-
-impl Default for PolicyRng {
-    fn default() -> Self {
-        Self::new()
     }
 }

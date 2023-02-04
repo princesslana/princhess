@@ -8,7 +8,7 @@ use std::thread;
 use std::time::Duration;
 use tablebase::probe_tablebase_best_move;
 use transposition_table::TranspositionTable;
-use tree_policy::AlphaGoPolicy;
+use tree_policy::Puct;
 use uci::Tokens;
 
 const DEFAULT_MOVE_TIME_SECS: u64 = 10;
@@ -18,17 +18,15 @@ const MOVE_OVERHEAD: Duration = Duration::from_millis(50);
 
 pub const SCALE: f32 = 1e9;
 
-fn policy() -> AlphaGoPolicy {
+fn policy() -> Puct {
     let cpuct = get_cpuct();
 
-    AlphaGoPolicy::new(cpuct * SCALE)
+    Puct::new(cpuct * SCALE)
 }
 
 pub struct GooseMcts;
 
 impl Mcts for GooseMcts {
-    type TreePolicy = AlphaGoPolicy;
-
     fn virtual_loss(&self) -> i64 {
         SCALE as i64
     }
