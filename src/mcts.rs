@@ -15,8 +15,6 @@ use std::thread::JoinHandle;
 use std::time::Instant;
 
 pub trait Mcts: Sized + Sync {
-    type TreePolicy: TreePolicy<Self>;
-
     /// Virtual loss subtracted from a node's evaluation when a search thread chooses it in a playout,
     /// then added back when the playout is complete.
     /// Used to reduce contention between threads. Defaults to 0.
@@ -30,19 +28,14 @@ pub trait Mcts: Sized + Sync {
     }
 }
 
-pub struct ThreadData<'a, Spec: Mcts> {
-    pub policy_data: TreePolicyThreadData<Spec>,
+pub struct ThreadData<'a> {
     pub allocator: (ArenaAllocator<'a>, ArenaAllocator<'a>),
 }
 
-impl<'a, Spec: Mcts> ThreadData<'a, Spec>
-where
-    TreePolicyThreadData<Spec>: Default,
-{
-    fn create(tree: &'a SearchTree<Spec>) -> Self {
+impl<'a> ThreadData<'a> {
+    fn create<Spec: Mcts>(tree: &'a SearchTree<Spec>) -> Self {
         let (left_arena, right_arena) = tree.arenas();
         Self {
-            policy_data: Default::default(),
             allocator: (left_arena.allocator(), right_arena.allocator()),
         }
     }
@@ -50,22 +43,17 @@ where
 
 pub type MoveEvaluation = f32;
 pub type StateEvaluation = i64;
-pub type TreePolicyThreadData<Spec> =
-    <<Spec as Mcts>::TreePolicy as TreePolicy<Spec>>::ThreadLocalData;
 
 pub struct MctsManager<Spec: Mcts> {
     search_tree: SearchTree<Spec>,
     search_start: RwLock<Option<Instant>>,
 }
 
-impl<Spec: Mcts> MctsManager<Spec>
-where
-    TreePolicyThreadData<Spec>: Default,
-{
+impl<Spec: Mcts> MctsManager<Spec> {
     pub fn new(
         state: State,
         manager: Spec,
-        tree_policy: Spec::TreePolicy,
+        tree_policy: Puct,
         table: TranspositionTable,
         prev_table: TranspositionTable,
     ) -> Self {

@@ -13,7 +13,7 @@ use transposition_table::TranspositionTable;
 
 use pod::Pod;
 
-use tree_policy::TreePolicy;
+use tree_policy::Puct;
 
 use arena::{Arena, ArenaAllocator, ArenaError};
 
@@ -24,7 +24,7 @@ const MAX_PLAYOUT_LENGTH: usize = 256;
 pub struct SearchTree<Spec: Mcts> {
     root_node: SearchNode,
     root_state: State,
-    tree_policy: Spec::TreePolicy,
+    tree_policy: Puct,
     #[allow(dead_code)]
     root_table: TranspositionTable,
     left_table: TranspositionTable,
@@ -202,7 +202,7 @@ enum CreationHelper<'a: 'b, 'b, Spec: 'a + Mcts> {
 
 #[inline(always)]
 fn create_node<'a, 'b, Spec: Mcts>(
-    policy: &Spec::TreePolicy,
+    policy: &Puct,
     state: &State,
     tb_hits: &AtomicUsize,
     ch: CreationHelper<'a, 'b, Spec>,
@@ -247,7 +247,7 @@ impl<Spec: Mcts> SearchTree<Spec> {
     pub fn new(
         state: State,
         manager: Spec,
-        tree_policy: Spec::TreePolicy,
+        tree_policy: Puct,
         current_table: TranspositionTable,
         previous_table: TranspositionTable,
     ) -> Self {
@@ -339,7 +339,7 @@ impl<Spec: Mcts> SearchTree<Spec> {
     }
 
     #[inline(never)]
-    pub fn playout<'a: 'b, 'b>(&'a self, tld: &'b mut ThreadData<'a, Spec>) -> bool {
+    pub fn playout<'a: 'b, 'b>(&'a self, tld: &'b mut ThreadData<'a>) -> bool {
         self.num_nodes.fetch_add(1, Ordering::Relaxed);
         let mut state = self.root_state.clone();
         let mut path: ArrayVec<MoveInfoHandle, MAX_PLAYOUT_LENGTH> = ArrayVec::new();
@@ -408,7 +408,7 @@ impl<Spec: Mcts> SearchTree<Spec> {
         &'a self,
         state: &State,
         choice: &HotMoveInfo,
-        tld: &mut ThreadData<'a, Spec>,
+        tld: &mut ThreadData<'a>,
         path: &[&'a SearchNode],
     ) -> Result<&'a SearchNode, ArenaError> {
         let child = choice.child.load(Ordering::Relaxed) as *const SearchNode;
@@ -483,7 +483,7 @@ impl<Spec: Mcts> SearchTree<Spec> {
 
     fn make_handle<'a, 'b>(
         &'a self,
-        tld: &'b mut ThreadData<'a, Spec>,
+        tld: &'b mut ThreadData<'a>,
         path: &'b [&'a SearchNode],
     ) -> SearchHandle<'a, 'b, Spec> {
         let shared = SharedSearchHandle { tree: self, path };
@@ -583,15 +583,11 @@ impl<'a: 'b, 'b, Spec: 'a + Mcts> Clone for SharedSearchHandle<'a, 'b, Spec> {
 impl<'a: 'b, 'b, Spec: 'a + Mcts> Copy for SharedSearchHandle<'a, 'b, Spec> {}
 
 pub struct SearchHandle<'a: 'b, 'b, Spec: 'a + Mcts> {
-    pub tld: &'b mut ThreadData<'a, Spec>,
+    pub tld: &'b mut ThreadData<'a>,
     pub shared: SharedSearchHandle<'a, 'b, Spec>,
 }
 
 impl<'a, 'b, Spec: Mcts> SearchHandle<'a, 'b, Spec> {
-    pub fn thread_data(&mut self) -> &mut ThreadData<'a, Spec> {
-        self.tld
-    }
-
     pub fn is_root(&self) -> bool {
         self.shared.path.is_empty()
     }
