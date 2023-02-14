@@ -2,12 +2,11 @@
 authors = ["Princess Lana <ianagbip1oti@gmail.com>"]
 name = "princhess"
 version = "0.0.0-dev"
+edition = "2021"
+
 [[bin]]
 name = "princhess"
 path = "src/main.rs"
-
-[build-dependencies]
-slurp = "1.0.1"
 
 [dependencies]
 arc-swap = "=1.3.0"

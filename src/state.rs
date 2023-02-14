@@ -1,11 +1,12 @@
 use arrayvec::ArrayVec;
-use options::is_chess960;
 use shakmaty::fen::Fen;
 use shakmaty::uci::Uci;
 use shakmaty::zobrist::{ZobristHash, ZobristValue};
 use shakmaty::{self, CastlingMode, Chess, Color, File, Move, MoveList, Piece, Position, Setup};
-use transposition_table::TranspositionHash;
-use uci::Tokens;
+
+use crate::options::is_chess960;
+use crate::transposition_table::TranspositionHash;
+use crate::uci::Tokens;
 
 const NF_PIECES: usize = 2 * 6 * 64; // color * roles * squares
 const NF_LAST_CAPTURE: usize = 5 * 64; // roles (-king) * squares

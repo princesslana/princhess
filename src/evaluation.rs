@@ -1,11 +1,12 @@
-use math;
-use search::SCALE;
 use shakmaty::{Color, MoveList, Position};
 use shakmaty_syzygy::Wdl;
-use state::{self, State};
 use std::mem::{self, MaybeUninit};
 use std::ptr;
-use tablebase::probe_tablebase_wdl;
+
+use crate::math;
+use crate::search::SCALE;
+use crate::state::{self, State};
+use crate::tablebase::probe_tablebase_wdl;
 
 const MATE_FACTOR: f32 = 1.1;
 

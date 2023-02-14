@@ -1,18 +1,17 @@
-use arena::ArenaAllocator;
-pub use search_tree::*;
-use transposition_table::*;
-use tree_policy::*;
-
-use evaluation;
-use fastapprox;
 use float_ord::FloatOrd;
-use search::{to_uci, SCALE};
-use state::State;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::Sender;
 use std::sync::{Arc, RwLock};
 use std::thread::JoinHandle;
 use std::time::Instant;
+
+use crate::arena::ArenaAllocator;
+use crate::evaluation;
+use crate::search::{to_uci, SCALE};
+pub use crate::search_tree::*;
+use crate::state::State;
+use crate::transposition_table::*;
+use crate::tree_policy::*;
 
 pub trait Mcts: Sized + Sync {
     /// Virtual loss subtracted from a node's evaluation when a search thread chooses it in a playout,
@@ -178,7 +177,7 @@ impl<Spec: Mcts> MctsManager<Spec> {
             search_time_ms,
             pv_string,
         );
-        println!("{}", info_str);
+        println!("{info_str}");
     }
 
     pub fn print_move_list(&self) {
@@ -264,7 +263,7 @@ fn eval_in_cp(eval: f32) -> String {
         let plies = (1.1 - eval.abs()) / 0.001;
         let mvs = plies / 2.;
         let mate_score = (eval.signum() * mvs).round();
-        format!("mate {:+}", mate_score)
+        format!("mate {mate_score:+}")
     } else {
         // Based upon leela's formula.
         // Tweaked to appear in the range (-1000, 1000)

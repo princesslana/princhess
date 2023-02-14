@@ -1,6 +1,7 @@
-use state::State;
 use std::io::Write;
 use std::ops;
+
+use crate::state::State;
 
 #[derive(Clone)]
 pub struct FeatureVec {
@@ -26,7 +27,7 @@ impl GameResult {
 
 impl FeatureVec {
     pub fn write_libsvm<W: Write>(&mut self, f: &mut W, label: i64) {
-        write!(f, "{}", label).unwrap();
+        write!(f, "{label}").unwrap();
         for (index, value) in self.arr.iter().enumerate() {
             if *value != 0 {
                 write!(f, " {}:{}", index + 1, value).unwrap();
