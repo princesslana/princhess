@@ -17,9 +17,11 @@ use crate::tree_policy::Puct;
 
 const MAX_PLAYOUT_LENGTH: usize = 256;
 
+const VIRTUAL_LOSS: i64 = SCALE as i64;
+
 /// You're not intended to use this class (use an `MctsManager` instead),
 /// but you can use it if you want to manage the threads yourself.
-pub struct SearchTree<Spec: Mcts> {
+pub struct SearchTree {
     root_node: SearchNode,
     root_state: State,
     tree_policy: Puct,
@@ -28,7 +30,6 @@ pub struct SearchTree<Spec: Mcts> {
     left_table: TranspositionTable,
     right_table: TranspositionTable,
     is_left_current: AtomicBool,
-    manager: Spec,
 
     flip_lock: Mutex<()>,
     num_nodes: AtomicUsize,
@@ -39,13 +40,13 @@ pub trait NodeStats {
     fn get_visits(&self) -> &AtomicU32;
     fn get_sum_evaluations(&self) -> &AtomicI64;
 
-    fn down<Spec: Mcts>(&self, manager: &Spec) {
+    fn down(&self) {
         self.get_sum_evaluations()
-            .fetch_sub(manager.virtual_loss(), Ordering::Relaxed);
+            .fetch_sub(VIRTUAL_LOSS, Ordering::Relaxed);
         self.get_visits().fetch_add(1, Ordering::Relaxed);
     }
-    fn up<Spec: Mcts>(&self, manager: &Spec, evaln: i64) {
-        let delta = evaln + manager.virtual_loss();
+    fn up(&self, evaln: i64) {
+        let delta = evaln + VIRTUAL_LOSS;
         self.get_sum_evaluations()
             .fetch_add(delta, Ordering::Relaxed);
     }
@@ -193,17 +194,17 @@ impl<'a> MoveInfoHandle<'a> {
     }
 }
 
-enum CreationHelper<'a: 'b, 'b, Spec: 'a + Mcts> {
-    Handle(bool, SearchHandle<'a, 'b, Spec>),
+enum CreationHelper<'a: 'b, 'b> {
+    Handle(bool, SearchHandle<'a, 'b>),
     Allocator(&'b ArenaAllocator<'a>),
 }
 
 #[inline(always)]
-fn create_node<Spec: Mcts>(
+fn create_node(
     policy: &Puct,
     state: &State,
     tb_hits: &AtomicUsize,
-    ch: CreationHelper<'_, '_, Spec>,
+    ch: CreationHelper<'_, '_>,
 ) -> Result<SearchNode, ArenaError> {
     let (allocator, _handle) = match ch {
         CreationHelper::Allocator(x) => (x, None),
@@ -241,10 +242,9 @@ fn create_node<Spec: Mcts>(
     Ok(SearchNode::new(hots, state_eval, is_tb_hit))
 }
 
-impl<Spec: Mcts> SearchTree<Spec> {
+impl SearchTree {
     pub fn new(
         state: State,
-        manager: Spec,
         tree_policy: Puct,
         current_table: TranspositionTable,
         previous_table: TranspositionTable,
@@ -253,7 +253,7 @@ impl<Spec: Mcts> SearchTree<Spec> {
 
         let root_table = TranspositionTable::for_root();
 
-        let mut root_node = create_node::<Spec>(
+        let mut root_node = create_node(
             &tree_policy,
             &state,
             &tb_hits,
@@ -276,7 +276,6 @@ impl<Spec: Mcts> SearchTree<Spec> {
         Self {
             root_state: state,
             root_node,
-            manager,
             tree_policy,
             root_table,
             left_table: current_table,
@@ -362,7 +361,7 @@ impl<Spec: Mcts> SearchTree<Spec> {
                 node.moves(),
                 self.make_handle(tld, &node_path),
             );
-            choice.hot.down(&self.manager);
+            choice.hot.down();
             path.push(choice);
             state.make_move(&choice.hot.mov);
 
@@ -381,7 +380,7 @@ impl<Spec: Mcts> SearchTree<Spec> {
             node = new_node;
 
             node_path.push(node);
-            node.down(&self.manager);
+            node.down();
             if node.get_visits().load(Ordering::Relaxed) == 1 {
                 break;
             }
@@ -473,7 +472,7 @@ impl<Spec: Mcts> SearchTree<Spec> {
     ) {
         let mut evaln_value = evaln;
         for (move_info, node) in path.iter().zip(node_path.iter()).rev() {
-            node.up(&self.manager, evaln_value);
+            node.up(evaln_value);
             move_info.hot.replace(*node);
             evaln_value = -evaln_value;
         }
@@ -483,7 +482,7 @@ impl<Spec: Mcts> SearchTree<Spec> {
         &'a self,
         tld: &'b mut ThreadData<'a>,
         path: &'b [&'a SearchNode],
-    ) -> SearchHandle<'a, 'b, Spec> {
+    ) -> SearchHandle<'a, 'b> {
         let shared = SharedSearchHandle { tree: self, path };
         SearchHandle { shared, tld }
     }
@@ -501,9 +500,7 @@ impl<Spec: Mcts> SearchTree<Spec> {
         let mut result = Vec::new();
         let mut crnt = &self.root_node;
         while !crnt.hots().is_empty() && result.len() < num_moves {
-            let choice = self
-                .manager
-                .select_child_after_search(&crnt.moves().collect::<Vec<_>>());
+            let choice = select_child_after_search(&crnt.moves().collect::<Vec<_>>());
             result.push(choice);
             let child = choice.hot.child.load(Ordering::SeqCst) as *const SearchNode;
             if child.is_null() {
@@ -516,6 +513,18 @@ impl<Spec: Mcts> SearchTree<Spec> {
         }
         result
     }
+}
+
+fn select_child_after_search<'a>(children: &[MoveInfoHandle<'a>]) -> MoveInfoHandle<'a> {
+    *children
+        .iter()
+        .max_by_key(|child| {
+            child
+                .average_reward()
+                .map(|r| r.round() as i64)
+                .unwrap_or(-SCALE as i64)
+        })
+        .unwrap()
 }
 
 pub struct NodeHandle<'a> {
@@ -567,25 +576,25 @@ impl<'a> Iterator for Moves<'a> {
     }
 }
 
-pub struct SharedSearchHandle<'a: 'b, 'b, Spec: 'a + Mcts> {
-    tree: &'a SearchTree<Spec>,
+pub struct SharedSearchHandle<'a: 'b, 'b> {
+    tree: &'a SearchTree,
     path: &'b [&'a SearchNode],
 }
-impl<'a: 'b, 'b, Spec: 'a + Mcts> Clone for SharedSearchHandle<'a, 'b, Spec> {
+impl<'a: 'b, 'b> Clone for SharedSearchHandle<'a, 'b> {
     fn clone(&self) -> Self {
         let tree = self.tree;
         let path = self.path;
         Self { tree, path }
     }
 }
-impl<'a: 'b, 'b, Spec: 'a + Mcts> Copy for SharedSearchHandle<'a, 'b, Spec> {}
+impl<'a: 'b, 'b> Copy for SharedSearchHandle<'a, 'b> {}
 
-pub struct SearchHandle<'a: 'b, 'b, Spec: 'a + Mcts> {
+pub struct SearchHandle<'a: 'b, 'b> {
     pub tld: &'b mut ThreadData<'a>,
-    pub shared: SharedSearchHandle<'a, 'b, Spec>,
+    pub shared: SharedSearchHandle<'a, 'b>,
 }
 
-impl<'a, 'b, Spec: Mcts> SearchHandle<'a, 'b, Spec> {
+impl<'a, 'b> SearchHandle<'a, 'b> {
     pub fn is_root(&self) -> bool {
         self.shared.path.is_empty()
     }

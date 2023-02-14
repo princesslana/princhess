@@ -1,6 +1,5 @@
 use std::f32;
 
-use crate::mcts::Mcts;
 use crate::search_tree::{MoveInfoHandle, Moves, SearchHandle};
 use crate::state::State;
 
@@ -14,11 +13,11 @@ impl Puct {
         Self { cpuct }
     }
 
-    pub fn choose_child<'a, Spec: Mcts>(
+    pub fn choose_child<'a>(
         &self,
         _: &State,
         moves: Moves<'a>,
-        handle: SearchHandle<Spec>,
+        handle: SearchHandle,
     ) -> MoveInfoHandle<'a> {
         let total_visits = moves.map(|x| x.visits()).sum::<u64>() + 1;
         let sqrt_total_visits = (total_visits as f32).sqrt();
