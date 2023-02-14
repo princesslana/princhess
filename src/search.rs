@@ -4,7 +4,7 @@ use std::sync::mpsc::Sender;
 use std::thread;
 use std::time::Duration;
 
-use crate::mcts::{AsyncSearchOwned, Mcts, MctsManager, MoveInfoHandle};
+use crate::mcts::{AsyncSearchOwned, MctsManager};
 use crate::options::{get_cpuct, get_num_threads, is_chess960};
 use crate::state::State;
 use crate::tablebase::probe_tablebase_best_move;
@@ -25,38 +25,13 @@ fn policy() -> Puct {
     Puct::new(cpuct * SCALE)
 }
 
-pub struct GooseMcts;
-
-impl Mcts for GooseMcts {
-    fn virtual_loss(&self) -> i64 {
-        SCALE as i64
-    }
-    fn select_child_after_search<'a>(&self, children: &[MoveInfoHandle<'a>]) -> MoveInfoHandle<'a> {
-        *children
-            .iter()
-            .max_by_key(|child| {
-                child
-                    .average_reward()
-                    .map(|r| r.round() as i64)
-                    .unwrap_or(-SCALE as i64)
-            })
-            .unwrap()
-    }
-}
-
 pub struct Search {
-    search: AsyncSearchOwned<GooseMcts>,
+    search: AsyncSearchOwned,
 }
 
 impl Search {
-    pub fn create_manager(state: State, prev_table: TranspositionTable) -> MctsManager<GooseMcts> {
-        MctsManager::new(
-            state,
-            GooseMcts,
-            policy(),
-            TranspositionTable::empty(),
-            prev_table,
-        )
+    pub fn create_manager(state: State, prev_table: TranspositionTable) -> MctsManager {
+        MctsManager::new(state, policy(), TranspositionTable::empty(), prev_table)
     }
 
     pub fn new(state: State, prev_table: TranspositionTable) -> Self {
@@ -68,7 +43,7 @@ impl Search {
         let manager = self.stop_and_print_m();
         manager.table()
     }
-    fn stop_and_print_m(self) -> MctsManager<GooseMcts> {
+    fn stop_and_print_m(self) -> MctsManager {
         if self.search.num_threads() == 0 {
             return self.search.halt();
         }

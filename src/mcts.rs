@@ -13,26 +13,12 @@ use crate::state::State;
 use crate::transposition_table::*;
 use crate::tree_policy::*;
 
-pub trait Mcts: Sized + Sync {
-    /// Virtual loss subtracted from a node's evaluation when a search thread chooses it in a playout,
-    /// then added back when the playout is complete.
-    /// Used to reduce contention between threads. Defaults to 0.
-    fn virtual_loss(&self) -> i64 {
-        0
-    }
-
-    /// Rule for selecting the best move once the search is over. Defaults to choosing the child with the most visits.
-    fn select_child_after_search<'a>(&self, children: &[MoveInfoHandle<'a>]) -> MoveInfoHandle<'a> {
-        *children.iter().max_by_key(|child| child.visits()).unwrap()
-    }
-}
-
 pub struct ThreadData<'a> {
     pub allocator: (ArenaAllocator<'a>, ArenaAllocator<'a>),
 }
 
 impl<'a> ThreadData<'a> {
-    fn create<Spec: Mcts>(tree: &'a SearchTree<Spec>) -> Self {
+    fn create(tree: &'a SearchTree) -> Self {
         let (left_arena, right_arena) = tree.arenas();
         Self {
             allocator: (left_arena.allocator(), right_arena.allocator()),
@@ -43,20 +29,19 @@ impl<'a> ThreadData<'a> {
 pub type MoveEvaluation = f32;
 pub type StateEvaluation = i64;
 
-pub struct MctsManager<Spec: Mcts> {
-    search_tree: SearchTree<Spec>,
+pub struct MctsManager {
+    search_tree: SearchTree,
     search_start: RwLock<Option<Instant>>,
 }
 
-impl<Spec: Mcts> MctsManager<Spec> {
+impl MctsManager {
     pub fn new(
         state: State,
-        manager: Spec,
         tree_policy: Puct,
         table: TranspositionTable,
         prev_table: TranspositionTable,
     ) -> Self {
-        let search_tree = SearchTree::new(state, manager, tree_policy, table, prev_table);
+        let search_tree = SearchTree::new(state, tree_policy, table, prev_table);
         Self {
             search_tree,
             search_start: RwLock::new(None),
@@ -101,7 +86,7 @@ impl<Spec: Mcts> MctsManager<Spec> {
         self,
         num_threads: usize,
         sender: &Sender<String>,
-    ) -> AsyncSearchOwned<Spec> {
+    ) -> AsyncSearchOwned {
         assert!(num_threads != 0);
         let self_box = Box::new(self);
         let stop_signal = Arc::new(AtomicBool::new(false));
@@ -130,7 +115,7 @@ impl<Spec: Mcts> MctsManager<Spec> {
             .collect()
     }
 
-    pub fn tree(&self) -> &SearchTree<Spec> {
+    pub fn tree(&self) -> &SearchTree {
         &self.search_tree
     }
 
@@ -207,22 +192,22 @@ impl<Spec: Mcts> MctsManager<Spec> {
     }
 }
 
-pub struct AsyncSearchOwned<Spec: Mcts> {
-    manager: Option<Box<MctsManager<Spec>>>,
+pub struct AsyncSearchOwned {
+    manager: Option<Box<MctsManager>>,
     stop_signal: Arc<AtomicBool>,
     threads: Vec<JoinHandle<()>>,
 }
 
-impl<Spec: Mcts> AsyncSearchOwned<Spec> {
+impl AsyncSearchOwned {
     fn stop_threads(&mut self) {
         self.stop_signal.store(true, Ordering::SeqCst);
         drain_join_unwrap(&mut self.threads);
     }
-    pub fn halt(mut self) -> MctsManager<Spec> {
+    pub fn halt(mut self) -> MctsManager {
         self.stop_threads();
         *self.manager.take().unwrap()
     }
-    pub fn get_manager(&self) -> &MctsManager<Spec> {
+    pub fn get_manager(&self) -> &MctsManager {
         self.manager.as_ref().unwrap()
     }
     pub fn get_stop_signal(&self) -> &Arc<AtomicBool> {
@@ -233,15 +218,15 @@ impl<Spec: Mcts> AsyncSearchOwned<Spec> {
     }
 }
 
-impl<Spec: Mcts> Drop for AsyncSearchOwned<Spec> {
+impl Drop for AsyncSearchOwned {
     fn drop(&mut self) {
         self.stop_threads();
     }
 }
 
-impl<Spec: Mcts> From<MctsManager<Spec>> for AsyncSearchOwned<Spec> {
+impl From<MctsManager> for AsyncSearchOwned {
     /// An `MctsManager` is an `AsyncSearchOwned` with zero threads searching.
-    fn from(m: MctsManager<Spec>) -> Self {
+    fn from(m: MctsManager) -> Self {
         Self {
             manager: Some(Box::new(m)),
             stop_signal: Arc::new(AtomicBool::new(false)),
