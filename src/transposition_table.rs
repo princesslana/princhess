@@ -1,10 +1,11 @@
-use arena::Arena;
 use dashmap::DashMap;
 use nohash_hasher::BuildNoHashHasher;
-use options::get_hash_size_mb;
-use search_tree::{NodeStats, SearchNode};
-use state::State;
 use std::sync::atomic::{AtomicPtr, Ordering};
+
+use crate::arena::Arena;
+use crate::options::get_hash_size_mb;
+use crate::search_tree::{NodeStats, SearchNode};
+use crate::state::State;
 
 pub trait TranspositionHash {
     fn hash(&self) -> u64;

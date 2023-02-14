@@ -1,10 +1,8 @@
-extern crate rand;
-
-use mcts::Mcts;
-
-use search_tree::{MoveInfoHandle, Moves, SearchHandle};
-use state::State;
 use std::f32;
+
+use crate::mcts::Mcts;
+use crate::search_tree::{MoveInfoHandle, Moves, SearchHandle};
+use crate::state::State;
 
 #[derive(Clone, Debug)]
 pub struct Puct {
@@ -66,11 +64,7 @@ impl Puct {
 
     pub fn validate_evaluations(&self, evalns: &[f32]) {
         for &x in evalns {
-            assert!(
-                x >= -1e-6,
-                "Move evaluation is {} (must be non-negative)",
-                x
-            );
+            assert!(x >= -1e-6, "Move evaluation is {x} (must be non-negative)");
         }
     }
 }

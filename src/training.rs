@@ -2,19 +2,17 @@ extern crate memmap;
 extern crate pgn_reader;
 extern crate rand;
 
-use self::memmap::Mmap;
-use self::pgn_reader::{BufferedReader, Outcome, RawHeader, SanPlus, Skip, Visitor};
-use self::rand::rngs::SmallRng;
-use self::rand::{Rng, SeedableRng};
-
-use features::{featurize, FeatureVec, GameResult};
+use memmap::Mmap;
+use pgn_reader::{BufferedReader, Outcome, RawHeader, SanPlus, Skip, Visitor};
+use rand::rngs::SmallRng;
+use rand::{Rng, SeedableRng};
 use shakmaty::{self, Color};
-use state::StateBuilder;
-
-use std;
 use std::fs::File;
 use std::io::BufWriter;
 use std::str;
+
+use crate::features::{featurize, FeatureVec, GameResult};
+use crate::state::StateBuilder;
 
 const NUM_ROWS: usize = std::usize::MAX;
 const MIN_ELO: i32 = 1700;
@@ -130,7 +128,7 @@ pub fn train(in_path: &str, out_path: &str, policy: bool) {
 }
 
 pub fn train_policy(in_path: &str, out_path: &str) {
-    let out_path = format!("policy_{}", out_path);
+    let out_path = format!("policy_{out_path}");
 
     let out_file = BufWriter::new(File::create(out_path).expect("create"));
     let mut generator = PolicyDataGenerator {

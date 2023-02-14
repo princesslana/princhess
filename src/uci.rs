@@ -1,13 +1,14 @@
-use options::{set_chess960, set_cpuct, set_hash_size_mb, set_num_threads};
-use search::Search;
-use search_tree::print_size_list;
-use state::State;
 use std::io::{stdin, BufRead};
 use std::str::{FromStr, SplitWhitespace};
 use std::sync::mpsc::{channel, SendError};
 use std::thread;
-use tablebase::set_tablebase_directory;
-use transposition_table::TranspositionTable;
+
+use crate::options::{set_chess960, set_cpuct, set_hash_size_mb, set_num_threads};
+use crate::search::Search;
+use crate::search_tree::print_size_list;
+use crate::state::State;
+use crate::tablebase::set_tablebase_directory;
+use crate::transposition_table::TranspositionTable;
 
 pub type Tokens<'a> = SplitWhitespace<'a>;
 
@@ -73,7 +74,7 @@ pub fn main(commands: Vec<String>) {
 
 pub fn uci() {
     println!("id name {} {}", ENGINE_NAME, VERSION.unwrap_or("unknown"));
-    println!("id author {}", ENGINE_AUTHOR);
+    println!("id author {ENGINE_AUTHOR}");
     println!("option name Hash type spin min 8 max 65536 default 16");
     println!("option name Threads type spin min 1 max 255 default 1");
     println!("option name SyzygyPath type string");
@@ -101,7 +102,7 @@ impl UciOption {
                 break;
             }
 
-            name = format!("{} {}", name, t);
+            name = format!("{name} {t}");
         }
 
         let mut value = None;
@@ -109,7 +110,7 @@ impl UciOption {
         for t in tokens {
             value = match value {
                 None => Some(t.to_owned()),
-                Some(s) => Some(format!("{} {}", s, t)),
+                Some(s) => Some(format!("{s} {t}")),
             }
         }
 

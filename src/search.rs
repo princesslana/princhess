@@ -1,15 +1,16 @@
-use mcts::{AsyncSearchOwned, Mcts, MctsManager, MoveInfoHandle};
-use options::{get_cpuct, get_num_threads, is_chess960};
 use shakmaty::{CastlingMode, Color, Move};
-use state::State;
 use std::sync::atomic::Ordering;
 use std::sync::mpsc::Sender;
 use std::thread;
 use std::time::Duration;
-use tablebase::probe_tablebase_best_move;
-use transposition_table::TranspositionTable;
-use tree_policy::Puct;
-use uci::Tokens;
+
+use crate::mcts::{AsyncSearchOwned, Mcts, MctsManager, MoveInfoHandle};
+use crate::options::{get_cpuct, get_num_threads, is_chess960};
+use crate::state::State;
+use crate::tablebase::probe_tablebase_best_move;
+use crate::transposition_table::TranspositionTable;
+use crate::tree_policy::Puct;
+use crate::uci::Tokens;
 
 const DEFAULT_MOVE_TIME_SECS: u64 = 10;
 const DEFAULT_MOVE_TIME_FRACTION: u32 = 20;
@@ -104,21 +105,15 @@ impl Search {
 
         if mvs.len() == 1 {
             let uci_mv = to_uci(mvs[0].clone());
-            println!(
-                "info depth 1 seldepth 1 nodes 1 nps 1 tbhits 0 time 1 pv {}",
-                uci_mv
-            );
-            println!("bestmove {}", uci_mv);
+            println!("info depth 1 seldepth 1 nodes 1 nps 1 tbhits 0 time 1 pv {uci_mv}");
+            println!("bestmove {uci_mv}");
             return Self {
                 search: manager.into(),
             };
         } else if let Some(mv) = probe_tablebase_best_move(state.board()) {
             let uci_mv = mv.to_uci(CastlingMode::from_chess960(is_chess960()));
-            println!(
-                "info depth 1 seldepth 1 nodes 1 nps 1 tbhits 1 time 1 pv {}",
-                uci_mv
-            );
-            println!("bestmove {}", uci_mv);
+            println!("info depth 1 seldepth 1 nodes 1 nps 1 tbhits 1 time 1 pv {uci_mv}");
+            println!("bestmove {uci_mv}");
             return Self {
                 search: manager.into(),
             };

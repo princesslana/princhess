@@ -1,21 +1,19 @@
 use arrayvec::ArrayVec;
-use evaluation;
-use math;
-use mcts::*;
-use search::SCALE;
+use pod::Pod;
 use shakmaty::{Color, MoveList, Position};
-use state::State;
 use std::mem;
 use std::ptr::null_mut;
 use std::sync::atomic::{AtomicBool, AtomicI64, AtomicPtr, AtomicU32, AtomicUsize, Ordering};
 use std::sync::Mutex;
-use transposition_table::TranspositionTable;
 
-use pod::Pod;
-
-use tree_policy::Puct;
-
-use arena::{Arena, ArenaAllocator, ArenaError};
+use crate::arena::{Arena, ArenaAllocator, ArenaError};
+use crate::evaluation;
+use crate::math;
+use crate::mcts::*;
+use crate::search::SCALE;
+use crate::state::State;
+use crate::transposition_table::TranspositionTable;
+use crate::tree_policy::Puct;
 
 const MAX_PLAYOUT_LENGTH: usize = 256;
 
@@ -201,11 +199,11 @@ enum CreationHelper<'a: 'b, 'b, Spec: 'a + Mcts> {
 }
 
 #[inline(always)]
-fn create_node<'a, 'b, Spec: Mcts>(
+fn create_node<Spec: Mcts>(
     policy: &Puct,
     state: &State,
     tb_hits: &AtomicUsize,
-    ch: CreationHelper<'a, 'b, Spec>,
+    ch: CreationHelper<'_, '_, Spec>,
 ) -> Result<SearchNode, ArenaError> {
     let (allocator, _handle) = match ch {
         CreationHelper::Allocator(x) => (x, None),
