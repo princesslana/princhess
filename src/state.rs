@@ -2,7 +2,9 @@ use arrayvec::ArrayVec;
 use shakmaty::fen::Fen;
 use shakmaty::uci::Uci;
 use shakmaty::zobrist::{ZobristHash, ZobristValue};
-use shakmaty::{self, CastlingMode, Chess, Color, File, Move, MoveList, Piece, Position, Setup};
+use shakmaty::{
+    self, CastlingMode, CastlingSide, Chess, Color, File, Move, MoveList, Piece, Position, Setup,
+};
 
 use crate::options::is_chess960;
 use crate::transposition_table::TranspositionHash;
@@ -121,9 +123,29 @@ impl State {
         }
         self.prev_state_hashes.push(self.hash());
 
+        self.update_hash_pre();
         self.board.play_unchecked(mov);
         self.update_hash(!self.side_to_move(), mov);
+
         self.check_for_repetition();
+    }
+
+    fn update_hash_pre(&mut self) {
+        if let Some(ep_sq) = self.board.ep_square() {
+            self.hash ^= u64::zobrist_for_en_passant_file(ep_sq.file());
+        }
+
+        let castles = self.board.castles();
+
+        if !castles.is_empty() {
+            for color in Color::ALL {
+                for side in CastlingSide::ALL {
+                    if castles.has(color, side) {
+                        self.hash ^= u64::zobrist_for_castling_right(color, side);
+                    }
+                }
+            }
+        }
     }
 
     fn update_hash(&mut self, color: Color, mv: &Move) {
@@ -147,6 +169,22 @@ impl State {
                             role: *captured,
                         },
                     );
+                }
+
+                if let Some(ep_sq) = self.board.ep_square() {
+                    self.hash ^= u64::zobrist_for_en_passant_file(ep_sq.file());
+                }
+
+                let castles = self.board.castles();
+
+                if !castles.is_empty() {
+                    for color in Color::ALL {
+                        for side in CastlingSide::ALL {
+                            if castles.has(color, side) {
+                                self.hash ^= u64::zobrist_for_castling_right(color, side);
+                            }
+                        }
+                    }
                 }
 
                 self.hash ^= u64::zobrist_for_white_turn();
