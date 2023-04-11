@@ -3,7 +3,7 @@ extern crate pgn_reader;
 extern crate rand;
 
 use memmap::Mmap;
-use pgn_reader::{BufferedReader, Outcome, RawHeader, SanPlus, Skip, Visitor};
+use pgn_reader::{BufferedReader, Outcome, SanPlus, Skip, Visitor};
 use rand::rngs::SmallRng;
 use rand::{Rng, SeedableRng};
 use shakmaty::{self, Color};
@@ -14,9 +14,6 @@ use std::str;
 use crate::features::{featurize, FeatureVec, GameResult};
 use crate::state::StateBuilder;
 
-const NUM_ROWS: usize = std::usize::MAX;
-const MIN_ELO: i32 = 1700;
-const MIN_ELO_POLICY: i32 = 1700;
 const NUM_SAMPLES: usize = 16;
 const NUM_SAMPLES_POLICY: usize = 16;
 
@@ -33,7 +30,7 @@ impl Visitor for ValueDataGenerator {
 
     fn begin_game(&mut self) {
         self.state = StateBuilder::default();
-        self.skip = self.rows_written == NUM_ROWS;
+        self.skip = false;
     }
 
     fn san(&mut self, san: SanPlus) {
@@ -44,15 +41,6 @@ impl Visitor for ValueDataGenerator {
 
     fn end_headers(&mut self) -> Skip {
         Skip(self.skip)
-    }
-
-    fn header(&mut self, key: &[u8], value: RawHeader) {
-        if key == b"WhiteElo" || key == b"BlackElo" {
-            let elo: i32 = value.decode_utf8().unwrap().parse().unwrap();
-            if elo < MIN_ELO {
-                self.skip = true;
-            }
-        }
     }
 
     fn outcome(&mut self, outcome: Option<Outcome>) {
@@ -167,15 +155,6 @@ impl Visitor for PolicyDataGenerator {
 
     fn end_headers(&mut self) -> Skip {
         Skip(self.skip)
-    }
-
-    fn header(&mut self, key: &[u8], value: RawHeader) {
-        if key == b"WhiteElo" || key == b"BlackElo" {
-            let elo: i32 = value.decode_utf8().unwrap().parse().unwrap();
-            if elo < MIN_ELO_POLICY {
-                self.skip = true;
-            }
-        }
     }
 
     fn begin_variation(&mut self) -> Skip {

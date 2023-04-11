@@ -85,7 +85,11 @@ pub struct State {
     board: Chess,
     prev_capture: Option<shakmaty::Role>,
     prev_capture_sq: Option<shakmaty::Square>,
-    prev_state_hashes: ArrayVec<u64, 101>,
+
+    // 101 should be enough to track 50-move rule, but some games in the dataset
+    // can go above this. Hence we add a little space
+    prev_state_hashes: ArrayVec<u64, 128>,
+
     repetitions: usize,
     hash: u64,
 }
