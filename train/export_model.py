@@ -35,7 +35,7 @@ def model_to_coefs(file):
         if isinstance(model.layers[idx], keras.layers.Dense):
             hidden_weights, hidden_bias = model.layers[idx].get_weights()
             write_coefs(
-                os.path.join(output_folder, f"hidden_weights_{idx}"), numpy.transpose(hidden_weights)
+                os.path.join(output_folder, f"hidden_weights_{idx}"), hidden_weights
             )
             write_coefs(os.path.join(output_folder, f"hidden_bias_{idx}"), hidden_bias)
 
