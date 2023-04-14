@@ -48,7 +48,7 @@ const NUMBER_OUTPUTS: usize = 1;
 static EVAL_HIDDEN_BIAS: [f32; NUMBER_HIDDEN] = include!("model/hidden_bias_0");
 
 #[allow(clippy::excessive_precision)]
-static EVAL_HIDDEN_WEIGHTS: [[f32; STATE_NUMBER_INPUTS]; NUMBER_HIDDEN] =
+static EVAL_HIDDEN_WEIGHTS: [[f32; NUMBER_HIDDEN]; STATE_NUMBER_INPUTS] =
     include!("model/hidden_weights_0");
 
 #[allow(clippy::excessive_precision)]
@@ -73,7 +73,7 @@ fn evaluate_state(features: &[f32; state::NUMBER_FEATURES]) -> f32 {
     for (i, f) in features.iter().enumerate() {
         if *f > 0.5 {
             for j in 0..hidden_layer.len() {
-                hidden_layer[j] += EVAL_HIDDEN_WEIGHTS[j][i];
+                hidden_layer[j] += EVAL_HIDDEN_WEIGHTS[i][j];
             }
         }
     }
