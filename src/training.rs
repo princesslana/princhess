@@ -116,8 +116,6 @@ pub fn train(in_path: &str, out_path: &str, policy: bool) {
 }
 
 pub fn train_policy(in_path: &str, out_path: &str) {
-    let out_path = format!("policy_{out_path}");
-
     let out_file = BufWriter::new(File::create(out_path).expect("create"));
     let mut generator = PolicyDataGenerator {
         out_file,
