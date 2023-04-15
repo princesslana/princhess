@@ -44,20 +44,24 @@ policy_data() {
   do
     echo "Featurizing $f..."
 
-    $PRINCHESS -p -t $f
+    $PRINCHESS -p -t $f -o $f.libsvm &
+  done
 
+  wait
+
+  for f in pgn/*.pgn
+  do
     echo "Calculating split..."
 
-    samples=$(wc -l < policy_train_data.libsvm)
+    samples=$(wc -l < $f.libsvm)
     splits=$(( $samples / 1000000 ))
     split_size=$(( $samples / $splits + 1))
 
     echo "Splitting data ($split_size)..."
 
-    mkdir -p policy_data
-    split -l $split_size policy_train_data.libsvm policy_data/$(basename $f).libsvm.
+    split -l $split_size $f.libsvm policy_data/$(basename $f).libsvm.
 
-    rm policy_train_data.libsvm
+    rm $f.libsvm
     rm -f policy_data/*.gz
   done
 }
