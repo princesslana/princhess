@@ -72,8 +72,8 @@ fn evaluate_state(features: &[f32; state::NUMBER_FEATURES]) -> f32 {
 
     for (i, f) in features.iter().enumerate() {
         if *f > 0.5 {
-            for j in 0..hidden_layer.len() {
-                hidden_layer[j] += EVAL_HIDDEN_WEIGHTS[i][j];
+            for (j, l) in hidden_layer.iter_mut().enumerate() {
+                *l += EVAL_HIDDEN_WEIGHTS[i][j];
             }
         }
     }
