@@ -1,4 +1,4 @@
-use shakmaty::{Color, MoveList, Position};
+use shakmaty::{MoveList, Position};
 use shakmaty_syzygy::Wdl;
 use std::mem::{self, MaybeUninit};
 use std::ptr;
@@ -10,34 +10,77 @@ use crate::tablebase::probe_tablebase_wdl;
 
 const MATE_FACTOR: f32 = 1.1;
 
-pub fn evaluate_new_state(state: &State, moves: &MoveList) -> (Vec<f32>, i64, bool) {
+const MATE: StateEvaluation = StateEvaluation::Scaled((SCALE * MATE_FACTOR) as i64);
+const DRAW: StateEvaluation = StateEvaluation::Scaled(0);
+
+const TB_WIN: StateEvaluation = StateEvaluation::Tablebase(SCALE as i64);
+const TB_LOSS: StateEvaluation = StateEvaluation::Tablebase(-SCALE as i64);
+const TB_DRAW: StateEvaluation = StateEvaluation::Tablebase(0);
+
+#[derive(Debug, Copy, Clone)]
+pub enum StateEvaluation {
+    Scaled(i64),
+    Tablebase(i64),
+}
+
+impl StateEvaluation {
+    pub fn draw() -> Self {
+        DRAW
+    }
+
+    pub fn flip(&self) -> Self {
+        match self {
+            StateEvaluation::Scaled(s) => StateEvaluation::Scaled(-s),
+            StateEvaluation::Tablebase(s) => StateEvaluation::Tablebase(-s),
+        }
+    }
+
+    pub fn is_tablebase(&self) -> bool {
+        matches!(self, StateEvaluation::Tablebase(_))
+    }
+}
+
+impl From<f32> for StateEvaluation {
+    fn from(f: f32) -> Self {
+        StateEvaluation::Scaled((f * SCALE) as i64)
+    }
+}
+
+impl From<StateEvaluation> for i64 {
+    fn from(e: StateEvaluation) -> Self {
+        match e {
+            StateEvaluation::Scaled(s) => s,
+            StateEvaluation::Tablebase(s) => s,
+        }
+    }
+}
+
+pub fn evaluate_new_state(state: &State, moves: &MoveList) -> (Vec<f32>, StateEvaluation) {
     let features = state.features();
     let move_evaluations = evaluate_policy(state, &features, moves);
-    let mut tb_hit = false;
+
     let state_evaluation = if moves.is_empty() {
         if state.board().is_check() {
-            (-MATE_FACTOR * SCALE) as i64
+            MATE.flip()
         } else {
-            0
+            DRAW
         }
     } else if let Some(wdl) = probe_tablebase_wdl(state.board()) {
-        tb_hit = true;
-        let win_score = SCALE as i64;
         match wdl {
-            Wdl::Win => win_score,
-            Wdl::Loss => -win_score,
-            _ => 0,
+            Wdl::Win => TB_WIN,
+            Wdl::Loss => TB_LOSS,
+            _ => TB_DRAW,
         }
     } else {
-        (evaluate_state(&features) * SCALE) as i64
+        evaluate_state(&features).into()
     };
 
-    let stm_multiplier = if state.side_to_move() == Color::White {
-        1
-    } else {
-        -1
-    };
-    (move_evaluations, stm_multiplier * state_evaluation, tb_hit)
+    (
+        move_evaluations,
+        state
+            .side_to_move()
+            .fold_wb(state_evaluation, state_evaluation.flip()),
+    )
 }
 
 const STATE_NUMBER_INPUTS: usize = state::NUMBER_FEATURES;
