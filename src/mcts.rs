@@ -27,7 +27,6 @@ impl<'a> ThreadData<'a> {
 }
 
 pub type MoveEvaluation = f32;
-pub type StateEvaluation = i64;
 
 pub struct MctsManager {
     search_tree: SearchTree,
@@ -172,7 +171,7 @@ impl MctsManager {
         let root_moves = root_node.moves();
 
         let state_moves = root_state.available_moves();
-        let (state_moves_eval, _, _) = evaluation::evaluate_new_state(root_state, &state_moves);
+        let (state_moves_eval, _) = evaluation::evaluate_new_state(root_state, &state_moves);
 
         let mut moves: Vec<(MoveInfoHandle, f32)> = root_moves.zip(state_moves_eval).collect();
         moves.sort_by_key(|(h, e)| FloatOrd(h.average_reward().unwrap_or(*e)));

@@ -7,7 +7,7 @@ use std::sync::atomic::{AtomicBool, AtomicI64, AtomicPtr, AtomicU32, AtomicUsize
 use std::sync::Mutex;
 
 use crate::arena::{Arena, ArenaAllocator, ArenaError};
-use crate::evaluation;
+use crate::evaluation::{self, StateEvaluation};
 use crate::math;
 use crate::mcts::*;
 use crate::search::SCALE;
@@ -103,7 +103,6 @@ impl<'a> Copy for MoveInfoHandle<'a> {}
 pub struct SearchNode {
     hots: *const [()],
     evaln: StateEvaluation,
-    tablebase: bool,
     sum_evaluations: AtomicI64,
     visits: AtomicU32,
 }
@@ -111,22 +110,25 @@ pub struct SearchNode {
 unsafe impl Sync for SearchNode {}
 
 impl SearchNode {
-    fn new(hots: &[HotMoveInfo], evaln: StateEvaluation, tablebase: bool) -> Self {
+    fn new(hots: &[HotMoveInfo], evaln: StateEvaluation) -> Self {
         Self {
             hots: hots as *const _ as *const [()],
             evaln,
-            tablebase,
             visits: AtomicU32::default(),
             sum_evaluations: AtomicI64::default(),
         }
     }
 
-    pub fn evaln(&self) -> StateEvaluation {
-        self.evaln
+    pub fn evaln(&self) -> &StateEvaluation {
+        &self.evaln
     }
 
     pub fn set_evaln(&mut self, evaln: StateEvaluation) {
         self.evaln = evaln;
+    }
+
+    pub fn is_tablebase(&self) -> bool {
+        self.evaln.is_tablebase()
     }
 
     pub fn hots(&self) -> &[HotMoveInfo] {
@@ -222,15 +224,15 @@ fn create_node(
     };
     let mut moves = MoveList::new();
 
-    let (move_eval, state_eval, is_tb_hit) =
+    let (move_eval, state_eval) =
         if state.drawn_by_repetition() || state.board().is_insufficient_material() {
-            (Vec::with_capacity(0), 0, false)
+            (Vec::with_capacity(0), StateEvaluation::draw())
         } else {
             moves = state.available_moves();
             evaluation::evaluate_new_state(state, &moves)
         };
 
-    if is_tb_hit {
+    if state_eval.is_tablebase() {
         tb_hits.fetch_add(1, Ordering::Relaxed);
     }
 
@@ -239,7 +241,7 @@ fn create_node(
     for (i, x) in hots.iter_mut().enumerate() {
         *x = HotMoveInfo::new(move_eval[i], moves[i].clone());
     }
-    Ok(SearchNode::new(hots, state_eval, is_tb_hit))
+    Ok(SearchNode::new(hots, state_eval))
 }
 
 impl SearchTree {
@@ -350,7 +352,7 @@ impl SearchTree {
                 break;
             }
             // We need path.len() check for when the root node is a tablebase position
-            if node.tablebase && path.len() > 2 {
+            if node.is_tablebase() && path.len() > 2 {
                 break;
             }
             if path.len() >= MAX_PLAYOUT_LENGTH {
@@ -389,9 +391,9 @@ impl SearchTree {
         let last_move_was_black = state.side_to_move() == Color::White;
 
         let evaln = if state.drawn_by_fifty_move_rule() {
-            0
+            StateEvaluation::draw()
         } else if last_move_was_black {
-            -node.evaln
+            node.evaln.flip()
         } else {
             node.evaln
         };
@@ -472,9 +474,9 @@ impl SearchTree {
     ) {
         let mut evaln_value = evaln;
         for (move_info, node) in path.iter().zip(node_path.iter()).rev() {
-            node.up(evaln_value);
+            node.up(evaln_value.into());
             move_info.hot.replace(*node);
-            evaln_value = -evaln_value;
+            evaln_value = evaln_value.flip();
         }
     }
 
