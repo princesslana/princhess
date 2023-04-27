@@ -1,7 +1,6 @@
 use std::f32;
 
 use crate::search_tree::{MoveInfoHandle, Moves, SearchHandle};
-use crate::state::State;
 
 #[derive(Clone, Debug)]
 pub struct Puct {
@@ -13,12 +12,7 @@ impl Puct {
         Self { cpuct }
     }
 
-    pub fn choose_child<'a>(
-        &self,
-        _: &State,
-        moves: Moves<'a>,
-        handle: SearchHandle,
-    ) -> MoveInfoHandle<'a> {
+    pub fn choose_child<'a>(&self, moves: Moves<'a>, handle: SearchHandle) -> MoveInfoHandle<'a> {
         let total_visits = moves.map(|x| x.visits()).sum::<u64>() + 1;
         let sqrt_total_visits = (total_visits as f32).sqrt();
         let exploration_constant = self.cpuct;
@@ -59,11 +53,5 @@ impl Puct {
         }
 
         choice.unwrap()
-    }
-
-    pub fn validate_evaluations(&self, evalns: &[f32]) {
-        for &x in evalns {
-            assert!(x >= -1e-6, "Move evaluation is {x} (must be non-negative)");
-        }
     }
 }

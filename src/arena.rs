@@ -1,14 +1,11 @@
-extern crate memmap;
-extern crate pod;
-
 use arc_swap::ArcSwap;
 use log::debug;
 use memmap::MmapMut;
-use pod::Pod;
 use std::cell::UnsafeCell;
 use std::collections::{HashSet, LinkedList};
 use std::mem;
 use std::ops::DerefMut;
+use std::slice;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
 
@@ -144,21 +141,19 @@ impl<'a> ArenaAllocator<'a> {
         }
     }
 
-    pub fn alloc_one<T: Pod>(&self) -> Result<&'a mut T, ArenaError> {
+    pub fn alloc_one<T>(&self) -> Result<&'a mut T, ArenaError> {
         assert!(ALIGN % mem::align_of::<T>() == 0);
         let x = mem::size_of::<T>();
         let x = x + ((!x + 1) % ALIGN); // TODO fix panic when x=0
         let x = self.get_memory(x)?;
-        let x = T::ref_from_slice_mut(x);
-        Ok(x.unwrap())
+        Ok(unsafe { &mut *(x.as_mut_ptr() as *mut T) })
     }
 
-    pub fn alloc_slice<T: Pod>(&self, sz: usize) -> Result<&'a mut [T], ArenaError> {
+    pub fn alloc_slice<T>(&self, sz: usize) -> Result<&'a mut [T], ArenaError> {
         assert!(ALIGN % mem::align_of::<T>() == 0);
         let x = mem::size_of::<T>();
         let x = x + ((!x + 1) % ALIGN); // TODO fix panic when x=0
         let x = self.get_memory(x * sz)?;
-        let x = u8::map_slice_mut(x);
-        Ok(x.unwrap())
+        Ok(unsafe { slice::from_raw_parts_mut(x.as_mut_ptr().cast::<T>(), sz) })
     }
 }

@@ -1,4 +1,3 @@
-use float_ord::FloatOrd;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::Sender;
 use std::sync::{Arc, RwLock};
@@ -174,7 +173,7 @@ impl MctsManager {
         let (state_moves_eval, _) = evaluation::evaluate_new_state(root_state, &state_moves);
 
         let mut moves: Vec<(MoveInfoHandle, f32)> = root_moves.zip(state_moves_eval).collect();
-        moves.sort_by_key(|(h, e)| FloatOrd(h.average_reward().unwrap_or(*e)));
+        moves.sort_by_key(|(h, e)| (h.average_reward().unwrap_or(*e) * SCALE) as i64);
         for (mov, e) in moves {
             println!(
                 "info string {:>6} M: {:>6} P: {:>6} V: {:7} E: {:>6} ({:>8})",
