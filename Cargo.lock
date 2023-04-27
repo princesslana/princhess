@@ -118,12 +118,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d0031c93f37b5d18272de2d932ebff6a7eb32d4bc3bab6751a9af42da7d1a424"
 
 [[package]]
-name = "float-ord"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7bad48618fdb549078c333a7a8528acb57af271d0433bdecd523eb620628364e"
-
-[[package]]
 name = "getrandom"
 version = "0.1.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -239,12 +233,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6f61fba1741ea2b3d6a1e3178721804bb716a68a6aeba1149b5d52e3d464ea66"
 
 [[package]]
-name = "packed"
-version = "0.4.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "41218181af10bee963afd8645b68e050b2feb64635c3639a263c42dba8295334"
-
-[[package]]
 name = "parking_lot_core"
 version = "0.9.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -267,17 +255,6 @@ dependencies = [
  "memchr",
  "shakmaty",
  "slice-deque",
-]
-
-[[package]]
-name = "pod"
-version = "0.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "08b1c1c9af3b1adb5c22ae60040a78db0ce356760007efe187c37da4ab6318b7"
-dependencies = [
- "packed",
- "read_exact",
- "uninitialized",
 ]
 
 [[package]]
@@ -317,13 +294,11 @@ dependencies = [
  "crossbeam",
  "dashmap",
  "fastapprox",
- "float-ord",
  "log",
  "memmap",
  "nohash-hasher",
  "once_cell",
  "pgn-reader",
- "pod",
  "pretty_env_logger",
  "rand",
  "shakmaty",
@@ -387,12 +362,6 @@ checksum = "16abd0c1b639e9eb4d7c50c0b8100b0d0f849be2349829c740fe8e6eb4816429"
 dependencies = [
  "rand_core",
 ]
-
-[[package]]
-name = "read_exact"
-version = "0.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "22bc22a81e0dda32ddd56276b166b548b0ab76281af15f0ba6c22b4bd43c8cd4"
 
 [[package]]
 name = "redox_syscall"
@@ -490,12 +459,6 @@ checksum = "be55cf8942feac5c765c2c993422806843c9a9a45d4d5c407ad6dd2ea95eb9b6"
 dependencies = [
  "winapi-util",
 ]
-
-[[package]]
-name = "uninitialized"
-version = "0.0.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "74c1aa4511c38276c548406f0b1f5f8b793f000cfb51e18f278a102abd057e81"
 
 [[package]]
 name = "wasi"

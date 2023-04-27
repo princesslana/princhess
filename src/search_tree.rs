@@ -1,5 +1,4 @@
 use arrayvec::ArrayVec;
-use pod::Pod;
 use shakmaty::{Color, MoveList, Position};
 use std::mem;
 use std::ptr::null_mut;
@@ -86,22 +85,14 @@ pub struct HotMoveInfo {
     mov: shakmaty::Move,
     child: AtomicPtr<SearchNode>,
 }
+
+#[derive(Clone, Copy)]
 pub struct MoveInfoHandle<'a> {
     hot: &'a HotMoveInfo,
 }
 
-unsafe impl Pod for HotMoveInfo {}
-unsafe impl Pod for SearchNode {}
-
-impl<'a> Clone for MoveInfoHandle<'a> {
-    fn clone(&self) -> Self {
-        Self { hot: self.hot }
-    }
-}
-impl<'a> Copy for MoveInfoHandle<'a> {}
-
 pub struct SearchNode {
-    hots: *const [()],
+    hots: *const [HotMoveInfo],
     evaln: StateEvaluation,
     sum_evaluations: AtomicI64,
     visits: AtomicU32,
@@ -112,7 +103,7 @@ unsafe impl Sync for SearchNode {}
 impl SearchNode {
     fn new(hots: &[HotMoveInfo], evaln: StateEvaluation) -> Self {
         Self {
-            hots: hots as *const _ as *const [()],
+            hots,
             evaln,
             visits: AtomicU32::default(),
             sum_evaluations: AtomicI64::default(),
@@ -203,7 +194,6 @@ enum CreationHelper<'a: 'b, 'b> {
 
 #[inline(always)]
 fn create_node(
-    policy: &Puct,
     state: &State,
     tb_hits: &AtomicUsize,
     ch: CreationHelper<'_, '_>,
@@ -236,7 +226,6 @@ fn create_node(
         tb_hits.fetch_add(1, Ordering::Relaxed);
     }
 
-    policy.validate_evaluations(&move_eval);
     let hots = allocator.alloc_slice(move_eval.len())?;
     for (i, x) in hots.iter_mut().enumerate() {
         *x = HotMoveInfo::new(move_eval[i], moves[i].clone());
@@ -256,7 +245,6 @@ impl SearchTree {
         let root_table = TranspositionTable::for_root();
 
         let mut root_node = create_node(
-            &tree_policy,
             &state,
             &tb_hits,
             CreationHelper::Allocator(&root_table.arena().allocator()),
@@ -358,11 +346,9 @@ impl SearchTree {
             if path.len() >= MAX_PLAYOUT_LENGTH {
                 break;
             }
-            let choice = self.tree_policy.choose_child(
-                &state,
-                node.moves(),
-                self.make_handle(tld, &node_path),
-            );
+            let choice = self
+                .tree_policy
+                .choose_child(node.moves(), self.make_handle(tld, &node_path));
             choice.hot.down();
             path.push(choice);
             state.make_move(&choice.hot.mov);
@@ -430,7 +416,6 @@ impl SearchTree {
         let is_left_current = self.is_left_current();
 
         let mut created_here = create_node(
-            &self.tree_policy,
             state,
             &self.tb_hits,
             CreationHelper::Handle(is_left_current, self.make_handle(tld, path)),
