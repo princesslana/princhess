@@ -56,8 +56,7 @@ impl From<StateEvaluation> for i64 {
 }
 
 pub fn evaluate_new_state(state: &State, moves: &MoveList) -> (Vec<f32>, StateEvaluation) {
-    let features = state.features();
-    let move_evaluations = evaluate_policy(state, &features, moves);
+    let (state_evaluation, move_evaluations) = run_nets(state, moves);
 
     let state_evaluation = if moves.is_empty() {
         if state.board().is_check() {
@@ -72,7 +71,7 @@ pub fn evaluate_new_state(state: &State, moves: &MoveList) -> (Vec<f32>, StateEv
             _ => TB_DRAW,
         }
     } else {
-        evaluate_state(&features).into()
+        StateEvaluation::from(state_evaluation)
     };
 
     (
@@ -98,7 +97,26 @@ static EVAL_HIDDEN_WEIGHTS: [[f32; NUMBER_HIDDEN]; STATE_NUMBER_INPUTS] =
 static EVAL_OUTPUT_WEIGHTS: [[f32; NUMBER_HIDDEN]; NUMBER_OUTPUTS] =
     include!("model/output_weights");
 
-fn evaluate_state(features: &[f32; state::NUMBER_FEATURES]) -> f32 {
+const POLICY_NUMBER_INPUTS: usize = state::NUMBER_FEATURES;
+
+#[allow(clippy::excessive_precision)]
+static POLICY_WEIGHTS: [[f32; POLICY_NUMBER_INPUTS]; 384] = include!("policy/output_weights");
+
+fn run_nets(state: &State, moves: &MoveList) -> (f32, Vec<f32>) {
+    let mut evalns = Vec::with_capacity(moves.len());
+
+    if moves.is_empty() {
+        // Returning 0 is ok here, as we'll immediately check for why there's no moves
+        return (0., evalns);
+    }
+
+    let mut move_idxs = Vec::with_capacity(moves.len());
+
+    for m in 0..moves.len() {
+        move_idxs.push(state.move_to_index(&moves[m]));
+        evalns.push(0.);
+    }
+
     let mut hidden_layer: [f32; NUMBER_HIDDEN] = unsafe {
         let mut out: [MaybeUninit<f32>; NUMBER_HIDDEN] = MaybeUninit::uninit().assume_init();
 
@@ -113,57 +131,24 @@ fn evaluate_state(features: &[f32; state::NUMBER_FEATURES]) -> f32 {
 
     hidden_layer.copy_from_slice(&EVAL_HIDDEN_BIAS);
 
-    for (i, f) in features.iter().enumerate() {
-        if *f > 0.5 {
-            for (j, l) in hidden_layer.iter_mut().enumerate() {
-                *l += EVAL_HIDDEN_WEIGHTS[i][j];
-            }
+    state.features_map(|idx| {
+        for (j, l) in hidden_layer.iter_mut().enumerate() {
+            *l += EVAL_HIDDEN_WEIGHTS[idx][j]
         }
-    }
+
+        for m in 0..moves.len() {
+            evalns[m] += POLICY_WEIGHTS[move_idxs[m]][idx];
+        }
+    });
+
+    math::softmax(&mut evalns);
 
     let mut result = 0.;
-
     let weights = EVAL_OUTPUT_WEIGHTS[0];
 
     for i in 0..hidden_layer.len() {
         result += weights[i] * hidden_layer[i].max(0.);
     }
 
-    result.tanh()
-}
-
-const POLICY_NUMBER_INPUTS: usize = state::NUMBER_FEATURES;
-
-#[allow(clippy::excessive_precision)]
-static POLICY_WEIGHTS: [[f32; POLICY_NUMBER_INPUTS]; 384] = include!("policy/output_weights");
-
-fn evaluate_policy(
-    state: &State,
-    features: &[f32; state::NUMBER_FEATURES],
-    moves: &MoveList,
-) -> Vec<f32> {
-    let mut evalns = Vec::with_capacity(moves.len());
-
-    if moves.is_empty() {
-        return evalns;
-    }
-
-    let mut move_idxs = Vec::with_capacity(moves.len());
-
-    for m in 0..moves.len() {
-        move_idxs.push(state.move_to_index(&moves[m]));
-        evalns.push(0.);
-    }
-
-    for (i, f) in features.iter().enumerate() {
-        if *f > 0.5 {
-            for m in 0..moves.len() {
-                evalns[m] += POLICY_WEIGHTS[move_idxs[m]][i];
-            }
-        }
-    }
-
-    math::softmax(&mut evalns);
-
-    evalns
+    (result.tanh(), evalns)
 }
