@@ -4,7 +4,6 @@ use std::sync::{Arc, RwLock};
 use std::thread::JoinHandle;
 use std::time::Instant;
 
-use crate::arena::ArenaAllocator;
 use crate::evaluation;
 use crate::search::{to_uci, SCALE};
 pub use crate::search_tree::*;
@@ -13,14 +12,13 @@ use crate::transposition_table::*;
 use crate::tree_policy::*;
 
 pub struct ThreadData<'a> {
-    pub allocator: (ArenaAllocator<'a>, ArenaAllocator<'a>),
+    pub allocator: LRAllocator<'a>,
 }
 
 impl<'a> ThreadData<'a> {
     fn create(tree: &'a SearchTree) -> Self {
-        let (left_arena, right_arena) = tree.arenas();
         Self {
-            allocator: (left_arena.allocator(), right_arena.allocator()),
+            allocator: tree.allocator(),
         }
     }
 }
