@@ -238,16 +238,15 @@ fn drain_join_unwrap(threads: &mut Vec<JoinHandle<()>>) {
     }
 }
 
-// eval here is [0.0, 1.0]
+// eval here is [-1.0, 1.0]
 fn eval_in_cp(eval: f32) -> String {
-    if eval.abs() > 1.0 {
-        let plies = (1.1 - eval.abs()) / 0.001;
-        let mvs = plies / 2.;
-        let mate_score = (eval.signum() * mvs).round();
-        format!("mate {mate_score:+}")
+    let cps = if eval > 0.5 {
+        20. * (eval - 0.5) + 0.5
+    } else if eval < -0.5 {
+        20. * (eval + 0.5) - 0.5
     } else {
-        // Based upon leela's formula.
-        // Tweaked to appear in the range (-1000, 1000)
-        format!("cp {}", (101.139 * (1.47 * eval).tan()).round())
-    }
+        2. * eval
+    };
+
+    format!("cp {}", (cps * 100.).round().max(-1000.).min(1000.) as i64)
 }
