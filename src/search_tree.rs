@@ -2,16 +2,15 @@ use arrayvec::ArrayVec;
 use shakmaty::{Color, MoveList, Position};
 use std::mem;
 use std::ptr::null_mut;
-use std::sync::atomic::{AtomicBool, AtomicI64, AtomicPtr, AtomicU32, AtomicUsize, Ordering};
-use std::sync::Mutex;
+use std::sync::atomic::{AtomicI64, AtomicPtr, AtomicU32, AtomicUsize, Ordering};
 
-use crate::arena::{Arena, ArenaAllocator, ArenaError};
+use crate::arena::ArenaError;
 use crate::evaluation::{self, StateEvaluation};
 use crate::math;
 use crate::mcts::*;
 use crate::search::SCALE;
 use crate::state::State;
-use crate::transposition_table::TranspositionTable;
+use crate::transposition_table::{LRAllocator, LRTable, TranspositionTable};
 use crate::tree_policy::Puct;
 
 const MAX_PLAYOUT_LENGTH: usize = 256;
@@ -26,11 +25,8 @@ pub struct SearchTree {
     tree_policy: Puct,
     #[allow(dead_code)]
     root_table: TranspositionTable,
-    left_table: TranspositionTable,
-    right_table: TranspositionTable,
-    is_left_current: AtomicBool,
+    ttable: LRTable,
 
-    flip_lock: Mutex<()>,
     num_nodes: AtomicUsize,
     tb_hits: AtomicUsize,
 }
@@ -187,31 +183,15 @@ impl<'a> MoveInfoHandle<'a> {
     }
 }
 
-enum CreationHelper<'a: 'b, 'b> {
-    Handle(bool, SearchHandle<'a, 'b>),
-    Allocator(&'b ArenaAllocator<'a>),
-}
-
 #[inline(always)]
-fn create_node(
+fn create_node<'a, F>(
     state: &State,
     tb_hits: &AtomicUsize,
-    ch: CreationHelper<'_, '_>,
-) -> Result<SearchNode, ArenaError> {
-    let (allocator, _handle) = match ch {
-        CreationHelper::Allocator(x) => (x, None),
-        CreationHelper::Handle(is_left, x) => {
-            // this is safe because nothing will move into x.tld.allocator
-            // since ThreadData.allocator is a private field
-            let allocator_ref = if is_left {
-                &x.tld.allocator.0
-            } else {
-                &x.tld.allocator.1
-            };
-            let allocator = unsafe { &*(allocator_ref as *const _) };
-            (allocator, Some(x))
-        }
-    };
+    alloc_slice: F,
+) -> Result<SearchNode, ArenaError>
+where
+    F: FnOnce(usize) -> Result<&'a mut [HotMoveInfo], ArenaError>,
+{
     let mut moves = MoveList::new();
 
     let (move_eval, state_eval) =
@@ -226,7 +206,7 @@ fn create_node(
         tb_hits.fetch_add(1, Ordering::Relaxed);
     }
 
-    let hots = allocator.alloc_slice(move_eval.len())?;
+    let hots = alloc_slice(move_eval.len())?;
     for (i, x) in hots.iter_mut().enumerate() {
         *x = HotMoveInfo::new(move_eval[i], moves[i].clone());
     }
@@ -244,11 +224,9 @@ impl SearchTree {
 
         let root_table = TranspositionTable::for_root();
 
-        let mut root_node = create_node(
-            &state,
-            &tb_hits,
-            CreationHelper::Allocator(&root_table.arena().allocator()),
-        )
+        let mut root_node = create_node(&state, &tb_hits, |sz| {
+            root_table.arena().allocator().alloc_slice(sz)
+        })
         .expect("Unable to create root node");
 
         previous_table.lookup_into(&state, &mut root_node);
@@ -268,49 +246,18 @@ impl SearchTree {
             root_node,
             tree_policy,
             root_table,
-            left_table: current_table,
-            right_table: previous_table,
-            is_left_current: AtomicBool::new(true),
-            flip_lock: Default::default(),
+            ttable: LRTable::new(current_table, previous_table),
             num_nodes: 1.into(),
             tb_hits,
         }
     }
 
-    fn is_left_current(&self) -> bool {
-        self.is_left_current.load(Ordering::Relaxed)
-    }
-
-    fn current_table(&self) -> &TranspositionTable {
-        if self.is_left_current() {
-            &self.left_table
-        } else {
-            &self.right_table
-        }
-    }
-
-    fn previous_table(&self) -> &TranspositionTable {
-        if self.is_left_current() {
-            &self.right_table
-        } else {
-            &self.left_table
-        }
-    }
-
     fn flip_tables(&self) {
-        self.previous_table().clear();
-        self.is_left_current.store(
-            !self.is_left_current.load(Ordering::SeqCst),
-            Ordering::SeqCst,
-        );
+        self.ttable.flip_tables();
     }
 
     pub fn table(self) -> TranspositionTable {
-        if self.is_left_current() {
-            self.left_table
-        } else {
-            self.right_table
-        }
+        self.ttable.table()
     }
 
     pub fn num_nodes(&self) -> usize {
@@ -321,8 +268,8 @@ impl SearchTree {
         self.tb_hits.load(Ordering::Relaxed)
     }
 
-    pub fn arenas(&self) -> (&Arena, &Arena) {
-        (self.left_table.arena(), self.right_table.arena())
+    pub fn allocator(&self) -> LRAllocator {
+        self.ttable.allocator()
     }
 
     #[inline(never)]
@@ -334,7 +281,7 @@ impl SearchTree {
         let mut node = &self.root_node;
         loop {
             {
-                let _lock = self.flip_lock.lock().unwrap();
+                let _lock = self.ttable.flip_lock().lock().unwrap();
             }
             if node.hots().is_empty() || state.drawn_by_fifty_move_rule() {
                 break;
@@ -353,11 +300,11 @@ impl SearchTree {
             path.push(choice);
             state.make_move(&choice.hot.mov);
 
-            let new_node = match self.descend(&state, choice.hot, tld, &node_path) {
+            let new_node = match self.descend(&state, choice.hot, tld) {
                 Ok(r) => r,
                 Err(ArenaError::Full) => {
-                    let _lock = self.flip_lock.lock().unwrap();
-                    if self.current_table().arena().full() {
+                    let _lock = self.ttable.flip_lock().lock().unwrap();
+                    if self.ttable.is_arena_full() {
                         self.flip_tables();
                         self.root_node.clear_children_links();
                     }
@@ -394,14 +341,13 @@ impl SearchTree {
         state: &State,
         choice: &HotMoveInfo,
         tld: &mut ThreadData<'a>,
-        path: &[&'a SearchNode],
     ) -> Result<&'a SearchNode, ArenaError> {
         let child = choice.child.load(Ordering::Relaxed) as *const SearchNode;
         if !child.is_null() {
             return unsafe { Ok(&*child) };
         }
 
-        if let Some(node) = self.current_table().lookup(state) {
+        if let Some(node) = self.ttable.lookup(state) {
             return match choice.child.compare_exchange(
                 null_mut(),
                 node as *const _ as *mut _,
@@ -413,21 +359,12 @@ impl SearchTree {
             };
         }
 
-        let is_left_current = self.is_left_current();
+        let mut created_here =
+            create_node(state, &self.tb_hits, |sz| tld.allocator.alloc_move_info(sz))?;
 
-        let mut created_here = create_node(
-            state,
-            &self.tb_hits,
-            CreationHelper::Handle(is_left_current, self.make_handle(tld, path)),
-        )?;
+        self.ttable.lookup_into(state, &mut created_here);
 
-        self.previous_table().lookup_into(state, &mut created_here);
-
-        let created = if is_left_current {
-            tld.allocator.0.alloc_one()?
-        } else {
-            tld.allocator.1.alloc_one()?
-        };
+        let created = tld.allocator.alloc_node()?;
 
         *created = created_here;
         let other_child = choice.child.compare_exchange(
@@ -442,7 +379,7 @@ impl SearchTree {
             }
         }
 
-        if let Some(existing) = self.current_table().insert(state, created) {
+        if let Some(existing) = self.ttable.insert(state, created) {
             let existing_ptr = existing as *const _ as *mut _;
             choice.child.store(existing_ptr, Ordering::Relaxed);
             return Ok(existing);
