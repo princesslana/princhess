@@ -226,9 +226,10 @@ impl State {
         (flip_vertical, flip_horizontal)
     }
 
-    pub fn features(&self) -> [f32; NUMBER_FEATURES] {
-        let mut features = [0f32; NUMBER_FEATURES];
-
+    pub fn features_map<F>(&self, mut f: F)
+    where
+        F: FnMut(usize),
+    {
         let stm = self.side_to_move();
         let b = self.board.board();
 
@@ -253,10 +254,10 @@ impl State {
 
             let feature_idx = (side_idx * 6 + role_idx) * 64 + sq_idx;
 
-            features[feature_idx] = 1.;
+            f(feature_idx);
 
             if b.attacks_to(sq, !stm, b.occupied()).any() {
-                features[OFFSET_THREATS + feature_idx] = 1.;
+                f(OFFSET_THREATS + feature_idx);
             }
         }
 
@@ -264,8 +265,15 @@ impl State {
             let adj_sq = flip_square(sq);
             let role_idx = pc as usize - 1;
 
-            features[OFFSET_LAST_CAPTURE + role_idx * 64 + adj_sq as usize] = 1.
+            f(OFFSET_LAST_CAPTURE + role_idx * 64 + adj_sq as usize);
         }
+    }
+
+    pub fn features(&self) -> [f32; NUMBER_FEATURES] {
+        let mut features = [0f32; NUMBER_FEATURES];
+
+        self.features_map(|idx| features[idx] = 1f32);
+
         features
     }
 
