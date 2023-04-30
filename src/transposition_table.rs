@@ -5,7 +5,7 @@ use std::sync::{Arc, Mutex};
 
 use crate::arena::{Arena, ArenaAllocator, ArenaError};
 use crate::options::get_hash_size_mb;
-use crate::search_tree::{HotMoveInfo, NodeStats, SearchNode};
+use crate::search_tree::{HotMoveInfo, SearchNode};
 use crate::state::State;
 
 pub trait TranspositionHash {
