@@ -31,41 +31,6 @@ pub struct SearchTree {
     tb_hits: AtomicUsize,
 }
 
-pub trait NodeStats {
-    fn get_visits(&self) -> &AtomicU32;
-    fn get_sum_evaluations(&self) -> &AtomicI64;
-
-    fn down(&self) {
-        self.get_sum_evaluations()
-            .fetch_sub(VIRTUAL_LOSS, Ordering::Relaxed);
-        self.get_visits().fetch_add(1, Ordering::Relaxed);
-    }
-    fn up(&self, evaln: i64) {
-        let delta = evaln + VIRTUAL_LOSS;
-        self.get_sum_evaluations()
-            .fetch_add(delta, Ordering::Relaxed);
-    }
-    fn replace<T: NodeStats>(&self, other: &T) {
-        self.get_visits().store(
-            other.get_visits().load(Ordering::Relaxed),
-            Ordering::Relaxed,
-        );
-        self.get_sum_evaluations().store(
-            other.get_sum_evaluations().load(Ordering::Relaxed),
-            Ordering::Relaxed,
-        );
-    }
-}
-
-impl NodeStats for HotMoveInfo {
-    fn get_visits(&self) -> &AtomicU32 {
-        &self.visits
-    }
-    fn get_sum_evaluations(&self) -> &AtomicI64 {
-        &self.sum_evaluations
-    }
-}
-
 pub struct HotMoveInfo {
     sum_evaluations: AtomicI64,
     visits: AtomicU32,
@@ -157,6 +122,37 @@ impl HotMoveInfo {
             mov,
             child: AtomicPtr::default(),
         }
+    }
+
+    pub fn get_visits(&self) -> &AtomicU32 {
+        &self.visits
+    }
+
+    pub fn get_sum_evaluations(&self) -> &AtomicI64 {
+        &self.sum_evaluations
+    }
+
+    pub fn down(&self) {
+        self.get_sum_evaluations()
+            .fetch_sub(VIRTUAL_LOSS, Ordering::Relaxed);
+        self.get_visits().fetch_add(1, Ordering::Relaxed);
+    }
+
+    pub fn up(&self, evaln: i64) {
+        let delta = evaln + VIRTUAL_LOSS;
+        self.get_sum_evaluations()
+            .fetch_add(delta, Ordering::Relaxed);
+    }
+
+    pub fn replace(&self, other: &HotMoveInfo) {
+        self.get_visits().store(
+            other.get_visits().load(Ordering::Relaxed),
+            Ordering::Relaxed,
+        );
+        self.get_sum_evaluations().store(
+            other.get_sum_evaluations().load(Ordering::Relaxed),
+            Ordering::Relaxed,
+        );
     }
 }
 
