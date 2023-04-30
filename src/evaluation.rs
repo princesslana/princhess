@@ -8,10 +8,8 @@ use crate::search::SCALE;
 use crate::state::{self, State};
 use crate::tablebase::probe_tablebase_wdl;
 
-const MATE_FACTOR: f32 = 1.1;
-
-const MATE: StateEvaluation = StateEvaluation::Scaled((SCALE * MATE_FACTOR) as i64);
-const DRAW: StateEvaluation = StateEvaluation::Scaled(0);
+const MATE: StateEvaluation = StateEvaluation::Terminal(SCALE as i64);
+const DRAW: StateEvaluation = StateEvaluation::Terminal(0);
 
 const TB_WIN: StateEvaluation = StateEvaluation::Tablebase(SCALE as i64);
 const TB_LOSS: StateEvaluation = StateEvaluation::Tablebase(-SCALE as i64);
@@ -21,6 +19,7 @@ const TB_DRAW: StateEvaluation = StateEvaluation::Tablebase(0);
 pub enum StateEvaluation {
     Scaled(i64),
     Tablebase(i64),
+    Terminal(i64),
 }
 
 impl StateEvaluation {
@@ -32,7 +31,12 @@ impl StateEvaluation {
         match self {
             StateEvaluation::Scaled(s) => StateEvaluation::Scaled(-s),
             StateEvaluation::Tablebase(s) => StateEvaluation::Tablebase(-s),
+            StateEvaluation::Terminal(s) => StateEvaluation::Terminal(-s),
         }
+    }
+
+    pub fn is_terminal(&self) -> bool {
+        matches!(self, StateEvaluation::Terminal(_))
     }
 
     pub fn is_tablebase(&self) -> bool {
@@ -51,6 +55,7 @@ impl From<StateEvaluation> for i64 {
         match e {
             StateEvaluation::Scaled(s) => s,
             StateEvaluation::Tablebase(s) => s,
+            StateEvaluation::Terminal(s) => s,
         }
     }
 }

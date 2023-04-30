@@ -114,6 +114,10 @@ impl SearchNode {
         self.evaln = evaln;
     }
 
+    pub fn is_terminal(&self) -> bool {
+        self.evaln.is_terminal()
+    }
+
     pub fn is_tablebase(&self) -> bool {
         self.evaln.is_tablebase()
     }
@@ -282,6 +286,9 @@ impl SearchTree {
         loop {
             {
                 let _lock = self.ttable.flip_lock().lock().unwrap();
+            }
+            if node.is_terminal() {
+                break;
             }
             if node.hots().is_empty() || state.drawn_by_fifty_move_rule() {
                 break;
