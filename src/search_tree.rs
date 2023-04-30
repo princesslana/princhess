@@ -2,7 +2,7 @@ use arrayvec::ArrayVec;
 use shakmaty::{Color, MoveList, Position};
 use std::mem;
 use std::ptr::null_mut;
-use std::sync::atomic::{AtomicI64, AtomicPtr, AtomicU32, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI64, AtomicPtr, AtomicU32, AtomicUsize, Ordering};
 
 use crate::arena::ArenaError;
 use crate::evaluation::{self, StateEvaluation};
@@ -65,14 +65,6 @@ impl NodeStats for HotMoveInfo {
         &self.sum_evaluations
     }
 }
-impl NodeStats for SearchNode {
-    fn get_visits(&self) -> &AtomicU32 {
-        &self.visits
-    }
-    fn get_sum_evaluations(&self) -> &AtomicI64 {
-        &self.sum_evaluations
-    }
-}
 
 pub struct HotMoveInfo {
     sum_evaluations: AtomicI64,
@@ -90,8 +82,7 @@ pub struct MoveInfoHandle<'a> {
 pub struct SearchNode {
     hots: *const [HotMoveInfo],
     evaln: StateEvaluation,
-    sum_evaluations: AtomicI64,
-    visits: AtomicU32,
+    visited: AtomicBool,
 }
 
 unsafe impl Sync for SearchNode {}
@@ -101,8 +92,7 @@ impl SearchNode {
         Self {
             hots,
             evaln,
-            visits: AtomicU32::default(),
-            sum_evaluations: AtomicI64::default(),
+            visited: AtomicBool::new(false),
         }
     }
 
@@ -112,6 +102,14 @@ impl SearchNode {
 
     pub fn set_evaln(&mut self, evaln: StateEvaluation) {
         self.evaln = evaln;
+    }
+
+    pub fn visited(&self) {
+        self.visited.store(true, Ordering::Relaxed);
+    }
+
+    pub fn is_first_visit(&self) -> bool {
+        !self.visited.load(Ordering::Relaxed)
     }
 
     pub fn is_terminal(&self) -> bool {
@@ -322,8 +320,9 @@ impl SearchTree {
             node = new_node;
 
             node_path.push(node);
-            node.down();
-            if node.get_visits().load(Ordering::Relaxed) == 1 {
+
+            if node.is_first_visit() {
+                node.visited();
                 break;
             }
         }
@@ -338,7 +337,7 @@ impl SearchTree {
             node.evaln
         };
 
-        self.finish_playout(&path, &node_path, evaln);
+        self.finish_playout(&path, evaln);
 
         true
     }
@@ -395,16 +394,10 @@ impl SearchTree {
         Ok(created)
     }
 
-    fn finish_playout<'a>(
-        &'a self,
-        path: &[MoveInfoHandle],
-        node_path: &[&'a SearchNode],
-        evaln: StateEvaluation,
-    ) {
+    fn finish_playout(&self, path: &[MoveInfoHandle], evaln: StateEvaluation) {
         let mut evaln_value = evaln;
-        for (move_info, node) in path.iter().zip(node_path.iter()).rev() {
-            node.up(evaln_value.into());
-            move_info.hot.replace(*node);
+        for move_info in path.iter().rev() {
+            move_info.hot.up(evaln_value.into());
             evaln_value = evaln_value.flip();
         }
     }
