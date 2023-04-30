@@ -70,7 +70,6 @@ impl TranspositionTable {
 
     pub fn lookup_into(&self, state: &State, dest: &mut SearchNode) {
         if let Some(src) = self.lookup(state) {
-            dest.replace(src);
             dest.set_evaln(*src.evaln());
 
             let lhs = dest.hots();
