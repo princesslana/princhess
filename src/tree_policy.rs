@@ -1,6 +1,6 @@
 use std::f32;
 
-use crate::search_tree::{MoveInfoHandle, Moves, SearchHandle};
+use crate::search_tree::{MoveInfoHandle, Moves};
 
 #[derive(Clone, Debug)]
 pub struct Puct {
@@ -12,14 +12,12 @@ impl Puct {
         Self { cpuct }
     }
 
-    pub fn choose_child<'a>(&self, moves: Moves<'a>, handle: SearchHandle) -> MoveInfoHandle<'a> {
+    pub fn choose_child<'a>(&self, moves: Moves<'a>, is_root: bool) -> MoveInfoHandle<'a> {
         let total_visits = moves.map(|x| x.visits()).sum::<u64>() + 1;
         let sqrt_total_visits = (total_visits as f32).sqrt();
         let exploration_constant = self.cpuct;
 
         let explore_coef = exploration_constant * sqrt_total_visits;
-
-        let is_root = handle.is_root();
 
         let mut best_score = (f32::NEG_INFINITY, 1.);
         let mut choice = None;

@@ -275,7 +275,6 @@ impl SearchTree {
         self.num_nodes.fetch_add(1, Ordering::Relaxed);
         let mut state = self.root_state.clone();
         let mut path: ArrayVec<MoveInfoHandle, MAX_PLAYOUT_LENGTH> = ArrayVec::new();
-        let mut node_path: ArrayVec<&SearchNode, MAX_PLAYOUT_LENGTH> = ArrayVec::new();
         let mut node = &self.root_node;
         loop {
             {
@@ -294,9 +293,7 @@ impl SearchTree {
             if path.len() >= MAX_PLAYOUT_LENGTH {
                 break;
             }
-            let choice = self
-                .tree_policy
-                .choose_child(node.moves(), self.make_handle(tld, &node_path));
+            let choice = self.tree_policy.choose_child(node.moves(), path.is_empty());
             choice.hot.down();
             path.push(choice);
             state.make_move(&choice.hot.mov);
@@ -314,8 +311,6 @@ impl SearchTree {
             };
 
             node = new_node;
-
-            node_path.push(node);
 
             if node.is_first_visit() {
                 node.visited();
@@ -398,18 +393,10 @@ impl SearchTree {
         }
     }
 
-    fn make_handle<'a, 'b>(
-        &'a self,
-        tld: &'b mut ThreadData<'a>,
-        path: &'b [&'a SearchNode],
-    ) -> SearchHandle<'a, 'b> {
-        let shared = SharedSearchHandle { tree: self, path };
-        SearchHandle { shared, tld }
-    }
-
     pub fn root_state(&self) -> &State {
         &self.root_state
     }
+
     pub fn root_node(&self) -> NodeHandle {
         NodeHandle {
             node: &self.root_node,
@@ -508,17 +495,6 @@ impl<'a: 'b, 'b> Clone for SharedSearchHandle<'a, 'b> {
     }
 }
 impl<'a: 'b, 'b> Copy for SharedSearchHandle<'a, 'b> {}
-
-pub struct SearchHandle<'a: 'b, 'b> {
-    pub tld: &'b mut ThreadData<'a>,
-    pub shared: SharedSearchHandle<'a, 'b>,
-}
-
-impl<'a, 'b> SearchHandle<'a, 'b> {
-    pub fn is_root(&self) -> bool {
-        self.shared.path.is_empty()
-    }
-}
 
 pub fn print_size_list() {
     println!(
