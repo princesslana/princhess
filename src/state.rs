@@ -214,7 +214,7 @@ impl State {
         self.repetitions >= 2
     }
 
-    pub fn feature_flip(&self) -> (bool, bool) {
+    fn feature_flip(&self) -> (bool, bool) {
         let stm = self.side_to_move();
         let b = self.board.board();
 
