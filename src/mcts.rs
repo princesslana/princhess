@@ -9,7 +9,6 @@ use crate::search::{to_uci, SCALE};
 pub use crate::search_tree::*;
 use crate::state::State;
 use crate::transposition_table::*;
-use crate::tree_policy::*;
 
 pub struct ThreadData<'a> {
     pub allocator: LRAllocator<'a>,
@@ -23,21 +22,14 @@ impl<'a> ThreadData<'a> {
     }
 }
 
-pub type MoveEvaluation = f32;
-
 pub struct MctsManager {
     search_tree: SearchTree,
     search_start: RwLock<Option<Instant>>,
 }
 
 impl MctsManager {
-    pub fn new(
-        state: State,
-        tree_policy: Puct,
-        table: TranspositionTable,
-        prev_table: TranspositionTable,
-    ) -> Self {
-        let search_tree = SearchTree::new(state, tree_policy, table, prev_table);
+    pub fn new(state: State, table: TranspositionTable, prev_table: TranspositionTable) -> Self {
+        let search_tree = SearchTree::new(state, table, prev_table);
         Self {
             search_tree,
             search_start: RwLock::new(None),
@@ -177,7 +169,7 @@ impl MctsManager {
                 "info string {:>6} M: {:>6} P: {:>6} V: {:7} E: {:>6} ({:>8})",
                 format!("{}", mov.get_move()),
                 format!("{:3.2}", e * 100.),
-                format!("{:3.2}", mov.move_evaluation() * 100.),
+                format!("{:3.2}", mov.policy() * 100.),
                 mov.visits(),
                 mov.average_reward()
                     .map_or("n/a".to_string(), |r| format!("{:3.2}", r / (SCALE / 100.))),
