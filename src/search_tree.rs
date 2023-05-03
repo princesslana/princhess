@@ -8,10 +8,11 @@ use crate::arena::ArenaError;
 use crate::evaluation::{self, StateEvaluation};
 use crate::math;
 use crate::mcts::*;
+use crate::options::get_cpuct;
 use crate::search::SCALE;
 use crate::state::State;
 use crate::transposition_table::{LRAllocator, LRTable, TranspositionTable};
-use crate::tree_policy::Puct;
+use crate::tree_policy;
 
 const MAX_PLAYOUT_LENGTH: usize = 256;
 
@@ -22,7 +23,9 @@ const VIRTUAL_LOSS: i64 = SCALE as i64;
 pub struct SearchTree {
     root_node: SearchNode,
     root_state: State,
-    tree_policy: Puct,
+
+    cpuct: f32,
+
     #[allow(dead_code)]
     root_table: TranspositionTable,
     ttable: LRTable,
@@ -34,7 +37,7 @@ pub struct SearchTree {
 pub struct HotMoveInfo {
     sum_evaluations: AtomicI64,
     visits: AtomicU32,
-    move_evaluation: MoveEvaluation,
+    policy: f32,
     mov: shakmaty::Move,
     child: AtomicPtr<SearchNode>,
 }
@@ -93,7 +96,7 @@ impl SearchNode {
         let mut hots = unsafe { &mut *(self.hots as *mut [HotMoveInfo]) };
 
         for i in 0..hots.len().min(evals.len()) {
-            hots[i].move_evaluation = evals[i];
+            hots[i].policy = evals[i];
         }
     }
 
@@ -114,9 +117,9 @@ impl SearchNode {
 }
 
 impl HotMoveInfo {
-    fn new(move_evaluation: MoveEvaluation, mov: shakmaty::Move) -> Self {
+    fn new(policy: f32, mov: shakmaty::Move) -> Self {
         Self {
-            move_evaluation,
+            policy,
             sum_evaluations: AtomicI64::default(),
             visits: AtomicU32::default(),
             mov,
@@ -161,8 +164,8 @@ impl<'a> MoveInfoHandle<'a> {
         &self.hot.mov
     }
 
-    pub fn move_evaluation(&self) -> &'a MoveEvaluation {
-        &self.hot.move_evaluation
+    pub fn policy(&self) -> f32 {
+        self.hot.policy
     }
 
     pub fn visits(&self) -> u64 {
@@ -214,7 +217,6 @@ where
 impl SearchTree {
     pub fn new(
         state: State,
-        tree_policy: Puct,
         current_table: TranspositionTable,
         previous_table: TranspositionTable,
     ) -> Self {
@@ -242,7 +244,7 @@ impl SearchTree {
         Self {
             root_state: state,
             root_node,
-            tree_policy,
+            cpuct: get_cpuct(),
             root_table,
             ttable: LRTable::new(current_table, previous_table),
             num_nodes: 1.into(),
@@ -293,7 +295,7 @@ impl SearchTree {
             if path.len() >= MAX_PLAYOUT_LENGTH {
                 break;
             }
-            let choice = self.tree_policy.choose_child(node.moves(), path.is_empty());
+            let choice = tree_policy::choose_child(node.moves(), self.cpuct, path.is_empty());
             choice.hot.down();
             path.push(choice);
             state.make_move(&choice.hot.mov);
