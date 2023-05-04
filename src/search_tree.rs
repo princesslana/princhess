@@ -1,5 +1,5 @@
 use arrayvec::ArrayVec;
-use shakmaty::{Color, MoveList, Position};
+use shakmaty::{Color, Position};
 use std::mem;
 use std::ptr::null_mut;
 use std::sync::atomic::{AtomicBool, AtomicI64, AtomicPtr, AtomicU32, AtomicUsize, Ordering};
@@ -55,8 +55,10 @@ pub struct SearchNode {
 
 unsafe impl Sync for SearchNode {}
 
+static DRAW_NODE: SearchNode = SearchNode::new(&[], StateEvaluation::draw());
+
 impl SearchNode {
-    fn new(hots: &[HotMoveInfo], evaln: StateEvaluation) -> Self {
+    const fn new(hots: &[HotMoveInfo], evaln: StateEvaluation) -> Self {
         Self {
             hots,
             evaln,
@@ -193,15 +195,9 @@ fn create_node<'a, F>(
 where
     F: FnOnce(usize) -> Result<&'a mut [HotMoveInfo], ArenaError>,
 {
-    let mut moves = MoveList::new();
+    let moves = state.available_moves();
 
-    let (move_eval, state_eval) =
-        if state.drawn_by_repetition() || state.board().is_insufficient_material() {
-            (Vec::with_capacity(0), StateEvaluation::draw())
-        } else {
-            moves = state.available_moves();
-            evaluation::evaluate_new_state(state, &moves)
-        };
+    let (move_eval, state_eval) = evaluation::evaluate_new_state(state, &moves);
 
     if state_eval.is_tablebase() {
         tb_hits.fetch_add(1, Ordering::Relaxed);
@@ -285,7 +281,7 @@ impl SearchTree {
             if node.is_terminal() {
                 break;
             }
-            if node.hots().is_empty() || state.drawn_by_fifty_move_rule() {
+            if node.hots().is_empty() {
                 break;
             }
             // We need path.len() check for when the root node is a tablebase position
@@ -322,9 +318,7 @@ impl SearchTree {
 
         let last_move_was_black = state.side_to_move() == Color::White;
 
-        let evaln = if state.drawn_by_fifty_move_rule() {
-            StateEvaluation::draw()
-        } else if last_move_was_black {
+        let evaln = if last_move_was_black {
             node.evaln.flip()
         } else {
             node.evaln
@@ -341,6 +335,13 @@ impl SearchTree {
         choice: &HotMoveInfo,
         tld: &mut ThreadData<'a>,
     ) -> Result<&'a SearchNode, ArenaError> {
+        if state.drawn_by_repetition()
+            || state.drawn_by_fifty_move_rule()
+            || state.board().is_insufficient_material()
+        {
+            return Ok(&DRAW_NODE);
+        }
+
         let child = choice.child.load(Ordering::Relaxed) as *const SearchNode;
         if !child.is_null() {
             return unsafe { Ok(&*child) };
