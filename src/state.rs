@@ -208,8 +208,8 @@ impl State {
         self.prev_state_hashes.len() > 100
     }
 
-    pub fn drawn_by_repetition(&self) -> bool {
-        self.repetitions >= 2
+    pub fn is_repetition(&self) -> bool {
+        self.repetitions > 0
     }
 
     fn feature_flip(&self) -> (bool, bool) {
