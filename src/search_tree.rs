@@ -335,7 +335,7 @@ impl SearchTree {
         choice: &HotMoveInfo,
         tld: &mut ThreadData<'a>,
     ) -> Result<&'a SearchNode, ArenaError> {
-        if state.drawn_by_repetition()
+        if state.is_repetition()
             || state.drawn_by_fifty_move_rule()
             || state.board().is_insufficient_material()
         {
