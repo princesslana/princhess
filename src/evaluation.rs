@@ -23,7 +23,7 @@ pub enum StateEvaluation {
 }
 
 impl StateEvaluation {
-    pub fn draw() -> Self {
+    pub const fn draw() -> Self {
         DRAW
     }
 

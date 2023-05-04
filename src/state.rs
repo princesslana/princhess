@@ -8,7 +8,6 @@ use shakmaty::{
 };
 
 use crate::options::is_chess960;
-use crate::transposition_table::TranspositionHash;
 use crate::uci::Tokens;
 
 const NF_PIECES: usize = 2 * 6 * 64; // color * roles * squares
@@ -107,7 +106,7 @@ impl State {
         self.board.turn()
     }
 
-    fn hash(&self) -> u64 {
+    pub fn hash(&self) -> u64 {
         self.hash
     }
 
@@ -292,16 +291,6 @@ impl State {
         let to_idx = flip_square(to_sq) as usize;
 
         role_idx * 64 + to_idx
-    }
-}
-
-impl TranspositionHash for State {
-    fn hash(&self) -> u64 {
-        match self.repetitions {
-            0 => self.hash(),
-            1 => self.hash() ^ 0xDEADBEEF,
-            _ => 1,
-        }
     }
 }
 

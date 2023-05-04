@@ -8,10 +8,6 @@ use crate::options::get_hash_size_mb;
 use crate::search_tree::{HotMoveInfo, SearchNode};
 use crate::state::State;
 
-pub trait TranspositionHash {
-    fn hash(&self) -> u64;
-}
-
 type Table = DashMap<u64, AtomicPtr<SearchNode>, BuildNoHashHasher<u64>>;
 
 pub struct TranspositionTable {
