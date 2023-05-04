@@ -3,7 +3,8 @@ use shakmaty::fen::Fen;
 use shakmaty::uci::Uci;
 use shakmaty::zobrist::{ZobristHash, ZobristValue};
 use shakmaty::{
-    self, CastlingMode, CastlingSide, Chess, Color, File, Move, MoveList, Piece, Position, Setup,
+    self, CastlingMode, CastlingSide, Chess, Color, File, Move, MoveList, Piece, Position, Role,
+    Setup,
 };
 
 use crate::options::is_chess960;
@@ -115,12 +116,10 @@ impl State {
     }
 
     pub fn make_move(&mut self, mov: &Move) {
-        let b = self.board.board();
-
-        self.prev_capture = b.role_at(mov.to());
+        self.prev_capture = mov.capture();
         self.prev_capture_sq = self.prev_capture_sq.map(|_| mov.to());
 
-        let is_pawn_move = b.pawns().contains(mov.from().unwrap());
+        let is_pawn_move = mov.role() == Role::Pawn;
 
         if is_pawn_move || self.prev_capture.is_some() {
             self.prev_state_hashes.clear();
