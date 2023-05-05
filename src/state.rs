@@ -116,7 +116,7 @@ impl State {
 
     pub fn make_move(&mut self, mov: &Move) {
         self.prev_capture = mov.capture();
-        self.prev_capture_sq = self.prev_capture_sq.map(|_| mov.to());
+        self.prev_capture_sq = self.prev_capture.map(|_| mov.to());
 
         let is_pawn_move = mov.role() == Role::Pawn;
 
