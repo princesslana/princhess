@@ -270,7 +270,6 @@ impl SearchTree {
 
     #[inline(never)]
     pub fn playout<'a: 'b, 'b>(&'a self, tld: &'b mut ThreadData<'a>) -> bool {
-        self.num_nodes.fetch_add(1, Ordering::Relaxed);
         let mut state = self.root_state.clone();
         let mut path: ArrayVec<MoveInfoHandle, MAX_PLAYOUT_LENGTH> = ArrayVec::new();
         let mut node = &self.root_node;
@@ -323,6 +322,9 @@ impl SearchTree {
         } else {
             node.evaln
         };
+
+        // -1 because we don't count the root node
+        self.num_nodes.fetch_add(path.len() - 1, Ordering::Relaxed);
 
         self.finish_playout(&path, evaln);
 
@@ -384,7 +386,6 @@ impl SearchTree {
             choice.child.store(existing_ptr, Ordering::Relaxed);
             return Ok(existing);
         }
-        self.num_nodes.fetch_add(1, Ordering::Relaxed);
         Ok(created)
     }
 
