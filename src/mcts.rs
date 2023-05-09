@@ -132,7 +132,7 @@ impl MctsManager {
             .as_millis();
 
         let nodes = self.tree().num_nodes();
-        let depth = (nodes as f32).log10().round();
+        let depth = nodes / self.tree().playouts();
         let pv = self.principal_variation(64);
         let sel_depth = pv.len();
         let pv_string: String = pv.into_iter().map(|x| format!(" {}", to_uci(x))).collect();
