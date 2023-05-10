@@ -32,6 +32,7 @@ pub struct SearchTree {
 
     num_nodes: AtomicUsize,
     playouts: AtomicUsize,
+    max_depth: AtomicUsize,
     tb_hits: AtomicUsize,
 }
 
@@ -246,6 +247,7 @@ impl SearchTree {
             ttable: LRTable::new(current_table, previous_table),
             num_nodes: 1.into(),
             playouts: 0.into(),
+            max_depth: 0.into(),
             tb_hits,
         }
     }
@@ -264,6 +266,10 @@ impl SearchTree {
 
     pub fn playouts(&self) -> usize {
         self.playouts.load(Ordering::Relaxed)
+    }
+
+    pub fn max_depth(&self) -> usize {
+        self.max_depth.load(Ordering::Relaxed)
     }
 
     pub fn tb_hits(&self) -> usize {
@@ -330,7 +336,9 @@ impl SearchTree {
         };
 
         // -1 because we don't count the root node
-        self.num_nodes.fetch_add(path.len() - 1, Ordering::Relaxed);
+        let depth = path.len() - 1;
+        self.num_nodes.fetch_add(depth, Ordering::Relaxed);
+        self.max_depth.fetch_max(depth, Ordering::Relaxed);
         self.playouts.fetch_add(1, Ordering::Relaxed);
 
         self.finish_playout(&path, evaln);
