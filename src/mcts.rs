@@ -133,8 +133,8 @@ impl MctsManager {
 
         let nodes = self.tree().num_nodes();
         let depth = nodes / self.tree().playouts();
+        let sel_depth = self.tree().max_depth();
         let pv = self.principal_variation(64);
-        let sel_depth = pv.len();
         let pv_string: String = pv.into_iter().map(|x| format!(" {}", to_uci(x))).collect();
 
         let nps = nodes * 1000 / search_time_ms as usize;
