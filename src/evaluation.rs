@@ -88,7 +88,7 @@ pub fn evaluate_new_state(state: &State, moves: &MoveList) -> (Vec<f32>, StateEv
 }
 
 const STATE_NUMBER_INPUTS: usize = state::NUMBER_FEATURES;
-const NUMBER_HIDDEN: usize = 128;
+const NUMBER_HIDDEN: usize = 192;
 const NUMBER_OUTPUTS: usize = 1;
 
 #[allow(clippy::excessive_precision)]
