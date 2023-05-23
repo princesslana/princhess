@@ -17,8 +17,9 @@ from tensorflow.nn import softmax_cross_entropy_with_logits
 # pieces + last capture + threats
 INPUT_SIZE = 768 + (5 * 64) + 768
 
+EPOCHS_PER_DATASET = 5
 DEFAULT_BATCH_SIZE = 16384
-DEFAULT_HIDDEN_LAYERS = 192 
+DEFAULT_HIDDEN_LAYERS = 192
 
 
 def generate_batches(files, batch_size=DEFAULT_BATCH_SIZE, categories=None):
@@ -52,13 +53,6 @@ def generate_batches(files, batch_size=DEFAULT_BATCH_SIZE, categories=None):
                                 input_local.todense(), [categories]
                             )
                             yield input_local, output_local
-                            # output_local = input_local[0:categories, :].todense()
-                            # nput_local = input_local[categories:, :]
-
-                            # output_local = keras.utils.to_categorical(
-                            #    output_local, num_classes=categories
-                            # )
-
                         else:
                             yield input_local.todense(), output_local
 
@@ -106,24 +100,18 @@ def train_state(files, model, start_epoch):
         verbose=True,
     )
 
+    steps_per_epoch = int(
+        len(train_files) * 1000000 / DEFAULT_BATCH_SIZE / EPOCHS_PER_DATASET
+    )
+
     model.fit(
         train_generator,
         epochs=100,
         verbose=1,
         callbacks=[mc],
-        steps_per_epoch=1000,
+        steps_per_epoch=steps_per_epoch,
         initial_epoch=start_epoch,
     )
-
-
-def square_sigmoid(inp):
-    # Equalivalent to 1 if inp > 0.5 else 0
-    half = tf.constant(0.5, inp.dtype.base_dtype)
-    return tf.keras.activations.relu(
-        tf.add(inp, half), max_value=1.0, threshold=1.0, alpha=0.0
-    )
-
-    # return tf.where(tf.less_equal(inp, 0), tf.zeros_like(inp), tf.ones_like(inp))
 
 
 # 0 - illegal movoe

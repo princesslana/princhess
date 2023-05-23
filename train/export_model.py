@@ -5,7 +5,7 @@ from numpy import array2string
 from tensorflow import keras
 from tensorflow.nn import softmax_cross_entropy_with_logits
 
-from training import policy_loss, policy_acc, square_sigmoid
+from training import policy_loss, policy_acc
 
 
 def write_coefs(file, coefs):
@@ -19,9 +19,7 @@ def model_to_coefs(file):
     print(f"Exporting from {file}...")
     model = keras.models.load_model(
         file,
-        custom_objects=dict(
-            policy_loss=policy_loss, policy_acc=policy_acc, square_sigmoid=square_sigmoid
-        ),
+        custom_objects=dict(policy_loss=policy_loss, policy_acc=policy_acc),
     )
 
     output_folder = os.path.basename(file)
@@ -31,7 +29,7 @@ def model_to_coefs(file):
 
     idx = 0
 
-    while idx <  len(model.layers) - 1:
+    while idx < len(model.layers) - 1:
         if isinstance(model.layers[idx], keras.layers.Dense):
             hidden_weights, hidden_bias = model.layers[idx].get_weights()
             write_coefs(
