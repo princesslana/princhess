@@ -134,8 +134,6 @@ fn run_nets(state: &State, moves: &MoveList) -> (f32, Vec<f32>) {
         mem::transmute(out)
     };
 
-    hidden_layer.copy_from_slice(&EVAL_HIDDEN_BIAS);
-
     state.features_map(|idx| {
         for (j, l) in hidden_layer.iter_mut().enumerate() {
             *l += EVAL_HIDDEN_WEIGHTS[idx][j]
