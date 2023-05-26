@@ -1,11 +1,10 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::Sender;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 use std::thread::JoinHandle;
-use std::time::Instant;
 
 use crate::evaluation;
-use crate::search::{to_uci, SCALE};
+use crate::search::{TimeManagement, SCALE};
 pub use crate::search_tree::*;
 use crate::state::State;
 use crate::transposition_table::*;
@@ -24,28 +23,21 @@ impl<'a> ThreadData<'a> {
 
 pub struct MctsManager {
     search_tree: SearchTree,
-    search_start: RwLock<Option<Instant>>,
 }
 
 impl MctsManager {
     pub fn new(state: State, table: TranspositionTable, prev_table: TranspositionTable) -> Self {
         let search_tree = SearchTree::new(state, table, prev_table);
-        Self {
-            search_tree,
-            search_start: RwLock::new(None),
-        }
+        Self { search_tree }
     }
 
     unsafe fn spawn_worker_thread(
         &self,
         stop_signal: Arc<AtomicBool>,
+        time_managment: TimeManagement,
         sender: &Sender<String>,
     ) -> JoinHandle<()> {
         let search_tree = &self.search_tree;
-        {
-            let mut lock = self.search_start.write().unwrap();
-            let _ = lock.get_or_insert(Instant::now());
-        }
         let sender_clone = sender.clone();
         crossbeam::spawn_unsafe(move || {
             let mut tld = ThreadData::create(search_tree);
@@ -53,7 +45,7 @@ impl MctsManager {
                 if stop_signal.load(Ordering::SeqCst) {
                     break;
                 }
-                if !search_tree.playout(&mut tld) {
+                if !search_tree.playout(&mut tld, time_managment) {
                     if !stop_signal.swap(true, Ordering::SeqCst) {
                         let _ = sender_clone.send("stop".to_string());
                     }
@@ -67,12 +59,13 @@ impl MctsManager {
     pub fn playout_sync(&self) {
         let search_tree = &self.search_tree;
         let mut tld = ThreadData::create(search_tree);
-        while search_tree.playout(&mut tld) {}
+        while search_tree.playout(&mut tld, TimeManagement::infinite()) {}
     }
 
     pub fn into_playout_parallel_async(
         self,
         num_threads: usize,
+        time_management: TimeManagement,
         sender: &Sender<String>,
     ) -> AsyncSearchOwned {
         assert!(num_threads != 0);
@@ -81,7 +74,7 @@ impl MctsManager {
         let threads = (0..num_threads)
             .map(|_| {
                 let stop_signal = stop_signal.clone();
-                unsafe { self_box.spawn_worker_thread(stop_signal, sender) }
+                unsafe { self_box.spawn_worker_thread(stop_signal, time_management, sender) }
             })
             .collect();
         AsyncSearchOwned {
@@ -91,9 +84,6 @@ impl MctsManager {
         }
     }
 
-    pub fn principal_variation_info(&self, num_moves: usize) -> Vec<MoveInfoHandle> {
-        self.search_tree.principal_variation(num_moves)
-    }
     pub fn principal_variation(&self, num_moves: usize) -> Vec<shakmaty::Move> {
         self.search_tree
             .principal_variation(num_moves)
@@ -113,44 +103,6 @@ impl MctsManager {
 
     pub fn best_move(&self) -> Option<shakmaty::Move> {
         self.principal_variation(1).get(0).cloned()
-    }
-
-    pub fn eval_in_cp(&self) -> String {
-        eval_in_cp(
-            self.principal_variation_info(1)
-                .get(0)
-                .map(|x| (x.sum_rewards() / x.visits() as i64) as f32 / SCALE)
-                .unwrap_or(0.0),
-        )
-    }
-
-    pub fn print_info(&self) {
-        let search_start = self.search_start.read().unwrap();
-
-        let search_time_ms = Instant::now()
-            .duration_since(search_start.unwrap())
-            .as_millis();
-
-        let nodes = self.tree().num_nodes();
-        let depth = nodes / self.tree().playouts();
-        let sel_depth = self.tree().max_depth();
-        let pv = self.principal_variation(64);
-        let pv_string: String = pv.into_iter().map(|x| format!(" {}", to_uci(x))).collect();
-
-        let nps = nodes * 1000 / search_time_ms as usize;
-
-        let info_str = format!(
-            "info depth {} seldepth {} nodes {} nps {} tbhits {} score {} time {} pv{}",
-            depth,
-            sel_depth,
-            nodes,
-            nps,
-            self.tree().tb_hits(),
-            self.eval_in_cp(),
-            search_time_ms,
-            pv_string,
-        );
-        println!("{info_str}");
     }
 
     pub fn print_move_list(&self) {
@@ -198,9 +150,6 @@ impl AsyncSearchOwned {
     pub fn get_manager(&self) -> &MctsManager {
         self.manager.as_ref().unwrap()
     }
-    pub fn get_stop_signal(&self) -> &Arc<AtomicBool> {
-        &self.stop_signal
-    }
     pub fn num_threads(&self) -> usize {
         self.threads.len()
     }
@@ -231,7 +180,7 @@ fn drain_join_unwrap(threads: &mut Vec<JoinHandle<()>>) {
 }
 
 // eval here is [-1.0, 1.0]
-fn eval_in_cp(eval: f32) -> String {
+pub fn eval_in_cp(eval: f32) -> String {
     let cps = if eval > 0.5 {
         20. * (eval - 0.5) + 0.5
     } else if eval < -0.5 {
