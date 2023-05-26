@@ -1,8 +1,6 @@
 use shakmaty::{CastlingMode, Color, Move};
-use std::sync::atomic::Ordering;
 use std::sync::mpsc::Sender;
-use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use crate::mcts::{AsyncSearchOwned, MctsManager};
 use crate::options::{get_num_threads, is_chess960};
@@ -17,6 +15,46 @@ const DEFAULT_MOVE_TIME_FRACTION: u32 = 20;
 const MOVE_OVERHEAD: Duration = Duration::from_millis(50);
 
 pub const SCALE: f32 = 1e9;
+
+#[derive(Copy, Clone, Debug)]
+pub struct TimeManagement {
+    start: Instant,
+    end: Option<Instant>,
+}
+
+impl Default for TimeManagement {
+    fn default() -> Self {
+        Self::from_duration(Duration::from_secs(DEFAULT_MOVE_TIME_SECS))
+    }
+}
+
+impl TimeManagement {
+    pub fn from_duration(d: Duration) -> Self {
+        let start = Instant::now();
+        let end = Some(start + d);
+
+        Self { start, end }
+    }
+
+    pub fn infinite() -> Self {
+        Self {
+            start: Instant::now(),
+            end: None,
+        }
+    }
+
+    pub fn is_after_end(&self) -> bool {
+        if let Some(end) = self.end {
+            Instant::now() > end
+        } else {
+            false
+        }
+    }
+
+    pub fn elapsed(&self) -> Duration {
+        Instant::now() - self.start
+    }
+}
 
 pub struct Search {
     search: AsyncSearchOwned,
@@ -42,8 +80,7 @@ impl Search {
         }
         let manager = self.search.halt();
         if let Some(mov) = manager.best_move() {
-            manager.print_info();
-            println!("bestmove {}", to_uci(mov));
+            println!("bestmove {}", to_uci(&mov));
         }
         manager
     }
@@ -72,14 +109,14 @@ impl Search {
         let mvs = state.available_moves();
 
         if mvs.len() == 1 {
-            let uci_mv = to_uci(mvs[0].clone());
+            let uci_mv = to_uci(&mvs[0]);
             println!("info depth 1 seldepth 1 nodes 1 nps 1 tbhits 0 time 1 pv {uci_mv}");
             println!("bestmove {uci_mv}");
             return Self {
                 search: manager.into(),
             };
         } else if let Some(mv) = probe_tablebase_best_move(state.board()) {
-            let uci_mv = mv.to_uci(CastlingMode::from_chess960(is_chess960()));
+            let uci_mv = to_uci(&mv);
             println!("info depth 1 seldepth 1 nodes 1 nps 1 tbhits 1 time 1 pv {uci_mv}");
             println!("bestmove {uci_mv}");
             return Self {
@@ -124,16 +161,16 @@ impl Search {
             }
         }
 
-        let mut think_time = Some(Duration::from_secs(DEFAULT_MOVE_TIME_SECS));
+        let mut think_time = TimeManagement::default();
 
         if infinite {
-            think_time = None
+            think_time = TimeManagement::infinite();
         } else if let Some(mt) = move_time {
-            think_time = Some(mt)
+            think_time = TimeManagement::from_duration(mt);
         } else if let Some(r) = remaining {
             think_time =
                 if movestogo.is_none() && increment.is_zero() && r < Duration::from_millis(60000) {
-                    Some(r / 60)
+                    TimeManagement::from_duration(r / 60)
                 } else {
                     let move_time_fraction = match movestogo {
                         // plus 2 because we want / 3 to be the max_think_time
@@ -145,42 +182,13 @@ impl Search {
                         (r + 20 * increment - MOVE_OVERHEAD) / move_time_fraction;
                     let max_think_time = r / 3;
 
-                    Some(ideal_think_time.min(max_think_time))
+                    TimeManagement::from_duration(ideal_think_time.min(max_think_time))
                 }
         }
 
-        let new_self = Self {
-            search: manager.into_playout_parallel_async(get_num_threads(), sender),
-        };
-
-        if let Some(t) = think_time {
-            let sender = sender.clone();
-            let stop_signal = new_self.search.get_stop_signal().clone();
-            thread::spawn(move || {
-                thread::sleep(t);
-                if !stop_signal.load(Ordering::Relaxed) {
-                    let _ = sender.send("stop".to_string());
-                }
-            });
+        Self {
+            search: manager.into_playout_parallel_async(get_num_threads(), think_time, sender),
         }
-
-        {
-            let sender = sender.clone();
-            let stop_signal = new_self.search.get_stop_signal().clone();
-            thread::spawn(move || {
-                thread::sleep(Duration::from_secs(1));
-                while !stop_signal.load(Ordering::Relaxed) {
-                    let _ = sender.send("info".to_string());
-                    thread::sleep(Duration::from_secs(1));
-                }
-            });
-        }
-
-        new_self
-    }
-
-    pub fn print_info(&self) {
-        self.search.get_manager().print_info();
     }
 
     pub fn print_move_list(&self) {
@@ -205,7 +213,7 @@ impl Search {
     }
 }
 
-pub fn to_uci(mov: Move) -> String {
+pub fn to_uci(mov: &Move) -> String {
     mov.to_uci(CastlingMode::from_chess960(is_chess960()))
         .to_string()
 }

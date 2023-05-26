@@ -9,7 +9,7 @@ use crate::evaluation::{self, StateEvaluation};
 use crate::math;
 use crate::mcts::*;
 use crate::options::get_cpuct;
-use crate::search::SCALE;
+use crate::search::{to_uci, TimeManagement, SCALE};
 use crate::state::State;
 use crate::transposition_table::{LRAllocator, LRTable, TranspositionTable};
 use crate::tree_policy;
@@ -281,7 +281,11 @@ impl SearchTree {
     }
 
     #[inline(never)]
-    pub fn playout<'a: 'b, 'b>(&'a self, tld: &'b mut ThreadData<'a>) -> bool {
+    pub fn playout<'a: 'b, 'b>(
+        &'a self,
+        tld: &'b mut ThreadData<'a>,
+        time_management: TimeManagement,
+    ) -> bool {
         let mut state = self.root_state.clone();
         let mut path: ArrayVec<MoveInfoHandle, MAX_PLAYOUT_LENGTH> = ArrayVec::new();
         let mut node = &self.root_node;
@@ -335,14 +339,22 @@ impl SearchTree {
             node.evaln
         };
 
+        self.finish_playout(&path, evaln);
+
         // -1 because we don't count the root node
         let depth = path.len() - 1;
         self.num_nodes.fetch_add(depth, Ordering::Relaxed);
         self.max_depth.fetch_max(depth, Ordering::Relaxed);
-        self.playouts.fetch_add(1, Ordering::Relaxed);
+        let playouts = self.playouts.fetch_add(1, Ordering::Relaxed);
 
-        self.finish_playout(&path, evaln);
-
+        // 2 << 18 chose by random experimentation on local runs
+        if playouts > 0 && playouts % (2 << 18) == 0 {
+            self.print_info(&time_management);
+        }
+        if playouts % 128 == 0 && time_management.is_after_end() {
+            self.print_info(&time_management);
+            return false;
+        }
         true
     }
 
@@ -438,6 +450,43 @@ impl SearchTree {
             }
         }
         result
+    }
+
+    fn print_info(&self, time_management: &TimeManagement) {
+        let search_time_ms = time_management.elapsed().as_millis();
+
+        let nodes = self.num_nodes();
+        let depth = nodes / self.playouts();
+        let sel_depth = self.max_depth();
+        let pv = self.principal_variation(64);
+        let pv_string: String = pv
+            .into_iter()
+            .map(|x| format!(" {}", to_uci(x.get_move())))
+            .collect();
+
+        let nps = nodes * 1000 / search_time_ms as usize;
+
+        let info_str = format!(
+            "info depth {} seldepth {} nodes {} nps {} tbhits {} score {} time {} pv{}",
+            depth,
+            sel_depth,
+            nodes,
+            nps,
+            self.tb_hits(),
+            self.eval_in_cp(),
+            search_time_ms,
+            pv_string,
+        );
+        println!("{info_str}");
+    }
+
+    fn eval_in_cp(&self) -> String {
+        eval_in_cp(
+            self.principal_variation(1)
+                .get(0)
+                .map(|x| (x.sum_rewards() / x.visits() as i64) as f32 / SCALE)
+                .unwrap_or(0.0),
+        )
     }
 }
 
