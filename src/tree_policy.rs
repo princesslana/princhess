@@ -6,7 +6,7 @@ use crate::search_tree::{MoveInfoHandle, Moves};
 pub fn choose_child(moves: Moves<'_>, cpuct: f32, is_root: bool) -> MoveInfoHandle<'_> {
     let total_visits = moves.map(|x| x.visits()).sum::<u64>() + 1;
     let sqrt_total_visits = (total_visits as f32).sqrt();
-    let exploration_constant = cpuct * SCALE;
+    let exploration_constant = (cpuct + cpuct * (total_visits / 8192) as f32) * SCALE;
 
     let explore_coef = exploration_constant * sqrt_total_visits;
 

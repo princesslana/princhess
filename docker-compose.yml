@@ -79,18 +79,6 @@ services:
       - ./syzygy:/syzygy:ro
       - ./pgn:/pgn
 
-  tune:
-    build:
-      context: .
-      dockerfile: bin/Dockerfile.tune
-    volumes:
-      - ./target/release/princhess:/engines/princhess
-      - ./target/release/princhess-main:/engines/princhess-main
-      - ./syzygy:/syzygy:ro
-      - ./bin/tuning_config.json:/config/tuning_config.json:ro
-      - ./train/tuning_data:/data
-      - ./train/tuning_plots:/plots
-
   net_gauntlet:
     build:
       context: .
