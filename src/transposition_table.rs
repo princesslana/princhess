@@ -32,6 +32,10 @@ impl TranspositionTable {
         Self { table, arena }
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.table.is_empty()
+    }
+
     pub fn arena(&self) -> &Arena {
         &self.arena
     }
@@ -141,7 +145,9 @@ impl LRTable {
     }
 
     pub fn table(self) -> TranspositionTable {
-        if self.is_left_current() {
+        if self.left.is_empty() {
+            self.right
+        } else if self.right.is_empty() || self.is_left_current() {
             self.left
         } else {
             self.right
