@@ -17,9 +17,40 @@ from tensorflow.nn import softmax_cross_entropy_with_logits
 # pieces + last capture + threats
 INPUT_SIZE = 768 + (5 * 64) + 768
 
-EPOCHS_PER_DATASET = 5
+EPOCHS_PER_DATASET = 2
 DEFAULT_BATCH_SIZE = 16384
 DEFAULT_HIDDEN_LAYERS = 192
+
+
+def generate_npy_batches(files, batch_size=DEFAULT_BATCH_SIZE, categories=None):
+    all_files = files[:]
+
+    while True:
+        random.shuffle(all_files)
+        for fname in all_files:
+            data = numpy.load(fname, allow_pickle=True)
+
+            x = data.item().get("features")
+            y = data.item().get("wdl")
+
+            output, input = sklearn.utils.shuffle(y, x)
+
+            # tweak batch size so we don't have a smaller batch left over
+            batches = input.shape[0] // batch_size
+            actual_batch_size = input.shape[0] // batches + 1
+
+            for local_index in range(0, input.shape[0], actual_batch_size):
+                input_local = input[local_index : (local_index + batch_size)]
+                output_local = output[local_index : (local_index + batch_size)]
+
+                if categories:
+                    output_local, input_local = numpy.hsplit(
+                        input_local.todense(), [categories]
+                    )
+                    yield input_local, output_local
+                else:
+                    yield input_local.todense(), output_local
+
 
 
 def generate_batches(files, batch_size=DEFAULT_BATCH_SIZE, categories=None):
@@ -54,7 +85,7 @@ def generate_batches(files, batch_size=DEFAULT_BATCH_SIZE, categories=None):
                             )
                             yield input_local, output_local
                         else:
-                            yield input_local.todense(), output_local
+                            yield input_local.todensa(), output_local
 
 
 def build_model(
@@ -80,7 +111,7 @@ def build_model(
 
 def train_state(files, model, start_epoch):
     train_files = list(glob.glob(files))
-    train_generator = generate_batches(files=train_files)
+    train_generator = generate_npy_batches(files=train_files)
 
     if not model:
         model = build_model(output_layers=1, output_activation="tanh")
@@ -162,48 +193,14 @@ def train_policy(files, model, start_epoch):
                 outputs,
                 activation="linear",
                 kernel_initializer="glorot_normal",
-                # kernel_regularizer=regularizers.L1(0.0001),
                 use_bias=False,
                 dtype=tf.float32,
             )
         )
 
-        """
-        inputs = keras.Input(shape=(INPUT_SIZE,))
-        hiddens = layers.Dense(hidden, activation=square_sigmoid, use_bias=True, dtype=tf.float32,
-            kernel_initializer="he_normal")(inputs)
-
-        merged = layers.Concatenate()([hiddens, inputs])
-
-        outputs = layers.Dense(
-                outputs,
-                activation="linear",
-                kernel_initializer="glorot_normal",
-                # kernel_regularizer=regularizers.L1(0.0001),
-                use_bias=False,
-                dtype=tf.float32,
-            )(merged)
-
-        model = keras.Model(inputs, outputs=outputs)
-        """
-
     model.summary()
 
-    """
-    lr_schedule = tf.keras.optimizers.schedules.PiecewiseConstantDecay(
-        boundaries = [10, 55], values = [1e-2, 1e-3, 1e-4])
-    """
-
-    """
-    lr_schedule = tf.keras.optimizers.schedules.ExponentialDecay(
-        initial_learning_rate=0.01,
-        decay_steps=1000*10,
-        decay_rate=0.5,
-        staircase=True,
-    )
-    """
-
-    optimizer = keras.optimizers.Adam(learning_rate=0.001)
+    optimizer = keras.optimizers.legacy.Adam(learning_rate=0.001)
 
     model.compile(optimizer=optimizer, loss=policy_loss, metrics=[policy_acc])
 
@@ -216,12 +213,16 @@ def train_policy(files, model, start_epoch):
         verbose=True,
     )
 
+    steps_per_epoch = int(
+        len(train_files) * 1000000 / DEFAULT_BATCH_SIZE / EPOCHS_PER_DATASET
+    )
+
     model.fit(
         train_generator,
         epochs=100,
         verbose=1,
         callbacks=[mc],
-        steps_per_epoch=1000,
+        steps_per_epoch=steps_per_epoch,
         initial_epoch=start_epoch,
     )
 
@@ -240,7 +241,7 @@ if __name__ == "__main__":
         )
 
     if train_what == "state":
-        train_state("model_data/*.libsvm.*", model, start_epoch)
+        train_state("model_data/*.npy", model, start_epoch)
     elif train_what == "policy":
         train_policy("policy_data/*.libsvm.*", model, start_epoch)
     else:
