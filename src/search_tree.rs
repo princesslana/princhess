@@ -347,7 +347,7 @@ impl SearchTree {
         self.max_depth.fetch_max(depth, Ordering::Relaxed);
         let playouts = self.playouts.fetch_add(1, Ordering::Relaxed);
 
-        if playouts > 1024 && (playouts & (playouts - 1)) == 0 {
+        if playouts > 4096 && (playouts & (playouts - 1)) == 0 {
             self.print_info(&time_management);
         }
 
@@ -455,6 +455,10 @@ impl SearchTree {
 
     fn print_info(&self, time_management: &TimeManagement) {
         let search_time_ms = time_management.elapsed().as_millis();
+
+        if search_time_ms == 0 {
+            return;
+        }
 
         let nodes = self.num_nodes();
         let depth = nodes / self.playouts();
