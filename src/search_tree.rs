@@ -347,14 +347,15 @@ impl SearchTree {
         self.max_depth.fetch_max(depth, Ordering::Relaxed);
         let playouts = self.playouts.fetch_add(1, Ordering::Relaxed);
 
-        // 2 << 18 chose by random experimentation on local runs
-        if playouts > 0 && playouts % (2 << 18) == 0 {
+        if playouts > 1024 && (playouts & (playouts - 1)) == 0 {
             self.print_info(&time_management);
         }
+
         if playouts % 128 == 0 && time_management.is_after_end() {
             self.print_info(&time_management);
             return false;
         }
+
         true
     }
 
@@ -458,7 +459,7 @@ impl SearchTree {
         let nodes = self.num_nodes();
         let depth = nodes / self.playouts();
         let sel_depth = self.max_depth();
-        let pv = self.principal_variation(64);
+        let pv = self.principal_variation(depth);
         let pv_string: String = pv
             .into_iter()
             .map(|x| format!(" {}", to_uci(x.get_move())))
