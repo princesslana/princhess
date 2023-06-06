@@ -9,20 +9,28 @@ from concurrent.futures import ThreadPoolExecutor
 from keras.callbacks import EarlyStopping, ModelCheckpoint
 from numpy import array2string
 from scipy.sparse import vstack
-from sklearn.datasets import load_svmlight_file
 from tensorflow import keras
 from tensorflow.keras import activations, layers, regularizers
 from tensorflow.nn import softmax_cross_entropy_with_logits
 
 # pieces + last capture + threats
 INPUT_SIZE = 768 + (5 * 64) + 768
+HIDDEN_LAYERS = 192
 
-EPOCHS_PER_DATASET = 2
-DEFAULT_BATCH_SIZE = 16384
-DEFAULT_HIDDEN_LAYERS = 192
+ENTRIES_PER_FILE = 1000000
+
+TRAIN_TIME_MINUTES = 8 * 60
+
+STATE_EOPCH_TIME_MINUTES = 12
+POLICY_EPOCH_TIME_MINUTES = 19
+
+STATE_EPOCHS = TRAIN_TIME_MINUTES // STATE_EOPCH_TIME_MINUTES
+POLICY_EPOCHS = TRAIN_TIME_MINUTES // POLICY_EPOCH_TIME_MINUTES
+
+BATCH_SIZE = 16384
 
 
-def generate_npy_batches(files, batch_size=DEFAULT_BATCH_SIZE, categories=None):
+def generate_npy_batches(files, values):
     all_files = files[:]
 
     while True:
@@ -31,66 +39,28 @@ def generate_npy_batches(files, batch_size=DEFAULT_BATCH_SIZE, categories=None):
             data = numpy.load(fname, allow_pickle=True)
 
             x = data.item().get("features")
-            y = data.item().get("wdl")
+            y = data.item().get(values)
 
             output, input = sklearn.utils.shuffle(y, x)
 
             # tweak batch size so we don't have a smaller batch left over
-            batches = input.shape[0] // batch_size
+            batches = input.shape[0] // BATCH_SIZE
             actual_batch_size = input.shape[0] // batches + 1
 
             for local_index in range(0, input.shape[0], actual_batch_size):
-                input_local = input[local_index : (local_index + batch_size)]
-                output_local = output[local_index : (local_index + batch_size)]
+                input_local = input[local_index : (local_index + actual_batch_size)]
+                output_local = output[local_index : (local_index + actual_batch_size)]
 
-                if categories:
-                    output_local, input_local = numpy.hsplit(
-                        input_local.todense(), [categories]
-                    )
-                    yield input_local, output_local
-                else:
-                    yield input_local.todense(), output_local
+                if hasattr(input_local, "todense"):
+                    input_local = input_local.todense()
 
+                if hasattr(output_local, "todense"):
+                    output_local = output_local.todense()
 
-
-def generate_batches(files, batch_size=DEFAULT_BATCH_SIZE, categories=None):
-    all_files = files[:]
-
-    prev_svmlight_file = None
-    next_svmlight_file = None
-
-    with ThreadPoolExecutor(max_workers=1) as executor:
-        while True:
-            random.shuffle(all_files)
-            for fname in all_files:
-                prev_svmlight_file = next_svmlight_file
-                next_svmlight_file = executor.submit(lambda: load_svmlight_file(fname))
-
-                if prev_svmlight_file:
-                    x, y = prev_svmlight_file.result()
-
-                    output, input = sklearn.utils.shuffle(y, x)
-
-                    # tweak batch size so we don't have a smaller batch left over
-                    batches = input.shape[0] // batch_size
-                    actual_batch_size = input.shape[0] // batches + 1
-
-                    for local_index in range(0, input.shape[0], actual_batch_size):
-                        input_local = input[local_index : (local_index + batch_size)]
-                        output_local = output[local_index : (local_index + batch_size)]
-
-                        if categories:
-                            output_local, input_local = numpy.hsplit(
-                                input_local.todense(), [categories]
-                            )
-                            yield input_local, output_local
-                        else:
-                            yield input_local.todensa(), output_local
+                yield input_local, output_local
 
 
-def build_model(
-    hidden_layers=DEFAULT_HIDDEN_LAYERS, *, output_layers, output_activation
-):
+def build_model(hidden_layers=HIDDEN_LAYERS, *, output_layers, output_activation):
     model = keras.Sequential()
     model.add(keras.Input(shape=(INPUT_SIZE,)))
     model.add(
@@ -111,7 +81,7 @@ def build_model(
 
 def train_state(files, model, start_epoch):
     train_files = list(glob.glob(files))
-    train_generator = generate_npy_batches(files=train_files)
+    train_generator = generate_npy_batches(files=train_files, values="wdl")
 
     if not model:
         model = build_model(output_layers=1, output_activation="tanh")
@@ -126,18 +96,16 @@ def train_state(files, model, start_epoch):
         filepath="checkpoints/state."
         + str(INPUT_SIZE)
         + "x"
-        + str(DEFAULT_HIDDEN_LAYERS)
+        + str(HIDDEN_LAYERS)
         + "x1.e{epoch:03d}-l{loss:.2f}.h5",
         verbose=True,
     )
 
-    steps_per_epoch = int(
-        len(train_files) * 1000000 / DEFAULT_BATCH_SIZE / EPOCHS_PER_DATASET
-    )
+    steps_per_epoch = int(len(train_files) * ENTRIES_PER_FILE / BATCH_SIZE)
 
     model.fit(
         train_generator,
-        epochs=100,
+        epochs=STATE_EPOCHS,
         verbose=1,
         callbacks=[mc],
         steps_per_epoch=steps_per_epoch,
@@ -183,7 +151,7 @@ def policy_acc(target, output):
 def train_policy(files, model, start_epoch):
     outputs = 384
     train_files = list(glob.glob(files))
-    train_generator = generate_batches(files=train_files, categories=outputs)
+    train_generator = generate_npy_batches(files=train_files, values="moves")
 
     if not model:
         model = keras.Sequential()
@@ -213,13 +181,11 @@ def train_policy(files, model, start_epoch):
         verbose=True,
     )
 
-    steps_per_epoch = int(
-        len(train_files) * 1000000 / DEFAULT_BATCH_SIZE / EPOCHS_PER_DATASET
-    )
+    steps_per_epoch = int(len(train_files) * ENTRIES_PER_FILE / BATCH_SIZE)
 
     model.fit(
         train_generator,
-        epochs=100,
+        epochs=POLICY_EPOCHS,
         verbose=1,
         callbacks=[mc],
         steps_per_epoch=steps_per_epoch,
@@ -243,6 +209,6 @@ if __name__ == "__main__":
     if train_what == "state":
         train_state("model_data/*.npy", model, start_epoch)
     elif train_what == "policy":
-        train_policy("policy_data/*.libsvm.*", model, start_epoch)
+        train_policy("model_data/*.npy", model, start_epoch)
     else:
         print("Must specify to train either 'state' or 'policy'")
