@@ -5,8 +5,8 @@ services:
       dockerfile: bin/Dockerfile.cutechess-cli
     command:
       -engine cmd=/engines/princhess-main name=princhess-main
+      -engine cmd=/engines/princhess-0.11.0 name=princhess-0.11.0
       -engine cmd=/engines/princhess-0.10.0 name=princhess-0.10.0
-      -engine cmd=/engines/princhess-0.9.0 name=princhess-0.9.0
 
       -each proto=uci tc=10+0.1
             option.SyzygyPath=/syzygy option.Hash=128 option.Threads=1
@@ -16,8 +16,8 @@ services:
     volumes:
       - ./target/release/princhess:/engines/princhess
       - ./target/release/princhess-main:/engines/princhess-main
+      - ./target/release/princhess-0.11.0:/engines/princhess-0.11.0
       - ./target/release/princhess-0.10.0:/engines/princhess-0.10.0
-      - ./target/release/princhess-0.9.0:/engines/princhess-0.9.0
       - ./syzygy:/syzygy:ro
 
   sprt_gain:
@@ -30,7 +30,7 @@ services:
 
       -each proto=uci tc=10+0.1
             option.SyzygyPath=/syzygy option.Hash=128 option.Threads=1
-      -sprt elo0=-2.5 elo1=5 alpha=0.05 beta=0.05
+      -sprt elo0=0 elo1=5 alpha=0.05 beta=0.05
       -openings file=/books/Pohl.epd format=epd order=random
       -games 2 -repeat -rounds 10000
       -recover -ratinginterval 10 -concurrency 6
@@ -50,7 +50,7 @@ services:
 
       -each proto=uci tc=10+0.1
             option.SyzygyPath=/syzygy option.Hash=128 option.Threads=1
-      -sprt elo0=-10 elo1=-2.5 alpha=0.05 beta=0.05
+      -sprt elo0=-5 elo1=0 alpha=0.05 beta=0.05
       -openings file=/books/Pohl.epd format=epd order=random
       -games 2 -repeat -rounds 10000
       -recover -ratinginterval 10 -concurrency 6
@@ -78,138 +78,3 @@ services:
       - ./target/release/princhess-main:/engines/princhess-main
       - ./syzygy:/syzygy:ro
       - ./pgn:/pgn
-
-  net_gauntlet:
-    build:
-      context: .
-      dockerfile: bin/Dockerfile.cutechess-cli
-    command: >
-      -engine cmd=/engines/princhess-main name=princhess-main
-      -engine cmd=/engines/princhess-e001 name=princhess-e001
-      -engine cmd=/engines/princhess-e002 name=princhess-e002
-      -engine cmd=/engines/princhess-e003 name=princhess-e003
-      -engine cmd=/engines/princhess-e004 name=princhess-e004
-      -engine cmd=/engines/princhess-e005 name=princhess-e005
-      -engine cmd=/engines/princhess-e006 name=princhess-e006
-      -engine cmd=/engines/princhess-e007 name=princhess-e007
-      -engine cmd=/engines/princhess-e008 name=princhess-e008
-      -engine cmd=/engines/princhess-e009 name=princhess-e009
-      -engine cmd=/engines/princhess-e010 name=princhess-e010
-      -engine cmd=/engines/princhess-e011 name=princhess-e011
-      -engine cmd=/engines/princhess-e012 name=princhess-e012
-      -engine cmd=/engines/princhess-e013 name=princhess-e013
-      -engine cmd=/engines/princhess-e014 name=princhess-e014
-      -engine cmd=/engines/princhess-e015 name=princhess-e015
-      -engine cmd=/engines/princhess-e016 name=princhess-e016
-      -engine cmd=/engines/princhess-e017 name=princhess-e017
-      -engine cmd=/engines/princhess-e018 name=princhess-e018
-      -engine cmd=/engines/princhess-e019 name=princhess-e019
-      -engine cmd=/engines/princhess-e020 name=princhess-e020
-      -engine cmd=/engines/princhess-e021 name=princhess-e021
-      -engine cmd=/engines/princhess-e022 name=princhess-e022
-      -engine cmd=/engines/princhess-e023 name=princhess-e023
-      -engine cmd=/engines/princhess-e024 name=princhess-e024
-      -engine cmd=/engines/princhess-e025 name=princhess-e025
-      -engine cmd=/engines/princhess-e026 name=princhess-e026
-      -engine cmd=/engines/princhess-e027 name=princhess-e027
-      -engine cmd=/engines/princhess-e028 name=princhess-e028
-      -engine cmd=/engines/princhess-e029 name=princhess-e029
-      -engine cmd=/engines/princhess-e030 name=princhess-e030
-      -engine cmd=/engines/princhess-e031 name=princhess-e031
-      -engine cmd=/engines/princhess-e032 name=princhess-e032
-      -engine cmd=/engines/princhess-e033 name=princhess-e033
-      -engine cmd=/engines/princhess-e034 name=princhess-e034
-      -engine cmd=/engines/princhess-e035 name=princhess-e035
-      -engine cmd=/engines/princhess-e036 name=princhess-e036
-      -engine cmd=/engines/princhess-e037 name=princhess-e037
-      -engine cmd=/engines/princhess-e038 name=princhess-e038
-      -engine cmd=/engines/princhess-e039 name=princhess-e039
-      -engine cmd=/engines/princhess-e040 name=princhess-e040
-      -engine cmd=/engines/princhess-e041 name=princhess-e041
-      -engine cmd=/engines/princhess-e042 name=princhess-e042
-      -engine cmd=/engines/princhess-e043 name=princhess-e043
-      -engine cmd=/engines/princhess-e044 name=princhess-e044
-      -engine cmd=/engines/princhess-e045 name=princhess-e045
-      -engine cmd=/engines/princhess-e046 name=princhess-e046
-      -engine cmd=/engines/princhess-e047 name=princhess-e047
-      -engine cmd=/engines/princhess-e048 name=princhess-e048
-      -engine cmd=/engines/princhess-e049 name=princhess-e049
-      -engine cmd=/engines/princhess-e050 name=princhess-e050
-      -engine cmd=/engines/princhess-e051 name=princhess-e051
-      -engine cmd=/engines/princhess-e052 name=princhess-e052
-      -engine cmd=/engines/princhess-e053 name=princhess-e053
-      -engine cmd=/engines/princhess-e054 name=princhess-e054
-      -engine cmd=/engines/princhess-e055 name=princhess-e055
-      -engine cmd=/engines/princhess-e056 name=princhess-e056
-      -engine cmd=/engines/princhess-e057 name=princhess-e057
-      -engine cmd=/engines/princhess-e058 name=princhess-e058
-      -engine cmd=/engines/princhess-e059 name=princhess-e059
-      -engine cmd=/engines/princhess-e060 name=princhess-e060
-      -engine cmd=/engines/princhess-e061 name=princhess-e061
-      -engine cmd=/engines/princhess-e062 name=princhess-e062
-      -engine cmd=/engines/princhess-e063 name=princhess-e063
-      -engine cmd=/engines/princhess-e064 name=princhess-e064
-      -engine cmd=/engines/princhess-e065 name=princhess-e065
-      -engine cmd=/engines/princhess-e066 name=princhess-e066
-      -engine cmd=/engines/princhess-e067 name=princhess-e067
-      -engine cmd=/engines/princhess-e068 name=princhess-e068
-      -engine cmd=/engines/princhess-e069 name=princhess-e069
-      -engine cmd=/engines/princhess-e070 name=princhess-e070
-      -engine cmd=/engines/princhess-e071 name=princhess-e071
-      -engine cmd=/engines/princhess-e072 name=princhess-e072
-      -engine cmd=/engines/princhess-e073 name=princhess-e073
-      -engine cmd=/engines/princhess-e074 name=princhess-e074
-      -engine cmd=/engines/princhess-e075 name=princhess-e075
-      -engine cmd=/engines/princhess-e076 name=princhess-e076
-      -engine cmd=/engines/princhess-e077 name=princhess-e077
-      -engine cmd=/engines/princhess-e078 name=princhess-e078
-      -engine cmd=/engines/princhess-e079 name=princhess-e079
-      -engine cmd=/engines/princhess-e080 name=princhess-e080
-      -engine cmd=/engines/princhess-e081 name=princhess-e081
-      -engine cmd=/engines/princhess-e082 name=princhess-e082
-      -engine cmd=/engines/princhess-e083 name=princhess-e083
-      -engine cmd=/engines/princhess-e084 name=princhess-e084
-      -engine cmd=/engines/princhess-e085 name=princhess-e085
-      -engine cmd=/engines/princhess-e086 name=princhess-e086
-      -engine cmd=/engines/princhess-e087 name=princhess-e087
-      -engine cmd=/engines/princhess-e088 name=princhess-e088
-      -engine cmd=/engines/princhess-e089 name=princhess-e089
-      -engine cmd=/engines/princhess-e090 name=princhess-e090
-      -engine cmd=/engines/princhess-e091 name=princhess-e091
-      -engine cmd=/engines/princhess-e092 name=princhess-e092
-      -engine cmd=/engines/princhess-e093 name=princhess-e093
-      -engine cmd=/engines/princhess-e094 name=princhess-e094
-      -engine cmd=/engines/princhess-e095 name=princhess-e095
-      -engine cmd=/engines/princhess-e096 name=princhess-e096
-      -engine cmd=/engines/princhess-e097 name=princhess-e097
-      -engine cmd=/engines/princhess-e098 name=princhess-e098
-      -engine cmd=/engines/princhess-e099 name=princhess-e099
-      -engine cmd=/engines/princhess-e100 name=princhess-e100
-      -each proto=uci tc=10+0.1 timemargin=1000
-            option.SyzygyPath=/syzygy option.Hash=128 option.Threads=1 
-      -openings file=/books/first_moves.epd format=epd policy=round
-      -games 2 -rounds 10 -tournament gauntlet
-      -recover -ratinginterval 10 -concurrency 6
-    volumes:
-      - ./target/release/:/engines/
-      - ./syzygy:/syzygy:ro
-    environment:
-      RUST_LOG: warn
-
-  top_gauntlet:
-    build:
-      context: .
-      dockerfile: bin/Dockerfile.cutechess-cli
-    command: >
-      -engine cmd=/engines/princhess-main name=princhess-main
-
-      -each proto=uci tc=10+0.1 timemargin=1000
-            option.SyzygyPath=/syzygy option.Hash=128 option.Threads=1
-      -openings file=/books/Pohl.epd format=epd order=random
-      -games 2 -repeat -rounds 50 -tournament gauntlet
-      -recover -ratinginterval 10 -concurrency 6
-    volumes:
-      - ./target/release/:/engines/
-      - ./syzygy:/syzygy:ro
-    environment:
-      RUST_LOG: warn

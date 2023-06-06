@@ -4,8 +4,8 @@ set -e
 
 PRINCHESS=${PRINCHESS:-../target/release/princhess}
 
-state_data() {
-  echo "Sampling state data..."
+generate_data() {
+  echo "Sampling data..."
 
   rm -f model_data/*.libsvm.*
 
@@ -35,45 +35,4 @@ state_data() {
   done
 }
 
-policy_data() {
-  echo "Sampling policy data..."
-
-  rm -f policy_data/*.libsvm.*
-
-  for f in pgn/*.pgn
-  do
-    echo "Featurizing $f..."
-
-    $PRINCHESS -p -t $f -o $f.libsvm &
-  done
-
-  wait
-
-  for f in pgn/*.pgn
-  do
-    echo "Calculating split..."
-
-    samples=$(wc -l < $f.libsvm)
-    splits=$(( $samples / 1000000 ))
-    split_size=$(( $samples / $splits + 1))
-
-    echo "Splitting data ($split_size)..."
-
-    split -l $split_size $f.libsvm policy_data/$(basename $f).libsvm.
-
-    rm $f.libsvm
-    rm -f policy_data/*.gz
-  done
-}
-
-case $1 in
-  "state")
-    state_data
-    ;;
-  "policy")
-    policy_data
-    ;;
-  *)
-    echo "Must specify either 'state' or 'policy'"
-    ;;
-esac
+generate_data
