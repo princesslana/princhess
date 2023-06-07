@@ -27,7 +27,7 @@ pub fn main(commands: Vec<String>) {
         thread::spawn(move || -> Result<(), SendError<String>> {
             let stdin = stdin();
             for line in stdin.lock().lines() {
-                sender.send(line.unwrap_or_else(|_| "".into()))?;
+                sender.send(line.unwrap_or_else(|_| String::new()))?;
             }
             sender.send("quit".into())?;
             Ok(())
@@ -130,7 +130,7 @@ impl UciOption {
         match self.name().as_str() {
             "syzygypath" => {
                 if let Some(path) = self.value() {
-                    set_tablebase_directory(path)
+                    set_tablebase_directory(path);
                 }
             }
             "threads" => self.set_option(set_num_threads),

@@ -1,5 +1,5 @@
 extern crate argparse;
-use self::argparse::*;
+use self::argparse::{ArgumentParser, Collect, Store, StoreOption};
 
 pub struct Options {
     pub train_pgn: Option<String>,

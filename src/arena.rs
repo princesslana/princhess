@@ -2,15 +2,15 @@ use arc_swap::ArcSwap;
 use log::debug;
 use memmap::MmapMut;
 use std::cell::UnsafeCell;
-use std::collections::{HashSet, LinkedList};
+use std::collections::{HashSet, VecDeque};
 use std::mem;
-use std::ops::DerefMut;
+use std::ptr;
 use std::slice;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
 
 #[derive(Debug)]
-pub enum ArenaError {
+pub enum Error {
     Full,
 }
 
@@ -19,7 +19,7 @@ const CHUNK_SIZE: usize = 1 << 21; // 2MB
 static IDS: AtomicU64 = AtomicU64::new(0);
 
 pub struct Arena {
-    owned_mappings: Mutex<LinkedList<MmapMut>>,
+    owned_mappings: Mutex<VecDeque<MmapMut>>,
     max_chunks: usize,
     allocators: ArcSwap<HashSet<u64>>,
 }
@@ -32,9 +32,9 @@ impl Arena {
             max_size_mb, max_chunks
         );
         Self {
-            owned_mappings: Default::default(),
+            owned_mappings: Mutex::default(),
             max_chunks,
-            allocators: Default::default(),
+            allocators: ArcSwap::default(),
         }
     }
 
@@ -43,18 +43,18 @@ impl Arena {
         owned_mappings.len() > self.max_chunks
     }
 
-    fn give_mmap(&self, mut map: MmapMut) -> Result<&mut [u8], ArenaError> {
-        let result = map.deref_mut() as *mut _;
+    fn give_mmap(&self, mut map: MmapMut) -> Result<&mut [u8], Error> {
+        let result = ptr::addr_of_mut!(*map);
         let mut owned_mappings = self.owned_mappings.lock().unwrap();
         if owned_mappings.len() > self.max_chunks {
-            Err(ArenaError::Full)
+            Err(Error::Full)
         } else {
             owned_mappings.push_back(map);
             unsafe { Ok(&mut *result) }
         }
     }
 
-    fn alloc_chunk(&self, id: u64) -> Result<&mut [u8], ArenaError> {
+    fn alloc_chunk(&self, id: u64) -> Result<&mut [u8], Error> {
         let allocators = self.allocators.load();
         if !allocators.contains(&id) {
             self.allocators.rcu(|als| {
@@ -83,17 +83,17 @@ impl Arena {
 
         let mut mmap = MmapMut::map_anon(CHUNK_SIZE).unwrap();
 
-        let result = mmap.deref_mut() as *mut _;
+        let result = ptr::addr_of_mut!(*mmap);
         let mut owned_mappings = self.owned_mappings.lock().unwrap();
 
         owned_mappings.push_back(mmap);
         unsafe { &mut *result }
     }
 
-    pub fn allocator(&self) -> ArenaAllocator {
+    pub fn allocator(&self) -> Allocator {
         let id = IDS.fetch_add(1, Ordering::SeqCst);
 
-        ArenaAllocator {
+        Allocator {
             id,
             arena: self,
             memory: UnsafeCell::new(self.allocator_chunk(id)),
@@ -112,7 +112,7 @@ impl Arena {
     }
 }
 
-pub struct ArenaAllocator<'a> {
+pub struct Allocator<'a> {
     id: u64,
     arena: &'a Arena,
     memory: UnsafeCell<&'a mut [u8]>,
@@ -120,8 +120,8 @@ pub struct ArenaAllocator<'a> {
 
 const ALIGN: usize = 8;
 
-impl<'a> ArenaAllocator<'a> {
-    fn get_memory(&self, sz: usize) -> Result<&'a mut [u8], ArenaError> {
+impl<'a> Allocator<'a> {
+    fn get_memory(&self, sz: usize) -> Result<&'a mut [u8], Error> {
         let memory = unsafe { &mut *self.memory.get() };
 
         if !self.arena.is_allocator_valid(self.id) {
@@ -134,22 +134,22 @@ impl<'a> ArenaAllocator<'a> {
             Ok(left)
         } else if sz > CHUNK_SIZE {
             debug!("sz > CHUNK_SIZE, {} > {}", sz, CHUNK_SIZE);
-            Err(ArenaError::Full)
+            Err(Error::Full)
         } else {
             *memory = self.arena.alloc_chunk(self.id)?;
             self.get_memory(sz)
         }
     }
 
-    pub fn alloc_one<T>(&self) -> Result<&'a mut T, ArenaError> {
+    pub fn alloc_one<T>(&self) -> Result<&'a mut T, Error> {
         assert!(ALIGN % mem::align_of::<T>() == 0);
         let x = mem::size_of::<T>();
         let x = x + ((!x + 1) % ALIGN); // TODO fix panic when x=0
         let x = self.get_memory(x)?;
-        Ok(unsafe { &mut *(x.as_mut_ptr() as *mut T) })
+        Ok(unsafe { &mut *(x.as_mut_ptr().cast::<T>()) })
     }
 
-    pub fn alloc_slice<T>(&self, sz: usize) -> Result<&'a mut [T], ArenaError> {
+    pub fn alloc_slice<T>(&self, sz: usize) -> Result<&'a mut [T], Error> {
         assert!(ALIGN % mem::align_of::<T>() == 0);
         let x = mem::size_of::<T>();
         let x = x + ((!x + 1) % ALIGN); // TODO fix panic when x=0

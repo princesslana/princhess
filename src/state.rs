@@ -6,6 +6,7 @@ use shakmaty::{
     self, CastlingMode, CastlingSide, Chess, Color, File, Move, MoveList, Piece, Position, Role,
     Setup,
 };
+use std::convert::Into;
 
 use crate::options::is_chess960;
 use crate::uci::Tokens;
@@ -19,13 +20,13 @@ const OFFSET_THREATS: usize = NF_PIECES + NF_LAST_CAPTURE;
 
 pub const NUMBER_FEATURES: usize = NF_PIECES + NF_LAST_CAPTURE + NF_THREATS;
 
-pub struct StateBuilder {
+pub struct Builder {
     initial_state: Chess,
     crnt_state: Chess,
     moves: Vec<Move>,
 }
 
-impl StateBuilder {
+impl Builder {
     pub fn chess(&self) -> &Chess {
         &self.crnt_state
     }
@@ -61,9 +62,8 @@ impl StateBuilder {
             _ => return None,
         };
         match tokens.next() {
-            Some("moves") => (),
+            Some("moves") | None => (),
             Some(_) => return None,
-            None => (),
         };
         for mov_str in tokens {
             let uci = mov_str.parse::<Uci>().ok()?;
@@ -74,8 +74,8 @@ impl StateBuilder {
     }
 
     pub fn extract(&self) -> (State, Vec<Move>) {
-        let state = StateBuilder::from(self.initial_state.clone()).into();
-        let moves = self.moves.to_vec();
+        let state = Self::from(self.initial_state.clone()).into();
+        let moves = self.moves.clone();
         (state, moves)
     }
 }
@@ -95,7 +95,7 @@ pub struct State {
 }
 impl State {
     pub fn from_tokens(tokens: Tokens) -> Option<Self> {
-        StateBuilder::from_tokens(tokens).map(|x| x.into())
+        Builder::from_tokens(tokens).map(Into::into)
     }
 
     pub fn board(&self) -> &Chess {
@@ -286,7 +286,7 @@ impl State {
     }
 }
 
-impl Default for StateBuilder {
+impl Default for Builder {
     fn default() -> Self {
         shakmaty::Chess::default().into()
     }
@@ -294,11 +294,11 @@ impl Default for StateBuilder {
 
 impl Default for State {
     fn default() -> Self {
-        StateBuilder::default().into()
+        Builder::default().into()
     }
 }
 
-impl From<shakmaty::Chess> for StateBuilder {
+impl From<shakmaty::Chess> for Builder {
     fn from(chess: shakmaty::Chess) -> Self {
         Self {
             initial_state: chess.clone(),
@@ -308,8 +308,8 @@ impl From<shakmaty::Chess> for StateBuilder {
     }
 }
 
-impl From<StateBuilder> for State {
-    fn from(sb: StateBuilder) -> Self {
+impl From<Builder> for State {
+    fn from(sb: Builder) -> Self {
         let hash = sb.initial_state.zobrist_hash();
 
         let mut state = State {

@@ -28,7 +28,7 @@ pub fn get_hash_size_mb() -> usize {
 
 pub fn set_cpuct(c: f32) {
     let mut cp = CPUCT.write().unwrap();
-    *cp = c
+    *cp = c;
 }
 
 pub fn get_cpuct() -> f32 {

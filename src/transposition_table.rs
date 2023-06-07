@@ -3,7 +3,7 @@ use nohash_hasher::BuildNoHashHasher;
 use std::sync::atomic::{AtomicBool, AtomicPtr, Ordering};
 use std::sync::{Arc, Mutex};
 
-use crate::arena::{Arena, ArenaAllocator, ArenaError};
+use crate::arena::{Allocator, Arena, Error as ArenaError};
 use crate::options::get_hash_size_mb;
 use crate::search_tree::{HotMoveInfo, SearchNode};
 use crate::state::State;
@@ -169,8 +169,8 @@ impl LRTable {
 
 pub struct LRAllocator<'a> {
     is_left_current: Arc<AtomicBool>,
-    left: ArenaAllocator<'a>,
-    right: ArenaAllocator<'a>,
+    left: Allocator<'a>,
+    right: Allocator<'a>,
 }
 
 impl<'a> LRAllocator<'a> {

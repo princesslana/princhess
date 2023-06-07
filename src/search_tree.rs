@@ -4,10 +4,10 @@ use std::mem;
 use std::ptr::null_mut;
 use std::sync::atomic::{AtomicBool, AtomicI64, AtomicPtr, AtomicU32, AtomicUsize, Ordering};
 
-use crate::arena::ArenaError;
-use crate::evaluation::{self, StateEvaluation};
+use crate::arena::Error as ArenaError;
+use crate::evaluation::{self, Evaluation};
 use crate::math;
-use crate::mcts::*;
+use crate::mcts::{eval_in_cp, ThreadData};
 use crate::options::get_cpuct;
 use crate::search::{to_uci, TimeManagement, SCALE};
 use crate::state::State;
@@ -51,16 +51,16 @@ pub struct MoveInfoHandle<'a> {
 
 pub struct SearchNode {
     hots: *const [HotMoveInfo],
-    evaln: StateEvaluation,
+    evaln: Evaluation,
     visited: AtomicBool,
 }
 
 unsafe impl Sync for SearchNode {}
 
-static DRAW_NODE: SearchNode = SearchNode::new(&[], StateEvaluation::draw());
+static DRAW_NODE: SearchNode = SearchNode::new(&[], Evaluation::draw());
 
 impl SearchNode {
-    const fn new(hots: &[HotMoveInfo], evaln: StateEvaluation) -> Self {
+    const fn new(hots: &[HotMoveInfo], evaln: Evaluation) -> Self {
         Self {
             hots,
             evaln,
@@ -68,11 +68,11 @@ impl SearchNode {
         }
     }
 
-    pub fn evaln(&self) -> &StateEvaluation {
+    pub fn evaln(&self) -> &Evaluation {
         &self.evaln
     }
 
-    pub fn set_evaln(&mut self, evaln: StateEvaluation) {
+    pub fn set_evaln(&mut self, evaln: Evaluation) {
         self.evaln = evaln;
     }
 
@@ -96,7 +96,7 @@ impl SearchNode {
         unsafe { &*(self.hots as *const [HotMoveInfo]) }
     }
 
-    fn update_policy(&mut self, evals: Vec<f32>) {
+    fn update_policy(&mut self, evals: &[f32]) {
         let mut hots = unsafe { &mut *(self.hots as *mut [HotMoveInfo]) };
 
         for i in 0..hots.len().min(evals.len()) {
@@ -164,23 +164,23 @@ impl HotMoveInfo {
 }
 
 impl<'a> MoveInfoHandle<'a> {
-    pub fn get_move(&self) -> &'a shakmaty::Move {
+    pub fn get_move(self) -> &'a shakmaty::Move {
         &self.hot.mov
     }
 
-    pub fn policy(&self) -> f32 {
+    pub fn policy(self) -> f32 {
         self.hot.policy
     }
 
-    pub fn visits(&self) -> u64 {
-        self.hot.visits.load(Ordering::Relaxed) as u64
+    pub fn visits(self) -> u64 {
+        u64::from(self.hot.visits.load(Ordering::Relaxed))
     }
 
-    pub fn sum_rewards(&self) -> i64 {
+    pub fn sum_rewards(self) -> i64 {
         self.hot.sum_evaluations.load(Ordering::Relaxed)
     }
 
-    pub fn average_reward(&self) -> Option<f32> {
+    pub fn average_reward(self) -> Option<f32> {
         match self.visits() {
             0 => None,
             x => Some(self.sum_rewards() as f32 / x as f32),
@@ -188,7 +188,6 @@ impl<'a> MoveInfoHandle<'a> {
     }
 }
 
-#[inline(always)]
 fn create_node<'a, F>(
     state: &State,
     tb_hits: &AtomicUsize,
@@ -237,7 +236,7 @@ impl SearchTree {
 
         math::softmax(&mut avg_rewards);
 
-        root_node.update_policy(avg_rewards);
+        root_node.update_policy(&avg_rewards);
 
         Self {
             root_state: state,
@@ -339,7 +338,7 @@ impl SearchTree {
             node.evaln
         };
 
-        self.finish_playout(&path, evaln);
+        Self::finish_playout(&path, evaln);
 
         // -1 because we don't count the root node
         let depth = path.len() - 1;
@@ -417,7 +416,7 @@ impl SearchTree {
         Ok(created)
     }
 
-    fn finish_playout(&self, path: &[MoveInfoHandle], evaln: StateEvaluation) {
+    fn finish_playout(path: &[MoveInfoHandle], evaln: Evaluation) {
         let mut evaln_value = evaln;
         for move_info in path.iter().rev() {
             move_info.hot.up(evaln_value.into());
@@ -444,10 +443,9 @@ impl SearchTree {
             let child = choice.hot.child.load(Ordering::SeqCst) as *const SearchNode;
             if child.is_null() {
                 break;
-            } else {
-                unsafe {
-                    crnt = &*child;
-                }
+            }
+            unsafe {
+                crnt = &*child;
             }
         }
         result
@@ -489,8 +487,7 @@ impl SearchTree {
         eval_in_cp(
             self.principal_variation(1)
                 .get(0)
-                .map(|x| (x.sum_rewards() / x.visits() as i64) as f32 / SCALE)
-                .unwrap_or(0.0),
+                .map_or(0., |x| (x.sum_rewards() / x.visits() as i64) as f32 / SCALE),
         )
     }
 }
@@ -501,20 +498,16 @@ fn select_child_after_search<'a>(children: &[MoveInfoHandle<'a>]) -> MoveInfoHan
         .max_by_key(|child| {
             child
                 .average_reward()
-                .map(|r| r.round() as i64)
-                .unwrap_or(-SCALE as i64)
+                .map_or(-SCALE as i64, |r| r.round() as i64)
         })
         .unwrap()
 }
 
+#[derive(Clone)]
 pub struct NodeHandle<'a> {
     node: &'a SearchNode,
 }
-impl<'a> Clone for NodeHandle<'a> {
-    fn clone(&self) -> Self {
-        Self { node: self.node }
-    }
-}
+
 impl<'a> Copy for NodeHandle<'a> {}
 
 impl<'a> NodeHandle<'a> {
@@ -523,22 +516,15 @@ impl<'a> NodeHandle<'a> {
     }
 }
 
+#[derive(Clone)]
 pub struct Moves<'a> {
     hots: &'a [HotMoveInfo],
     index: usize,
 }
 
-impl<'a> Clone for Moves<'a> {
-    fn clone(&self) -> Self {
-        Self {
-            hots: self.hots,
-            index: self.index,
-        }
-    }
-}
-
 impl<'a> Copy for Moves<'a> {}
 
+#[allow(clippy::copy_iterator)]
 impl<'a> Iterator for Moves<'a> {
     type Item = MoveInfoHandle<'a>;
     fn next(&mut self) -> Option<Self::Item> {
@@ -555,19 +541,6 @@ impl<'a> Iterator for Moves<'a> {
         }
     }
 }
-
-pub struct SharedSearchHandle<'a: 'b, 'b> {
-    tree: &'a SearchTree,
-    path: &'b [&'a SearchNode],
-}
-impl<'a: 'b, 'b> Clone for SharedSearchHandle<'a, 'b> {
-    fn clone(&self) -> Self {
-        let tree = self.tree;
-        let path = self.path;
-        Self { tree, path }
-    }
-}
-impl<'a: 'b, 'b> Copy for SharedSearchHandle<'a, 'b> {}
 
 pub fn print_size_list() {
     println!(
