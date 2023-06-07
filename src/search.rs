@@ -194,23 +194,6 @@ impl Search {
     pub fn print_move_list(&self) {
         self.search.get_manager().print_move_list();
     }
-
-    pub fn print_features(&self) {
-        let fs = self.search.get_manager().tree().root_state().features();
-
-        let mut idx = 0;
-
-        for _ in 0..12 {
-            for _ in 0..8 {
-                for _ in 0..8 {
-                    print!("{}", i32::from(fs[idx] > 0.5));
-                    idx += 1;
-                }
-                print!(" ");
-            }
-            println!()
-        }
-    }
 }
 
 pub fn to_uci(mov: &Move) -> String {
