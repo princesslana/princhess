@@ -11,7 +11,7 @@ use std::fs::File;
 use std::io::{BufWriter, Write};
 use std::str;
 
-use crate::state::StateBuilder;
+use crate::state::{self, StateBuilder};
 
 const NUM_SAMPLES: usize = 16;
 
@@ -87,21 +87,23 @@ impl Visitor for ValueDataGenerator {
                     GameResult::Draw => 0,
                 };
 
-                let board_features = state.features();
                 let moves = state.available_moves();
 
-                let mut move_features = [0f32; 384];
+                let mut board_features = [0i8; state::NUMBER_FEATURES];
+                let mut move_features = [0i8; 384];
+
+                state.features_map(|idx| board_features[idx] = 1);
 
                 for m in moves.as_slice() {
-                    move_features[state.move_to_index(m)] = 2.
+                    move_features[state.move_to_index(m)] = 2
                 }
 
-                move_features[state.move_to_index(&made)] = 1.;
+                move_features[state.move_to_index(&made)] = 1;
 
                 let f_vec = move_features
                     .iter()
                     .chain(board_features.iter())
-                    .map(|v| *v as i8)
+                    .copied()
                     .collect::<Vec<_>>();
 
                 write_libsvm(&f_vec, &mut self.out_file, v);

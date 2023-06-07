@@ -267,14 +267,6 @@ impl State {
         }
     }
 
-    pub fn features(&self) -> [f32; NUMBER_FEATURES] {
-        let mut features = [0f32; NUMBER_FEATURES];
-
-        self.features_map(|idx| features[idx] = 1f32);
-
-        features
-    }
-
     pub fn move_to_index(&self, mv: &Move) -> usize {
         let to_sq = mv.to();
 
