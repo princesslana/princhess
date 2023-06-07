@@ -11,9 +11,9 @@ use std::fs::File;
 use std::io::{BufWriter, Write};
 use std::str;
 
-use crate::state::{self, StateBuilder};
+use crate::state::{self, Builder as StateBuilder};
 
-const NUM_SAMPLES: usize = 16;
+const NUM_SAMPLES: f64 = 16.;
 
 #[derive(Copy, Clone, PartialEq, Eq)]
 pub enum GameResult {
@@ -23,8 +23,8 @@ pub enum GameResult {
 }
 
 impl GameResult {
-    pub fn flip(&self) -> Self {
-        match *self {
+    pub fn flip(self) -> Self {
+        match self {
             GameResult::WhiteWin => GameResult::BlackWin,
             GameResult::BlackWin => GameResult::WhiteWin,
             GameResult::Draw => GameResult::Draw,
@@ -71,7 +71,7 @@ impl Visitor for ValueDataGenerator {
             None => return,
         };
         let (mut state, moves) = self.state.extract();
-        let freq = NUM_SAMPLES as f64 / moves.len() as f64;
+        let freq = NUM_SAMPLES / moves.len() as f64;
         for (i, made) in moves.into_iter().enumerate() {
             if i >= 8 && self.rng.gen_range(0., 1.) < freq {
                 self.rows_written += 1;
@@ -95,7 +95,7 @@ impl Visitor for ValueDataGenerator {
                 state.features_map(|idx| board_features[idx] = 1);
 
                 for m in moves.as_slice() {
-                    move_features[state.move_to_index(m)] = 2
+                    move_features[state.move_to_index(m)] = 2;
                 }
 
                 move_features[state.move_to_index(&made)] = 1;

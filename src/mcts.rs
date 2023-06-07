@@ -7,7 +7,7 @@ use crate::evaluation;
 use crate::search::{TimeManagement, SCALE};
 pub use crate::search_tree::*;
 use crate::state::State;
-use crate::transposition_table::*;
+use crate::transposition_table::{LRAllocator, TranspositionTable};
 
 pub struct ThreadData<'a> {
     pub allocator: LRAllocator<'a>,
@@ -21,11 +21,11 @@ impl<'a> ThreadData<'a> {
     }
 }
 
-pub struct MctsManager {
+pub struct Mcts {
     search_tree: SearchTree,
 }
 
-impl MctsManager {
+impl Mcts {
     pub fn new(state: State, table: TranspositionTable, prev_table: TranspositionTable) -> Self {
         let search_tree = SearchTree::new(state, table, prev_table);
         Self { search_tree }
@@ -47,7 +47,7 @@ impl MctsManager {
                 }
                 if !search_tree.playout(&mut tld, time_managment) {
                     if !stop_signal.swap(true, Ordering::SeqCst) {
-                        let _ = sender_clone.send("stop".to_string());
+                        sender_clone.send("stop".to_string()).unwrap_or(());
                     }
                     break;
                 }
@@ -88,7 +88,7 @@ impl MctsManager {
         self.search_tree
             .principal_variation(num_moves)
             .into_iter()
-            .map(|x| x.get_move())
+            .map(MoveInfoHandle::get_move)
             .cloned()
             .collect()
     }
@@ -133,7 +133,7 @@ impl MctsManager {
 }
 
 pub struct AsyncSearchOwned {
-    manager: Option<Box<MctsManager>>,
+    manager: Option<Box<Mcts>>,
     stop_signal: Arc<AtomicBool>,
     threads: Vec<JoinHandle<()>>,
 }
@@ -143,11 +143,11 @@ impl AsyncSearchOwned {
         self.stop_signal.store(true, Ordering::SeqCst);
         drain_join_unwrap(&mut self.threads);
     }
-    pub fn halt(mut self) -> MctsManager {
+    pub fn halt(mut self) -> Mcts {
         self.stop_threads();
         *self.manager.take().unwrap()
     }
-    pub fn get_manager(&self) -> &MctsManager {
+    pub fn get_manager(&self) -> &Mcts {
         self.manager.as_ref().unwrap()
     }
     pub fn num_threads(&self) -> usize {
@@ -161,9 +161,9 @@ impl Drop for AsyncSearchOwned {
     }
 }
 
-impl From<MctsManager> for AsyncSearchOwned {
-    /// An `MctsManager` is an `AsyncSearchOwned` with zero threads searching.
-    fn from(m: MctsManager) -> Self {
+impl From<Mcts> for AsyncSearchOwned {
+    /// An `Mcts` is an `AsyncSearchOwned` with zero threads searching.
+    fn from(m: Mcts) -> Self {
         Self {
             manager: Some(Box::new(m)),
             stop_signal: Arc::new(AtomicBool::new(false)),
@@ -173,7 +173,7 @@ impl From<MctsManager> for AsyncSearchOwned {
 }
 
 fn drain_join_unwrap(threads: &mut Vec<JoinHandle<()>>) {
-    let join_results: Vec<_> = threads.drain(..).map(|x| x.join()).collect();
+    let join_results: Vec<_> = threads.drain(..).map(JoinHandle::join).collect();
     for x in join_results {
         x.unwrap();
     }

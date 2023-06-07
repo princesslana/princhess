@@ -8,59 +8,57 @@ use crate::search::SCALE;
 use crate::state::{self, State};
 use crate::tablebase::probe_tablebase_wdl;
 
-const MATE: StateEvaluation = StateEvaluation::Terminal(SCALE as i64);
-const DRAW: StateEvaluation = StateEvaluation::Terminal(0);
+const MATE: Evaluation = Evaluation::Terminal(SCALE as i64);
+const DRAW: Evaluation = Evaluation::Terminal(0);
 
-const TB_WIN: StateEvaluation = StateEvaluation::Tablebase(SCALE as i64);
-const TB_LOSS: StateEvaluation = StateEvaluation::Tablebase(-SCALE as i64);
-const TB_DRAW: StateEvaluation = StateEvaluation::Tablebase(0);
+const TB_WIN: Evaluation = Evaluation::Tablebase(SCALE as i64);
+const TB_LOSS: Evaluation = Evaluation::Tablebase(-SCALE as i64);
+const TB_DRAW: Evaluation = Evaluation::Tablebase(0);
 
 #[derive(Debug, Copy, Clone)]
-pub enum StateEvaluation {
+pub enum Evaluation {
     Scaled(i64),
     Tablebase(i64),
     Terminal(i64),
 }
 
-impl StateEvaluation {
+impl Evaluation {
     pub const fn draw() -> Self {
         DRAW
     }
 
     pub fn flip(&self) -> Self {
         match self {
-            StateEvaluation::Scaled(s) => StateEvaluation::Scaled(-s),
-            StateEvaluation::Tablebase(s) => StateEvaluation::Tablebase(-s),
-            StateEvaluation::Terminal(s) => StateEvaluation::Terminal(-s),
+            Evaluation::Scaled(s) => Evaluation::Scaled(-s),
+            Evaluation::Tablebase(s) => Evaluation::Tablebase(-s),
+            Evaluation::Terminal(s) => Evaluation::Terminal(-s),
         }
     }
 
     pub fn is_terminal(&self) -> bool {
-        matches!(self, StateEvaluation::Terminal(_))
+        matches!(self, Evaluation::Terminal(_))
     }
 
     pub fn is_tablebase(&self) -> bool {
-        matches!(self, StateEvaluation::Tablebase(_))
+        matches!(self, Evaluation::Tablebase(_))
     }
 }
 
-impl From<f32> for StateEvaluation {
+impl From<f32> for Evaluation {
     fn from(f: f32) -> Self {
-        StateEvaluation::Scaled((f * SCALE) as i64)
+        Evaluation::Scaled((f * SCALE) as i64)
     }
 }
 
-impl From<StateEvaluation> for i64 {
-    fn from(e: StateEvaluation) -> Self {
+impl From<Evaluation> for i64 {
+    fn from(e: Evaluation) -> Self {
         match e {
-            StateEvaluation::Scaled(s) => s,
-            StateEvaluation::Tablebase(s) => s,
-            StateEvaluation::Terminal(s) => s,
+            Evaluation::Scaled(s) | Evaluation::Tablebase(s) | Evaluation::Terminal(s) => s,
         }
     }
 }
 
-pub fn evaluate_new_state(state: &State, moves: &MoveList) -> (Vec<f32>, StateEvaluation) {
+pub fn evaluate_new_state(state: &State, moves: &MoveList) -> (Vec<f32>, Evaluation) {
     let (state_evaluation, move_evaluations) = run_nets(state, moves);
 
     let state_evaluation = if moves.is_empty() {
@@ -76,7 +74,7 @@ pub fn evaluate_new_state(state: &State, moves: &MoveList) -> (Vec<f32>, StateEv
             _ => TB_DRAW,
         }
     } else {
-        StateEvaluation::from(state_evaluation)
+        Evaluation::from(state_evaluation)
     };
 
     (
@@ -91,20 +89,20 @@ const STATE_NUMBER_INPUTS: usize = state::NUMBER_FEATURES;
 const NUMBER_HIDDEN: usize = 192;
 const NUMBER_OUTPUTS: usize = 1;
 
-#[allow(clippy::excessive_precision)]
+#[allow(clippy::excessive_precision, clippy::unreadable_literal)]
 static EVAL_HIDDEN_BIAS: [f32; NUMBER_HIDDEN] = include!("model/hidden_bias_0");
 
-#[allow(clippy::excessive_precision)]
+#[allow(clippy::excessive_precision, clippy::unreadable_literal)]
 static EVAL_HIDDEN_WEIGHTS: [[f32; NUMBER_HIDDEN]; STATE_NUMBER_INPUTS] =
     include!("model/hidden_weights_0");
 
-#[allow(clippy::excessive_precision)]
+#[allow(clippy::excessive_precision, clippy::unreadable_literal)]
 static EVAL_OUTPUT_WEIGHTS: [[f32; NUMBER_HIDDEN]; NUMBER_OUTPUTS] =
     include!("model/output_weights");
 
 const POLICY_NUMBER_INPUTS: usize = state::NUMBER_FEATURES;
 
-#[allow(clippy::excessive_precision)]
+#[allow(clippy::excessive_precision, clippy::unreadable_literal)]
 static POLICY_WEIGHTS: [[f32; POLICY_NUMBER_INPUTS]; 384] = include!("policy/output_weights");
 
 fn run_nets(state: &State, moves: &MoveList) -> (f32, Vec<f32>) {
@@ -136,7 +134,7 @@ fn run_nets(state: &State, moves: &MoveList) -> (f32, Vec<f32>) {
 
     state.features_map(|idx| {
         for (j, l) in hidden_layer.iter_mut().enumerate() {
-            *l += EVAL_HIDDEN_WEIGHTS[idx][j]
+            *l += EVAL_HIDDEN_WEIGHTS[idx][j];
         }
 
         for m in 0..moves.len() {

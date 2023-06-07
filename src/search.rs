@@ -2,7 +2,7 @@ use shakmaty::{CastlingMode, Color, Move};
 use std::sync::mpsc::Sender;
 use std::time::{Duration, Instant};
 
-use crate::mcts::{AsyncSearchOwned, MctsManager};
+use crate::mcts::{AsyncSearchOwned, Mcts};
 use crate::options::{get_num_threads, is_chess960};
 use crate::state::State;
 use crate::tablebase::probe_tablebase_best_move;
@@ -52,7 +52,7 @@ impl TimeManagement {
     }
 
     pub fn elapsed(&self) -> Duration {
-        Instant::now() - self.start
+        self.start.elapsed()
     }
 }
 
@@ -61,8 +61,8 @@ pub struct Search {
 }
 
 impl Search {
-    pub fn create_manager(state: State, prev_table: TranspositionTable) -> MctsManager {
-        MctsManager::new(state, TranspositionTable::empty(), prev_table)
+    pub fn create_manager(state: State, prev_table: TranspositionTable) -> Mcts {
+        Mcts::new(state, TranspositionTable::empty(), prev_table)
     }
 
     pub fn new(state: State, prev_table: TranspositionTable) -> Self {
@@ -74,7 +74,7 @@ impl Search {
         let manager = self.stop_and_print_m();
         manager.table()
     }
-    fn stop_and_print_m(self) -> MctsManager {
+    fn stop_and_print_m(self) -> Mcts {
         if self.search.num_threads() == 0 {
             return self.search.halt();
         }
@@ -135,12 +135,12 @@ impl Search {
                 "movetime" => move_time = Self::parse_ms(&mut tokens),
                 "wtime" => {
                     if stm == Color::White {
-                        remaining = Self::parse_ms(&mut tokens)
+                        remaining = Self::parse_ms(&mut tokens);
                     }
                 }
                 "btime" => {
                     if stm == Color::Black {
-                        remaining = Self::parse_ms(&mut tokens)
+                        remaining = Self::parse_ms(&mut tokens);
                     }
                 }
                 "winc" => {
