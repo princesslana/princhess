@@ -22,42 +22,55 @@ ENTRIES_PER_FILE = 1000000
 TRAIN_TIME_MINUTES = 8 * 60
 
 STATE_EOPCH_TIME_MINUTES = 12
-POLICY_EPOCH_TIME_MINUTES = 19
+POLICY_EPOCH_TIME_MINUTES = 18
 
 STATE_EPOCHS = TRAIN_TIME_MINUTES // STATE_EOPCH_TIME_MINUTES
 POLICY_EPOCHS = TRAIN_TIME_MINUTES // POLICY_EPOCH_TIME_MINUTES
 
 BATCH_SIZE = 16384
 
+def load_npy_file(fname, values):
+    data = numpy.load(fname, allow_pickle=True)
+
+    x = data.item().get("features")
+    y = data.item().get(values)
+
+    out, inp = sklearn.utils.shuffle(y, x)
+
+    return out, inp
+
 
 def generate_npy_batches(files, values):
     all_files = files[:]
 
-    while True:
-        random.shuffle(all_files)
-        for fname in all_files:
-            data = numpy.load(fname, allow_pickle=True)
+    prev_file = None
+    next_file = None
 
-            x = data.item().get("features")
-            y = data.item().get(values)
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        while True:
+            random.shuffle(all_files)
+            for fname in all_files:
+                prev_file = next_file
+                next_file = executor.submit(load_npy_file, fname, values)
 
-            output, input = sklearn.utils.shuffle(y, x)
+                if prev_file:
+                    output, input = prev_file.result()
 
-            # tweak batch size so we don't have a smaller batch left over
-            batches = input.shape[0] // BATCH_SIZE
-            actual_batch_size = input.shape[0] // batches + 1
+                    # tweak batch size so we don't have a smaller batch left over
+                    batches = input.shape[0] // BATCH_SIZE
+                    actual_batch_size = input.shape[0] // batches + 1
 
-            for local_index in range(0, input.shape[0], actual_batch_size):
-                input_local = input[local_index : (local_index + actual_batch_size)]
-                output_local = output[local_index : (local_index + actual_batch_size)]
+                    for local_index in range(0, input.shape[0], actual_batch_size):
+                        input_local = input[local_index : (local_index + actual_batch_size)]
+                        output_local = output[local_index : (local_index + actual_batch_size)]
 
-                if hasattr(input_local, "todense"):
-                    input_local = input_local.todense()
+                        if hasattr(input_local, "todense"):
+                            input_local = input_local.todense()
 
-                if hasattr(output_local, "todense"):
-                    output_local = output_local.todense()
+                        if hasattr(output_local, "todense"):
+                            output_local = output_local.todense()
 
-                yield input_local, output_local
+                        yield input_local, output_local
 
 
 def build_model(hidden_layers=HIDDEN_LAYERS, *, output_layers, output_activation):
