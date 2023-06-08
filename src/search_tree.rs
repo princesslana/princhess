@@ -298,8 +298,7 @@ impl SearchTree {
             if node.hots().is_empty() {
                 break;
             }
-            // We need path.len() check for when the root node is a tablebase position
-            if node.is_tablebase() && path.len() > 2 {
+            if node.is_tablebase() && state.halfmove_counter() == 0 {
                 break;
             }
             if path.len() >= MAX_PLAYOUT_LENGTH {

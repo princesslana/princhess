@@ -204,6 +204,10 @@ impl State {
             .count();
     }
 
+    pub fn halfmove_counter(&self) -> usize {
+        self.prev_state_hashes.len() - 1
+    }
+
     pub fn drawn_by_fifty_move_rule(&self) -> bool {
         self.prev_state_hashes.len() > 100
     }
