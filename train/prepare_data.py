@@ -14,16 +14,17 @@ print = functools.partial(print, flush=True)
 def svm_to_npy(filename):
     print(f"Preparing {filename}...", end="")
     print("Loading...", end="")
-    x, wdl = load_svmlight_file(filename)
+    x, evl = load_svmlight_file(filename)
 
     print("Splitting...", end="")
-    moves, features = (
-        x[:, :MOVE_LABELS],
-        x[:, MOVE_LABELS:],
+    wdl, moves, features = (
+        x[:, :1],
+        x[:, 1:MOVE_LABELS + 1],
+        x[:, MOVE_LABELS + 1:],
     )
 
     print("Saving...", end="")
-    numpy.save(filename + ".npy", {"features": features, "wdl": wdl, "moves": moves})
+    numpy.save(filename + ".npy", {"features": features, "evl": evl, "wdl": wdl, "moves": moves})
 
     print("Done.")
 

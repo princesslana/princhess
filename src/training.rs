@@ -12,6 +12,8 @@ use std::io::{BufWriter, Write};
 use std::str;
 
 use crate::state::{self, Builder as StateBuilder};
+use crate::mcts::Mcts;
+use crate::transposition_table::TranspositionTable;
 
 const NUM_SAMPLES: f64 = 16.;
 
@@ -76,12 +78,22 @@ impl Visitor for ValueDataGenerator {
             if i >= 8 && self.rng.gen_range(0., 1.) < freq {
                 self.rows_written += 1;
 
+                if self.rows_written % 100000 == 0 {
+                    println!("{} rows written", self.rows_written);
+                }
+
+                let mcts = Mcts::new(state.clone(), TranspositionTable::empty(), TranspositionTable::empty());
+
+                mcts.playout_sync_n(1000);
+
+                let eval = mcts.eval();
+
                 let crnt_result = if state.side_to_move() == Color::White {
                     game_result
                 } else {
                     game_result.flip()
                 };
-                let v = match crnt_result {
+                let wdl = match crnt_result {
                     GameResult::WhiteWin => 1,
                     GameResult::BlackWin => -1,
                     GameResult::Draw => 0,
@@ -90,7 +102,7 @@ impl Visitor for ValueDataGenerator {
                 let moves = state.available_moves();
 
                 let mut board_features = [0i8; state::NUMBER_FEATURES];
-                let mut move_features = [0i8; 384];
+                let mut move_features = [0i8; state::NUMBER_MOVE_IDX];
 
                 state.features_map(|idx| board_features[idx] = 1);
 
@@ -100,13 +112,22 @@ impl Visitor for ValueDataGenerator {
 
                 move_features[state.move_to_index(&made)] = 1;
 
-                let f_vec = move_features
+                let mut f_vec = Vec::with_capacity(1 + state::NUMBER_MOVE_IDX + state::NUMBER_FEATURES);
+                f_vec.push(wdl);
+                f_vec.extend_from_slice(&move_features);
+                f_vec.extend_from_slice(&board_features);
+
+                /*
+                let f_vec = [wdl].iter().chain(move_features)
                     .iter()
                     .chain(board_features.iter())
                     .copied()
                     .collect::<Vec<_>>();
+                    */
 
-                write_libsvm(&f_vec, &mut self.out_file, v);
+//                let f_vec = vec![[wdl], move_features, board_features].iter().flat_map(|i| i.iter()).collect();
+
+                write_libsvm(&f_vec, &mut self.out_file, eval);
             }
             state.make_move(&made);
         }
@@ -119,7 +140,7 @@ impl Visitor for ValueDataGenerator {
     fn end_game(&mut self) -> Self::Result {}
 }
 
-pub fn write_libsvm<W: Write>(features: &[i8], f: &mut W, label: i64) {
+pub fn write_libsvm<W: Write>(features: &[i8], f: &mut W, label: f32) {
     write!(f, "{label}").unwrap();
     for (index, value) in features.iter().enumerate() {
         if *value != 0 {
