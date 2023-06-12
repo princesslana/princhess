@@ -62,6 +62,16 @@ impl Mcts {
         while search_tree.playout(&mut tld, TimeManagement::infinite()) {}
     }
 
+    pub fn playout_sync_n(&self, n: usize) {
+        let search_tree = &self.search_tree;
+        let mut tld = ThreadData::create(search_tree);
+        for _ in 0..n {
+            if !search_tree.playout(&mut tld, TimeManagement::infinite()) {
+                break;
+            }
+        }
+    }
+
     pub fn into_playout_parallel_async(
         self,
         num_threads: usize,
@@ -103,6 +113,10 @@ impl Mcts {
 
     pub fn best_move(&self) -> Option<shakmaty::Move> {
         self.principal_variation(1).get(0).cloned()
+    }
+
+    pub fn eval(&self) -> f32 {
+        self.search_tree.eval()
     }
 
     pub fn print_move_list(&self) {

@@ -19,6 +19,7 @@ const OFFSET_LAST_CAPTURE: usize = NF_PIECES;
 const OFFSET_THREATS: usize = NF_PIECES + NF_LAST_CAPTURE;
 
 pub const NUMBER_FEATURES: usize = NF_PIECES + NF_LAST_CAPTURE + NF_THREATS;
+pub const NUMBER_MOVE_IDX: usize = 384;
 
 pub struct Builder {
     initial_state: Chess,

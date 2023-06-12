@@ -482,12 +482,14 @@ impl SearchTree {
         println!("{info_str}");
     }
 
+    pub fn eval(&self) -> f32 {
+        self.principal_variation(1)
+            .get(0)
+            .map_or(0., |x| (x.sum_rewards() / i64::from(x.visits())) as f32 / SCALE)
+    }
+
     fn eval_in_cp(&self) -> String {
-        eval_in_cp(
-            self.principal_variation(1)
-                .get(0)
-                .map_or(0., |x| (x.sum_rewards() / i64::from(x.visits())) as f32 / SCALE),
-        )
+        eval_in_cp(self.eval())
     }
 }
 
