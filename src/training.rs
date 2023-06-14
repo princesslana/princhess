@@ -117,16 +117,6 @@ impl Visitor for ValueDataGenerator {
                 f_vec.extend_from_slice(&move_features);
                 f_vec.extend_from_slice(&board_features);
 
-                /*
-                let f_vec = [wdl].iter().chain(move_features)
-                    .iter()
-                    .chain(board_features.iter())
-                    .copied()
-                    .collect::<Vec<_>>();
-                    */
-
-//                let f_vec = vec![[wdl], move_features, board_features].iter().flat_map(|i| i.iter()).collect();
-
                 write_libsvm(&f_vec, &mut self.out_file, eval);
             }
             state.make_move(&made);
