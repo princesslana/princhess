@@ -35,7 +35,7 @@ def load_npy_file(fname, values):
     data = numpy.load(fname, allow_pickle=True)
 
     x = data.item().get("features")
-    y = data.item().get(values)
+    y = values(data.item())
 
     out, inp = sklearn.utils.shuffle(y, x)
 
@@ -100,7 +100,14 @@ def build_model(hidden_layers=HIDDEN_LAYERS, *, output_layers, output_activation
 
 def train_state(files, model, start_epoch):
     train_files = list(glob.glob(files))
-    train_generator = generate_npy_batches(files=train_files, values="wdl")
+
+    def wdl_eval_mix(d):
+        wdl = d.get("wdl") * 0.9
+        evl = d.get("evl").reshape(-1, 1) * 0.1
+
+        return wdl + evl
+
+    train_generator = generate_npy_batches(files=train_files, values=wdl_eval_mix)
 
     if not model:
         model = build_model(output_layers=1, output_activation="tanh")
@@ -175,7 +182,9 @@ def policy_acc(target, output):
 def train_policy(files, model, start_epoch):
     outputs = 384
     train_files = list(glob.glob(files))
-    train_generator = generate_npy_batches(files=train_files, values="moves")
+    train_generator = generate_npy_batches(
+        files=train_files, values=lambda d: d.get("moves")
+    )
 
     if not model:
         model = keras.Sequential()
