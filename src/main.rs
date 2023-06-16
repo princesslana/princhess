@@ -1,8 +1,5 @@
 #![warn(clippy::all, clippy::pedantic)]
-#![allow(
-    clippy::cast_precision_loss,
-    clippy::cast_possible_truncation,
-)]
+#![allow(clippy::cast_precision_loss, clippy::cast_possible_truncation)]
 
 #[macro_use]
 extern crate log;
