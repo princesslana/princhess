@@ -29,6 +29,7 @@ train/pgn/*
 train_data*
 train/*_weights
 train/*_bias
+train/current
 train/state_tuning
 train/tuning_plots
 train/tuning_*/

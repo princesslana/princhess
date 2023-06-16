@@ -11,8 +11,8 @@ use std::fs::File;
 use std::io::{BufWriter, Write};
 use std::str;
 
-use crate::state::{self, Builder as StateBuilder};
 use crate::mcts::Mcts;
+use crate::state::{self, Builder as StateBuilder};
 use crate::transposition_table::TranspositionTable;
 
 const NUM_SAMPLES: f64 = 16.;
@@ -82,7 +82,11 @@ impl Visitor for ValueDataGenerator {
                     println!("{} rows written", self.rows_written);
                 }
 
-                let mcts = Mcts::new(state.clone(), TranspositionTable::empty(), TranspositionTable::empty());
+                let mcts = Mcts::new(
+                    state.clone(),
+                    TranspositionTable::empty(),
+                    TranspositionTable::empty(),
+                );
 
                 mcts.playout_sync_n(1000);
 
@@ -112,7 +116,8 @@ impl Visitor for ValueDataGenerator {
 
                 move_features[state.move_to_index(&made)] = 1;
 
-                let mut f_vec = Vec::with_capacity(1 + state::NUMBER_MOVE_IDX + state::NUMBER_FEATURES);
+                let mut f_vec =
+                    Vec::with_capacity(1 + state::NUMBER_MOVE_IDX + state::NUMBER_FEATURES);
                 f_vec.push(wdl);
                 f_vec.extend_from_slice(&move_features);
                 f_vec.extend_from_slice(&board_features);
