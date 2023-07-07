@@ -1,5 +1,7 @@
+import datetime
 import glob
 import numpy
+import os
 import random
 import sklearn
 import sys
@@ -79,26 +81,7 @@ def generate_npy_batches(files, values):
                         yield input_local, output_local
 
 
-def build_model(hidden_layers=HIDDEN_LAYERS, *, output_layers, output_activation):
-    model = keras.Sequential()
-    model.add(keras.Input(shape=(INPUT_SIZE,)))
-    model.add(
-        layers.Dense(hidden_layers, activation="relu", kernel_initializer="he_normal")
-    )
-    model.add(
-        layers.Dense(
-            output_layers,
-            activation=output_activation,
-            kernel_initializer="he_normal",
-            use_bias=False,
-        )
-    )
-    model.summary()
-
-    return model
-
-
-def train_state(files, model, start_epoch):
+def train_state(name, files, model, start_epoch):
     train_files = list(glob.glob(files))
 
     def wdl_eval_mix(d):
@@ -110,9 +93,25 @@ def train_state(files, model, start_epoch):
     train_generator = generate_npy_batches(files=train_files, values=wdl_eval_mix)
 
     if not model:
-        model = build_model(output_layers=1, output_activation="tanh")
-    else:
-        model.summary()
+        model = keras.Sequential()
+        model.add(keras.Input(shape=(INPUT_SIZE,)))
+        model.add(
+            layers.Dense(
+                HIDDEN_LAYERS,
+                activation="relu",
+                kernel_initializer="he_normal",
+            )
+        )
+        model.add(
+            layers.Dense(
+                1,
+                activation="tanh",
+                kernel_initializer="he_normal",
+                use_bias=False,
+            )
+        )
+
+    model.summary()
 
     steps_per_epoch = int(len(train_files) * ENTRIES_PER_FILE / BATCH_SIZE)
 
@@ -125,8 +124,17 @@ def train_state(files, model, start_epoch):
 
     model.compile(optimizer=optimizer, loss="mean_squared_error")
 
+    if not name:
+        name = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+
+    checkpoint_dir = "checkpoints/" + name
+    log_dir = "logs/fit/" + name
+
+    os.mkdir(checkpoint_dir)
+
     mc = ModelCheckpoint(
-        filepath="checkpoints/state."
+        filepath=checkpoint_dir
+        + "/state."
         + str(INPUT_SIZE)
         + "x"
         + str(HIDDEN_LAYERS)
@@ -134,11 +142,15 @@ def train_state(files, model, start_epoch):
         verbose=True,
     )
 
+    tensorboard_callback = keras.callbacks.TensorBoard(
+        log_dir=log_dir, histogram_freq=1
+    )
+
     model.fit(
         train_generator,
         epochs=STATE_EPOCHS,
         verbose=1,
-        callbacks=[mc],
+        callbacks=[mc, tensorboard_callback],
         steps_per_epoch=steps_per_epoch,
         initial_epoch=start_epoch,
     )
@@ -228,8 +240,9 @@ def train_policy(files, model, start_epoch):
 
 if __name__ == "__main__":
     train_what = sys.argv[1] if len(sys.argv) >= 2 else None
-    model_file = sys.argv[2] if len(sys.argv) >= 3 else None
-    start_epoch = int(sys.argv[3]) - 1 if len(sys.argv) >= 4 else 0
+    name = sys.argv[2] if len(sys.argv) >= 3 else None
+    model_file = sys.argv[3] if len(sys.argv) >= 4 else None
+    start_epoch = int(sys.argv[4]) - 1 if len(sys.argv) >= 5 else 0
 
     model = None
 
@@ -240,7 +253,7 @@ if __name__ == "__main__":
         )
 
     if train_what == "state":
-        train_state("model_data/*.npy", model, start_epoch)
+        train_state(name, "model_data/*.npy", model, start_epoch)
     elif train_what == "policy":
         train_policy("model_data/*.npy", model, start_epoch)
     else:

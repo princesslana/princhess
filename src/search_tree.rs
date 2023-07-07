@@ -323,7 +323,7 @@ impl SearchTree {
 
             node = new_node;
 
-            if node.is_first_visit() {
+            if node.is_first_visit() && node.hots().len() > 1 {
                 node.visited();
                 break;
             }
