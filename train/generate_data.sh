@@ -7,16 +7,9 @@ PRINCHESS=${PRINCHESS:-../target/release/princhess}
 generate_data() {
   echo "Sampling data..."
 
+  ls pgn/*.pgn | parallel -u -j 9 $PRINCHESS -t {} -o {}.libsvm
+
   rm -f model_data/*.libsvm.*
-
-  for f in pgn/*.pgn
-  do
-    echo "Featurizing $f..."
-
-    $PRINCHESS -t $f -o $f.libsvm &
-  done
-
-  wait
 
   for f in pgn/*.pgn
   do

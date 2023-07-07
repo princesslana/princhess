@@ -76,16 +76,22 @@ impl Visitor for ValueDataGenerator {
         let freq = NUM_SAMPLES / moves.len() as f64;
         for (i, made) in moves.into_iter().enumerate() {
             if i >= 8 && self.rng.gen_range(0., 1.) < freq {
+                let moves = state.available_moves();
+
+                if moves.is_empty() {
+                    continue;
+                }
+
                 self.rows_written += 1;
 
-                if self.rows_written % 100000 == 0 {
+                if self.rows_written % 100_000 == 0 {
                     println!("{} rows written", self.rows_written);
                 }
 
                 let mcts = Mcts::new(
                     state.clone(),
                     TranspositionTable::empty(),
-                    TranspositionTable::empty(),
+                    TranspositionTable::zero(),
                 );
 
                 mcts.playout_sync_n(1000);
@@ -102,8 +108,6 @@ impl Visitor for ValueDataGenerator {
                     GameResult::BlackWin => -1,
                     GameResult::Draw => 0,
                 };
-
-                let moves = state.available_moves();
 
                 let mut board_features = [0i8; state::NUMBER_FEATURES];
                 let mut move_features = [0i8; state::NUMBER_MOVE_IDX];
@@ -165,5 +169,6 @@ fn run_value_gen(in_path: &str, out_file: BufWriter<File>) -> ValueDataGenerator
 
 pub fn train(in_path: &str, out_path: &str) {
     let out_file = BufWriter::new(File::create(out_path).expect("create"));
+    println!("Featurizing {}...", in_path);
     run_value_gen(in_path, out_file);
 }

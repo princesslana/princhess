@@ -23,6 +23,7 @@ run_goose.sh
 syzygy
 train/*_data*/*
 train/*model
+train/logs
 train/.env
 train/__pycache__
 train/pgn/*
