@@ -39,6 +39,7 @@ pub struct SearchTree {
 pub struct HotMoveInfo {
     sum_evaluations: AtomicI64,
     visits: AtomicU32,
+    negamax: AtomicI64,
     policy: f32,
     mov: shakmaty::Move,
     child: AtomicPtr<SearchNode>,
@@ -96,6 +97,14 @@ impl SearchNode {
         unsafe { &*(self.hots as *const [HotMoveInfo]) }
     }
 
+    pub fn max_negamax(&self) -> i64 {
+        let hots = self.hots();
+        hots.iter()
+            .map(|h| h.negamax())
+            .max()
+            .unwrap_or(-SCALE as i64)
+    }
+
     fn update_policy(&mut self, evals: &[f32]) {
         let hots = unsafe { &mut *(self.hots as *mut [HotMoveInfo]) };
 
@@ -126,9 +135,18 @@ impl HotMoveInfo {
             policy,
             sum_evaluations: AtomicI64::default(),
             visits: AtomicU32::default(),
+            negamax: AtomicI64::new(-SCALE as i64),
             mov,
             child: AtomicPtr::default(),
         }
+    }
+
+    pub fn negamax(&self) -> i64 {
+        self.negamax.load(Ordering::Relaxed)
+    }
+
+    pub fn set_negamax(&self, negamax: i64) {
+        self.negamax.store(negamax, Ordering::Relaxed);
     }
 
     pub fn down(&self) {
@@ -142,6 +160,15 @@ impl HotMoveInfo {
         self.sum_evaluations.fetch_add(delta, Ordering::Relaxed);
     }
 
+    pub fn update_negamax(&self) {
+        let child = self.child.load(Ordering::Relaxed);
+
+        if !child.is_null() {
+            let max = unsafe { (*child).max_negamax() };
+            self.negamax.store(-max, Ordering::Relaxed);
+        }
+    }
+
     pub fn replace(&self, other: &HotMoveInfo) {
         self.visits
             .store(other.visits.load(Ordering::Relaxed), Ordering::Relaxed);
@@ -149,6 +176,8 @@ impl HotMoveInfo {
             other.sum_evaluations.load(Ordering::Relaxed),
             Ordering::Relaxed,
         );
+        self.negamax
+            .store(other.negamax.load(Ordering::Relaxed), Ordering::Relaxed);
     }
 }
 
@@ -174,6 +203,10 @@ impl<'a> MoveInfoHandle<'a> {
             0 => None,
             x => Some(self.sum_rewards() as f32 / x as f32),
         }
+    }
+
+    pub fn negamax(self) -> i64 {
+        self.hot.negamax()
     }
 }
 
@@ -406,8 +439,17 @@ impl SearchTree {
 
     fn finish_playout(path: &[MoveInfoHandle], evaln: Evaluation) {
         let mut evaln_value = evaln;
+        let mut leaf = true;
         for move_info in path.iter().rev() {
             move_info.hot.up(evaln_value.into());
+
+            if leaf {
+                move_info.hot.set_negamax(evaln_value.into());
+                leaf = false;
+            } else {
+                move_info.hot.update_negamax();
+            }
+
             evaln_value = evaln_value.flip();
         }
     }

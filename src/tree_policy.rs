@@ -25,7 +25,8 @@ pub fn choose_child(moves: Moves<'_>, cpuct: f32, is_root: bool) -> MoveInfoHand
 
         let sum_rewards = mov.sum_rewards() as f32;
         let child_visits = mov.visits();
-        let policy_evaln = mov.policy();
+        let negamax = mov.negamax() as f32 / (SCALE * 2.) + 1.;
+        let policy_evaln = 0.97 * mov.policy() + 0.03 * negamax;
 
         let numerator = sum_rewards + explore_coef * policy_evaln;
         let denominator = (child_visits + 1) as f32;
