@@ -169,6 +169,6 @@ fn run_value_gen(in_path: &str, out_file: BufWriter<File>) -> ValueDataGenerator
 
 pub fn train(in_path: &str, out_path: &str) {
     let out_file = BufWriter::new(File::create(out_path).expect("create"));
-    println!("Featurizing {}...", in_path);
+    println!("Featurizing {in_path}...");
     run_value_gen(in_path, out_file);
 }
