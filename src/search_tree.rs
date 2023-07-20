@@ -8,7 +8,7 @@ use crate::arena::Error as ArenaError;
 use crate::evaluation::{self, Evaluation};
 use crate::math;
 use crate::mcts::{eval_in_cp, ThreadData};
-use crate::options::get_cpuct;
+use crate::options::{get_cpuct, get_negamax_weight};
 use crate::search::{to_uci, TimeManagement, SCALE};
 use crate::state::State;
 use crate::transposition_table::{LRAllocator, LRTable, TranspositionTable};
@@ -525,12 +525,15 @@ impl SearchTree {
 }
 
 fn select_child_after_search<'a>(children: &[MoveInfoHandle<'a>]) -> MoveInfoHandle<'a> {
+    let negamax_weight = get_negamax_weight();
+
     *children
         .iter()
         .max_by_key(|child| {
-            child
-                .average_reward()
-                .map_or(-SCALE as i64, |r| r.round() as i64)
+            let negamax = child.negamax() as f32;
+            let average = child.average_reward().unwrap_or(-SCALE);
+
+            ((1. - negamax_weight) * average + negamax_weight * negamax).round() as i64
         })
         .unwrap()
 }

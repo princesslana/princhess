@@ -95,3 +95,30 @@ services:
       - ./target/release/princhess-main:/engines/princhess-main
       - ./syzygy:/syzygy:ro
       - ./pgn:/pgn
+
+  tune_gauntlet:
+    build:
+      context: .
+      dockerfile: bin/Dockerfile.cutechess-cli
+    command:
+      -engine cmd=/engines/princhess-main name=princhess-main
+      -engine cmd=/engines/princhess name=princhess-0.001 option.NegamaxWeight=0.001
+      -engine cmd=/engines/princhess name=princhess-0.002 option.NegamaxWeight=0.002
+      -engine cmd=/engines/princhess name=princhess-0.003 option.NegamaxWeight=0.003
+      -engine cmd=/engines/princhess name=princhess-0.005 option.NegamaxWeight=0.005
+      -engine cmd=/engines/princhess name=princhess-0.010 option.NegamaxWeight=0.010
+      -engine cmd=/engines/princhess name=princhess-0.015 option.NegamaxWeight=0.015
+      -engine cmd=/engines/princhess name=princhess-0.020 option.NegamaxWeight=0.020
+      -engine cmd=/engines/princhess name=princhess-0.030 option.NegamaxWeight=0.030
+
+      -each proto=uci tc=8+0.08
+            option.SyzygyPath=/syzygy option.Hash=128 option.Threads=1
+      -tournament gauntlet
+      -openings file=/books/4moves_noob.epd format=epd order=random
+      -games 2 -repeat -rounds 50
+      -recover -ratinginterval 10 -concurrency 6
+    volumes:
+      - ./target/release/princhess:/engines/princhess
+      - ./target/release/princhess-main:/engines/princhess-main
+      - ./syzygy:/syzygy:ro
+

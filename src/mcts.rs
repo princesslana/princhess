@@ -131,16 +131,13 @@ impl Mcts {
         let mut moves: Vec<(MoveInfoHandle, f32)> = root_moves.zip(state_moves_eval).collect();
         moves.sort_by_key(|(h, e)| (h.average_reward().unwrap_or(*e) * SCALE) as i64);
         for (mov, e) in moves {
-            let negamax = mov.negamax() as f32;
-            let average = mov.average_reward().unwrap_or(-SCALE);
-
             println!(
                 "info string {:>6} M: {:>6} P: {:>6} V: {:7} N: {:>7} E: {:>7} ({:>8})",
                 format!("{}", mov.get_move()),
                 format!("{:3.2}", e * 100.),
                 format!("{:3.2}", mov.policy() * 100.),
                 mov.visits(),
-                format!("{:3.2}", negamax / (SCALE / 100.)),
+                format!("{:3.2}", mov.negamax() as f32 / (SCALE / 100.)),
                 mov.average_reward()
                     .map_or("n/a".to_string(), |r| format!("{:3.2}", r / (SCALE / 100.))),
                 mov.average_reward()
