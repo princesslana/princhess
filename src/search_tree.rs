@@ -2,7 +2,9 @@ use arrayvec::ArrayVec;
 use shakmaty::{Color, Position};
 use std::mem;
 use std::ptr::null_mut;
-use std::sync::atomic::{AtomicBool, AtomicI64, AtomicPtr, AtomicU32, AtomicUsize, Ordering};
+use std::sync::atomic::{
+    AtomicBool, AtomicI64, AtomicPtr, AtomicU32, AtomicU64, AtomicUsize, Ordering,
+};
 
 use crate::arena::Error as ArenaError;
 use crate::evaluation::{self, Evaluation};
@@ -34,6 +36,7 @@ pub struct SearchTree {
     playouts: AtomicUsize,
     max_depth: AtomicUsize,
     tb_hits: AtomicUsize,
+    next_info: AtomicU64,
 }
 
 pub struct HotMoveInfo {
@@ -237,6 +240,7 @@ impl SearchTree {
             playouts: 0.into(),
             max_depth: 0.into(),
             tb_hits,
+            next_info: 0.into(),
         }
     }
 
@@ -332,15 +336,21 @@ impl SearchTree {
         let depth = path.len() - 1;
         self.num_nodes.fetch_add(depth, Ordering::Relaxed);
         self.max_depth.fetch_max(depth, Ordering::Relaxed);
-        let playouts = self.playouts.fetch_add(1, Ordering::Relaxed);
-
-        if playouts > 4096 && (playouts & (playouts - 1)) == 0 {
-            self.print_info(&time_management);
-        }
+        let playouts = self.playouts.fetch_add(1, Ordering::Relaxed) + 1;
 
         if playouts % 128 == 0 && time_management.is_after_end() {
             self.print_info(&time_management);
             return false;
+        }
+
+        if playouts % 65536 == 0 {
+            let elapsed = time_management.elapsed().as_secs();
+
+            let next_info = self.next_info.fetch_max(elapsed, Ordering::Relaxed);
+
+            if next_info < elapsed {
+                self.print_info(&time_management);
+            }
         }
 
         true
