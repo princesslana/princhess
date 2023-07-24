@@ -43,8 +43,13 @@ pub fn puct(moves: Moves<'_>, parameters: PuctParameters, is_root: bool) -> Move
 
         let sum_rewards = mov.sum_rewards() as f32;
         let child_visits = mov.visits();
+
         let negamax_evaln = mov.negamax() as f32 / (2. * SCALE) + 1.;
-        let policy_evaln = (1. - negamax_weight) * mov.policy() + negamax_weight * negamax_evaln;
+        let policy_evaln = if is_root {
+            (1. - negamax_weight) * mov.policy() + negamax_weight * negamax_evaln * negamax_evaln
+        } else {
+            mov.policy()
+        };
 
         let numerator = sum_rewards + explore_coef * policy_evaln;
         let denominator = (child_visits + 1) as f32;

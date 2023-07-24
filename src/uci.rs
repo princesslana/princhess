@@ -79,7 +79,7 @@ pub fn uci() {
     println!("option name Threads type spin min 1 max 255 default 1");
     println!("option name SyzygyPath type string");
     println!("option name CPuct type string default 1.79");
-    println!("option name NegamaxWeight type string default 0.003");
+    println!("option name NegamaxWeight type string default 0.005");
     println!("option name UCI_Chess960 type check default false");
 
     println!("uciok");

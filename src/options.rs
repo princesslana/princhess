@@ -7,7 +7,7 @@ static NUM_THREADS: AtomicUsize = AtomicUsize::new(1);
 static HASH_SIZE_MB: AtomicUsize = AtomicUsize::new(16);
 
 static CPUCT: Lazy<RwLock<f32>> = Lazy::new(|| RwLock::new(1.85));
-static NEGAMAX_WEIGHT: Lazy<RwLock<f32>> = Lazy::new(|| RwLock::new(0.003));
+static NEGAMAX_WEIGHT: Lazy<RwLock<f32>> = Lazy::new(|| RwLock::new(0.005));
 
 static CHESS960: AtomicBool = AtomicBool::new(false);
 
