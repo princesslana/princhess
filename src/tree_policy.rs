@@ -4,9 +4,27 @@ use std::f32;
 use crate::search::SCALE;
 use crate::search_tree::{MoveInfoHandle, Moves};
 
-pub fn choose_child(moves: Moves<'_>, cpuct: f32, is_root: bool) -> MoveInfoHandle<'_> {
+#[derive(Copy, Debug, Clone)]
+pub struct PuctParameters {
+    cpuct: f32,
+    negamax_weight: f32,
+}
+
+impl PuctParameters {
+    pub fn new(cpuct: f32, negamax_weight: f32) -> Self {
+        Self {
+            cpuct,
+            negamax_weight,
+        }
+    }
+}
+
+pub fn puct(moves: Moves<'_>, parameters: PuctParameters, is_root: bool) -> MoveInfoHandle<'_> {
     let total_visits = moves.map(|v| u64::from(v.visits())).sum::<u64>() + 1;
     let sqrt_total_visits = (total_visits as f32).sqrt();
+
+    let cpuct = parameters.cpuct;
+    let negamax_weight = parameters.negamax_weight;
 
     let exploration_constant =
         (cpuct + cpuct * faster::ln(((total_visits + 8192) / 8192) as f32)) * SCALE;
@@ -25,7 +43,8 @@ pub fn choose_child(moves: Moves<'_>, cpuct: f32, is_root: bool) -> MoveInfoHand
 
         let sum_rewards = mov.sum_rewards() as f32;
         let child_visits = mov.visits();
-        let policy_evaln = mov.policy();
+        let negamax_evaln = mov.negamax() as f32 / (2. * SCALE) + 1.;
+        let policy_evaln = (1. - negamax_weight) * mov.policy() + negamax_weight * negamax_evaln;
 
         let numerator = sum_rewards + explore_coef * policy_evaln;
         let denominator = (child_visits + 1) as f32;

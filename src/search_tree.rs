@@ -12,7 +12,7 @@ use crate::options::{get_cpuct, get_negamax_weight};
 use crate::search::{to_uci, TimeManagement, SCALE};
 use crate::state::State;
 use crate::transposition_table::{LRAllocator, LRTable, TranspositionTable};
-use crate::tree_policy;
+use crate::tree_policy::{self, PuctParameters};
 
 const MAX_PLAYOUT_LENGTH: usize = 256;
 
@@ -24,7 +24,7 @@ pub struct SearchTree {
     root_node: SearchNode,
     root_state: State,
 
-    cpuct: f32,
+    puct_parameters: PuctParameters,
 
     #[allow(dead_code)]
     root_table: TranspositionTable,
@@ -263,7 +263,7 @@ impl SearchTree {
         Self {
             root_state: state,
             root_node,
-            cpuct: get_cpuct(),
+            puct_parameters: PuctParameters::new(get_cpuct(), get_negamax_weight()),
             root_table,
             ttable: LRTable::new(current_table, previous_table),
             num_nodes: 1.into(),
@@ -326,7 +326,7 @@ impl SearchTree {
             if path.len() >= MAX_PLAYOUT_LENGTH {
                 break;
             }
-            let choice = tree_policy::choose_child(node.moves(), self.cpuct, path.is_empty());
+            let choice = tree_policy::puct(node.moves(), self.puct_parameters, path.is_empty());
             choice.hot.down();
             path.push(choice);
             state.make_move(&choice.hot.mov);
