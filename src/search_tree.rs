@@ -493,14 +493,18 @@ impl SearchTree {
 }
 
 fn select_child_after_search<'a>(children: &[MoveInfoHandle<'a>]) -> MoveInfoHandle<'a> {
-    *children
-        .iter()
-        .max_by_key(|child| {
-            child
-                .average_reward()
-                .map_or(-SCALE as i64, |r| r.round() as i64)
-        })
-        .unwrap()
+    let mut best = children[0];
+    let mut best_reward = best.average_reward().unwrap_or(-SCALE);
+
+    for child in children.iter().skip(1) {
+        let reward = child.average_reward().unwrap_or(-SCALE);
+        if reward > best_reward {
+            best = *child;
+            best_reward = reward;
+        }
+    }
+
+    best
 }
 
 #[derive(Clone)]
