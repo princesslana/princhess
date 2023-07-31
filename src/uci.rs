@@ -76,7 +76,7 @@ pub fn uci() {
     println!("option name Hash type spin min 8 max 65536 default 16");
     println!("option name Threads type spin min 1 max 255 default 1");
     println!("option name SyzygyPath type string");
-    println!("option name CPuct type string default 1.79");
+    println!("option name CPuct type string default 1.85");
     println!("option name UCI_Chess960 type check default false");
 
     println!("uciok");
