@@ -196,9 +196,9 @@ fn drain_join_unwrap(threads: &mut Vec<JoinHandle<()>>) {
 // eval here is [-1.0, 1.0]
 pub fn eval_in_cp(eval: f32) -> String {
     let cps = if eval > 0.5 {
-        20. * (eval - 0.5) + 0.5
+        18. * (eval - 0.5) + 1.
     } else if eval < -0.5 {
-        20. * (eval + 0.5) - 0.5
+        18. * (eval + 0.5) - 1.
     } else {
         2. * eval
     };
