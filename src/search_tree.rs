@@ -420,10 +420,8 @@ impl SearchTree {
         &self.root_state
     }
 
-    pub fn root_node(&self) -> NodeHandle {
-        NodeHandle {
-            node: &self.root_node,
-        }
+    pub fn root_node(&self) -> &SearchNode {
+        &self.root_node
     }
 
     pub fn principal_variation(&self, num_moves: usize) -> Vec<MoveInfoHandle> {
@@ -499,19 +497,6 @@ fn select_child_after_search<'a>(children: &[MoveInfoHandle<'a>]) -> MoveInfoHan
     }
 
     best
-}
-
-#[derive(Clone)]
-pub struct NodeHandle<'a> {
-    node: &'a SearchNode,
-}
-
-impl<'a> Copy for NodeHandle<'a> {}
-
-impl<'a> NodeHandle<'a> {
-    pub fn moves(&self) -> Moves {
-        self.node.moves()
-    }
 }
 
 #[derive(Clone)]
