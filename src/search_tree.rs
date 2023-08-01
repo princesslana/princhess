@@ -2,9 +2,7 @@ use arrayvec::ArrayVec;
 use shakmaty::{Color, Position};
 use std::mem;
 use std::ptr::null_mut;
-use std::sync::atomic::{
-    AtomicBool, AtomicI64, AtomicPtr, AtomicU32, AtomicU64, AtomicUsize, Ordering,
-};
+use std::sync::atomic::{AtomicI64, AtomicPtr, AtomicU32, AtomicU64, AtomicUsize, Ordering};
 
 use crate::arena::Error as ArenaError;
 use crate::evaluation::{self, Evaluation};
@@ -55,7 +53,6 @@ pub struct MoveInfoHandle<'a> {
 pub struct SearchNode {
     hots: *const [HotMoveInfo],
     evaln: Evaluation,
-    visited: AtomicBool,
 }
 
 unsafe impl Sync for SearchNode {}
@@ -64,11 +61,11 @@ static DRAW_NODE: SearchNode = SearchNode::new(&[], Evaluation::draw());
 
 impl SearchNode {
     const fn new(hots: &[HotMoveInfo], evaln: Evaluation) -> Self {
-        Self {
-            hots,
-            evaln,
-            visited: AtomicBool::new(false),
-        }
+        Self { hots, evaln }
+    }
+
+    fn unexpanded(evaln: Evaluation) -> Self {
+        Self::new(&[], evaln)
     }
 
     pub fn evaln(&self) -> &Evaluation {
@@ -77,14 +74,6 @@ impl SearchNode {
 
     pub fn set_evaln(&mut self, evaln: Evaluation) {
         self.evaln = evaln;
-    }
-
-    pub fn visited(&self) {
-        self.visited.store(true, Ordering::Relaxed);
-    }
-
-    pub fn is_first_visit(&self) -> bool {
-        !self.visited.load(Ordering::Relaxed)
     }
 
     pub fn is_terminal(&self) -> bool {
@@ -279,8 +268,9 @@ impl SearchTree {
         time_management: TimeManagement,
     ) -> bool {
         let mut state = self.root_state.clone();
-        let mut path: ArrayVec<MoveInfoHandle, MAX_PLAYOUT_LENGTH> = ArrayVec::new();
         let mut node = &self.root_node;
+        let mut unexpanded = SearchNode::unexpanded(node.evaln);
+        let mut path: ArrayVec<MoveInfoHandle, MAX_PLAYOUT_LENGTH> = ArrayVec::new();
         loop {
             {
                 let _lock = self.ttable.flip_lock().lock().unwrap();
@@ -302,6 +292,12 @@ impl SearchTree {
             path.push(choice);
             state.make_move(&choice.hot.mov);
 
+            if choice.visits() == 1 {
+                unexpanded.set_evaln(evaluation::evaluate_state_only(&state));
+                node = &unexpanded;
+                break;
+            }
+
             let new_node = match self.descend(&state, choice.hot, tld) {
                 Ok(r) => r,
                 Err(ArenaError::Full) => {
@@ -315,11 +311,6 @@ impl SearchTree {
             };
 
             node = new_node;
-
-            if node.is_first_visit() && node.hots().len() > 1 {
-                node.visited();
-                break;
-            }
         }
 
         let last_move_was_black = state.side_to_move() == Color::White;
