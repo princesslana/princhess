@@ -179,7 +179,7 @@ where
 {
     let moves = state.available_moves();
 
-    let (move_eval, state_eval) = evaluation::evaluate_new_state(state, &moves);
+    let (move_eval, state_eval) = evaluation::evaluate_policy(state, &moves);
 
     if state_eval.is_tablebase() {
         tb_hits.fetch_add(1, Ordering::Relaxed);
@@ -293,7 +293,7 @@ impl SearchTree {
             state.make_move(&choice.hot.mov);
 
             if choice.visits() == 1 {
-                unexpanded.set_evaln(evaluation::evaluate_state_only(&state));
+                unexpanded.set_evaln(evaluation::evaluate_state(&state));
                 node = &unexpanded;
                 break;
             }

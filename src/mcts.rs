@@ -126,7 +126,7 @@ impl Mcts {
         let root_moves = root_node.moves();
 
         let state_moves = root_state.available_moves();
-        let (state_moves_eval, _) = evaluation::evaluate_new_state(root_state, &state_moves);
+        let (state_moves_eval, _) = evaluation::evaluate_policy(root_state, &state_moves);
 
         let mut moves: Vec<(MoveInfoHandle, f32)> = root_moves.zip(state_moves_eval).collect();
         moves.sort_by_key(|(h, e)| (h.average_reward().unwrap_or(*e) * SCALE) as i64);
