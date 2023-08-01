@@ -271,6 +271,7 @@ impl SearchTree {
         let mut node = &self.root_node;
         let mut unexpanded = SearchNode::unexpanded(node.evaln);
         let mut path: ArrayVec<MoveInfoHandle, MAX_PLAYOUT_LENGTH> = ArrayVec::new();
+
         loop {
             {
                 let _lock = self.ttable.flip_lock().lock().unwrap();
@@ -287,10 +288,19 @@ impl SearchTree {
             if path.len() >= MAX_PLAYOUT_LENGTH {
                 break;
             }
+
             let choice = tree_policy::choose_child(node.moves(), self.cpuct, path.is_empty());
             choice.hot.down();
             path.push(choice);
             state.make_move(&choice.hot.mov);
+
+            if state.is_repetition()
+                || state.drawn_by_fifty_move_rule()
+                || state.board().is_insufficient_material()
+            {
+                node = &DRAW_NODE;
+                break;
+            }
 
             if choice.visits() == 1 {
                 unexpanded.set_evaln(evaluation::evaluate_state_only(&state));
