@@ -8,88 +8,72 @@ use crate::search::SCALE;
 use crate::state::{self, State};
 use crate::tablebase::probe_tablebase_wdl;
 
-const MATE: Evaluation = Evaluation::Terminal(SCALE as i64);
-const DRAW: Evaluation = Evaluation::Terminal(0);
-
-const TB_WIN: Evaluation = Evaluation::Tablebase(SCALE as i64);
-const TB_LOSS: Evaluation = Evaluation::Tablebase(-SCALE as i64);
-const TB_DRAW: Evaluation = Evaluation::Tablebase(0);
-
-#[derive(Debug, Copy, Clone)]
-pub enum Evaluation {
-    Scaled(i64),
-    Tablebase(i64),
-    Terminal(i64),
+#[derive(Clone, Copy, Debug)]
+pub enum Flag {
+    Standard,
+    TerminalWin,
+    TerminalDraw,
+    TerminalLoss,
+    TablebaseWin,
+    TablebaseDraw,
+    TablebaseLoss,
 }
 
-impl Evaluation {
-    pub const fn draw() -> Self {
-        DRAW
-    }
-
-    pub fn flip(&self) -> Self {
+impl Flag {
+    pub fn flip(self) -> Self {
         match self {
-            Evaluation::Scaled(s) => Evaluation::Scaled(-s),
-            Evaluation::Tablebase(s) => Evaluation::Tablebase(-s),
-            Evaluation::Terminal(s) => Evaluation::Terminal(-s),
+            Flag::TerminalWin => Flag::TerminalLoss,
+            Flag::TerminalLoss => Flag::TerminalWin,
+            Flag::TablebaseWin => Flag::TablebaseLoss,
+            Flag::TablebaseLoss => Flag::TablebaseWin,
+            _ => self,
         }
     }
 
-    pub fn is_terminal(&self) -> bool {
-        matches!(self, Evaluation::Terminal(_))
+    pub fn is_terminal(self) -> bool {
+        matches!(
+            self,
+            Flag::TerminalWin | Flag::TerminalDraw | Flag::TerminalLoss
+        )
     }
 
-    pub fn is_tablebase(&self) -> bool {
-        matches!(self, Evaluation::Tablebase(_))
-    }
-}
-
-impl From<f32> for Evaluation {
-    fn from(f: f32) -> Self {
-        Evaluation::Scaled((f * SCALE) as i64)
-    }
-}
-
-impl From<Evaluation> for i64 {
-    fn from(e: Evaluation) -> Self {
-        match e {
-            Evaluation::Scaled(s) | Evaluation::Tablebase(s) | Evaluation::Terminal(s) => s,
-        }
+    pub fn is_tablebase(self) -> bool {
+        matches!(
+            self,
+            Flag::TablebaseWin | Flag::TablebaseDraw | Flag::TablebaseLoss
+        )
     }
 }
 
-pub fn evaluate_state(state: &State) -> Evaluation {
-    let state_evaluation = Evaluation::from(run_eval_net(state));
+pub fn evaluate_state(state: &State) -> i64 {
+    let state_evaluation = (run_eval_net(state) * SCALE) as i64;
     state
         .side_to_move()
-        .fold_wb(state_evaluation, state_evaluation.flip())
+        .fold_wb(state_evaluation, -state_evaluation)
 }
 
-pub fn evaluate_policy(state: &State, moves: &MoveList) -> (Vec<f32>, Evaluation) {
-    let move_evaluations = run_policy_net(state, moves);
-
-    let state_evaluation = if moves.is_empty() {
+pub fn evaluate_state_flag(state: &State, moves: &MoveList) -> Flag {
+    let flag = if moves.is_empty() {
         if state.board().is_check() {
-            MATE.flip()
+            Flag::TerminalLoss
         } else {
-            DRAW
+            Flag::TerminalDraw
         }
     } else if let Some(wdl) = probe_tablebase_wdl(state.board()) {
         match wdl {
-            Wdl::Win => TB_WIN,
-            Wdl::Loss => TB_LOSS,
-            _ => TB_DRAW,
+            Wdl::Win => Flag::TablebaseWin,
+            Wdl::Loss => Flag::TablebaseLoss,
+            _ => Flag::TablebaseDraw,
         }
     } else {
-        Evaluation::Scaled(0)
+        Flag::Standard
     };
 
-    (
-        move_evaluations,
-        state
-            .side_to_move()
-            .fold_wb(state_evaluation, state_evaluation.flip()),
-    )
+    state.side_to_move().fold_wb(flag, flag.flip())
+}
+
+pub fn evaluate_policy(state: &State, moves: &MoveList) -> Vec<f32> {
+    run_policy_net(state, moves)
 }
 
 const STATE_NUMBER_INPUTS: usize = state::NUMBER_FEATURES;
