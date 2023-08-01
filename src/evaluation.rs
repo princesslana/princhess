@@ -58,6 +58,13 @@ impl From<Evaluation> for i64 {
     }
 }
 
+pub fn evaluate_state_only(state: &State) -> Evaluation {
+    let state_evaluation = Evaluation::from(run_eval_net(state));
+    state
+        .side_to_move()
+        .fold_wb(state_evaluation, state_evaluation.flip())
+}
+
 pub fn evaluate_new_state(state: &State, moves: &MoveList) -> (Vec<f32>, Evaluation) {
     let (state_evaluation, move_evaluations) = run_nets(state, moves);
 
@@ -104,6 +111,35 @@ const POLICY_NUMBER_INPUTS: usize = state::NUMBER_FEATURES;
 
 #[allow(clippy::excessive_precision, clippy::unreadable_literal)]
 static POLICY_WEIGHTS: [[f32; POLICY_NUMBER_INPUTS]; 384] = include!("policy/output_weights");
+
+fn run_eval_net(state: &State) -> f32 {
+    let mut hidden_layer: [f32; NUMBER_HIDDEN] = unsafe {
+        let mut out: [MaybeUninit<f32>; NUMBER_HIDDEN] = MaybeUninit::uninit().assume_init();
+
+        ptr::copy_nonoverlapping(
+            EVAL_HIDDEN_BIAS.as_ptr(),
+            out.as_mut_ptr().cast::<f32>(),
+            NUMBER_HIDDEN,
+        );
+
+        mem::transmute(out)
+    };
+
+    state.features_map(|idx| {
+        for (j, l) in hidden_layer.iter_mut().enumerate() {
+            *l += EVAL_HIDDEN_WEIGHTS[idx][j];
+        }
+    });
+
+    let mut result = 0.;
+    let weights = EVAL_OUTPUT_WEIGHTS[0];
+
+    for i in 0..hidden_layer.len() {
+        result += weights[i] * hidden_layer[i].max(0.);
+    }
+
+    result.tanh()
+}
 
 fn run_nets(state: &State, moves: &MoveList) -> (f32, Vec<f32>) {
     let mut evalns = Vec::with_capacity(moves.len());
