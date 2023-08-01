@@ -5,7 +5,7 @@ use std::ptr::null_mut;
 use std::sync::atomic::{AtomicI64, AtomicPtr, AtomicU32, AtomicU64, AtomicUsize, Ordering};
 
 use crate::arena::Error as ArenaError;
-use crate::evaluation::{self, Evaluation};
+use crate::evaluation::{self, Flag};
 use crate::math;
 use crate::mcts::{eval_in_cp, ThreadData};
 use crate::options::get_cpuct;
@@ -52,36 +52,33 @@ pub struct MoveInfoHandle<'a> {
 
 pub struct SearchNode {
     hots: *const [HotMoveInfo],
-    evaln: Evaluation,
+    flag: Flag,
 }
 
 unsafe impl Sync for SearchNode {}
 
-static DRAW_NODE: SearchNode = SearchNode::new(&[], Evaluation::draw());
+static DRAW_NODE: SearchNode = SearchNode::new(&[], Flag::TerminalDraw);
+static UNEXPANDED_NODE: SearchNode = SearchNode::new(&[], Flag::Standard);
 
 impl SearchNode {
-    const fn new(hots: &[HotMoveInfo], evaln: Evaluation) -> Self {
-        Self { hots, evaln }
+    const fn new(hots: &[HotMoveInfo], flag: Flag) -> Self {
+        Self { hots, flag }
     }
 
-    fn unexpanded(evaln: Evaluation) -> Self {
-        Self::new(&[], evaln)
+    pub fn flag(&self) -> Flag {
+        self.flag
     }
 
-    pub fn evaln(&self) -> &Evaluation {
-        &self.evaln
-    }
-
-    pub fn set_evaln(&mut self, evaln: Evaluation) {
-        self.evaln = evaln;
+    pub fn set_flag(&mut self, flag: Flag) {
+        self.flag = flag;
     }
 
     pub fn is_terminal(&self) -> bool {
-        self.evaln.is_terminal()
+        self.flag.is_terminal()
     }
 
     pub fn is_tablebase(&self) -> bool {
-        self.evaln.is_tablebase()
+        self.flag.is_tablebase()
     }
 
     pub fn hots(&self) -> &[HotMoveInfo] {
@@ -179,9 +176,10 @@ where
 {
     let moves = state.available_moves();
 
-    let (move_eval, state_eval) = evaluation::evaluate_policy(state, &moves);
+    let state_flag = evaluation::evaluate_state_flag(state, &moves);
+    let move_eval = evaluation::evaluate_policy(state, &moves);
 
-    if state_eval.is_tablebase() {
+    if state_flag.is_tablebase() {
         tb_hits.fetch_add(1, Ordering::Relaxed);
     }
 
@@ -189,7 +187,7 @@ where
     for (i, x) in hots.iter_mut().enumerate() {
         *x = HotMoveInfo::new(move_eval[i], moves[i].clone());
     }
-    Ok(SearchNode::new(hots, state_eval))
+    Ok(SearchNode::new(hots, state_flag))
 }
 
 impl SearchTree {
@@ -269,8 +267,8 @@ impl SearchTree {
     ) -> bool {
         let mut state = self.root_state.clone();
         let mut node = &self.root_node;
-        let mut unexpanded = SearchNode::unexpanded(node.evaln);
         let mut path: ArrayVec<MoveInfoHandle, MAX_PLAYOUT_LENGTH> = ArrayVec::new();
+        let mut evaln = 0;
         loop {
             {
                 let _lock = self.ttable.flip_lock().lock().unwrap();
@@ -293,8 +291,8 @@ impl SearchTree {
             state.make_move(&choice.hot.mov);
 
             if choice.visits() == 1 {
-                unexpanded.set_evaln(evaluation::evaluate_state(&state));
-                node = &unexpanded;
+                evaln = evaluation::evaluate_state(&state);
+                node = &UNEXPANDED_NODE;
                 break;
             }
 
@@ -313,12 +311,17 @@ impl SearchTree {
             node = new_node;
         }
 
+        evaln = match node.flag {
+            Flag::TerminalWin | Flag::TablebaseWin => SCALE as i64,
+            Flag::TerminalLoss | Flag::TablebaseLoss => -SCALE as i64,
+            Flag::TerminalDraw | Flag::TablebaseDraw => 0,
+            Flag::Standard => evaln,
+        };
+
         let last_move_was_black = state.side_to_move() == Color::White;
 
-        let evaln = if last_move_was_black {
-            node.evaln.flip()
-        } else {
-            node.evaln
+        if last_move_was_black {
+            evaln = -evaln;
         };
 
         Self::finish_playout(&path, evaln);
@@ -405,11 +408,11 @@ impl SearchTree {
         Ok(created)
     }
 
-    fn finish_playout(path: &[MoveInfoHandle], evaln: Evaluation) {
+    fn finish_playout(path: &[MoveInfoHandle], evaln: i64) {
         let mut evaln_value = evaln;
         for move_info in path.iter().rev() {
-            move_info.hot.up(evaln_value.into());
-            evaln_value = evaln_value.flip();
+            move_info.hot.up(evaln_value);
+            evaln_value = -evaln_value;
         }
     }
 
