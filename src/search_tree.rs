@@ -8,7 +8,7 @@ use crate::arena::Error as ArenaError;
 use crate::evaluation::{self, Flag};
 use crate::math;
 use crate::mcts::{eval_in_cp, ThreadData};
-use crate::options::get_cpuct;
+use crate::options::{get_cpuct, get_cvisits_selection};
 use crate::search::{to_uci, TimeManagement, SCALE};
 use crate::state::State;
 use crate::transposition_table::{LRAllocator, LRTable, TranspositionTable};
@@ -485,11 +485,25 @@ impl SearchTree {
 }
 
 fn select_child_after_search<'a>(children: &[MoveInfoHandle<'a>]) -> MoveInfoHandle<'a> {
+    let k = get_cvisits_selection();
+
+    let reward = |child: &MoveInfoHandle| {
+        let visits = child.visits();
+
+        if visits == 0 {
+            return -SCALE;
+        }
+
+        let sum_rewards = child.sum_rewards();
+
+        sum_rewards as f32 / visits as f32 - (k * 2. * SCALE) / (visits as f32).sqrt()
+    };
+
     let mut best = children[0];
-    let mut best_reward = best.average_reward().unwrap_or(-SCALE);
+    let mut best_reward = reward(&best);
 
     for child in children.iter().skip(1) {
-        let reward = child.average_reward().unwrap_or(-SCALE);
+        let reward = reward(child);
         if reward > best_reward {
             best = *child;
             best_reward = reward;
