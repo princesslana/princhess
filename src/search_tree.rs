@@ -451,7 +451,7 @@ impl SearchTree {
         let nodes = self.num_nodes();
         let depth = nodes / self.playouts();
         let sel_depth = self.max_depth();
-        let pv = self.principal_variation(depth);
+        let pv = self.principal_variation(depth.max(2));
         let pv_string: String = pv
             .into_iter()
             .map(|x| format!(" {}", to_uci(x.get_move())))
@@ -461,8 +461,8 @@ impl SearchTree {
 
         let info_str = format!(
             "info depth {} seldepth {} nodes {} nps {} tbhits {} score {} time {} pv{}",
-            depth,
-            sel_depth,
+            depth.max(1),
+            sel_depth.max(1),
             nodes,
             nps,
             self.tb_hits(),
