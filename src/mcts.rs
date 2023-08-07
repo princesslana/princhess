@@ -98,7 +98,7 @@ impl Mcts {
         self.search_tree
             .principal_variation(num_moves)
             .into_iter()
-            .map(MoveInfoHandle::get_move)
+            .map(HotMoveInfo::get_move)
             .cloned()
             .collect()
     }
@@ -123,12 +123,12 @@ impl Mcts {
         let root_node = self.tree().root_node();
         let root_state = self.tree().root_state();
 
-        let root_moves = root_node.moves();
+        let root_moves = root_node.hots();
 
         let state_moves = root_state.available_moves();
         let state_moves_eval = evaluation::evaluate_policy(root_state, &state_moves);
 
-        let mut moves: Vec<(MoveInfoHandle, f32)> = root_moves.zip(state_moves_eval).collect();
+        let mut moves: Vec<(&HotMoveInfo, f32)> = root_moves.iter().zip(state_moves_eval).collect();
         moves.sort_by_key(|(h, e)| (h.average_reward().unwrap_or(*e) * SCALE) as i64);
         for (mov, e) in moves {
             println!(
