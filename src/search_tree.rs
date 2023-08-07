@@ -45,11 +45,6 @@ pub struct HotMoveInfo {
     child: AtomicPtr<SearchNode>,
 }
 
-#[derive(Clone, Copy)]
-pub struct MoveInfoHandle<'a> {
-    hot: &'a HotMoveInfo,
-}
-
 pub struct SearchNode {
     hots: *const [HotMoveInfo],
     flag: Flag,
@@ -93,13 +88,6 @@ impl SearchNode {
         }
     }
 
-    pub fn moves(&self) -> Moves {
-        Moves {
-            hots: self.hots(),
-            index: 0,
-        }
-    }
-
     pub fn clear_children_links(&self) {
         let hots = unsafe { &*(self.hots as *mut [HotMoveInfo]) };
 
@@ -117,6 +105,29 @@ impl HotMoveInfo {
             visits: AtomicU32::default(),
             mov,
             child: AtomicPtr::default(),
+        }
+    }
+
+    pub fn get_move(&self) -> &shakmaty::Move {
+        &self.mov
+    }
+
+    pub fn visits(&self) -> u32 {
+        self.visits.load(Ordering::Relaxed)
+    }
+
+    pub fn sum_rewards(&self) -> i64 {
+        self.sum_evaluations.load(Ordering::Relaxed)
+    }
+
+    pub fn policy(&self) -> f32 {
+        self.policy
+    }
+
+    pub fn average_reward(&self) -> Option<f32> {
+        match self.visits() {
+            0 => None,
+            x => Some(self.sum_rewards() as f32 / x as f32),
         }
     }
 
@@ -138,31 +149,6 @@ impl HotMoveInfo {
             other.sum_evaluations.load(Ordering::Relaxed),
             Ordering::Relaxed,
         );
-    }
-}
-
-impl<'a> MoveInfoHandle<'a> {
-    pub fn get_move(self) -> &'a shakmaty::Move {
-        &self.hot.mov
-    }
-
-    pub fn policy(self) -> f32 {
-        self.hot.policy
-    }
-
-    pub fn visits(self) -> u32 {
-        self.hot.visits.load(Ordering::Relaxed)
-    }
-
-    pub fn sum_rewards(self) -> i64 {
-        self.hot.sum_evaluations.load(Ordering::Relaxed)
-    }
-
-    pub fn average_reward(self) -> Option<f32> {
-        match self.visits() {
-            0 => None,
-            x => Some(self.sum_rewards() as f32 / x as f32),
-        }
     }
 }
 
@@ -208,8 +194,8 @@ impl SearchTree {
         previous_table.lookup_into(&state, &mut root_node);
 
         let mut avg_rewards: Vec<f32> = root_node
-            .moves()
-            .into_iter()
+            .hots()
+            .iter()
             .map(|m| m.average_reward().unwrap_or(-SCALE) / SCALE)
             .collect();
 
@@ -267,7 +253,7 @@ impl SearchTree {
     ) -> bool {
         let mut state = self.root_state.clone();
         let mut node = &self.root_node;
-        let mut path: ArrayVec<MoveInfoHandle, MAX_PLAYOUT_LENGTH> = ArrayVec::new();
+        let mut path: ArrayVec<&HotMoveInfo, MAX_PLAYOUT_LENGTH> = ArrayVec::new();
         let mut evaln = 0;
         loop {
             {
@@ -285,10 +271,10 @@ impl SearchTree {
             if path.len() >= MAX_PLAYOUT_LENGTH {
                 break;
             }
-            let choice = tree_policy::choose_child(node.moves(), self.cpuct, path.is_empty());
-            choice.hot.down();
+            let choice = tree_policy::choose_child(node.hots(), self.cpuct, path.is_empty());
+            choice.down();
             path.push(choice);
-            state.make_move(&choice.hot.mov);
+            state.make_move(&choice.mov);
 
             if choice.visits() == 1 {
                 evaln = evaluation::evaluate_state(&state);
@@ -296,7 +282,7 @@ impl SearchTree {
                 break;
             }
 
-            let new_node = match self.descend(&state, choice.hot, tld) {
+            let new_node = match self.descend(&state, choice, tld) {
                 Ok(r) => r,
                 Err(ArenaError::Full) => {
                     let _lock = self.ttable.flip_lock().lock().unwrap();
@@ -408,10 +394,10 @@ impl SearchTree {
         Ok(created)
     }
 
-    fn finish_playout(path: &[MoveInfoHandle], evaln: i64) {
+    fn finish_playout(path: &[&HotMoveInfo], evaln: i64) {
         let mut evaln_value = evaln;
         for move_info in path.iter().rev() {
-            move_info.hot.up(evaln_value);
+            move_info.up(evaln_value);
             evaln_value = -evaln_value;
         }
     }
@@ -424,13 +410,13 @@ impl SearchTree {
         &self.root_node
     }
 
-    pub fn principal_variation(&self, num_moves: usize) -> Vec<MoveInfoHandle> {
+    pub fn principal_variation(&self, num_moves: usize) -> Vec<&HotMoveInfo> {
         let mut result = Vec::new();
         let mut crnt = &self.root_node;
         while !crnt.hots().is_empty() && result.len() < num_moves {
-            let choice = select_child_after_search(&crnt.moves().collect::<Vec<_>>());
+            let choice = select_child_after_search(crnt.hots());
             result.push(choice);
-            let child = choice.hot.child.load(Ordering::SeqCst) as *const SearchNode;
+            let child = choice.child.load(Ordering::SeqCst) as *const SearchNode;
             if child.is_null() {
                 break;
             }
@@ -484,10 +470,10 @@ impl SearchTree {
     }
 }
 
-fn select_child_after_search<'a>(children: &[MoveInfoHandle<'a>]) -> MoveInfoHandle<'a> {
+fn select_child_after_search(children: &[HotMoveInfo]) -> &HotMoveInfo {
     let k = get_cvisits_selection();
 
-    let reward = |child: &MoveInfoHandle| {
+    let reward = |child: &HotMoveInfo| {
         let visits = child.visits();
 
         if visits == 0 {
@@ -499,44 +485,18 @@ fn select_child_after_search<'a>(children: &[MoveInfoHandle<'a>]) -> MoveInfoHan
         sum_rewards as f32 / visits as f32 - (k * 2. * SCALE) / (visits as f32).sqrt()
     };
 
-    let mut best = children[0];
-    let mut best_reward = reward(&best);
+    let mut best = &children[0];
+    let mut best_reward = reward(best);
 
     for child in children.iter().skip(1) {
         let reward = reward(child);
         if reward > best_reward {
-            best = *child;
+            best = child;
             best_reward = reward;
         }
     }
 
     best
-}
-
-#[derive(Clone)]
-pub struct Moves<'a> {
-    hots: &'a [HotMoveInfo],
-    index: usize,
-}
-
-impl<'a> Copy for Moves<'a> {}
-
-#[allow(clippy::copy_iterator)]
-impl<'a> Iterator for Moves<'a> {
-    type Item = MoveInfoHandle<'a>;
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.index == self.hots.len() {
-            None
-        } else {
-            let handle = unsafe {
-                MoveInfoHandle {
-                    hot: self.hots.get_unchecked(self.index),
-                }
-            };
-            self.index += 1;
-            Some(handle)
-        }
-    }
 }
 
 pub fn print_size_list() {

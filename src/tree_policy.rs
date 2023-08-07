@@ -2,10 +2,10 @@ use fastapprox::faster;
 use std::f32;
 
 use crate::search::SCALE;
-use crate::search_tree::{MoveInfoHandle, Moves};
+use crate::search_tree::HotMoveInfo;
 
-pub fn choose_child(moves: Moves<'_>, cpuct: f32, is_root: bool) -> MoveInfoHandle<'_> {
-    let total_visits = moves.map(|v| u64::from(v.visits())).sum::<u64>() + 1;
+pub fn choose_child(moves: &[HotMoveInfo], cpuct: f32, is_root: bool) -> &HotMoveInfo {
+    let total_visits = moves.iter().map(|v| u64::from(v.visits())).sum::<u64>() + 1;
     let sqrt_total_visits = (total_visits as f32).sqrt();
 
     let exploration_constant =
