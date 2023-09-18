@@ -3,15 +3,16 @@
 set -e
 
 PRINCHESS=${PRINCHESS:-../target/release/princhess}
+FILES=${FILES:-pgn/*.pgn}
 
 generate_data() {
   echo "Sampling data..."
 
-  ls pgn/*.pgn | parallel -u -j 9 $PRINCHESS -t {} -o {}.libsvm
+  ls -S $FILES | parallel -u -j 6 $PRINCHESS -t {} -o {}.libsvm
 
   rm -f model_data/*.libsvm.*
 
-  for f in pgn/*.pgn
+  for f in $FILES
   do
     echo "Calculating split..."
 
@@ -23,7 +24,6 @@ generate_data() {
 
     split -l $split_size $f.libsvm model_data/$(basename $f).libsvm.
 
-    rm $f.libsvm
     rm -f model_data/*.gz
   done
 }

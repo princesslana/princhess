@@ -30,9 +30,9 @@ services:
 
       -each proto=uci tc=8+0.08
             option.SyzygyPath=/syzygy option.Hash=128 option.Threads=1
-      -sprt elo0=0 elo1=5 alpha=0.05 beta=0.05
+      -sprt elo0=0 elo1=5 alpha=0.05 beta=0.1
       -openings file=/books/4moves_noob.epd format=epd order=random
-      -games 2 -repeat -rounds 10000
+      -games 2 -repeat -rounds 7500
       -recover -ratinginterval 10 -concurrency 6
     volumes:
       - ./target/release/princhess:/engines/princhess
@@ -49,9 +49,9 @@ services:
 
       -each proto=uci tc=60+1
             option.SyzygyPath=/syzygy option.Hash=128 option.Threads=1
-      -sprt elo0=0 elo1=5 alpha=0.1 beta=0.1
+      -sprt elo0=0 elo1=5 alpha=0.1 beta=0.2
       -openings file=/books/4moves_noob.epd format=epd order=random
-      -games 2 -repeat -rounds 10000
+      -games 2 -repeat -rounds 7500
       -recover -ratinginterval 10 -concurrency 6
     volumes:
       - ./target/release/princhess:/engines/princhess
@@ -68,9 +68,9 @@ services:
 
       -each proto=uci tc=8+0.08
             option.SyzygyPath=/syzygy option.Hash=128 option.Threads=1
-      -sprt elo0=-5 elo1=0 alpha=0.05 beta=0.05
+      -sprt elo0=-5 elo1=0 alpha=0.05 beta=0.1
       -openings file=/books/4moves_noob.epd format=epd order=random
-      -games 2 -repeat -rounds 10000
+      -games 2 -repeat -rounds 7500
       -recover -ratinginterval 10 -concurrency 6
     volumes:
       - ./target/release/princhess:/engines/princhess
@@ -94,6 +94,25 @@ services:
     volumes:
       - ./target/release/princhess-0.12.0:/engines/princhess-0.12.0
       - ./pgn:/pgn
+
+  quick_check:
+    build:
+      context: .
+      dockerfile: bin/Dockerfile.cutechess-cli
+    command:
+      -engine cmd=/engines/princhess name=princhess
+      -engine cmd=/engines/princhess-main name=princhess-main
+
+      -each proto=uci tc=8+0.08
+            option.SyzygyPath=/syzygy option.Hash=128 option.Threads=1
+      -sprt elo0=-5 elo1=5 alpha=0.3 beta=0.4
+      -openings file=/books/4moves_noob.epd format=epd order=random
+      -games 2 -repeat -rounds 150
+      -recover -ratinginterval 10 -concurrency 6
+    volumes:
+      - ./target/release/princhess:/engines/princhess
+      - ./target/release/princhess-main:/engines/princhess-main
+      - ./syzygy:/syzygy:ro
 
   debug:
     build:
