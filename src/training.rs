@@ -3,15 +3,16 @@ extern crate pgn_reader;
 extern crate rand;
 
 use memmap::Mmap;
-use pgn_reader::{BufferedReader, Outcome, SanPlus, Skip, Visitor};
+use pgn_reader::{BufferedReader, Outcome, RawHeader, SanPlus, Skip, Visitor};
 use rand::rngs::SmallRng;
 use rand::{Rng, SeedableRng};
-use shakmaty::{self, Color};
+use shakmaty::{self, Chess, Color, Setup};
 use std::fs::File;
 use std::io::{BufWriter, Write};
 use std::str;
 
 use crate::mcts::Mcts;
+use crate::options::set_chess960;
 use crate::state::{self, Builder as StateBuilder};
 use crate::transposition_table::TranspositionTable;
 
@@ -35,6 +36,7 @@ impl GameResult {
 }
 
 struct ValueDataGenerator {
+    log_prefix: String,
     out_file: BufWriter<File>,
     state: StateBuilder,
     skip: bool,
@@ -50,17 +52,31 @@ impl Visitor for ValueDataGenerator {
         self.skip = false;
     }
 
-    fn san(&mut self, san: SanPlus) {
-        if let Ok(m) = san.san.to_move(self.state.chess()) {
-            self.state.make_move(m);
+    fn header(&mut self, key: &[u8], value: RawHeader<'_>) {
+        if key == b"FEN" {
+            let fen = str::from_utf8(value.as_bytes()).unwrap();
+            self.state = StateBuilder::from_fen(fen).unwrap();
         }
     }
 
-    fn end_headers(&mut self) -> Skip {
-        Skip(self.skip)
+    fn san(&mut self, san: SanPlus) {
+        if self.skip {
+            return;
+        }
+
+        if let Ok(m) = san.san.to_move(self.state.chess()) {
+            self.state.make_move(m);
+        } else {
+            self.skip = true;
+            println!("{}: invalid move: {}", self.log_prefix, san.san);
+        }
     }
 
     fn outcome(&mut self, outcome: Option<Outcome>) {
+        if self.skip {
+            return;
+        }
+
         let game_result = match outcome {
             Some(Outcome::Draw) => GameResult::Draw,
             Some(Outcome::Decisive { winner }) => {
@@ -72,10 +88,17 @@ impl Visitor for ValueDataGenerator {
             }
             None => return,
         };
+
         let (mut state, moves) = self.state.extract();
         let freq = NUM_SAMPLES / moves.len() as f64;
-        for (i, made) in moves.into_iter().enumerate() {
-            if i >= 8 && self.rng.gen_range(0., 1.) < freq {
+        let skip_plies = if Chess::default().board().pawns() == state.board().board().pawns() {
+            8
+        } else {
+            1
+        };
+
+        for (ply, made) in moves.into_iter().enumerate() {
+            if ply >= skip_plies && self.rng.gen_range(0., 1.) < freq {
                 let moves = state.available_moves();
 
                 if moves.is_empty() {
@@ -85,7 +108,7 @@ impl Visitor for ValueDataGenerator {
                 self.rows_written += 1;
 
                 if self.rows_written % 100_000 == 0 {
-                    println!("{} rows written", self.rows_written);
+                    println!("{}: {} rows written", self.log_prefix, self.rows_written);
                 }
 
                 let mcts = Mcts::new(
@@ -151,12 +174,17 @@ pub fn write_libsvm<W: Write>(features: &[i8], f: &mut W, label: f32) {
 
 fn run_value_gen(in_path: &str, out_file: BufWriter<File>) -> ValueDataGenerator {
     let mut generator = ValueDataGenerator {
+        log_prefix: in_path.to_string(),
         out_file,
         state: StateBuilder::default(),
-        skip: true,
+        skip: false,
         rows_written: 0,
         rng: SeedableRng::seed_from_u64(42),
     };
+
+    if in_path.contains("FRC") {
+        set_chess960(true);
+    }
 
     let file = File::open(in_path).expect("fopen");
     let pgn = unsafe { Mmap::map(&file).expect("mmap") };

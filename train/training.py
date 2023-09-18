@@ -13,7 +13,7 @@ from numpy import array2string
 from scipy.sparse import vstack
 from tensorflow import keras
 from tensorflow.keras import activations, layers, regularizers
-from tensorflow.keras.optimizers.schedules import ExponentialDecay
+from tensorflow.keras.optimizers.schedules import PiecewiseConstantDecay
 from tensorflow.nn import softmax_cross_entropy_with_logits
 
 # pieces + last capture + threats
@@ -60,16 +60,12 @@ def generate_npy_batches(files, values):
                 if prev_file:
                     output, input = prev_file.result()
 
-                    # tweak batch size so we don't have a smaller batch left over
-                    batches = input.shape[0] // BATCH_SIZE
-                    actual_batch_size = input.shape[0] // batches + 1
-
-                    for local_index in range(0, input.shape[0], actual_batch_size):
+                    for local_index in range(0, input.shape[0], BATCH_SIZE):
                         input_local = input[
-                            local_index : (local_index + actual_batch_size)
+                            local_index : (local_index + BATCH_SIZE)
                         ]
                         output_local = output[
-                            local_index : (local_index + actual_batch_size)
+                            local_index : (local_index + BATCH_SIZE)
                         ]
 
                         if hasattr(input_local, "todense"):
@@ -78,7 +74,8 @@ def generate_npy_batches(files, values):
                         if hasattr(output_local, "todense"):
                             output_local = output_local.todense()
 
-                        yield input_local, output_local
+                        if input_local.shape[0] == BATCH_SIZE:
+                            yield input_local, output_local
 
 
 def train_state(name, files, model, start_epoch):
@@ -115,10 +112,9 @@ def train_state(name, files, model, start_epoch):
 
     steps_per_epoch = int(len(train_files) * ENTRIES_PER_FILE / BATCH_SIZE)
 
-    lr_schedule = ExponentialDecay(
-        initial_learning_rate=0.001,
-        decay_steps=steps_per_epoch,
-        decay_rate=1 - 1 / STATE_EPOCHS,
+    lr_schedule = PiecewiseConstantDecay(
+        values = [1e-3, 1e-4],
+        boundaries = [steps_per_epoch * STATE_EPOCHS // 2],
     )
     optimizer = keras.optimizers.legacy.Adam(learning_rate=lr_schedule)
 
@@ -191,7 +187,7 @@ def policy_acc(target, output):
     return tf.reduce_mean(tf.cast(acc, tf.float32))
 
 
-def train_policy(files, model, start_epoch):
+def train_policy(name, files, model, start_epoch):
     outputs = 384
     train_files = list(glob.glob(files))
     train_generator = generate_npy_batches(
@@ -213,9 +209,23 @@ def train_policy(files, model, start_epoch):
 
     model.summary()
 
-    optimizer = keras.optimizers.legacy.Adam(learning_rate=0.001)
+    steps_per_epoch = int(len(train_files) * ENTRIES_PER_FILE / BATCH_SIZE)
+
+    lr_schedule = PiecewiseConstantDecay(
+        values = [1e-3, 1e-4],
+        boundaries = [steps_per_epoch * STATE_EPOCHS // 2],
+    )
+    optimizer = keras.optimizers.legacy.Adam(learning_rate=lr_schedule)
 
     model.compile(optimizer=optimizer, loss=policy_loss, metrics=[policy_acc])
+
+    if not name:
+        name = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+
+    checkpoint_dir = "checkpoints/" + name
+    log_dir = "logs/fit/" + name
+
+    os.mkdir(checkpoint_dir)
 
     mc = ModelCheckpoint(
         filepath="checkpoints/policy."
@@ -226,13 +236,15 @@ def train_policy(files, model, start_epoch):
         verbose=True,
     )
 
-    steps_per_epoch = int(len(train_files) * ENTRIES_PER_FILE / BATCH_SIZE)
+    tensorboard_callback = keras.callbacks.TensorBoard(
+        log_dir=log_dir, histogram_freq=1
+    )
 
     model.fit(
         train_generator,
         epochs=POLICY_EPOCHS,
         verbose=1,
-        callbacks=[mc],
+        callbacks=[mc, tensorboard_callback],
         steps_per_epoch=steps_per_epoch,
         initial_epoch=start_epoch,
     )
@@ -255,6 +267,6 @@ if __name__ == "__main__":
     if train_what == "state":
         train_state(name, "model_data/*.npy", model, start_epoch)
     elif train_what == "policy":
-        train_policy("model_data/*.npy", model, start_epoch)
+        train_policy(name, "model_data/*.npy", model, start_epoch)
     else:
         print("Must specify to train either 'state' or 'policy'")
