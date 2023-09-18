@@ -1,5 +1,4 @@
 use arc_swap::ArcSwap;
-use log::debug;
 use once_cell::sync::Lazy;
 use shakmaty::{Chess, Move, Setup};
 use shakmaty_syzygy::{Tablebase, Wdl};
@@ -9,10 +8,28 @@ use std::sync::Arc;
 static TABLEBASE: Lazy<ArcSwap<Tablebase<Chess>>> =
     Lazy::new(|| ArcSwap::from_pointee(Tablebase::new()));
 
-pub fn set_tablebase_directory<P: AsRef<Path>>(path: P) {
+pub fn set_tablebase_directory(paths: &str) {
     let mut tb = Tablebase::new();
-    let cnt = tb.add_directory(path).unwrap();
-    debug!("Added {} files to tablebase.", cnt);
+
+    for path in paths.split(';') {
+        let path = path.trim();
+        if path.is_empty() || path == "<empty>" {
+            continue;
+        }
+
+        let path = Path::new(path);
+        if !path.exists() {
+            println!(
+                "info string Tablebase path {} does not exist.",
+                path.display()
+            );
+            continue;
+        }
+
+        let cnt = tb.add_directory(path).unwrap();
+        println!("info string Added {} files from {} to tablebase.", cnt, path.display());
+    }
+
     TABLEBASE.store(Arc::new(tb));
 }
 
