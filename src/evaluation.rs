@@ -76,16 +76,16 @@ pub fn evaluate_policy(state: &State, moves: &MoveList) -> Vec<f32> {
     run_policy_net(state, moves)
 }
 
-const STATE_NUMBER_INPUTS: usize = state::NUMBER_FEATURES;
+const STATE_NUMBER_INPUTS: usize = 2304;
 const NUMBER_HIDDEN: usize = 192;
 const NUMBER_OUTPUTS: usize = 1;
 
 #[allow(clippy::excessive_precision, clippy::unreadable_literal)]
-static EVAL_HIDDEN_BIAS: [f32; NUMBER_HIDDEN] = include!("model/hidden_bias_0");
+static EVAL_HIDDEN_BIAS: [f32; NUMBER_HIDDEN] = include!("model/hidden_bias");
 
 #[allow(clippy::excessive_precision, clippy::unreadable_literal)]
 static EVAL_HIDDEN_WEIGHTS: [[f32; NUMBER_HIDDEN]; STATE_NUMBER_INPUTS] =
-    include!("model/hidden_weights_0");
+    include!("model/hidden_weights");
 
 #[allow(clippy::excessive_precision, clippy::unreadable_literal)]
 static EVAL_OUTPUT_WEIGHTS: [[f32; NUMBER_HIDDEN]; NUMBER_OUTPUTS] =
@@ -109,7 +109,7 @@ fn run_eval_net(state: &State) -> f32 {
         mem::transmute(out)
     };
 
-    state.features_map(|idx| {
+    state.state_features_map(|idx| {
         for (j, l) in hidden_layer.iter_mut().enumerate() {
             *l += EVAL_HIDDEN_WEIGHTS[idx][j];
         }
@@ -139,7 +139,7 @@ fn run_policy_net(state: &State, moves: &MoveList) -> Vec<f32> {
         evalns.push(0.);
     }
 
-    state.features_map(|idx| {
+    state.policy_features_map(|idx| {
         for m in 0..moves.len() {
             evalns[m] += POLICY_WEIGHTS[move_idxs[m]][idx];
         }

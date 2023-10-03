@@ -229,7 +229,7 @@ impl State {
         (flip_vertical, flip_horizontal)
     }
 
-    pub fn features_map<F>(&self, mut f: F)
+    fn features_map<F>(&self, mut f: F)
     where
         F: FnMut(usize),
     {
@@ -269,6 +269,63 @@ impl State {
             let role_idx = pc as usize - 1;
 
             f(OFFSET_LAST_CAPTURE + role_idx * 64 + adj_sq as usize);
+        }
+    }
+
+    pub fn state_features_map<F>(&self, mut f: F)
+    where
+        F: FnMut(usize),
+    {
+        self.training_features_map(|idx| f(idx));
+    }
+
+    pub fn policy_features_map<F>(&self, mut f: F)
+    where
+        F: FnMut(usize),
+    {
+        self.features_map(|idx| f(idx));
+    }
+
+    pub fn training_features_map<F>(&self, mut f: F)
+    where
+        F: FnMut(usize),
+    {
+        let offset_position = 0;
+        let offset_threats = 768;
+        let offset_defends = 768 * 2;
+
+        let stm = self.side_to_move();
+        let b = self.board.board();
+
+        let (flip_vertical, flip_horizontal) = self.feature_flip();
+
+        let flip_square = |sq: shakmaty::Square| match (flip_vertical, flip_horizontal) {
+            (true, true) => sq.flip_vertical().flip_horizontal(),
+            (true, false) => sq.flip_vertical(),
+            (false, true) => sq.flip_horizontal(),
+            (false, false) => sq,
+        };
+
+        for sq in b.occupied() {
+            let role = b.role_at(sq).unwrap();
+            let color = b.color_at(sq).unwrap();
+
+            let adj_sq = flip_square(sq);
+
+            let sq_idx = adj_sq as usize;
+            let role_idx = role as usize - 1;
+            let side_idx = usize::from(color != stm);
+
+            let feature_idx = (side_idx * 6 + role_idx) * 64 + sq_idx;
+
+            f(offset_position + feature_idx);
+
+            if b.attacks_to(sq, !color, b.occupied()).any() {
+                f(offset_threats + feature_idx);
+            }
+            if b.attacks_to(sq, color, b.occupied()).any() {
+                f(offset_defends + feature_idx);
+            }
         }
     }
 

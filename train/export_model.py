@@ -15,7 +15,28 @@ def write_coefs(file, coefs):
         print(array2string(coefs, separator=","), file=f)
 
 
-def model_to_coefs(file):
+def export_state(file):
+    print(f"Exporting from {file}...")
+    model = keras.models.load_model(
+        file,
+    )
+
+    output_folder = os.path.basename(file)
+
+    if not os.path.isdir(output_folder):
+        os.mkdir(output_folder)
+
+    (hidden_weights, hidden_bias) = model.layers[0].get_weights()
+    write_coefs(os.path.join(output_folder, f"hidden_weights"), hidden_weights)
+    write_coefs(os.path.join(output_folder, f"hidden_bias"), hidden_bias)
+
+    (output_weights,) = model.layers[1].get_weights()
+    write_coefs(
+        os.path.join(output_folder, "output_weights"), numpy.transpose(output_weights)
+    )
+
+
+def export_policy(file):
     print(f"Exporting from {file}...")
     model = keras.models.load_model(
         file,
@@ -27,23 +48,19 @@ def model_to_coefs(file):
     if not os.path.isdir(output_folder):
         os.mkdir(output_folder)
 
-    idx = 0
-
-    while idx < len(model.layers) - 1:
-        if isinstance(model.layers[idx], keras.layers.Dense):
-            hidden_weights, hidden_bias = model.layers[idx].get_weights()
-            write_coefs(
-                os.path.join(output_folder, f"hidden_weights_{idx}"), hidden_weights
-            )
-            write_coefs(os.path.join(output_folder, f"hidden_bias_{idx}"), hidden_bias)
-
-        idx += 1
-
-    (output_weights,) = model.layers[idx].get_weights()
+    (output_weights,) = model.layers[0].get_weights()
     write_coefs(
         os.path.join(output_folder, "output_weights"), numpy.transpose(output_weights)
     )
 
 
-for f in sys.argv[1:]:
-    model_to_coefs(f)
+if __name__ == "__main__":
+    export_what = sys.argv[1] if len(sys.argv) > 1 else None
+    model_file = sys.argv[2] if len(sys.argv) > 2 else None
+
+    if export_what == "state":
+        export_state(model_file)
+    elif export_what == "policy":
+        export_policy(model_file)
+    else:
+        print("Must specify to export either 'state' or 'policy'")
