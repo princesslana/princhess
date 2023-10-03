@@ -18,6 +18,8 @@ use crate::transposition_table::TranspositionTable;
 
 const NUM_SAMPLES: f64 = 16.;
 
+const NUMBER_TRAINING_FEATURES: usize = 2304;
+
 #[derive(Copy, Clone, PartialEq, Eq)]
 pub enum GameResult {
     WhiteWin,
@@ -132,10 +134,10 @@ impl Visitor for ValueDataGenerator {
                     GameResult::Draw => 0,
                 };
 
-                let mut board_features = [0i8; state::NUMBER_FEATURES];
+                let mut board_features = [0i8; NUMBER_TRAINING_FEATURES];
                 let mut move_features = [0i8; state::NUMBER_MOVE_IDX];
 
-                state.features_map(|idx| board_features[idx] = 1);
+                state.training_features_map(|idx| board_features[idx] = 1);
 
                 for m in moves.as_slice() {
                     move_features[state.move_to_index(m)] = 2;

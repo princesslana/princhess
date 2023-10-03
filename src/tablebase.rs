@@ -27,7 +27,11 @@ pub fn set_tablebase_directory(paths: &str) {
         }
 
         let cnt = tb.add_directory(path).unwrap();
-        println!("info string Added {} files from {} to tablebase.", cnt, path.display());
+        println!(
+            "info string Added {} files from {} to tablebase.",
+            cnt,
+            path.display()
+        );
     }
 
     TABLEBASE.store(Arc::new(tb));

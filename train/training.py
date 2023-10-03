@@ -16,19 +16,14 @@ from tensorflow.keras import activations, layers, regularizers
 from tensorflow.keras.optimizers.schedules import PiecewiseConstantDecay
 from tensorflow.nn import softmax_cross_entropy_with_logits
 
-# pieces + last capture + threats
-INPUT_SIZE = 768 + (5 * 64) + 768
+# pieces + threats + defends
+INPUT_SIZE = 768 * 3;
 HIDDEN_LAYERS = 192
 
-ENTRIES_PER_FILE = 1000000
+STATE_EPOCHS = 40
+POLICY_EPOCHS = 30
 
-TRAIN_TIME_MINUTES = 8 * 60
-
-STATE_EOPCH_TIME_MINUTES = 12
-POLICY_EPOCH_TIME_MINUTES = 18
-
-STATE_EPOCHS = TRAIN_TIME_MINUTES // STATE_EOPCH_TIME_MINUTES
-POLICY_EPOCHS = TRAIN_TIME_MINUTES // POLICY_EPOCH_TIME_MINUTES
+STEPS_PER_EPOCH = 10000
 
 BATCH_SIZE = 16384
 
@@ -61,12 +56,8 @@ def generate_npy_batches(files, values):
                     output, input = prev_file.result()
 
                     for local_index in range(0, input.shape[0], BATCH_SIZE):
-                        input_local = input[
-                            local_index : (local_index + BATCH_SIZE)
-                        ]
-                        output_local = output[
-                            local_index : (local_index + BATCH_SIZE)
-                        ]
+                        input_local = input[local_index : (local_index + BATCH_SIZE)]
+                        output_local = output[local_index : (local_index + BATCH_SIZE)]
 
                         if hasattr(input_local, "todense"):
                             input_local = input_local.todense()
@@ -96,25 +87,26 @@ def train_state(name, files, model, start_epoch):
             layers.Dense(
                 HIDDEN_LAYERS,
                 activation="relu",
-                kernel_initializer="he_normal",
+                kernel_initializer="glorot_uniform",
+                bias_initializer="zeros",
+                dtype=tf.float32,
             )
         )
         model.add(
             layers.Dense(
                 1,
                 activation="tanh",
-                kernel_initializer="he_normal",
+                kernel_initializer="glorot_uniform",
                 use_bias=False,
+                dtype=tf.float32,
             )
         )
 
     model.summary()
 
-    steps_per_epoch = int(len(train_files) * ENTRIES_PER_FILE / BATCH_SIZE)
-
     lr_schedule = PiecewiseConstantDecay(
-        values = [1e-3, 1e-4],
-        boundaries = [steps_per_epoch * STATE_EPOCHS // 2],
+        values=[1e-3, 1e-4],
+        boundaries=[STEPS_PER_EPOCH * STATE_EPOCHS // 2],
     )
     optimizer = keras.optimizers.legacy.Adam(learning_rate=lr_schedule)
 
@@ -147,7 +139,7 @@ def train_state(name, files, model, start_epoch):
         epochs=STATE_EPOCHS,
         verbose=1,
         callbacks=[mc, tensorboard_callback],
-        steps_per_epoch=steps_per_epoch,
+        steps_per_epoch=STEPS_PER_EPOCH,
         initial_epoch=start_epoch,
     )
 
@@ -209,11 +201,9 @@ def train_policy(name, files, model, start_epoch):
 
     model.summary()
 
-    steps_per_epoch = int(len(train_files) * ENTRIES_PER_FILE / BATCH_SIZE)
-
     lr_schedule = PiecewiseConstantDecay(
-        values = [1e-3, 1e-4],
-        boundaries = [steps_per_epoch * STATE_EPOCHS // 2],
+        values=[1e-3, 1e-4],
+        boundaries=[STEPS_PER_EPOCH * POLICY_EPOCHS // 2],
     )
     optimizer = keras.optimizers.legacy.Adam(learning_rate=lr_schedule)
 
@@ -228,7 +218,8 @@ def train_policy(name, files, model, start_epoch):
     os.mkdir(checkpoint_dir)
 
     mc = ModelCheckpoint(
-        filepath="checkpoints/policy."
+        filepath=checkpoint_dir
+        + "/policy."
         + str(INPUT_SIZE)
         + "x"
         + str(outputs)
@@ -245,7 +236,7 @@ def train_policy(name, files, model, start_epoch):
         epochs=POLICY_EPOCHS,
         verbose=1,
         callbacks=[mc, tensorboard_callback],
-        steps_per_epoch=steps_per_epoch,
+        steps_per_epoch=STEPS_PER_EPOCH,
         initial_epoch=start_epoch,
     )
 
