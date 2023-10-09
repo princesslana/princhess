@@ -72,13 +72,7 @@ def generate_npy_batches(files, values):
 def train_state(name, files, model, start_epoch):
     train_files = list(glob.glob(files))
 
-    def wdl_eval_mix(d):
-        wdl = d.get("wdl") * 0.9
-        evl = d.get("evl").reshape(-1, 1) * 0.1
-
-        return wdl + evl
-
-    train_generator = generate_npy_batches(files=train_files, values=wdl_eval_mix)
+    train_generator = generate_npy_batches(files=train_files, values=lambda d: d.get("wdl"))
 
     if not model:
         model = keras.Sequential()
