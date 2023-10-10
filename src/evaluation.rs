@@ -1,12 +1,11 @@
 use shakmaty::{MoveList, Position};
-use shakmaty_syzygy::Wdl;
 use std::mem::{self, MaybeUninit};
 use std::ptr;
 
 use crate::math;
 use crate::search::SCALE;
 use crate::state::{self, State};
-use crate::tablebase::probe_tablebase_wdl;
+use crate::tablebase::{self, Wdl};
 
 #[derive(Clone, Copy, Debug)]
 pub enum Flag {
@@ -59,7 +58,7 @@ pub fn evaluate_state_flag(state: &State, moves: &MoveList) -> Flag {
         } else {
             Flag::TerminalDraw
         }
-    } else if let Some(wdl) = probe_tablebase_wdl(state.board()) {
+    } else if let Some(wdl) = tablebase::probe_wdl(state.board()) {
         match wdl {
             Wdl::Win => Flag::TablebaseWin,
             Wdl::Loss => Flag::TablebaseLoss,
