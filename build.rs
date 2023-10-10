@@ -11,6 +11,7 @@ fn build_fathom() {
     cc.file("./deps/fathom/src/tbprobe.c");
     cc.include("./deps/fathom/src");
     cc.define("_CRT_SECURE_NO_WARNINGS", None);
+    cc.flag("-march=native");
 
     // MSVC doesn't support stdatomic.h, so use clang on Windows
     if env::consts::OS == "windows" {
