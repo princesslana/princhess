@@ -5,7 +5,7 @@ use std::time::{Duration, Instant};
 use crate::mcts::{AsyncSearchOwned, Mcts};
 use crate::options::{get_num_threads, is_chess960};
 use crate::state::State;
-use crate::tablebase::probe_tablebase_best_move;
+use crate::tablebase;
 use crate::transposition_table::TranspositionTable;
 use crate::uci::Tokens;
 
@@ -115,7 +115,7 @@ impl Search {
             return Self {
                 search: manager.into(),
             };
-        } else if let Some(mv) = probe_tablebase_best_move(state.board()) {
+        } else if let Some(mv) = tablebase::probe_best_move(state.board()) {
             let uci_mv = to_uci(&mv);
             println!("info depth 1 seldepth 1 nodes 1 nps 1 tbhits 1 time 1 pv {uci_mv}");
             println!("bestmove {uci_mv}");

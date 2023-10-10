@@ -437,7 +437,7 @@ impl SearchTree {
         let nodes = self.num_nodes();
         let depth = nodes / self.playouts();
         let sel_depth = self.max_depth();
-        let pv = self.principal_variation(depth.max(2));
+        let pv = self.principal_variation(depth.max(1));
         let pv_string: String = pv
             .into_iter()
             .map(|x| format!(" {}", to_uci(x.get_move())))
