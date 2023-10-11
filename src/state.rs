@@ -272,18 +272,18 @@ impl State {
         }
     }
 
-    pub fn state_features_map<F>(&self, mut f: F)
+    pub fn state_features_map<F>(&self, f: F)
     where
         F: FnMut(usize),
     {
-        self.training_features_map(|idx| f(idx));
+        self.training_features_map(f);
     }
 
-    pub fn policy_features_map<F>(&self, mut f: F)
+    pub fn policy_features_map<F>(&self, f: F)
     where
         F: FnMut(usize),
     {
-        self.features_map(|idx| f(idx));
+        self.features_map(f);
     }
 
     pub fn training_features_map<F>(&self, mut f: F)

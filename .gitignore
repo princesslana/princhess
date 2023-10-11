@@ -11,6 +11,7 @@
 .token
 /target/
 bin/princhess
+builds/
 engine/*
 expanded_feature_list.txt
 feature_whitelist.txt

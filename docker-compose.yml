@@ -15,9 +15,9 @@ services:
       -recover -ratinginterval 10 -concurrency 6
     volumes:
       - ./target/release/princhess:/engines/princhess
-      - ./target/release/princhess-main:/engines/princhess-main
-      - ./target/release/princhess-0.13.0:/engines/princhess-0.13.0
-      - ./target/release/princhess-0.12.0:/engines/princhess-0.12.0
+      - ./builds/princhess-main:/engines/princhess-main
+      - ./builds/princhess-0.13.0:/engines/princhess-0.13.0
+      - ./builds/princhess-0.12.0:/engines/princhess-0.12.0
       - ./syzygy:/syzygy:ro
 
   sprt_gain:
@@ -36,7 +36,7 @@ services:
       -recover -ratinginterval 10 -concurrency 6
     volumes:
       - ./target/release/princhess:/engines/princhess
-      - ./target/release/princhess-main:/engines/princhess-main
+      - ./builds/princhess-main:/engines/princhess-main
       - ./syzygy:/syzygy:ro
 
   sprt_gain_ltc:
@@ -55,7 +55,7 @@ services:
       -recover -ratinginterval 10 -concurrency 6
     volumes:
       - ./target/release/princhess:/engines/princhess
-      - ./target/release/princhess-main:/engines/princhess-main
+      - ./builds/princhess-main:/engines/princhess-main
       - ./syzygy:/syzygy:ro
 
   sprt_equal:
@@ -74,7 +74,7 @@ services:
       -recover -ratinginterval 10 -concurrency 6
     volumes:
       - ./target/release/princhess:/engines/princhess
-      - ./target/release/princhess-main:/engines/princhess-main
+      - ./builds/princhess-main:/engines/princhess-main
       - ./syzygy:/syzygy:ro
 
   self_play:
@@ -92,7 +92,7 @@ services:
       -recover -ratinginterval 100 -concurrency 6
       -pgnout /pgn/self_play-0.12.0.pgn min fi
     volumes:
-      - ./target/release/princhess-0.12.0:/engines/princhess-0.12.0
+      - ./builds/princhess-0.12.0:/engines/princhess-0.12.0
       - ./pgn:/pgn
 
   quick_check:
@@ -111,7 +111,7 @@ services:
       -recover -ratinginterval 10 -concurrency 6
     volumes:
       - ./target/release/princhess:/engines/princhess
-      - ./target/release/princhess-main:/engines/princhess-main
+      - ./builds/princhess-main:/engines/princhess-main
       - ./syzygy:/syzygy:ro
 
   debug:
@@ -129,7 +129,7 @@ services:
       -pgnout /pgn/debug.pgn
     volumes:
       - ./target/release/princhess:/engines/princhess
-      - ./target/release/princhess-main:/engines/princhess-main
+      - ./builds/princhess-main:/engines/princhess-main
       - ./syzygy:/syzygy:ro
       - ./pgn:/pgn
 
@@ -149,6 +149,6 @@ services:
       -recover -ratinginterval 10 -concurrency 6
     volumes:
       - ./target/release/princhess:/engines/princhess
-      - ./target/release/princhess-main:/engines/princhess-main
+      - ./builds/princhess-main:/engines/princhess-main
       - ./syzygy:/syzygy:ro
 

@@ -62,7 +62,7 @@ pub fn evaluate_state_flag(state: &State, moves: &MoveList) -> Flag {
         match wdl {
             Wdl::Win => Flag::TablebaseWin,
             Wdl::Loss => Flag::TablebaseLoss,
-            _ => Flag::TablebaseDraw,
+            Wdl::Draw => Flag::TablebaseDraw,
         }
     } else {
         Flag::Standard

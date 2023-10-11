@@ -1,6 +1,7 @@
 use arrayvec::ArrayVec;
 use shakmaty::{Color, Position};
 use std::mem;
+use std::fmt::Write;
 use std::ptr::null_mut;
 use std::sync::atomic::{AtomicI64, AtomicPtr, AtomicU32, AtomicU64, AtomicUsize, Ordering};
 
@@ -77,11 +78,11 @@ impl SearchNode {
     }
 
     pub fn hots(&self) -> &[HotMoveInfo] {
-        unsafe { &*(self.hots as *const [HotMoveInfo]) }
+        unsafe { &*(self.hots) }
     }
 
     fn update_policy(&mut self, evals: &[f32]) {
-        let hots = unsafe { &mut *(self.hots as *mut [HotMoveInfo]) };
+        let hots = unsafe { &mut *(self.hots.cast_mut()) };
 
         for i in 0..hots.len().min(evals.len()) {
             hots[i].policy = evals[i];
@@ -89,7 +90,7 @@ impl SearchNode {
     }
 
     pub fn clear_children_links(&self) {
-        let hots = unsafe { &*(self.hots as *mut [HotMoveInfo]) };
+        let hots = unsafe { &*(self.hots.cast_mut()) };
 
         for h in hots {
             h.child.store(null_mut(), Ordering::SeqCst);
@@ -349,7 +350,7 @@ impl SearchTree {
             return Ok(&DRAW_NODE);
         }
 
-        let child = choice.child.load(Ordering::Relaxed) as *const SearchNode;
+        let child = choice.child.load(Ordering::Relaxed).cast_const();
         if !child.is_null() {
             return unsafe { Ok(&*child) };
         }
@@ -357,7 +358,7 @@ impl SearchTree {
         if let Some(node) = self.ttable.lookup(state) {
             return match choice.child.compare_exchange(
                 null_mut(),
-                node as *const _ as *mut _,
+                (node as *const SearchNode).cast_mut(),
                 Ordering::Relaxed,
                 Ordering::Relaxed,
             ) {
@@ -387,7 +388,7 @@ impl SearchTree {
         }
 
         if let Some(existing) = self.ttable.insert(state, created) {
-            let existing_ptr = existing as *const _ as *mut _;
+            let existing_ptr = (existing as *const SearchNode).cast_mut();
             choice.child.store(existing_ptr, Ordering::Relaxed);
             return Ok(existing);
         }
@@ -416,7 +417,7 @@ impl SearchTree {
         while !crnt.hots().is_empty() && result.len() < num_moves {
             let choice = select_child_after_search(crnt.hots());
             result.push(choice);
-            let child = choice.child.load(Ordering::SeqCst) as *const SearchNode;
+            let child = choice.child.load(Ordering::SeqCst).cast_const();
             if child.is_null() {
                 break;
             }
@@ -440,8 +441,10 @@ impl SearchTree {
         let pv = self.principal_variation(depth.max(1));
         let pv_string: String = pv
             .into_iter()
-            .map(|x| format!(" {}", to_uci(x.get_move())))
-            .collect();
+            .fold(String::new(), |mut out, x| {
+                write!(out, " {}", to_uci(x.get_move())).unwrap();
+                out
+            });
 
         let nps = nodes * 1000 / search_time_ms as usize;
 
