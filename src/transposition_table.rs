@@ -58,8 +58,10 @@ impl TranspositionTable {
         if let Some(value_here) = self.table.get(&hash) {
             unsafe { Some(&*value_here.load(Ordering::Relaxed)) }
         } else {
-            self.table
-                .insert(hash, AtomicPtr::new(value as *const _ as *mut _));
+            self.table.insert(
+                hash,
+                AtomicPtr::new((value as *const SearchNode).cast_mut()),
+            );
             Some(value)
         }
     }
