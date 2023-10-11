@@ -7,7 +7,7 @@ RUN cd /src \
 
 FROM python:3.9 AS run
 
-RUN apt-get update && apt-get install -y wget
+RUN apt-get update && apt-get install -y libclang-dev wget
 
 RUN mkdir /syzygy \
  && wget -e robots=off -r -nH --cut-dirs=2 --no-parent --no-verbose --reject="index.html*" http://tablebase.sesse.net/syzygy/3-4-5/ -P /syzygy
