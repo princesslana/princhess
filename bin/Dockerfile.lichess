@@ -1,6 +1,6 @@
 FROM rust:buster AS build
 
-RUN apt-get update && apt-get install -y libclang-dev
+RUN apt-get update && apt-get install -y clang libclang-dev
 
 COPY . /src
 
