@@ -8,7 +8,7 @@
 )]
 mod bindings;
 
-use shakmaty::{Chess, Color, Move, Position, Role, Setup, Square};
+use shakmaty::{Chess, Color, EnPassantMode, Move, Position, Role, Square};
 use std::ffi::CString;
 use std::ptr;
 
@@ -41,7 +41,7 @@ pub fn probe_wdl(pos: &Chess) -> Option<Wdl> {
         return None;
     }
 
-    if pos.castling_rights().any() || pos.ep_square().is_some() {
+    if pos.castles().any() || pos.ep_square(EnPassantMode::Always).is_some() {
         return None;
     }
 
@@ -79,7 +79,7 @@ pub fn probe_best_move(pos: &Chess) -> Option<Move> {
         return None;
     }
 
-    if pos.castling_rights().any() || pos.ep_square().is_some() {
+    if pos.castles().any() || pos.ep_square(EnPassantMode::Always).is_some() {
         return None;
     }
 
