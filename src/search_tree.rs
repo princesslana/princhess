@@ -1,7 +1,7 @@
 use arrayvec::ArrayVec;
 use shakmaty::{Color, Position};
-use std::mem;
 use std::fmt::Write;
+use std::mem;
 use std::ptr::null_mut;
 use std::sync::atomic::{AtomicI64, AtomicPtr, AtomicU32, AtomicU64, AtomicUsize, Ordering};
 
@@ -439,12 +439,10 @@ impl SearchTree {
         let depth = nodes / self.playouts();
         let sel_depth = self.max_depth();
         let pv = self.principal_variation(depth.max(1));
-        let pv_string: String = pv
-            .into_iter()
-            .fold(String::new(), |mut out, x| {
-                write!(out, " {}", to_uci(x.get_move())).unwrap();
-                out
-            });
+        let pv_string: String = pv.into_iter().fold(String::new(), |mut out, x| {
+            write!(out, " {}", to_uci(x.get_move())).unwrap();
+            out
+        });
 
         let nps = nodes * 1000 / search_time_ms as usize;
 

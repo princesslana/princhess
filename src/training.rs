@@ -6,7 +6,7 @@ use memmap::Mmap;
 use pgn_reader::{BufferedReader, Outcome, RawHeader, SanPlus, Skip, Visitor};
 use rand::rngs::SmallRng;
 use rand::{Rng, SeedableRng};
-use shakmaty::{self, Chess, Color, Setup};
+use shakmaty::{self, Chess, Color, Position};
 use std::fs::File;
 use std::io::{BufWriter, Write};
 use std::str;

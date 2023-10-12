@@ -1,10 +1,10 @@
 use arrayvec::ArrayVec;
 use shakmaty::fen::Fen;
 use shakmaty::uci::Uci;
-use shakmaty::zobrist::{ZobristHash, ZobristValue};
+use shakmaty::zobrist::{Zobrist64, ZobristHash, ZobristValue};
 use shakmaty::{
-    self, CastlingMode, CastlingSide, Chess, Color, File, Move, MoveList, Piece, Position, Role,
-    Setup,
+    self, CastlingMode, CastlingSide, Chess, Color, EnPassantMode, File, Move, MoveList, Piece,
+    Position, Role,
 };
 use std::convert::Into;
 
@@ -41,7 +41,7 @@ impl Builder {
         Some(
             fen.parse::<Fen>()
                 .ok()?
-                .position::<Chess>(CastlingMode::from_chess960(is_chess960()))
+                .into_position::<Chess>(CastlingMode::from_chess960(is_chess960()))
                 .ok()?
                 .into(),
         )
@@ -92,7 +92,7 @@ pub struct State {
     prev_state_hashes: ArrayVec<u64, 128>,
 
     repetitions: usize,
-    hash: u64,
+    hash: Zobrist64,
 }
 impl State {
     pub fn from_tokens(tokens: Tokens) -> Option<Self> {
@@ -108,7 +108,7 @@ impl State {
     }
 
     pub fn hash(&self) -> u64 {
-        self.hash
+        self.hash.0
     }
 
     pub fn available_moves(&self) -> MoveList {
@@ -134,8 +134,8 @@ impl State {
     }
 
     fn update_hash_pre(&mut self) {
-        if let Some(ep_sq) = self.board.ep_square() {
-            self.hash ^= u64::zobrist_for_en_passant_file(ep_sq.file());
+        if let Some(ep_sq) = self.board.ep_square(EnPassantMode::Always) {
+            self.hash ^= Zobrist64::zobrist_for_en_passant_file(ep_sq.file());
         }
 
         let castles = self.board.castles();
@@ -144,7 +144,7 @@ impl State {
             for color in Color::ALL {
                 for side in CastlingSide::ALL {
                     if castles.has(color, side) {
-                        self.hash ^= u64::zobrist_for_castling_right(color, side);
+                        self.hash ^= Zobrist64::zobrist_for_castling_right(color, side);
                     }
                 }
             }
@@ -161,11 +161,11 @@ impl State {
                 promotion: None,
             } => {
                 let pc = Piece { color, role: *role };
-                self.hash ^= u64::zobrist_for_piece(*from, pc);
-                self.hash ^= u64::zobrist_for_piece(*to, pc);
+                self.hash ^= Zobrist64::zobrist_for_piece(*from, pc);
+                self.hash ^= Zobrist64::zobrist_for_piece(*to, pc);
 
                 if let Some(captured) = capture {
-                    self.hash ^= u64::zobrist_for_piece(
+                    self.hash ^= Zobrist64::zobrist_for_piece(
                         *to,
                         Piece {
                             color: !color,
@@ -174,8 +174,8 @@ impl State {
                     );
                 }
 
-                if let Some(ep_sq) = self.board.ep_square() {
-                    self.hash ^= u64::zobrist_for_en_passant_file(ep_sq.file());
+                if let Some(ep_sq) = self.board.ep_square(EnPassantMode::Always) {
+                    self.hash ^= Zobrist64::zobrist_for_en_passant_file(ep_sq.file());
                 }
 
                 let castles = self.board.castles();
@@ -184,15 +184,15 @@ impl State {
                     for color in Color::ALL {
                         for side in CastlingSide::ALL {
                             if castles.has(color, side) {
-                                self.hash ^= u64::zobrist_for_castling_right(color, side);
+                                self.hash ^= Zobrist64::zobrist_for_castling_right(color, side);
                             }
                         }
                     }
                 }
 
-                self.hash ^= u64::zobrist_for_white_turn();
+                self.hash ^= Zobrist64::zobrist_for_white_turn();
             }
-            _ => self.hash = self.board.zobrist_hash(),
+            _ => self.hash = self.board.zobrist_hash(EnPassantMode::Always),
         };
     }
 
@@ -372,7 +372,7 @@ impl From<shakmaty::Chess> for Builder {
 
 impl From<Builder> for State {
     fn from(sb: Builder) -> Self {
-        let hash = sb.initial_state.zobrist_hash();
+        let hash = sb.initial_state.zobrist_hash(EnPassantMode::Always);
 
         let mut state = State {
             board: sb.initial_state,
