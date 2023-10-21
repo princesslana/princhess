@@ -75,7 +75,7 @@ pub fn evaluate_policy(state: &State, moves: &MoveList) -> Vec<f32> {
     run_policy_net(state, moves)
 }
 
-const STATE_NUMBER_INPUTS: usize = 2304;
+const STATE_NUMBER_INPUTS: usize = state::NUMBER_FEATURES;
 const NUMBER_HIDDEN: usize = 192;
 const NUMBER_OUTPUTS: usize = 1;
 

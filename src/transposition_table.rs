@@ -28,10 +28,6 @@ impl TranspositionTable {
         Self::new(Table::default(), Box::new(Arena::new(2)))
     }
 
-    pub fn zero() -> Self {
-        Self::new(Table::default(), Box::new(Arena::new(0)))
-    }
-
     fn new(table: Table, arena: Box<Arena>) -> Self {
         Self { table, arena }
     }

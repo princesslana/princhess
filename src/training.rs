@@ -11,10 +11,8 @@ use std::fs::File;
 use std::io::{BufWriter, Write};
 use std::str;
 
-use crate::mcts::Mcts;
 use crate::options::set_chess960;
 use crate::state::{self, Builder as StateBuilder};
-use crate::transposition_table::TranspositionTable;
 
 const NUM_SAMPLES: f64 = 16.;
 
@@ -42,7 +40,7 @@ struct ValueDataGenerator {
     out_file: BufWriter<File>,
     state: StateBuilder,
     skip: bool,
-    rows_written: usize,
+    pub rows_written: usize,
     rng: SmallRng,
 }
 
@@ -109,19 +107,9 @@ impl Visitor for ValueDataGenerator {
 
                 self.rows_written += 1;
 
-                if self.rows_written % 100_000 == 0 {
+                if self.rows_written % 500_000 == 0 {
                     println!("{}: {} rows written", self.log_prefix, self.rows_written);
                 }
-
-                let mcts = Mcts::new(
-                    state.clone(),
-                    TranspositionTable::empty(),
-                    TranspositionTable::zero(),
-                );
-
-                mcts.playout_sync_n(1000);
-
-                let eval = mcts.eval();
 
                 let crnt_result = if state.side_to_move() == Color::White {
                     game_result
@@ -147,11 +135,10 @@ impl Visitor for ValueDataGenerator {
 
                 let mut f_vec =
                     Vec::with_capacity(1 + state::NUMBER_MOVE_IDX + state::NUMBER_FEATURES);
-                f_vec.push(wdl);
                 f_vec.extend_from_slice(&move_features);
                 f_vec.extend_from_slice(&board_features);
 
-                write_libsvm(&f_vec, &mut self.out_file, eval);
+                write_libsvm(&f_vec, &mut self.out_file, wdl);
             }
             state.make_move(&made);
         }
@@ -164,7 +151,7 @@ impl Visitor for ValueDataGenerator {
     fn end_game(&mut self) -> Self::Result {}
 }
 
-pub fn write_libsvm<W: Write>(features: &[i8], f: &mut W, label: f32) {
+pub fn write_libsvm<W: Write>(features: &[i8], f: &mut W, label: i8) {
     write!(f, "{label}").unwrap();
     for (index, value) in features.iter().enumerate() {
         if *value != 0 {
@@ -174,7 +161,9 @@ pub fn write_libsvm<W: Write>(features: &[i8], f: &mut W, label: f32) {
     writeln!(f).unwrap();
 }
 
-fn run_value_gen(in_path: &str, out_file: BufWriter<File>) -> ValueDataGenerator {
+fn run_value_gen(in_path: &str, out_file: BufWriter<File>) {
+    println!("Featurizing {in_path}...");
+
     let mut generator = ValueDataGenerator {
         log_prefix: in_path.to_string(),
         out_file,
@@ -194,11 +183,10 @@ fn run_value_gen(in_path: &str, out_file: BufWriter<File>) -> ValueDataGenerator
         .read_all(&mut generator)
         .unwrap();
 
-    generator
+    println!("{in_path} Done. {} rows written.", generator.rows_written);
 }
 
 pub fn train(in_path: &str, out_path: &str) {
     let out_file = BufWriter::new(File::create(out_path).expect("create"));
-    println!("Featurizing {in_path}...");
     run_value_gen(in_path, out_file);
 }
