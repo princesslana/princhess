@@ -4,21 +4,18 @@ use shakmaty::uci::Uci;
 use shakmaty::zobrist::{Zobrist64, ZobristHash, ZobristValue};
 use shakmaty::{
     self, CastlingMode, CastlingSide, Chess, Color, EnPassantMode, File, Move, MoveList, Piece,
-    Position, Role,
+    Position, Role, Square,
 };
 use std::convert::Into;
 
 use crate::options::is_chess960;
 use crate::uci::Tokens;
 
-const NF_PIECES: usize = 2 * 6 * 64; // color * roles * squares
-const NF_LAST_CAPTURE: usize = 5 * 64; // roles (-king) * squares
-const NF_THREATS: usize = 2 * 6 * 64; // color * roles * suquares
+const OFFSET_POSITION: usize = 0;
+const OFFSET_THREATS: usize = 768;
+const OFFSET_DEFENDS: usize = 768 * 2;
 
-const OFFSET_LAST_CAPTURE: usize = NF_PIECES;
-const OFFSET_THREATS: usize = NF_PIECES + NF_LAST_CAPTURE;
-
-pub const NUMBER_FEATURES: usize = NF_PIECES + NF_LAST_CAPTURE + NF_THREATS;
+pub const NUMBER_FEATURES: usize = 768 * 3;
 pub const NUMBER_MOVE_IDX: usize = 384;
 
 pub struct Builder {
@@ -84,12 +81,13 @@ impl Builder {
 #[derive(Clone)]
 pub struct State {
     board: Chess,
-    prev_capture: Option<shakmaty::Role>,
-    prev_capture_sq: Option<shakmaty::Square>,
 
     // 101 should be enough to track 50-move rule, but some games in the dataset
     // can go above this. Hence we add a little space
     prev_state_hashes: ArrayVec<u64, 128>,
+
+    prev_move_sq: Option<Square>,
+    prev_capture_sq: Option<Square>,
 
     repetitions: usize,
     hash: Zobrist64,
@@ -116,12 +114,14 @@ impl State {
     }
 
     pub fn make_move(&mut self, mov: &Move) {
-        self.prev_capture = mov.capture();
-        self.prev_capture_sq = self.prev_capture.map(|_| mov.to());
-
         let is_pawn_move = mov.role() == Role::Pawn;
 
-        if is_pawn_move || self.prev_capture.is_some() {
+        (self.prev_move_sq, self.prev_capture_sq) = match mov.capture() {
+            Some(_) => (None, Some(mov.to())),
+            None => (Some(mov.to()), None),
+        };
+
+        if is_pawn_move || self.prev_capture_sq.is_some() {
             self.prev_state_hashes.clear();
         }
         self.prev_state_hashes.push(self.hash());
@@ -238,45 +238,86 @@ impl State {
 
         let (flip_vertical, flip_horizontal) = self.feature_flip();
 
-        let flip_square = |sq: shakmaty::Square| match (flip_vertical, flip_horizontal) {
+        let flip_square = |sq: Square| match (flip_vertical, flip_horizontal) {
             (true, true) => sq.flip_vertical().flip_horizontal(),
             (true, false) => sq.flip_vertical(),
             (false, true) => sq.flip_horizontal(),
             (false, false) => sq,
         };
 
+        let feature_idx = |sq: Square, r: Role, c: Color| {
+            let sq_idx = flip_square(sq) as usize;
+            let role_idx = r as usize - 1;
+            let side_idx = usize::from(c != stm);
+
+            (side_idx * 6 + role_idx) * 64 + sq_idx
+        };
+
         for sq in b.occupied() {
             let role = b.role_at(sq).unwrap();
             let color = b.color_at(sq).unwrap();
 
-            let adj_sq = flip_square(sq);
+            f(OFFSET_POSITION + feature_idx(sq, role, color));
 
-            let sq_idx = adj_sq as usize;
-            let role_idx = role as usize - 1;
-            let side_idx = usize::from(color != stm);
+            // Threats
+            if role != Role::King && b.attacks_to(sq, !color, b.occupied()).any() {
+                f(OFFSET_THREATS + feature_idx(sq, role, color));
+            }
 
-            let feature_idx = (side_idx * 6 + role_idx) * 64 + sq_idx;
-
-            f(feature_idx);
-
-            if b.attacks_to(sq, !stm, b.occupied()).any() {
-                f(OFFSET_THREATS + feature_idx);
+            // Defenses
+            if b.attacks_to(sq, color, b.occupied()).any() {
+                f(OFFSET_DEFENDS + feature_idx(sq, role, color));
             }
         }
 
-        if let Some((sq, pc)) = self.prev_capture_sq.zip(self.prev_capture) {
-            let adj_sq = flip_square(sq);
-            let role_idx = pc as usize - 1;
+        // We use the king threats squares for previous move
+        if let Some(prev_move_sq) = self.prev_move_sq {
+            f(OFFSET_THREATS + feature_idx(prev_move_sq, Role::King, stm));
+        }
 
-            f(OFFSET_LAST_CAPTURE + role_idx * 64 + adj_sq as usize);
+        if let Some(prev_capture_sq) = self.prev_capture_sq {
+            f(OFFSET_THREATS + feature_idx(prev_capture_sq, Role::King, !stm));
         }
     }
 
-    pub fn state_features_map<F>(&self, f: F)
+    pub fn state_features_map<F>(&self, mut f: F)
     where
         F: FnMut(usize),
     {
-        self.training_features_map(f);
+        let stm = self.side_to_move();
+        let b = self.board.board();
+
+        let (flip_vertical, flip_horizontal) = self.feature_flip();
+
+        let flip_square = |sq: Square| match (flip_vertical, flip_horizontal) {
+            (true, true) => sq.flip_vertical().flip_horizontal(),
+            (true, false) => sq.flip_vertical(),
+            (false, true) => sq.flip_horizontal(),
+            (false, false) => sq,
+        };
+
+        let feature_idx = |sq: Square, r: Role, c: Color| {
+            let sq_idx = flip_square(sq) as usize;
+            let role_idx = r as usize - 1;
+            let side_idx = usize::from(c != stm);
+
+            (side_idx * 6 + role_idx) * 64 + sq_idx
+        };
+
+        for sq in b.occupied() {
+            let role = b.role_at(sq).unwrap();
+            let color = b.color_at(sq).unwrap();
+
+            f(OFFSET_POSITION + feature_idx(sq, role, color));
+
+            if b.attacks_to(sq, !color, b.occupied()).any() {
+                f(OFFSET_THREATS + feature_idx(sq, role, color));
+            }
+
+            if b.attacks_to(sq, color, b.occupied()).any() {
+                f(OFFSET_DEFENDS + feature_idx(sq, role, color));
+            }
+        }
     }
 
     pub fn policy_features_map<F>(&self, f: F)
@@ -286,47 +327,11 @@ impl State {
         self.features_map(f);
     }
 
-    pub fn training_features_map<F>(&self, mut f: F)
+    pub fn training_features_map<F>(&self, f: F)
     where
         F: FnMut(usize),
     {
-        let offset_position = 0;
-        let offset_threats = 768;
-        let offset_defends = 768 * 2;
-
-        let stm = self.side_to_move();
-        let b = self.board.board();
-
-        let (flip_vertical, flip_horizontal) = self.feature_flip();
-
-        let flip_square = |sq: shakmaty::Square| match (flip_vertical, flip_horizontal) {
-            (true, true) => sq.flip_vertical().flip_horizontal(),
-            (true, false) => sq.flip_vertical(),
-            (false, true) => sq.flip_horizontal(),
-            (false, false) => sq,
-        };
-
-        for sq in b.occupied() {
-            let role = b.role_at(sq).unwrap();
-            let color = b.color_at(sq).unwrap();
-
-            let adj_sq = flip_square(sq);
-
-            let sq_idx = adj_sq as usize;
-            let role_idx = role as usize - 1;
-            let side_idx = usize::from(color != stm);
-
-            let feature_idx = (side_idx * 6 + role_idx) * 64 + sq_idx;
-
-            f(offset_position + feature_idx);
-
-            if b.attacks_to(sq, !color, b.occupied()).any() {
-                f(offset_threats + feature_idx);
-            }
-            if b.attacks_to(sq, color, b.occupied()).any() {
-                f(offset_defends + feature_idx);
-            }
-        }
+        self.features_map(f);
     }
 
     pub fn move_to_index(&self, mv: &Move) -> usize {
@@ -376,9 +381,9 @@ impl From<Builder> for State {
 
         let mut state = State {
             board: sb.initial_state,
-            prev_capture: None,
-            prev_capture_sq: None,
             prev_state_hashes: ArrayVec::new(),
+            prev_move_sq: None,
+            prev_capture_sq: None,
             repetitions: 0,
             hash,
         };
