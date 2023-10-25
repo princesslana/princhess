@@ -125,7 +125,15 @@ impl Visitor for ValueDataGenerator {
                 let mut board_features = [0i8; NUMBER_TRAINING_FEATURES];
                 let mut move_features = [0i8; state::NUMBER_MOVE_IDX];
 
-                state.training_features_map(|idx| board_features[idx] = 1);
+                state.training_features_map(|idx| {
+                    assert!(
+                        board_features[idx] == 0,
+                        "{}: duplicate feature {}",
+                        self.log_prefix,
+                        idx
+                    );
+                    board_features[idx] = 1;
+                });
 
                 for m in moves.as_slice() {
                     move_features[state.move_to_index(m)] = 2;

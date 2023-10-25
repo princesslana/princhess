@@ -1,4 +1,5 @@
 use arrayvec::ArrayVec;
+use shakmaty::attacks;
 use shakmaty::fen::Fen;
 use shakmaty::uci::Uci;
 use shakmaty::zobrist::{Zobrist64, ZobristHash, ZobristValue};
@@ -259,24 +260,35 @@ impl State {
 
             f(OFFSET_POSITION + feature_idx(sq, role, color));
 
-            // Threats
-            if role != Role::King && b.attacks_to(sq, !color, b.occupied()).any() {
-                f(OFFSET_THREATS + feature_idx(sq, role, color));
-            }
+            // King Virtual Moblity
+            if role == Role::King {
+                let us = b.by_color(color);
+                let blockers = us | b.pawns();
+                let virtual_mobility = attacks::queen_attacks(sq, blockers) & !us;
 
-            // Defenses
-            if b.attacks_to(sq, color, b.occupied()).any() {
-                f(OFFSET_DEFENDS + feature_idx(sq, role, color));
+                for sq in virtual_mobility {
+                    f(OFFSET_THREATS + feature_idx(sq, role, color));
+                }
+            } else {
+                // Threats
+                if b.attacks_to(sq, !color, b.occupied()).any() {
+                    f(OFFSET_THREATS + feature_idx(sq, role, color));
+                }
+
+                // Defenses
+                if b.attacks_to(sq, color, b.occupied()).any() {
+                    f(OFFSET_DEFENDS + feature_idx(sq, role, color));
+                }
             }
         }
 
-        // We use the king threats squares for previous move
+        // We use the king defends squares for previous move
         if let Some(prev_move_sq) = self.prev_move_sq {
-            f(OFFSET_THREATS + feature_idx(prev_move_sq, Role::King, stm));
+            f(OFFSET_DEFENDS + feature_idx(prev_move_sq, Role::King, stm));
         }
 
         if let Some(prev_capture_sq) = self.prev_capture_sq {
-            f(OFFSET_THREATS + feature_idx(prev_capture_sq, Role::King, !stm));
+            f(OFFSET_DEFENDS + feature_idx(prev_capture_sq, Role::King, !stm));
         }
     }
 
