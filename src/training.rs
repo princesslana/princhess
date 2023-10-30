@@ -13,6 +13,7 @@ use std::str;
 
 use crate::options::set_chess960;
 use crate::state::{self, Builder as StateBuilder};
+use crate::tablebase::{self, Wdl};
 
 const NUM_SAMPLES: f64 = 16.;
 
@@ -40,6 +41,7 @@ struct ValueDataGenerator {
     out_file: BufWriter<File>,
     state: StateBuilder,
     skip: bool,
+    first_tablebase_result: Option<GameResult>,
     pub rows_written: usize,
     rng: SmallRng,
 }
@@ -50,6 +52,7 @@ impl Visitor for ValueDataGenerator {
     fn begin_game(&mut self) {
         self.state = StateBuilder::default();
         self.skip = false;
+        self.first_tablebase_result = None;
     }
 
     fn header(&mut self, key: &[u8], value: RawHeader<'_>) {
@@ -66,6 +69,22 @@ impl Visitor for ValueDataGenerator {
 
         if let Ok(m) = san.san.to_move(self.state.chess()) {
             self.state.make_move(m);
+
+            if self.first_tablebase_result.is_none() {
+                if let Some(wdl) = tablebase::probe_wdl(self.state.chess()) {
+                    let game_result = match (wdl, self.state.chess().turn()) {
+                        (Wdl::Draw, _) => GameResult::Draw,
+                        (Wdl::Win, Color::White) | (Wdl::Loss, Color::Black) => {
+                            GameResult::WhiteWin
+                        }
+                        (Wdl::Win, Color::Black) | (Wdl::Loss, Color::White) => {
+                            GameResult::BlackWin
+                        }
+                    };
+
+                    self.first_tablebase_result = Some(game_result);
+                }
+            }
         } else {
             self.skip = true;
             println!("{}: invalid move: {}", self.log_prefix, san.san);
@@ -77,16 +96,20 @@ impl Visitor for ValueDataGenerator {
             return;
         }
 
-        let game_result = match outcome {
-            Some(Outcome::Draw) => GameResult::Draw,
-            Some(Outcome::Decisive { winner }) => {
-                if winner == shakmaty::Color::White {
-                    GameResult::WhiteWin
-                } else {
-                    GameResult::BlackWin
+        let game_result = if let Some(game_result) = self.first_tablebase_result {
+            game_result
+        } else {
+            match outcome {
+                Some(Outcome::Draw) => GameResult::Draw,
+                Some(Outcome::Decisive { winner }) => {
+                    if winner == shakmaty::Color::White {
+                        GameResult::WhiteWin
+                    } else {
+                        GameResult::BlackWin
+                    }
                 }
+                None => return,
             }
-            None => return,
         };
 
         let (mut state, moves) = self.state.extract();
@@ -111,11 +134,24 @@ impl Visitor for ValueDataGenerator {
                     println!("{}: {} rows written", self.log_prefix, self.rows_written);
                 }
 
-                let crnt_result = if state.side_to_move() == Color::White {
-                    game_result
+                let mut crnt_result = if let Some(wdl) = tablebase::probe_wdl(state.board()) {
+                    match (wdl, state.side_to_move()) {
+                        (Wdl::Draw, _) => GameResult::Draw,
+                        (Wdl::Win, Color::White) | (Wdl::Loss, Color::Black) => {
+                            GameResult::WhiteWin
+                        }
+                        (Wdl::Win, Color::Black) | (Wdl::Loss, Color::White) => {
+                            GameResult::BlackWin
+                        }
+                    }
                 } else {
-                    game_result.flip()
+                    game_result
                 };
+
+                if state.side_to_move() == Color::Black {
+                    crnt_result = crnt_result.flip();
+                };
+
                 let wdl = match crnt_result {
                     GameResult::WhiteWin => 1,
                     GameResult::BlackWin => -1,
@@ -177,6 +213,7 @@ fn run_value_gen(in_path: &str, out_file: BufWriter<File>) {
         out_file,
         state: StateBuilder::default(),
         skip: false,
+        first_tablebase_result: None,
         rows_written: 0,
         rng: SeedableRng::seed_from_u64(42),
     };

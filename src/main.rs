@@ -37,6 +37,10 @@ fn main() {
 
     pretty_env_logger::init();
 
+    if let Some(ref syzygy_path) = options.syzygy_path {
+        tablebase::set_tablebase_directory(syzygy_path);
+    }
+
     if let Some(ref train_pgn) = options.train_pgn {
         training::train(train_pgn, &options.train_output_path);
     } else {

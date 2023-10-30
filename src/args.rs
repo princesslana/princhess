@@ -4,6 +4,7 @@ use self::argparse::{ArgumentParser, Collect, Store, StoreOption};
 pub struct Options {
     pub train_pgn: Option<String>,
     pub train_output_path: String,
+    pub syzygy_path: Option<String>,
     pub extra: Vec<String>,
 }
 
@@ -12,6 +13,7 @@ impl Default for Options {
         Options {
             train_pgn: None,
             train_output_path: "train_data.libsvm".into(),
+            syzygy_path: None,
             extra: Vec::new(),
         }
     }
@@ -25,6 +27,11 @@ pub fn init() {
             &["-t", "--train"],
             StoreOption,
             "path to .pgn for training",
+        );
+        ap.refer(&mut options.syzygy_path).add_option(
+            &["-s", "--syzygy"],
+            StoreOption,
+            "path to syzygy tablebases",
         );
         ap.refer(&mut options.train_output_path).add_option(
             &["-o", "--output"],

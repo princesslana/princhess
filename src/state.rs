@@ -292,44 +292,11 @@ impl State {
         }
     }
 
-    pub fn state_features_map<F>(&self, mut f: F)
+    pub fn state_features_map<F>(&self, f: F)
     where
         F: FnMut(usize),
     {
-        let stm = self.side_to_move();
-        let b = self.board.board();
-
-        let (flip_vertical, flip_horizontal) = self.feature_flip();
-
-        let flip_square = |sq: Square| match (flip_vertical, flip_horizontal) {
-            (true, true) => sq.flip_vertical().flip_horizontal(),
-            (true, false) => sq.flip_vertical(),
-            (false, true) => sq.flip_horizontal(),
-            (false, false) => sq,
-        };
-
-        let feature_idx = |sq: Square, r: Role, c: Color| {
-            let sq_idx = flip_square(sq) as usize;
-            let role_idx = r as usize - 1;
-            let side_idx = usize::from(c != stm);
-
-            (side_idx * 6 + role_idx) * 64 + sq_idx
-        };
-
-        for sq in b.occupied() {
-            let role = b.role_at(sq).unwrap();
-            let color = b.color_at(sq).unwrap();
-
-            f(OFFSET_POSITION + feature_idx(sq, role, color));
-
-            if b.attacks_to(sq, !color, b.occupied()).any() {
-                f(OFFSET_THREATS + feature_idx(sq, role, color));
-            }
-
-            if b.attacks_to(sq, color, b.occupied()).any() {
-                f(OFFSET_DEFENDS + feature_idx(sq, role, color));
-            }
-        }
+        self.features_map(f);
     }
 
     pub fn policy_features_map<F>(&self, f: F)
