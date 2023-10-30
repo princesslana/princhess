@@ -1,18 +1,25 @@
 import numpy
 import os
 import sys
+import tensorflow as tf
 from numpy import array2string
 from tensorflow import keras
 from tensorflow.nn import softmax_cross_entropy_with_logits
+from tensorflow.python.ops.numpy_ops import np_config
 
 from training import policy_loss, policy_acc
 
+np_config.enable_numpy_behavior()
 
 def write_coefs(file, coefs):
     numpy.set_printoptions(threshold=numpy.inf)
 
     with open(file, "w") as f:
         print(array2string(coefs, separator=","), file=f)
+
+
+def q255(t):
+    return tf.cast(t * 255, dtype=tf.int32)
 
 
 def export_state(file):
@@ -27,12 +34,13 @@ def export_state(file):
         os.mkdir(output_folder)
 
     (hidden_weights, hidden_bias) = model.layers[0].get_weights()
-    write_coefs(os.path.join(output_folder, f"hidden_weights"), hidden_weights)
-    write_coefs(os.path.join(output_folder, f"hidden_bias"), hidden_bias)
+    write_coefs(os.path.join(output_folder, f"hidden_weights"), q255(hidden_weights))
+    write_coefs(os.path.join(output_folder, f"hidden_bias"), q255(hidden_bias))
 
     (output_weights,) = model.layers[1].get_weights()
     write_coefs(
-        os.path.join(output_folder, "output_weights"), numpy.transpose(output_weights)
+        os.path.join(output_folder, "output_weights"),
+        numpy.transpose(q255(output_weights)),
     )
 
 

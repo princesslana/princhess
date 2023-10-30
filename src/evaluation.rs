@@ -75,19 +75,18 @@ pub fn evaluate_policy(state: &State, moves: &MoveList) -> Vec<f32> {
     run_policy_net(state, moves)
 }
 
+const QAB: f32 = 255. * 255.;
+
 const STATE_NUMBER_INPUTS: usize = state::NUMBER_FEATURES;
 const NUMBER_HIDDEN: usize = 192;
 const NUMBER_OUTPUTS: usize = 1;
 
-#[allow(clippy::excessive_precision, clippy::unreadable_literal)]
-static EVAL_HIDDEN_BIAS: [f32; NUMBER_HIDDEN] = include!("model/hidden_bias");
+static EVAL_HIDDEN_BIAS: [i32; NUMBER_HIDDEN] = include!("model/hidden_bias");
 
-#[allow(clippy::excessive_precision, clippy::unreadable_literal)]
-static EVAL_HIDDEN_WEIGHTS: [[f32; NUMBER_HIDDEN]; STATE_NUMBER_INPUTS] =
+static EVAL_HIDDEN_WEIGHTS: [[i16; NUMBER_HIDDEN]; STATE_NUMBER_INPUTS] =
     include!("model/hidden_weights");
 
-#[allow(clippy::excessive_precision, clippy::unreadable_literal)]
-static EVAL_OUTPUT_WEIGHTS: [[f32; NUMBER_HIDDEN]; NUMBER_OUTPUTS] =
+static EVAL_OUTPUT_WEIGHTS: [[i16; NUMBER_HIDDEN]; NUMBER_OUTPUTS] =
     include!("model/output_weights");
 
 const POLICY_NUMBER_INPUTS: usize = state::NUMBER_FEATURES;
@@ -96,12 +95,12 @@ const POLICY_NUMBER_INPUTS: usize = state::NUMBER_FEATURES;
 static POLICY_WEIGHTS: [[f32; POLICY_NUMBER_INPUTS]; 384] = include!("policy/output_weights");
 
 fn run_eval_net(state: &State) -> f32 {
-    let mut hidden_layer: [f32; NUMBER_HIDDEN] = unsafe {
-        let mut out: [MaybeUninit<f32>; NUMBER_HIDDEN] = MaybeUninit::uninit().assume_init();
+    let mut hidden_layer: [i32; NUMBER_HIDDEN] = unsafe {
+        let mut out: [MaybeUninit<i32>; NUMBER_HIDDEN] = MaybeUninit::uninit().assume_init();
 
         ptr::copy_nonoverlapping(
             EVAL_HIDDEN_BIAS.as_ptr(),
-            out.as_mut_ptr().cast::<f32>(),
+            out.as_mut_ptr().cast::<i32>(),
             NUMBER_HIDDEN,
         );
 
@@ -110,18 +109,18 @@ fn run_eval_net(state: &State) -> f32 {
 
     state.state_features_map(|idx| {
         for (j, l) in hidden_layer.iter_mut().enumerate() {
-            *l += EVAL_HIDDEN_WEIGHTS[idx][j];
+            *l += i32::from(EVAL_HIDDEN_WEIGHTS[idx][j]);
         }
     });
 
-    let mut result = 0.;
+    let mut result: i32 = 0;
     let weights = EVAL_OUTPUT_WEIGHTS[0];
 
     for i in 0..hidden_layer.len() {
-        result += weights[i] * hidden_layer[i].max(0.);
+        result += i32::from(weights[i]) * hidden_layer[i].max(0);
     }
 
-    result.tanh()
+    (result as f32 / QAB).tanh()
 }
 
 fn run_policy_net(state: &State, moves: &MoveList) -> Vec<f32> {
