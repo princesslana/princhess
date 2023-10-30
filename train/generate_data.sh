@@ -3,12 +3,13 @@
 set -e
 
 PRINCHESS=${PRINCHESS:-../target/release/princhess}
+SYZYGY_PATH=${SYZYGY_PATH:-../syzygy}
 FILES=${FILES:-pgn/*.pgn}
 
 generate_data() {
   echo "Sampling data..."
 
-  ls -S $FILES | parallel -u -j 6 $PRINCHESS -t {} -o {}.libsvm
+  ls -S $FILES | parallel -u -j 6 $PRINCHESS -t {} -o {}.libsvm -s $SYZYGY_PATH
 
   rm -f model_data/*.libsvm.*
 
