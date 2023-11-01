@@ -18,8 +18,8 @@ def write_coefs(file, coefs):
         print(array2string(coefs, separator=","), file=f)
 
 
-def q255(t):
-    return tf.cast(t * 255, dtype=tf.int32)
+def q(n, t):
+    return tf.cast(t * n, dtype=tf.int32)
 
 
 def export_state(file):
@@ -34,13 +34,13 @@ def export_state(file):
         os.mkdir(output_folder)
 
     (hidden_weights, hidden_bias) = model.layers[0].get_weights()
-    write_coefs(os.path.join(output_folder, f"hidden_weights"), q255(hidden_weights))
-    write_coefs(os.path.join(output_folder, f"hidden_bias"), q255(hidden_bias))
+    write_coefs(os.path.join(output_folder, f"hidden_weights"), q(256, hidden_weights))
+    write_coefs(os.path.join(output_folder, f"hidden_bias"), q(256, hidden_bias))
 
     (output_weights,) = model.layers[1].get_weights()
     write_coefs(
         os.path.join(output_folder, "output_weights"),
-        numpy.transpose(q255(output_weights)),
+        numpy.transpose(q(256, output_weights)),
     )
 
 
