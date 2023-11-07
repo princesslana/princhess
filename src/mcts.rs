@@ -132,7 +132,7 @@ impl Mcts {
                 "info string {:>6} M: {:>6} P: {:>6} V: {:7} E: {:>6} ({:>8})",
                 format!("{}", mov.get_move()),
                 format!("{:3.2}", e * 100.),
-                format!("{:3.2}", mov.policy() * 100.),
+                format!("{:3.2}", f32::from(mov.policy()) / SCALE * 100.),
                 mov.visits(),
                 mov.average_reward()
                     .map_or("n/a".to_string(), |r| format!("{:3.2}", r / (SCALE / 100.))),

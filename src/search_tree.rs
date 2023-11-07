@@ -41,7 +41,7 @@ pub struct SearchTree {
 pub struct HotMoveInfo {
     sum_evaluations: AtomicI64,
     visits: AtomicU32,
-    policy: f32,
+    policy: u16,
     mov: shakmaty::Move,
     child: AtomicPtr<SearchNode>,
 }
@@ -84,8 +84,9 @@ impl SearchNode {
     fn update_policy(&mut self, evals: &[f32]) {
         let hots = unsafe { &mut *(self.hots.cast_mut()) };
 
+        #[allow(clippy::cast_sign_loss)]
         for i in 0..hots.len().min(evals.len()) {
-            hots[i].policy = evals[i];
+            hots[i].policy = (evals[i].clamp(0., 0.99) * SCALE) as u16;
         }
     }
 
@@ -99,7 +100,7 @@ impl SearchNode {
 }
 
 impl HotMoveInfo {
-    fn new(policy: f32, mov: shakmaty::Move) -> Self {
+    fn new(policy: u16, mov: shakmaty::Move) -> Self {
         Self {
             policy,
             sum_evaluations: AtomicI64::default(),
@@ -121,7 +122,7 @@ impl HotMoveInfo {
         self.sum_evaluations.load(Ordering::Relaxed)
     }
 
-    pub fn policy(&self) -> f32 {
+    pub fn policy(&self) -> u16 {
         self.policy
     }
 
@@ -171,9 +172,12 @@ where
     }
 
     let hots = alloc_slice(move_eval.len())?;
+
+    #[allow(clippy::cast_sign_loss)]
     for (i, x) in hots.iter_mut().enumerate() {
-        *x = HotMoveInfo::new(move_eval[i], moves[i].clone());
+        *x = HotMoveInfo::new((move_eval[i] * SCALE) as u16, moves[i].clone());
     }
+
     Ok(SearchNode::new(hots, state_flag))
 }
 

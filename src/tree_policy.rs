@@ -11,10 +11,10 @@ pub fn choose_child(moves: &[HotMoveInfo], cpuct: f32, is_root: bool) -> &HotMov
     let exploration_constant =
         (cpuct + cpuct * faster::ln(((total_visits + 8192) / 8192) as f32)) * SCALE;
 
-    let explore_coef = exploration_constant * sqrt_total_visits;
+    let explore_coef = (exploration_constant * sqrt_total_visits) as i64;
 
-    let mut best_score = (f32::NEG_INFINITY, 1.);
-    let mut choice = None;
+    let mut best_move = &moves[0];
+    let mut best_score = i64::MIN;
 
     for mov in moves {
         if let Some(pc) = mov.get_move().promotion() {
@@ -23,26 +23,25 @@ pub fn choose_child(moves: &[HotMoveInfo], cpuct: f32, is_root: bool) -> &HotMov
             }
         }
 
-        let sum_rewards = mov.sum_rewards() as f32;
-        let child_visits = mov.visits();
+        let sum_rewards = mov.sum_rewards();
+        let child_visits = i64::from(mov.visits());
         let policy_evaln = mov.policy();
 
-        let numerator = sum_rewards + explore_coef * policy_evaln;
-        let denominator = (child_visits + 1) as f32;
-
-        if choice.is_none() {
-            choice = Some(mov);
-            best_score = (numerator, denominator);
+        let q = if child_visits > 0 {
+            sum_rewards / child_visits
         } else {
-            let a = numerator * best_score.1;
-            let b = denominator * best_score.0;
+            0
+        };
 
-            if a > b {
-                choice = Some(mov);
-                best_score = (numerator, denominator);
-            }
+        let u = explore_coef * i64::from(policy_evaln) / ((child_visits + 1) * SCALE as i64);
+
+        let score = q + u;
+
+        if score > best_score {
+            best_score = score;
+            best_move = mov;
         }
     }
 
-    choice.unwrap()
+    best_move
 }
