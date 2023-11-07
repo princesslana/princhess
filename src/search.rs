@@ -14,7 +14,7 @@ const DEFAULT_MOVE_TIME_FRACTION: u32 = 20;
 
 const MOVE_OVERHEAD: Duration = Duration::from_millis(50);
 
-pub const SCALE: f32 = 255. * 255.;
+pub const SCALE: f32 = 256. * 256.;
 
 #[derive(Copy, Clone, Debug)]
 pub struct TimeManagement {
