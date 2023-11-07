@@ -78,7 +78,7 @@ pub fn evaluate_policy(state: &State, moves: &MoveList) -> Vec<f32> {
 const QAB: f32 = 256. * 256.;
 
 const STATE_NUMBER_INPUTS: usize = state::NUMBER_FEATURES;
-const NUMBER_HIDDEN: usize = 192;
+const NUMBER_HIDDEN: usize = 256;
 const NUMBER_OUTPUTS: usize = 1;
 
 static EVAL_HIDDEN_BIAS: [i32; NUMBER_HIDDEN] = include!("model/hidden_bias");
