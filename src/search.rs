@@ -20,6 +20,7 @@ pub const SCALE: f32 = 256. * 256.;
 pub struct TimeManagement {
     start: Instant,
     end: Option<Instant>,
+    node_limit: usize,
 }
 
 impl Default for TimeManagement {
@@ -32,14 +33,20 @@ impl TimeManagement {
     pub fn from_duration(d: Duration) -> Self {
         let start = Instant::now();
         let end = Some(start + d);
+        let node_limit = std::usize::MAX;
 
-        Self { start, end }
+        Self {
+            start,
+            end,
+            node_limit,
+        }
     }
 
     pub fn infinite() -> Self {
         Self {
             start: Instant::now(),
             end: None,
+            node_limit: std::usize::MAX,
         }
     }
 
@@ -53,6 +60,14 @@ impl TimeManagement {
 
     pub fn elapsed(&self) -> Duration {
         self.start.elapsed()
+    }
+
+    pub fn node_limit(&self) -> usize {
+        self.node_limit
+    }
+
+    pub fn set_node_limit(&mut self, node_limit: usize) {
+        self.node_limit = node_limit;
     }
 }
 
@@ -129,6 +144,7 @@ impl Search {
         let mut infinite = false;
         let mut remaining = None;
         let mut movestogo: Option<u32> = None;
+        let mut node_limit = std::usize::MAX;
 
         while let Some(s) = tokens.next() {
             match s {
@@ -156,6 +172,14 @@ impl Search {
                 "infinite" => infinite = true,
                 "movestogo" => {
                     movestogo = tokens.next().unwrap_or("").parse().ok();
+                }
+                "nodes" => {
+                    node_limit = tokens
+                        .next()
+                        .unwrap_or("")
+                        .parse()
+                        .ok()
+                        .unwrap_or(std::usize::MAX);
                 }
                 _ => (),
             }
@@ -185,6 +209,8 @@ impl Search {
                     TimeManagement::from_duration(ideal_think_time.min(max_think_time))
                 }
         }
+
+        think_time.set_node_limit(node_limit);
 
         Self {
             search: manager.into_playout_parallel_async(get_num_threads(), think_time, sender),
