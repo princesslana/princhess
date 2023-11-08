@@ -4,7 +4,7 @@ use std::f32;
 use crate::search::SCALE;
 use crate::search_tree::HotMoveInfo;
 
-pub fn choose_child(moves: &[HotMoveInfo], cpuct: f32, is_root: bool) -> &HotMoveInfo {
+pub fn choose_child(moves: &[HotMoveInfo], cpuct: f32, fpu: i64, is_root: bool) -> &HotMoveInfo {
     let total_visits = moves.iter().map(|v| u64::from(v.visits())).sum::<u64>() + 1;
     let sqrt_total_visits = (total_visits as f32).sqrt();
 
@@ -30,7 +30,7 @@ pub fn choose_child(moves: &[HotMoveInfo], cpuct: f32, is_root: bool) -> &HotMov
         let q = if child_visits > 0 {
             sum_rewards / child_visits
         } else {
-            0
+            fpu
         };
 
         let u = explore_coef * i64::from(policy_evaln) / ((child_visits + 1) * SCALE as i64);
