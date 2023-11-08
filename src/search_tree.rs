@@ -61,6 +61,10 @@ impl SearchNode {
         Self { hots, flag }
     }
 
+    pub fn is_visited(&self) -> bool {
+        self.hots().iter().any(|x| x.visits() > 0)
+    }
+
     pub fn flag(&self) -> Flag {
         self.flag
     }
@@ -198,15 +202,17 @@ impl SearchTree {
 
         previous_table.lookup_into(&state, &mut root_node);
 
-        let mut avg_rewards: Vec<f32> = root_node
-            .hots()
-            .iter()
-            .map(|m| m.average_reward().unwrap_or(-SCALE) / SCALE)
-            .collect();
+        if root_node.is_visited() {
+            let mut avg_rewards: Vec<f32> = root_node
+                .hots()
+                .iter()
+                .map(|m| m.average_reward().unwrap_or(-SCALE) / SCALE)
+                .collect();
 
-        math::softmax(&mut avg_rewards);
+            math::softmax(&mut avg_rewards);
 
-        root_node.update_policy(&avg_rewards);
+            root_node.update_policy(&avg_rewards);
+        }
 
         Self {
             root_state: state,
@@ -319,9 +325,14 @@ impl SearchTree {
 
         // -1 because we don't count the root node
         let depth = path.len() - 1;
-        self.num_nodes.fetch_add(depth, Ordering::Relaxed);
+        let num_nodes = self.num_nodes.fetch_add(depth, Ordering::Relaxed) + depth;
         self.max_depth.fetch_max(depth, Ordering::Relaxed);
         let playouts = self.playouts.fetch_add(1, Ordering::Relaxed) + 1;
+
+        if num_nodes >= time_management.node_limit() {
+            self.print_info(&time_management);
+            return false;
+        }
 
         if playouts % 128 == 0 && time_management.is_after_end() {
             self.print_info(&time_management);
@@ -435,10 +446,6 @@ impl SearchTree {
     fn print_info(&self, time_management: &TimeManagement) {
         let search_time_ms = time_management.elapsed().as_millis();
 
-        if search_time_ms == 0 {
-            return;
-        }
-
         let nodes = self.num_nodes();
         let depth = nodes / self.playouts();
         let sel_depth = self.max_depth();
@@ -448,7 +455,11 @@ impl SearchTree {
             out
         });
 
-        let nps = nodes * 1000 / search_time_ms as usize;
+        let nps = if search_time_ms == 0 {
+            nodes
+        } else {
+            nodes * 1000 / search_time_ms as usize
+        };
 
         let info_str = format!(
             "info depth {} seldepth {} nodes {} nps {} tbhits {} score {} time {} pv{}",
