@@ -282,7 +282,12 @@ impl SearchTree {
             if path.len() >= MAX_PLAYOUT_LENGTH {
                 break;
             }
-            let choice = tree_policy::choose_child(node.hots(), self.cpuct, path.is_empty());
+
+            let fpu = path
+                .last()
+                .map_or(0, |x| -x.sum_rewards() / i64::from(x.visits()));
+
+            let choice = tree_policy::choose_child(node.hots(), self.cpuct, fpu, path.is_empty());
             choice.down();
             path.push(choice);
             state.make_move(&choice.mov);
