@@ -7,9 +7,10 @@ use std::sync::atomic::{AtomicI64, AtomicPtr, AtomicU32, AtomicU64, AtomicUsize,
 
 use crate::arena::Error as ArenaError;
 use crate::evaluation::{self, Flag};
-use crate::math;
 use crate::mcts::{eval_in_cp, ThreadData};
-use crate::options::{get_cpuct, get_cvisits_selection, get_policy_temperature};
+use crate::options::{
+    get_cpuct, get_cvisits_selection, get_policy_temperature, get_policy_temperature_root,
+};
 use crate::search::{to_uci, TimeManagement, SCALE};
 use crate::state::State;
 use crate::transposition_table::{LRAllocator, LRTable, TranspositionTable};
@@ -62,10 +63,6 @@ impl SearchNode {
         Self { hots, flag }
     }
 
-    pub fn is_visited(&self) -> bool {
-        self.hots().iter().any(|x| x.visits() > 0)
-    }
-
     pub fn flag(&self) -> Flag {
         self.flag
     }
@@ -84,15 +81,6 @@ impl SearchNode {
 
     pub fn hots(&self) -> &[HotMoveInfo] {
         unsafe { &*(self.hots) }
-    }
-
-    fn update_policy(&mut self, evals: &[f32]) {
-        let hots = unsafe { &mut *(self.hots.cast_mut()) };
-
-        #[allow(clippy::cast_sign_loss)]
-        for i in 0..hots.len().min(evals.len()) {
-            hots[i].policy = (evals[i].clamp(0., 0.99) * SCALE) as u16;
-        }
     }
 
     pub fn clear_children_links(&self) {
@@ -201,23 +189,11 @@ impl SearchTree {
             &state,
             &tb_hits,
             |sz| root_table.arena().allocator().alloc_slice(sz),
-            1.0,
+            get_policy_temperature_root(),
         )
         .expect("Unable to create root node");
 
         previous_table.lookup_into(&state, &mut root_node);
-
-        if root_node.is_visited() {
-            let mut avg_rewards: Vec<f32> = root_node
-                .hots()
-                .iter()
-                .map(|m| m.average_reward().unwrap_or(-SCALE) / SCALE)
-                .collect();
-
-            math::softmax(&mut avg_rewards, 1.0);
-
-            root_node.update_policy(&avg_rewards);
-        }
 
         Self {
             root_state: state,
