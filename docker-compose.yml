@@ -39,6 +39,25 @@ services:
       - ./builds/princhess-main:/engines/princhess-main
       - ./syzygy:/syzygy:ro
 
+  sprt_gain_5k:
+    build:
+      context: .
+      dockerfile: bin/Dockerfile.cutechess-cli
+    command:
+      -engine cmd=/engines/princhess name=princhess
+      -engine cmd=/engines/princhess-main name=princhess-main
+
+      -each proto=uci tc=inf nodes=5000
+            option.SyzygyPath=/syzygy option.Hash=128 option.Threads=1
+      -sprt elo0=0 elo1=5 alpha=0.05 beta=0.1
+      -openings file=/books/4moves_noob.epd format=epd order=random
+      -games 2 -repeat -rounds 7500
+      -recover -ratinginterval 10 -concurrency 6
+    volumes:
+      - ./target/release/princhess:/engines/princhess
+      - ./builds/princhess-main:/engines/princhess-main
+      - ./syzygy:/syzygy:ro
+
   sprt_gain_ltc:
     build:
       context: .
@@ -141,12 +160,12 @@ services:
       -engine cmd=/engines/princhess-main name=princhess-main
       -engine cmd=/engines/princhess name=princhess- option.
 
-      -each proto=uci tc=8+0.08
+      -each proto=uci tc=inf nodes=5000
             option.SyzygyPath=/syzygy option.Hash=128 option.Threads=1
       -tournament gauntlet
       -openings file=/books/4moves_noob.epd format=epd order=random
-      -games 2 -repeat -rounds 50
-      -recover -ratinginterval 10 -concurrency 6
+      -games 2 -repeat -rounds 250
+      -recover -ratinginterval 100 -concurrency 6
     volumes:
       - ./target/release/princhess:/engines/princhess
       - ./builds/princhess-main:/engines/princhess-main

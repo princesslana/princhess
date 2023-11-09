@@ -71,8 +71,8 @@ pub fn evaluate_state_flag(state: &State, moves: &MoveList) -> Flag {
     state.side_to_move().fold_wb(flag, flag.flip())
 }
 
-pub fn evaluate_policy(state: &State, moves: &MoveList) -> Vec<f32> {
-    run_policy_net(state, moves)
+pub fn evaluate_policy(state: &State, moves: &MoveList, t: f32) -> Vec<f32> {
+    run_policy_net(state, moves, t)
 }
 
 const QAB: f32 = 256. * 256.;
@@ -123,7 +123,7 @@ fn run_eval_net(state: &State) -> f32 {
     (result as f32 / QAB).tanh()
 }
 
-fn run_policy_net(state: &State, moves: &MoveList) -> Vec<f32> {
+fn run_policy_net(state: &State, moves: &MoveList, t: f32) -> Vec<f32> {
     let mut evalns = Vec::with_capacity(moves.len());
 
     if moves.is_empty() {
@@ -143,7 +143,7 @@ fn run_policy_net(state: &State, moves: &MoveList) -> Vec<f32> {
         }
     });
 
-    math::softmax(&mut evalns);
+    math::softmax(&mut evalns, t);
 
     evalns
 }

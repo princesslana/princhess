@@ -1,9 +1,9 @@
-pub fn softmax(arr: &mut [f32]) {
+pub fn softmax(arr: &mut [f32], t: f32) {
     let max = max(arr);
     let mut s = 0.;
 
     for x in &mut *arr {
-        *x = fastapprox::faster::exp(*x - max);
+        *x = fastapprox::faster::exp((*x - max) / t);
         s += *x;
     }
     for x in &mut *arr {

@@ -5,6 +5,7 @@ use std::thread;
 
 use crate::options::{
     set_chess960, set_cpuct, set_cvisits_selection, set_hash_size_mb, set_num_threads,
+    set_policy_temperature,
 };
 use crate::search::Search;
 use crate::search_tree::print_size_list;
@@ -80,6 +81,7 @@ pub fn uci() {
     println!("option name SyzygyPath type string default <empty>");
     println!("option name CPuct type string default 1.85");
     println!("option name CVisitsSelection type string default 0.01");
+    println!("option name PolicyTemperature type string default 1.2");
     println!("option name UCI_Chess960 type check default false");
 
     println!("uciok");
@@ -140,6 +142,7 @@ impl UciOption {
             "hash" => self.set_option(set_hash_size_mb),
             "cpuct" => self.set_option(set_cpuct),
             "cvisitsselection" => self.set_option(set_cvisits_selection),
+            "policytemperature" => self.set_option(set_policy_temperature),
             "uci_chess960" => self.set_option(set_chess960),
             _ => warn!("Badly formatted or unknown option"),
         }

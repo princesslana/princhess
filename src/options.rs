@@ -8,6 +8,7 @@ static HASH_SIZE_MB: AtomicUsize = AtomicUsize::new(16);
 
 static CPUCT: Lazy<RwLock<f32>> = Lazy::new(|| RwLock::new(1.85));
 static CVISITS_SELECTION: Lazy<RwLock<f32>> = Lazy::new(|| RwLock::new(0.01));
+static POLICY_TEMPERATURE: Lazy<RwLock<f32>> = Lazy::new(|| RwLock::new(1.2));
 
 static CHESS960: AtomicBool = AtomicBool::new(false);
 
@@ -45,6 +46,16 @@ pub fn set_cvisits_selection(c: f32) {
 pub fn get_cvisits_selection() -> f32 {
     let cv = CVISITS_SELECTION.read().unwrap();
     *cv
+}
+
+pub fn set_policy_temperature(t: f32) {
+    let mut pt = POLICY_TEMPERATURE.write().unwrap();
+    *pt = t;
+}
+
+pub fn get_policy_temperature() -> f32 {
+    let pt = POLICY_TEMPERATURE.read().unwrap();
+    *pt
 }
 
 pub fn set_chess960(c: bool) {
