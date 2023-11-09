@@ -9,6 +9,7 @@ static HASH_SIZE_MB: AtomicUsize = AtomicUsize::new(16);
 static CPUCT: Lazy<RwLock<f32>> = Lazy::new(|| RwLock::new(1.85));
 static CVISITS_SELECTION: Lazy<RwLock<f32>> = Lazy::new(|| RwLock::new(0.01));
 static POLICY_TEMPERATURE: Lazy<RwLock<f32>> = Lazy::new(|| RwLock::new(1.2));
+static POLICY_TEMPERATURE_ROOT: Lazy<RwLock<f32>> = Lazy::new(|| RwLock::new(3.5));
 
 static CHESS960: AtomicBool = AtomicBool::new(false);
 
@@ -55,6 +56,16 @@ pub fn set_policy_temperature(t: f32) {
 
 pub fn get_policy_temperature() -> f32 {
     let pt = POLICY_TEMPERATURE.read().unwrap();
+    *pt
+}
+
+pub fn set_policy_temperature_root(t: f32) {
+    let mut pt = POLICY_TEMPERATURE_ROOT.write().unwrap();
+    *pt = t;
+}
+
+pub fn get_policy_temperature_root() -> f32 {
+    let pt = POLICY_TEMPERATURE_ROOT.read().unwrap();
     *pt
 }
 
