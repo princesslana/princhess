@@ -9,7 +9,7 @@ use crate::arena::Error as ArenaError;
 use crate::evaluation::{self, Flag};
 use crate::math;
 use crate::mcts::{eval_in_cp, ThreadData};
-use crate::options::{get_cpuct, get_cvisits_selection};
+use crate::options::{get_cpuct, get_cvisits_selection, get_policy_temperature};
 use crate::search::{to_uci, TimeManagement, SCALE};
 use crate::state::State;
 use crate::transposition_table::{LRAllocator, LRTable, TranspositionTable};
@@ -26,6 +26,7 @@ pub struct SearchTree {
     root_state: State,
 
     cpuct: f32,
+    policy_t: f32,
 
     #[allow(dead_code)]
     root_table: TranspositionTable,
@@ -162,6 +163,7 @@ fn create_node<'a, F>(
     state: &State,
     tb_hits: &AtomicUsize,
     alloc_slice: F,
+    policy_t: f32,
 ) -> Result<SearchNode, ArenaError>
 where
     F: FnOnce(usize) -> Result<&'a mut [HotMoveInfo], ArenaError>,
@@ -169,7 +171,7 @@ where
     let moves = state.available_moves();
 
     let state_flag = evaluation::evaluate_state_flag(state, &moves);
-    let move_eval = evaluation::evaluate_policy(state, &moves);
+    let move_eval = evaluation::evaluate_policy(state, &moves, policy_t);
 
     if state_flag.is_tablebase() {
         tb_hits.fetch_add(1, Ordering::Relaxed);
@@ -195,9 +197,12 @@ impl SearchTree {
 
         let root_table = TranspositionTable::for_root();
 
-        let mut root_node = create_node(&state, &tb_hits, |sz| {
-            root_table.arena().allocator().alloc_slice(sz)
-        })
+        let mut root_node = create_node(
+            &state,
+            &tb_hits,
+            |sz| root_table.arena().allocator().alloc_slice(sz),
+            1.0,
+        )
         .expect("Unable to create root node");
 
         previous_table.lookup_into(&state, &mut root_node);
@@ -209,7 +214,7 @@ impl SearchTree {
                 .map(|m| m.average_reward().unwrap_or(-SCALE) / SCALE)
                 .collect();
 
-            math::softmax(&mut avg_rewards);
+            math::softmax(&mut avg_rewards, 1.0);
 
             root_node.update_policy(&avg_rewards);
         }
@@ -218,6 +223,7 @@ impl SearchTree {
             root_state: state,
             root_node,
             cpuct: get_cpuct(),
+            policy_t: get_policy_temperature(),
             root_table,
             ttable: LRTable::new(current_table, previous_table),
             num_nodes: 1.into(),
@@ -387,8 +393,12 @@ impl SearchTree {
             };
         }
 
-        let mut created_here =
-            create_node(state, &self.tb_hits, |sz| tld.allocator.alloc_move_info(sz))?;
+        let mut created_here = create_node(
+            state,
+            &self.tb_hits,
+            |sz| tld.allocator.alloc_move_info(sz),
+            self.policy_t,
+        )?;
 
         self.ttable.lookup_into(state, &mut created_here);
 

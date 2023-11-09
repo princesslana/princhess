@@ -4,6 +4,7 @@ use std::sync::Arc;
 use std::thread::JoinHandle;
 
 use crate::evaluation;
+use crate::options::get_policy_temperature;
 use crate::search::{TimeManagement, SCALE};
 pub use crate::search_tree::*;
 use crate::state::State;
@@ -123,7 +124,8 @@ impl Mcts {
         let root_moves = root_node.hots();
 
         let state_moves = root_state.available_moves();
-        let state_moves_eval = evaluation::evaluate_policy(root_state, &state_moves);
+        let state_moves_eval =
+            evaluation::evaluate_policy(root_state, &state_moves, get_policy_temperature());
 
         let mut moves: Vec<(&HotMoveInfo, f32)> = root_moves.iter().zip(state_moves_eval).collect();
         moves.sort_by_key(|(h, e)| (h.average_reward().unwrap_or(*e) * SCALE) as i64);
