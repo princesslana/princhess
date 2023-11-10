@@ -26,7 +26,7 @@ jobs:
         # Skip macos for now, since ends up with the same filename as ubuntu
         # which means the upload glob needs some more work
         os: ["ubuntu-22.04", "windows-2022"]
-        cpu: ["x64-64-v3"]
+        cpu: ["x86-64-v3"]
 
     runs-on: "${{ matrix.os }}"
     needs: release
