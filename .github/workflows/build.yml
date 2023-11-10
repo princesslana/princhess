@@ -10,7 +10,13 @@ jobs:
   build:
     strategy:
       matrix:
-        os: ["ubuntu-latest", "windows-latest", "macos-latest"]
+        include:
+          - os: ubuntu-22.04
+            cpu: x86-64-v3
+          - os: windows-2022
+            cpu: x86-64-v3
+          - os: macos-13-arm64
+            cpu: apple-m1
 
     runs-on: "${{ matrix.os }}"
 
@@ -19,4 +25,6 @@ jobs:
       - uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
-      - run: cargo build --release
+      - run: cargo rustc --release -- -C target-feature=+crt-static -C target-cpu=$TARGET_CPU
+        env:
+          TARGET_CPU: ${{ matrix.cpu }}

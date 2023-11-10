@@ -11,7 +11,10 @@ fn build_fathom() {
     cc.file("./deps/fathom/src/tbprobe.c");
     cc.include("./deps/fathom/src");
     cc.define("_CRT_SECURE_NO_WARNINGS", None);
-    cc.flag("-march=native");
+
+    let target_cpu = env::var("TARGET_CPU").unwrap_or("native".to_string());
+
+    cc.flag(&format!("-march={}", target_cpu));
 
     // MSVC doesn't support stdatomic.h, so use clang on Windows
     if env::consts::OS == "windows" {
