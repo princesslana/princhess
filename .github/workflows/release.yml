@@ -6,7 +6,7 @@ on:
 
 jobs:
   release:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     outputs:
       upload_url: ${{ steps.create_release.outputs.upload_url }}
     steps:
@@ -25,7 +25,8 @@ jobs:
       matrix:
         # Skip macos for now, since ends up with the same filename as ubuntu
         # which means the upload glob needs some more work
-        os: ["ubuntu-latest", "windows-latest"]
+        os: ["ubuntu-22.04", "windows-2022"]
+        cpu: ["x64-64-v3"]
 
     runs-on: "${{ matrix.os }}"
     needs: release
@@ -38,10 +39,9 @@ jobs:
       - name: Set version
         run: sed -i "s/^version = .*/version = \"$(git describe --tags --dirty --always)\"/" Cargo.toml
         shell: bash
-      - uses: actions-rs/cargo@v1
-        with:
-          command: build
-          args: --release
+      - run: cargo rustc --release -- -C target-feature=+crt-static -C target-cpu=$TARGET_CPU
+        env:
+          TARGET_CPU: ${{ matrix.cpu }}
       - run: ls target/release
       - name: Upload Assets to Release
         uses: csexton/release-asset-action@v2
