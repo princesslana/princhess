@@ -15,8 +15,6 @@ jobs:
             cpu: x86-64-v3
           - os: windows-2022
             cpu: x86-64-v3
-          - os: macos-13-arm64
-            cpu: apple-m1
 
     runs-on: "${{ matrix.os }}"
 
