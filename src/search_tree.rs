@@ -393,12 +393,10 @@ impl SearchTree {
             }
         }
 
-        if let Some(existing) = self.ttable.insert(state, created) {
-            let existing_ptr = (existing as *const SearchNode).cast_mut();
-            choice.child.store(existing_ptr, Ordering::Relaxed);
-            return Ok(existing);
-        }
-        Ok(created)
+        let inserted = self.ttable.insert(state, created);
+        let inserted_ptr = (inserted as *const SearchNode).cast_mut();
+        choice.child.store(inserted_ptr, Ordering::Relaxed);
+        Ok(inserted)
     }
 
     fn finish_playout(path: &[&HotMoveInfo], evaln: i64) {

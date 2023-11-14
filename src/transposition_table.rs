@@ -45,20 +45,17 @@ impl TranspositionTable {
         self.arena.clear();
     }
 
-    pub fn insert<'a>(&'a self, key: &State, value: &'a SearchNode) -> Option<&'a SearchNode> {
+    pub fn insert<'a>(&'a self, key: &State, value: &'a SearchNode) -> &'a SearchNode {
         let hash = key.hash();
-        if hash == 0 {
-            return None;
-        }
 
         if let Some(value_here) = self.table.get(&hash) {
-            unsafe { Some(&*value_here.load(Ordering::Relaxed)) }
+            unsafe { &*value_here.load(Ordering::Relaxed) }
         } else {
             self.table.insert(
                 hash,
                 AtomicPtr::new((value as *const SearchNode).cast_mut()),
             );
-            Some(value)
+            value
         }
     }
 
@@ -105,7 +102,7 @@ impl LRTable {
         self.current_table().arena().full()
     }
 
-    pub fn insert<'a>(&'a self, key: &State, value: &'a SearchNode) -> Option<&'a SearchNode> {
+    pub fn insert<'a>(&'a self, key: &State, value: &'a SearchNode) -> &'a SearchNode {
         self.current_table().insert(key, value)
     }
 
