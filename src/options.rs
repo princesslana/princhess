@@ -6,10 +6,11 @@ use std::sync::RwLock;
 static NUM_THREADS: AtomicUsize = AtomicUsize::new(1);
 static HASH_SIZE_MB: AtomicUsize = AtomicUsize::new(16);
 
-static CPUCT: Lazy<RwLock<f32>> = Lazy::new(|| RwLock::new(1.85));
+static CPUCT: Lazy<RwLock<f32>> = Lazy::new(|| RwLock::new(1.06));
+static CPUCT_ROOT: Lazy<RwLock<f32>> = Lazy::new(|| RwLock::new(3.17));
 static CVISITS_SELECTION: Lazy<RwLock<f32>> = Lazy::new(|| RwLock::new(0.01));
-static POLICY_TEMPERATURE: Lazy<RwLock<f32>> = Lazy::new(|| RwLock::new(1.2));
-static POLICY_TEMPERATURE_ROOT: Lazy<RwLock<f32>> = Lazy::new(|| RwLock::new(3.5));
+static POLICY_TEMPERATURE: Lazy<RwLock<f32>> = Lazy::new(|| RwLock::new(1.29));
+static POLICY_TEMPERATURE_ROOT: Lazy<RwLock<f32>> = Lazy::new(|| RwLock::new(5.25));
 
 static CHESS960: AtomicBool = AtomicBool::new(false);
 
@@ -36,6 +37,16 @@ pub fn set_cpuct(c: f32) {
 
 pub fn get_cpuct() -> f32 {
     let cp = CPUCT.read().unwrap();
+    *cp
+}
+
+pub fn set_cpuct_root(c: f32) {
+    let mut cp = CPUCT_ROOT.write().unwrap();
+    *cp = c;
+}
+
+pub fn get_cpuct_root() -> f32 {
+    let cp = CPUCT_ROOT.read().unwrap();
     *cp
 }
 

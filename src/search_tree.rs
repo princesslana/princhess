@@ -9,7 +9,8 @@ use crate::arena::Error as ArenaError;
 use crate::evaluation::{self, Flag};
 use crate::mcts::{eval_in_cp, ThreadData};
 use crate::options::{
-    get_cpuct, get_cvisits_selection, get_policy_temperature, get_policy_temperature_root,
+    get_cpuct, get_cpuct_root, get_cvisits_selection, get_policy_temperature,
+    get_policy_temperature_root,
 };
 use crate::search::{to_uci, TimeManagement, SCALE};
 use crate::state::State;
@@ -27,6 +28,7 @@ pub struct SearchTree {
     root_state: State,
 
     cpuct: f32,
+    cpuct_root: f32,
     policy_t: f32,
 
     #[allow(dead_code)]
@@ -199,6 +201,7 @@ impl SearchTree {
             root_state: state,
             root_node,
             cpuct: get_cpuct(),
+            cpuct_root: get_cpuct_root(),
             policy_t: get_policy_temperature(),
             root_table,
             ttable: LRTable::new(current_table, previous_table),
@@ -265,11 +268,15 @@ impl SearchTree {
                 break;
             }
 
+            let is_root = path.is_empty();
+
+            let cpuct = if is_root { self.cpuct_root } else { self.cpuct };
+
             let fpu = path
                 .last()
                 .map_or(0, |x| -x.sum_rewards() / i64::from(x.visits()));
 
-            let choice = tree_policy::choose_child(node.hots(), self.cpuct, fpu, path.is_empty());
+            let choice = tree_policy::choose_child(node.hots(), cpuct, fpu, is_root);
             choice.down();
             path.push(choice);
             state.make_move(&choice.mov);
