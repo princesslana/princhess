@@ -139,7 +139,7 @@ services:
       dockerfile: bin/Dockerfile.cutechess-cli
     command:
       -engine cmd=/engines/princhess name=princhess
-      -engine cmd=/engines/princhess-main name=princhess
+      -engine cmd=/engines/princhess-main name=princhess-main
 
       -each proto=uci tc=8+0.08
             option.SyzygyPath=/syzygy option.Hash=128 option.Threads=1
