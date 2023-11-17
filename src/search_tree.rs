@@ -247,6 +247,11 @@ impl SearchTree {
         tld: &'b mut ThreadData<'a>,
         time_management: TimeManagement,
     ) -> bool {
+        if self.root_node.hots().len() == 1 {
+            self.print_info(&time_management);
+            return false;
+        }
+
         let mut state = self.root_state.clone();
         let mut node = &self.root_node;
         let mut path: ArrayVec<&HotMoveInfo, MAX_PLAYOUT_LENGTH> = ArrayVec::new();
@@ -443,7 +448,8 @@ impl SearchTree {
         let search_time_ms = time_management.elapsed().as_millis();
 
         let nodes = self.num_nodes();
-        let depth = nodes / self.playouts();
+        let playouts = self.playouts();
+        let depth = if playouts == 0 { 1 } else { nodes / playouts };
         let sel_depth = self.max_depth();
         let pv = self.principal_variation(depth.max(1));
         let pv_string: String = pv.into_iter().fold(String::new(), |mut out, x| {
