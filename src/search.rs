@@ -130,9 +130,17 @@ impl Search {
             return Self {
                 search: manager.into(),
             };
-        } else if let Some(mv) = tablebase::probe_best_move(state.board()) {
+        } else if let Some((mv, wdl)) = tablebase::probe_best_move(state.board()) {
             let uci_mv = to_uci(&mv);
-            println!("info depth 1 seldepth 1 nodes 1 nps 1 tbhits 1 time 1 pv {uci_mv}");
+
+            let score = match wdl {
+                tablebase::Wdl::Win => 1000,
+                tablebase::Wdl::Loss => -1000,
+                tablebase::Wdl::Draw => 0,
+            };
+            println!(
+                "info depth 1 seldepth 1 nodes 1 nps 1 tbhits 1 score cp {score} time 1 pv {uci_mv}"
+            );
             println!("bestmove {uci_mv}");
             return Self {
                 search: manager.into(),

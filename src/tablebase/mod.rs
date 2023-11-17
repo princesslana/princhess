@@ -72,7 +72,7 @@ pub fn probe_wdl(pos: &Chess) -> Option<Wdl> {
     }
 }
 
-pub fn probe_best_move(pos: &Chess) -> Option<Move> {
+pub fn probe_best_move(pos: &Chess) -> Option<(Move, Wdl)> {
     let b = pos.board();
 
     if b.occupied().count() > max_pieces() {
@@ -104,6 +104,12 @@ pub fn probe_best_move(pos: &Chess) -> Option<Move> {
             return None;
         }
 
+        let wdl = match (root & bindings::TB_RESULT_WDL_MASK) >> bindings::TB_RESULT_WDL_SHIFT {
+            bindings::TB_WIN => Wdl::Win,
+            bindings::TB_LOSS => Wdl::Loss,
+            _ => Wdl::Draw,
+        };
+
         let from =
             Square::new((root & bindings::TB_RESULT_FROM_MASK) >> bindings::TB_RESULT_FROM_SHIFT);
         let to = Square::new((root & bindings::TB_RESULT_TO_MASK) >> bindings::TB_RESULT_TO_SHIFT);
@@ -120,7 +126,7 @@ pub fn probe_best_move(pos: &Chess) -> Option<Move> {
 
         for m in pos.legal_moves() {
             if m.from() == Some(from) && m.to() == to && m.promotion() == promotion_role {
-                return Some(m);
+                return Some((m, wdl));
             }
         }
     }
