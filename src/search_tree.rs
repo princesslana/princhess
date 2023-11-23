@@ -317,8 +317,7 @@ impl SearchTree {
 
         Self::finish_playout(&path, evaln);
 
-        // -1 because we don't count the root node
-        let depth = path.len() - 1;
+        let depth = path.len();
         let num_nodes = self.num_nodes.fetch_add(depth, Ordering::Relaxed) + depth;
         self.max_depth.fetch_max(depth, Ordering::Relaxed);
         let playouts = self.playouts.fetch_add(1, Ordering::Relaxed) + 1;
