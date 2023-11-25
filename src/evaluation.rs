@@ -36,7 +36,7 @@ impl Flag {
 }
 
 pub fn evaluate_state(state: &State) -> i64 {
-    return (run_eval_net(state) * SCALE) as i64;
+    (run_eval_net(state) * SCALE) as i64
 }
 
 pub fn evaluate_state_flag(state: &State, moves: &MoveList) -> Flag {

@@ -147,6 +147,28 @@ impl HotMoveInfo {
             Ordering::Relaxed,
         );
     }
+
+    pub fn child(&self) -> Option<&SearchNode> {
+        let child = self.child.load(Ordering::Relaxed).cast_const();
+        if child.is_null() {
+            None
+        } else {
+            unsafe { Some(&*child) }
+        }
+    }
+
+    // Returns None if the child was set, or Some(child) if it was already set.
+    pub fn set_or_get_child<'a>(&'a self, new_child: &'a SearchNode) -> Option<&'a SearchNode> {
+        match self.child.compare_exchange(
+            null_mut(),
+            (new_child as *const SearchNode).cast_mut(),
+            Ordering::Relaxed,
+            Ordering::Relaxed,
+        ) {
+            Ok(_) => None,
+            Err(existing) => unsafe { Some(&*existing) },
+        }
+    }
 }
 
 fn create_node<'a, F>(
@@ -342,7 +364,7 @@ impl SearchTree {
     fn descend<'a>(
         &'a self,
         state: &State,
-        choice: &HotMoveInfo,
+        choice: &'a HotMoveInfo,
         tld: &mut ThreadData<'a>,
     ) -> Result<&'a SearchNode, ArenaError> {
         if state.is_repetition()
@@ -352,23 +374,17 @@ impl SearchTree {
             return Ok(&DRAW_NODE);
         }
 
-        let child = choice.child.load(Ordering::Relaxed).cast_const();
-        if !child.is_null() {
-            return unsafe { Ok(&*child) };
+        // If the child is already there, return it.
+        if let Some(child) = choice.child() {
+            return Ok(child);
         }
 
+        // Lookup to see if we already have this position in the ttable
         if let Some(node) = self.ttable.lookup(state) {
-            return match choice.child.compare_exchange(
-                null_mut(),
-                (node as *const SearchNode).cast_mut(),
-                Ordering::Relaxed,
-                Ordering::Relaxed,
-            ) {
-                Ok(_) => Ok(node),
-                Err(_) => unsafe { Ok(&*child) },
-            };
-        }
+            return Ok(choice.set_or_get_child(node).unwrap_or(node));
+        };
 
+        // Create the child
         let mut created_here = create_node(
             state,
             &self.tb_hits,
@@ -381,16 +397,9 @@ impl SearchTree {
         let created = tld.allocator.alloc_node()?;
 
         *created = created_here;
-        let other_child = choice.child.compare_exchange(
-            null_mut(),
-            created as *mut _,
-            Ordering::Relaxed,
-            Ordering::Relaxed,
-        );
-        if let Err(v) = other_child {
-            unsafe {
-                return Ok(&*v);
-            }
+
+        if let Some(node) = choice.set_or_get_child(created) {
+            return Ok(node);
         }
 
         let inserted = self.ttable.insert(state, created);
