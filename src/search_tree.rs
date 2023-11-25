@@ -1,5 +1,5 @@
 use arrayvec::ArrayVec;
-use shakmaty::{Color, Position};
+use shakmaty::Position;
 use std::fmt::Write;
 use std::mem;
 use std::ptr::null_mut;
@@ -309,12 +309,6 @@ impl SearchTree {
             Flag::Standard => evaln,
         };
 
-        let last_move_was_black = state.side_to_move() == Color::White;
-
-        if last_move_was_black {
-            evaln = -evaln;
-        };
-
         Self::finish_playout(&path, evaln);
 
         let depth = path.len();
@@ -406,7 +400,7 @@ impl SearchTree {
     }
 
     fn finish_playout(path: &[&HotMoveInfo], evaln: i64) {
-        let mut evaln_value = evaln;
+        let mut evaln_value = -evaln;
         for move_info in path.iter().rev() {
             move_info.up(evaln_value);
             evaln_value = -evaln_value;

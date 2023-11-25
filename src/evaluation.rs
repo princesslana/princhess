@@ -10,6 +10,7 @@ use crate::tablebase::{self, Wdl};
 #[derive(Clone, Copy, Debug)]
 pub enum Flag {
     Standard,
+    #[allow(dead_code)] // Turns out we don't need it, but feels incomplete without it
     TerminalWin,
     TerminalDraw,
     TerminalLoss,
@@ -19,16 +20,6 @@ pub enum Flag {
 }
 
 impl Flag {
-    pub fn flip(self) -> Self {
-        match self {
-            Flag::TerminalWin => Flag::TerminalLoss,
-            Flag::TerminalLoss => Flag::TerminalWin,
-            Flag::TablebaseWin => Flag::TablebaseLoss,
-            Flag::TablebaseLoss => Flag::TablebaseWin,
-            _ => self,
-        }
-    }
-
     pub fn is_terminal(self) -> bool {
         matches!(
             self,
@@ -45,14 +36,11 @@ impl Flag {
 }
 
 pub fn evaluate_state(state: &State) -> i64 {
-    let state_evaluation = (run_eval_net(state) * SCALE) as i64;
-    state
-        .side_to_move()
-        .fold_wb(state_evaluation, -state_evaluation)
+    return (run_eval_net(state) * SCALE) as i64;
 }
 
 pub fn evaluate_state_flag(state: &State, moves: &MoveList) -> Flag {
-    let flag = if moves.is_empty() {
+    if moves.is_empty() {
         if state.board().is_check() {
             Flag::TerminalLoss
         } else {
@@ -66,9 +54,7 @@ pub fn evaluate_state_flag(state: &State, moves: &MoveList) -> Flag {
         }
     } else {
         Flag::Standard
-    };
-
-    state.side_to_move().fold_wb(flag, flag.flip())
+    }
 }
 
 pub fn evaluate_policy(state: &State, moves: &MoveList, t: f32) -> Vec<f32> {
