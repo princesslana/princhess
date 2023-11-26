@@ -100,7 +100,7 @@ impl Mcts {
         self.search_tree
             .principal_variation(num_moves)
             .into_iter()
-            .map(HotMoveInfo::get_move)
+            .map(MoveEdge::get_move)
             .cloned()
             .collect()
     }
@@ -127,7 +127,7 @@ impl Mcts {
         let state_moves_eval =
             evaluation::evaluate_policy(root_state, &state_moves, get_policy_temperature());
 
-        let mut moves: Vec<(&HotMoveInfo, f32)> = root_moves.iter().zip(state_moves_eval).collect();
+        let mut moves: Vec<(&MoveEdge, f32)> = root_moves.iter().zip(state_moves_eval).collect();
         moves.sort_by_key(|(h, e)| (h.average_reward().unwrap_or(*e) * SCALE) as i64);
         for (mov, e) in moves {
             println!(

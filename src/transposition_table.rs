@@ -5,10 +5,10 @@ use std::sync::{Arc, Mutex};
 
 use crate::arena::{Allocator, Arena, Error as ArenaError};
 use crate::options::get_hash_size_mb;
-use crate::search_tree::{HotMoveInfo, SearchNode};
+use crate::search_tree::{MoveEdge, PositionNode};
 use crate::state::State;
 
-type Table = DashMap<u64, AtomicPtr<SearchNode>, BuildNoHashHasher<u64>>;
+type Table = DashMap<u64, AtomicPtr<PositionNode>, BuildNoHashHasher<u64>>;
 
 pub struct TranspositionTable {
     table: Table,
@@ -45,7 +45,7 @@ impl TranspositionTable {
         self.arena.clear();
     }
 
-    pub fn insert<'a>(&'a self, key: &State, value: &'a SearchNode) -> &'a SearchNode {
+    pub fn insert<'a>(&'a self, key: &State, value: &'a PositionNode) -> &'a PositionNode {
         let hash = key.hash();
 
         if let Some(value_here) = self.table.get(&hash) {
@@ -53,13 +53,13 @@ impl TranspositionTable {
         } else {
             self.table.insert(
                 hash,
-                AtomicPtr::new((value as *const SearchNode).cast_mut()),
+                AtomicPtr::new((value as *const PositionNode).cast_mut()),
             );
             value
         }
     }
 
-    pub fn lookup<'a>(&'a self, key: &State) -> Option<&'a SearchNode> {
+    pub fn lookup<'a>(&'a self, key: &State) -> Option<&'a PositionNode> {
         let hash = key.hash();
 
         self.table
@@ -67,7 +67,7 @@ impl TranspositionTable {
             .map(|v| unsafe { &*v.load(Ordering::Relaxed) })
     }
 
-    pub fn lookup_into(&self, state: &State, dest: &mut SearchNode) {
+    pub fn lookup_into(&self, state: &State, dest: &mut PositionNode) {
         if let Some(src) = self.lookup(state) {
             dest.set_flag(src.flag());
 
@@ -102,15 +102,15 @@ impl LRTable {
         self.current_table().arena().full()
     }
 
-    pub fn insert<'a>(&'a self, key: &State, value: &'a SearchNode) -> &'a SearchNode {
+    pub fn insert<'a>(&'a self, key: &State, value: &'a PositionNode) -> &'a PositionNode {
         self.current_table().insert(key, value)
     }
 
-    pub fn lookup<'a>(&'a self, key: &State) -> Option<&'a SearchNode> {
+    pub fn lookup<'a>(&'a self, key: &State) -> Option<&'a PositionNode> {
         self.current_table().lookup(key)
     }
 
-    pub fn lookup_into(&self, state: &State, dest: &mut SearchNode) {
+    pub fn lookup_into(&self, state: &State, dest: &mut PositionNode) {
         self.previous_table().lookup_into(state, dest);
     }
 
@@ -188,7 +188,7 @@ impl<'a> LRAllocator<'a> {
         self.is_left_current.load(Ordering::Relaxed)
     }
 
-    pub fn alloc_node(&self) -> Result<&'a mut SearchNode, ArenaError> {
+    pub fn alloc_node(&self) -> Result<&'a mut PositionNode, ArenaError> {
         if self.is_left_current() {
             self.left.alloc_one()
         } else {
@@ -196,7 +196,7 @@ impl<'a> LRAllocator<'a> {
         }
     }
 
-    pub fn alloc_move_info(&self, sz: usize) -> Result<&'a mut [HotMoveInfo], ArenaError> {
+    pub fn alloc_move_info(&self, sz: usize) -> Result<&'a mut [MoveEdge], ArenaError> {
         if self.is_left_current() {
             self.left.alloc_slice(sz)
         } else {
