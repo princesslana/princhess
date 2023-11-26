@@ -24,7 +24,7 @@ const VIRTUAL_LOSS: i64 = SCALE as i64;
 /// You're not intended to use this class (use an `MctsManager` instead),
 /// but you can use it if you want to manage the threads yourself.
 pub struct SearchTree {
-    root_node: SearchNode,
+    root_node: PositionNode,
     root_state: State,
 
     cpuct: f32,
@@ -42,26 +42,26 @@ pub struct SearchTree {
     next_info: AtomicU64,
 }
 
-pub struct HotMoveInfo {
+pub struct MoveEdge {
     sum_evaluations: AtomicI64,
     visits: AtomicU32,
     policy: u16,
     mov: shakmaty::Move,
-    child: AtomicPtr<SearchNode>,
+    child: AtomicPtr<PositionNode>,
 }
 
-pub struct SearchNode {
-    hots: *const [HotMoveInfo],
+pub struct PositionNode {
+    hots: *const [MoveEdge],
     flag: Flag,
 }
 
-unsafe impl Sync for SearchNode {}
+unsafe impl Sync for PositionNode {}
 
-static DRAW_NODE: SearchNode = SearchNode::new(&[], Flag::TerminalDraw);
-static UNEXPANDED_NODE: SearchNode = SearchNode::new(&[], Flag::Standard);
+static DRAW_NODE: PositionNode = PositionNode::new(&[], Flag::TerminalDraw);
+static UNEXPANDED_NODE: PositionNode = PositionNode::new(&[], Flag::Standard);
 
-impl SearchNode {
-    const fn new(hots: &[HotMoveInfo], flag: Flag) -> Self {
+impl PositionNode {
+    const fn new(hots: &[MoveEdge], flag: Flag) -> Self {
         Self { hots, flag }
     }
 
@@ -81,7 +81,7 @@ impl SearchNode {
         self.flag.is_tablebase()
     }
 
-    pub fn hots(&self) -> &[HotMoveInfo] {
+    pub fn hots(&self) -> &[MoveEdge] {
         unsafe { &*(self.hots) }
     }
 
@@ -94,7 +94,7 @@ impl SearchNode {
     }
 }
 
-impl HotMoveInfo {
+impl MoveEdge {
     fn new(policy: u16, mov: shakmaty::Move) -> Self {
         Self {
             policy,
@@ -139,7 +139,7 @@ impl HotMoveInfo {
         self.sum_evaluations.fetch_add(delta, Ordering::Relaxed);
     }
 
-    pub fn replace(&self, other: &HotMoveInfo) {
+    pub fn replace(&self, other: &MoveEdge) {
         self.visits
             .store(other.visits.load(Ordering::Relaxed), Ordering::Relaxed);
         self.sum_evaluations.store(
@@ -148,7 +148,7 @@ impl HotMoveInfo {
         );
     }
 
-    pub fn child(&self) -> Option<&SearchNode> {
+    pub fn child(&self) -> Option<&PositionNode> {
         let child = self.child.load(Ordering::Relaxed).cast_const();
         if child.is_null() {
             None
@@ -158,10 +158,10 @@ impl HotMoveInfo {
     }
 
     // Returns None if the child was set, or Some(child) if it was already set.
-    pub fn set_or_get_child<'a>(&'a self, new_child: &'a SearchNode) -> Option<&'a SearchNode> {
+    pub fn set_or_get_child<'a>(&'a self, new_child: &'a PositionNode) -> Option<&'a PositionNode> {
         match self.child.compare_exchange(
             null_mut(),
-            (new_child as *const SearchNode).cast_mut(),
+            (new_child as *const PositionNode).cast_mut(),
             Ordering::Relaxed,
             Ordering::Relaxed,
         ) {
@@ -176,9 +176,9 @@ fn create_node<'a, F>(
     tb_hits: &AtomicUsize,
     alloc_slice: F,
     policy_t: f32,
-) -> Result<SearchNode, ArenaError>
+) -> Result<PositionNode, ArenaError>
 where
-    F: FnOnce(usize) -> Result<&'a mut [HotMoveInfo], ArenaError>,
+    F: FnOnce(usize) -> Result<&'a mut [MoveEdge], ArenaError>,
 {
     let moves = state.available_moves();
 
@@ -193,10 +193,10 @@ where
 
     #[allow(clippy::cast_sign_loss)]
     for (i, x) in hots.iter_mut().enumerate() {
-        *x = HotMoveInfo::new((move_eval[i] * SCALE) as u16, moves[i].clone());
+        *x = MoveEdge::new((move_eval[i] * SCALE) as u16, moves[i].clone());
     }
 
-    Ok(SearchNode::new(hots, state_flag))
+    Ok(PositionNode::new(hots, state_flag))
 }
 
 impl SearchTree {
@@ -271,7 +271,7 @@ impl SearchTree {
     ) -> bool {
         let mut state = self.root_state.clone();
         let mut node = &self.root_node;
-        let mut path: ArrayVec<&HotMoveInfo, MAX_PLAYOUT_LENGTH> = ArrayVec::new();
+        let mut path: ArrayVec<&MoveEdge, MAX_PLAYOUT_LENGTH> = ArrayVec::new();
         let mut evaln = 0;
         loop {
             {
@@ -373,9 +373,9 @@ impl SearchTree {
     fn descend<'a>(
         &'a self,
         state: &State,
-        choice: &'a HotMoveInfo,
+        choice: &'a MoveEdge,
         tld: &mut ThreadData<'a>,
-    ) -> Result<&'a SearchNode, ArenaError> {
+    ) -> Result<&'a PositionNode, ArenaError> {
         // If the child is already there, return it.
         if let Some(child) = choice.child() {
             return Ok(child);
@@ -405,12 +405,12 @@ impl SearchTree {
         }
 
         let inserted = self.ttable.insert(state, created);
-        let inserted_ptr = (inserted as *const SearchNode).cast_mut();
+        let inserted_ptr = (inserted as *const PositionNode).cast_mut();
         choice.child.store(inserted_ptr, Ordering::Relaxed);
         Ok(inserted)
     }
 
-    fn finish_playout(path: &[&HotMoveInfo], evaln: i64) {
+    fn finish_playout(path: &[&MoveEdge], evaln: i64) {
         let mut evaln_value = -evaln;
         for move_info in path.iter().rev() {
             move_info.up(evaln_value);
@@ -422,11 +422,11 @@ impl SearchTree {
         &self.root_state
     }
 
-    pub fn root_node(&self) -> &SearchNode {
+    pub fn root_node(&self) -> &PositionNode {
         &self.root_node
     }
 
-    pub fn principal_variation(&self, num_moves: usize) -> Vec<&HotMoveInfo> {
+    pub fn principal_variation(&self, num_moves: usize) -> Vec<&MoveEdge> {
         let mut result = Vec::new();
         let mut crnt = &self.root_node;
         while !crnt.hots().is_empty() && result.len() < num_moves {
@@ -486,10 +486,10 @@ impl SearchTree {
     }
 }
 
-fn select_child_after_search(children: &[HotMoveInfo]) -> &HotMoveInfo {
+fn select_child_after_search(children: &[MoveEdge]) -> &MoveEdge {
     let k = get_cvisits_selection();
 
-    let reward = |child: &HotMoveInfo| {
+    let reward = |child: &MoveEdge| {
         let visits = child.visits();
 
         if visits == 0 {
@@ -517,8 +517,8 @@ fn select_child_after_search(children: &[HotMoveInfo]) -> &HotMoveInfo {
 
 pub fn print_size_list() {
     println!(
-        "info string SearchNode {} HotMoveInfo {}",
-        mem::size_of::<SearchNode>(),
-        mem::size_of::<HotMoveInfo>(),
+        "info string PositionNode {} MoveEdge {}",
+        mem::size_of::<PositionNode>(),
+        mem::size_of::<MoveEdge>(),
     );
 }
