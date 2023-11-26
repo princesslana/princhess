@@ -309,6 +309,15 @@ impl SearchTree {
                 break;
             }
 
+            if state.is_repetition()
+                || state.drawn_by_fifty_move_rule()
+                || state.board().is_insufficient_material()
+            {
+                evaln = 0;
+                node = &DRAW_NODE;
+                break;
+            }
+
             let new_node = match self.descend(&state, choice, tld) {
                 Ok(r) => r,
                 Err(ArenaError::Full) => {
@@ -367,13 +376,6 @@ impl SearchTree {
         choice: &'a HotMoveInfo,
         tld: &mut ThreadData<'a>,
     ) -> Result<&'a SearchNode, ArenaError> {
-        if state.is_repetition()
-            || state.drawn_by_fifty_move_rule()
-            || state.board().is_insufficient_material()
-        {
-            return Ok(&DRAW_NODE);
-        }
-
         // If the child is already there, return it.
         if let Some(child) = choice.child() {
             return Ok(child);
