@@ -59,53 +59,111 @@ pub fn evaluate_policy(state: &State, moves: &MoveList, t: f32) -> Vec<f32> {
     run_policy_net(state, moves, t)
 }
 
-const QAB: f32 = 256. * 256.;
-
-const STATE_NUMBER_INPUTS: usize = 768 * 2;
-const NUMBER_HIDDEN: usize = 128;
-const NUMBER_OUTPUTS: usize = 1;
-
-static EVAL_HIDDEN_BIAS: [i32; NUMBER_HIDDEN] = include!("model/hidden_bias");
-
-static EVAL_HIDDEN_WEIGHTS: [[i16; NUMBER_HIDDEN]; STATE_NUMBER_INPUTS / 2] =
-    include!("model/hidden_weights");
-
-static EVAL_OUTPUT_WEIGHTS: [[i16; NUMBER_HIDDEN * 2]; NUMBER_OUTPUTS] =
-    include!("model/output_weights");
-
-static EVAL_OUTPUT_BIAS: [i16; NUMBER_OUTPUTS] = include!("model/output_bias");
+const HIDDEN: usize = 768;
+const QA: i32 = 255;
+const QB: i32 = 64;
+const QAB: i32 = QA * QB;
 
 const POLICY_NUMBER_INPUTS: usize = state::NUMBER_FEATURES;
 
 #[allow(clippy::excessive_precision, clippy::unreadable_literal)]
 static POLICY_WEIGHTS: [[f32; POLICY_NUMBER_INPUTS]; 384] = include!("policy/output_weights");
+#[repr(C)]
+struct EvalNet {
+    hidden_weights: [Accumulator; 768],
+    hidden_bias: Accumulator,
+    output_weights: [Accumulator; 2],
+    output_bias: i16,
+}
+
+/*
+static EVAL_NET: Lazy<EvalNet> = Lazy::new(|| EvalNet::from_slices(
+    include!("model/hidden_weights"),
+    include!("model/hidden_bias"),
+    include!("model/output_weights"),
+    include!("model/output_bias")[0],
+));
+*/
+
+static EVAL_NET: EvalNet = unsafe { std::mem::transmute(*include_bytes!("model/altair-net.bin")) };
+
+impl EvalNet {
+    pub fn from_slices(
+        hw: [[i16; HIDDEN]; 768],
+        hb: [i16; HIDDEN],
+        ow: [[i16; HIDDEN * 2]; 1],
+        ob: i16,
+    ) -> Self {
+        let mut hidden_weights = [Accumulator::default(); 768];
+        for (i, h) in hidden_weights.iter_mut().enumerate() {
+            h.vals.copy_from_slice(&hw[i]);
+        }
+
+        let mut output_weights = [Accumulator::default(); 2];
+        output_weights[0].vals.copy_from_slice(&ow[0][..HIDDEN]);
+        output_weights[1].vals.copy_from_slice(&ow[0][HIDDEN..]);
+
+        Self {
+            hidden_weights,
+            hidden_bias: Accumulator { vals: hb },
+            output_weights,
+            output_bias: ob,
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+#[repr(C, align(64))]
+struct Accumulator {
+    vals: [i16; HIDDEN],
+}
+
+impl Accumulator {
+    pub fn set(&mut self, idx: usize) {
+        for (i, d) in self.vals.iter_mut().zip(&EVAL_NET.hidden_weights[idx].vals) {
+            *i += *d;
+        }
+    }
+}
+
+impl Default for Accumulator {
+    fn default() -> Self {
+        EVAL_NET.hidden_bias
+    }
+}
+
+fn activate(x: i16) -> i32 {
+    i32::from(x).clamp(0, QA)
+}
 
 fn run_eval_net(state: &State) -> f32 {
-    let mut hidden_layer = [0; NUMBER_HIDDEN * 2];
-
-    hidden_layer[..NUMBER_HIDDEN].copy_from_slice(&EVAL_HIDDEN_BIAS);
-    hidden_layer[NUMBER_HIDDEN..].copy_from_slice(&EVAL_HIDDEN_BIAS);
+    let mut acc_stm = Accumulator::default();
+    let mut acc_nstm = Accumulator::default();
 
     state.state_features_map(|idx| {
         if idx < 768 {
-            for (j, l) in hidden_layer[..NUMBER_HIDDEN].iter_mut().enumerate() {
-                *l += i32::from(EVAL_HIDDEN_WEIGHTS[idx][j]);
-            }
+            acc_stm.set(idx);
         } else {
-            for (j, l) in hidden_layer[NUMBER_HIDDEN..].iter_mut().enumerate() {
-                *l += i32::from(EVAL_HIDDEN_WEIGHTS[idx - 768][j]);
-            }
+            acc_nstm.set(idx - 768);
         }
     });
 
-    let mut result: i32 = i32::from(EVAL_OUTPUT_BIAS[0]);
-    let weights = EVAL_OUTPUT_WEIGHTS[0];
+    let mut result: i32 = i32::from(EVAL_NET.output_bias);
 
-    for i in 0..hidden_layer.len() {
-        result += i32::from(weights[i]) * hidden_layer[i].max(0);
+    for (&x, &w) in acc_stm.vals.iter().zip(&EVAL_NET.output_weights[0].vals) {
+        result += activate(x) * i32::from(w);
     }
 
-    (result as f32 / QAB).tanh()
+    for (&x, &w) in acc_nstm.vals.iter().zip(&EVAL_NET.output_weights[1].vals) {
+        result += activate(x) * i32::from(w);
+    }
+
+    //_(result as f32 / QAB).tanh()
+    let cp = (result * 400 / QAB) as f32;
+
+    let uniform = 1.0 / (1.0 + (-cp / 400.).exp());
+
+    uniform * 2. - 1.
 }
 
 fn run_policy_net(state: &State, moves: &MoveList, t: f32) -> Vec<f32> {

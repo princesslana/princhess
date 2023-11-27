@@ -310,7 +310,10 @@ impl State {
             let role_idx = 64 * (role as usize - 1);
 
             f(OFFSET_PERSPECTIVE_STM + [0, 384][side_idx] + role_idx + sq as usize);
-            f(OFFSET_PERSPECTIVE_NSTM + [384, 0][side_idx] + role_idx + sq.flip_vertical() as usize);
+            f(OFFSET_PERSPECTIVE_NSTM
+                + [384, 0][side_idx]
+                + role_idx
+                + sq.flip_vertical() as usize);
         }
     }
 
