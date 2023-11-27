@@ -1,6 +1,4 @@
 use shakmaty::{MoveList, Position};
-use std::mem::{self, MaybeUninit};
-use std::ptr;
 
 use crate::math;
 use crate::search::SCALE;
@@ -63,17 +61,19 @@ pub fn evaluate_policy(state: &State, moves: &MoveList, t: f32) -> Vec<f32> {
 
 const QAB: f32 = 256. * 256.;
 
-const STATE_NUMBER_INPUTS: usize = state::NUMBER_FEATURES;
-const NUMBER_HIDDEN: usize = 256;
+const STATE_NUMBER_INPUTS: usize = 768 * 2;
+const NUMBER_HIDDEN: usize = 128;
 const NUMBER_OUTPUTS: usize = 1;
 
 static EVAL_HIDDEN_BIAS: [i32; NUMBER_HIDDEN] = include!("model/hidden_bias");
 
-static EVAL_HIDDEN_WEIGHTS: [[i16; NUMBER_HIDDEN]; STATE_NUMBER_INPUTS] =
+static EVAL_HIDDEN_WEIGHTS: [[i16; NUMBER_HIDDEN]; STATE_NUMBER_INPUTS / 2] =
     include!("model/hidden_weights");
 
-static EVAL_OUTPUT_WEIGHTS: [[i16; NUMBER_HIDDEN]; NUMBER_OUTPUTS] =
+static EVAL_OUTPUT_WEIGHTS: [[i16; NUMBER_HIDDEN * 2]; NUMBER_OUTPUTS] =
     include!("model/output_weights");
+
+static EVAL_OUTPUT_BIAS: [i16; NUMBER_OUTPUTS] = include!("model/output_bias");
 
 const POLICY_NUMBER_INPUTS: usize = state::NUMBER_FEATURES;
 
@@ -81,25 +81,24 @@ const POLICY_NUMBER_INPUTS: usize = state::NUMBER_FEATURES;
 static POLICY_WEIGHTS: [[f32; POLICY_NUMBER_INPUTS]; 384] = include!("policy/output_weights");
 
 fn run_eval_net(state: &State) -> f32 {
-    let mut hidden_layer: [i32; NUMBER_HIDDEN] = unsafe {
-        let mut out: [MaybeUninit<i32>; NUMBER_HIDDEN] = MaybeUninit::uninit().assume_init();
+    let mut hidden_layer = [0; NUMBER_HIDDEN * 2];
 
-        ptr::copy_nonoverlapping(
-            EVAL_HIDDEN_BIAS.as_ptr(),
-            out.as_mut_ptr().cast::<i32>(),
-            NUMBER_HIDDEN,
-        );
-
-        mem::transmute(out)
-    };
+    hidden_layer[..NUMBER_HIDDEN].copy_from_slice(&EVAL_HIDDEN_BIAS);
+    hidden_layer[NUMBER_HIDDEN..].copy_from_slice(&EVAL_HIDDEN_BIAS);
 
     state.state_features_map(|idx| {
-        for (j, l) in hidden_layer.iter_mut().enumerate() {
-            *l += i32::from(EVAL_HIDDEN_WEIGHTS[idx][j]);
+        if idx < 768 {
+            for (j, l) in hidden_layer[..NUMBER_HIDDEN].iter_mut().enumerate() {
+                *l += i32::from(EVAL_HIDDEN_WEIGHTS[idx][j]);
+            }
+        } else {
+            for (j, l) in hidden_layer[NUMBER_HIDDEN..].iter_mut().enumerate() {
+                *l += i32::from(EVAL_HIDDEN_WEIGHTS[idx - 768][j]);
+            }
         }
     });
 
-    let mut result: i32 = 0;
+    let mut result: i32 = i32::from(EVAL_OUTPUT_BIAS[0]);
     let weights = EVAL_OUTPUT_WEIGHTS[0];
 
     for i in 0..hidden_layer.len() {

@@ -17,7 +17,7 @@ use crate::tablebase::{self, Wdl};
 
 const NUM_SAMPLES: f64 = 16.;
 
-const NUMBER_TRAINING_FEATURES: usize = 2304;
+const NUMBER_TRAINING_FEATURES: usize = 768 * 2;
 
 #[derive(Copy, Clone, PartialEq, Eq)]
 pub enum GameResult {
@@ -178,7 +178,7 @@ impl Visitor for ValueDataGenerator {
                 move_features[state.move_to_index(&made)] = 1;
 
                 let mut f_vec =
-                    Vec::with_capacity(1 + state::NUMBER_MOVE_IDX + state::NUMBER_FEATURES);
+                    Vec::with_capacity(1 + state::NUMBER_MOVE_IDX + NUMBER_TRAINING_FEATURES);
                 f_vec.extend_from_slice(&move_features);
                 f_vec.extend_from_slice(&board_features);
 

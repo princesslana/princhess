@@ -11,6 +11,7 @@ from training import policy_loss, policy_acc
 
 np_config.enable_numpy_behavior()
 
+
 def write_coefs(file, coefs):
     numpy.set_printoptions(threshold=numpy.inf)
 
@@ -33,15 +34,16 @@ def export_state(file):
     if not os.path.isdir(output_folder):
         os.mkdir(output_folder)
 
-    (hidden_weights, hidden_bias) = model.layers[0].get_weights()
+    (hidden_weights, hidden_bias) = model.layers[3].get_weights()
     write_coefs(os.path.join(output_folder, f"hidden_weights"), q(256, hidden_weights))
     write_coefs(os.path.join(output_folder, f"hidden_bias"), q(256, hidden_bias))
 
-    (output_weights,) = model.layers[1].get_weights()
+    (output_weights, output_bias) = model.layers[5].get_weights()
     write_coefs(
         os.path.join(output_folder, "output_weights"),
         numpy.transpose(q(256, output_weights)),
     )
+    write_coefs(os.path.join(output_folder, "output_bias"), q(256, output_bias))
 
 
 def export_policy(file):

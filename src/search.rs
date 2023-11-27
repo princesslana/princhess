@@ -228,6 +228,10 @@ impl Search {
     pub fn print_move_list(&self) {
         self.search.get_manager().print_move_list();
     }
+
+    pub fn print_features(&self) {
+        self.search.get_manager().print_features();
+    }
 }
 
 pub fn to_uci(mov: &Move) -> String {

@@ -16,6 +16,9 @@ const OFFSET_POSITION: usize = 0;
 const OFFSET_THREATS: usize = 768;
 const OFFSET_DEFENDS: usize = 768 * 2;
 
+const OFFSET_PERSPECTIVE_STM: usize = 0;
+const OFFSET_PERSPECTIVE_NSTM: usize = 768;
+
 pub const NUMBER_FEATURES: usize = 768 * 3;
 pub const NUMBER_MOVE_IDX: usize = 384;
 
@@ -292,11 +295,23 @@ impl State {
         }
     }
 
-    pub fn state_features_map<F>(&self, f: F)
+    pub fn state_features_map<F>(&self, mut f: F)
     where
         F: FnMut(usize),
     {
-        self.features_map(f);
+        let stm = self.side_to_move();
+        let b = self.board.board();
+
+        for sq in b.occupied() {
+            let role = b.role_at(sq).unwrap();
+            let color = b.color_at(sq).unwrap();
+
+            let side_idx = usize::from(color != stm);
+            let role_idx = 64 * (role as usize - 1);
+
+            f(OFFSET_PERSPECTIVE_STM + [0, 384][side_idx] + role_idx + sq as usize);
+            f(OFFSET_PERSPECTIVE_NSTM + [384, 0][side_idx] + role_idx + sq.flip_vertical() as usize);
+        }
     }
 
     pub fn policy_features_map<F>(&self, f: F)
@@ -310,7 +325,7 @@ impl State {
     where
         F: FnMut(usize),
     {
-        self.features_map(f);
+        self.state_features_map(f);
     }
 
     pub fn move_to_index(&self, mv: &Move) -> usize {

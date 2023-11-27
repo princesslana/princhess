@@ -143,6 +143,26 @@ impl Mcts {
             );
         }
     }
+
+    pub fn print_features(&self) {
+        let root_state = self.tree().root_state();
+
+        let mut features = [0i8; 768 * 2];
+
+        root_state.state_features_map(|idx| {
+            features[idx] = 1;
+        });
+
+        for x in features.chunks(64) {
+            for f in x.chunks(8) {
+                for i in f {
+                    print!("{}", i);
+                }
+                print!(" ");
+            }
+            println!();
+        }
+    }
 }
 
 pub struct AsyncSearchOwned {

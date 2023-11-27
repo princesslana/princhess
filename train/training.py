@@ -16,9 +16,8 @@ from tensorflow.keras import activations, layers, regularizers
 from tensorflow.keras.optimizers.schedules import PiecewiseConstantDecay
 from tensorflow.nn import softmax_cross_entropy_with_logits
 
-# pieces + threats + defenses
-INPUT_SIZE = 768 * 3;
-HIDDEN_LAYERS = 256
+INPUT_SIZE = 768 * 2
+HIDDEN_LAYERS = 128
 
 STATE_EPOCHS = 40
 POLICY_EPOCHS = 30
@@ -72,29 +71,37 @@ def generate_npy_batches(files, values):
 def train_state(name, files, model, start_epoch):
     train_files = list(glob.glob(files))
 
-    train_generator = generate_npy_batches(files=train_files, values=lambda d: d.get("wdl"))
+    train_generator = generate_npy_batches(
+        files=train_files, values=lambda d: d.get("wdl")
+    )
 
     if not model:
-        model = keras.Sequential()
-        model.add(keras.Input(shape=(INPUT_SIZE,)))
-        model.add(
-            layers.Dense(
-                HIDDEN_LAYERS,
-                activation="relu",
-                kernel_initializer="glorot_uniform",
-                bias_initializer="zeros",
-                dtype=tf.float32,
-            )
+        inp = keras.Input(shape=(INPUT_SIZE,))
+
+        stm = layers.Lambda(lambda x: x[:, :768])(inp)
+        nstm = layers.Lambda(lambda x: x[:, 768:])(inp)
+
+        hidden = layers.Dense(
+            HIDDEN_LAYERS,
+            activation="relu",
+            kernel_initializer="glorot_uniform",
+            bias_initializer="zeros",
         )
-        model.add(
-            layers.Dense(
-                1,
-                activation="tanh",
-                kernel_initializer="glorot_uniform",
-                use_bias=False,
-                dtype=tf.float32,
-            )
-        )
+
+        stm_hidden = hidden(stm)
+        nstm_hidden = hidden(nstm)
+
+        full_hidden = layers.concatenate([stm_hidden, nstm_hidden])
+
+        out = layers.Dense(
+            1,
+            activation="tanh",
+            kernel_initializer="glorot_uniform",
+            bias_initializer="zeros",
+            use_bias=True,
+        )(full_hidden)
+
+        model = keras.Model(inputs=inp, outputs=out)
 
     model.summary()
 
@@ -116,11 +123,11 @@ def train_state(name, files, model, start_epoch):
 
     mc = ModelCheckpoint(
         filepath=checkpoint_dir
-        + "/state."
-        + str(INPUT_SIZE)
-        + "x"
+        + "/state.("
+        + str(INPUT_SIZE // 2)
+        + "->"
         + str(HIDDEN_LAYERS)
-        + "x1.e{epoch:03d}-l{loss:.2f}.h5",
+        + ")x2->1.e{epoch:03d}-l{loss:.2f}.h5",
         verbose=True,
     )
 
