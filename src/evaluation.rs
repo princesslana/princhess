@@ -73,7 +73,7 @@ struct EvalNet {
     output_weights: Accumulator,
 }
 
-static EVAL_HIDDEN_WEIGHTS:  [[i16; HIDDEN]; STATE_NUMBER_INPUTS] = include!("model/hidden_weights");
+static EVAL_HIDDEN_WEIGHTS: [[i16; HIDDEN]; STATE_NUMBER_INPUTS] = include!("model/hidden_weights");
 static EVAL_HIDDEN_BIAS: [i16; HIDDEN] = include!("model/hidden_bias");
 static EVAL_OUTPUT_WEIGHTS: [[i16; HIDDEN]; 1] = include!("model/output_weights");
 
@@ -106,7 +106,6 @@ impl Default for Accumulator {
 fn activate(x: i16) -> i32 {
     i32::from(x).max(0)
 }
-
 
 fn run_eval_net(state: &State) -> f32 {
     let mut acc = Accumulator::default();
