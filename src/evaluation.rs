@@ -1,6 +1,4 @@
 use shakmaty::{MoveList, Position};
-use std::mem::{self, MaybeUninit};
-use std::ptr;
 
 use crate::math;
 use crate::search::SCALE;
@@ -61,53 +59,75 @@ pub fn evaluate_policy(state: &State, moves: &MoveList, t: f32) -> Vec<f32> {
     run_policy_net(state, moves, t)
 }
 
-const QAB: f32 = 256. * 256.;
+const HIDDEN: usize = 256;
+const QA: i32 = 256;
+const QB: i32 = 256;
+const QAB: i32 = QA * QB;
 
 const STATE_NUMBER_INPUTS: usize = state::NUMBER_FEATURES;
-const NUMBER_HIDDEN: usize = 256;
-const NUMBER_OUTPUTS: usize = 1;
 
-static EVAL_HIDDEN_BIAS: [i32; NUMBER_HIDDEN] = include!("model/hidden_bias");
+#[repr(C)]
+struct EvalNet {
+    hidden_weights: [Accumulator; STATE_NUMBER_INPUTS],
+    hidden_bias: Accumulator,
+    output_weights: Accumulator,
+}
 
-static EVAL_HIDDEN_WEIGHTS: [[i16; NUMBER_HIDDEN]; STATE_NUMBER_INPUTS] =
-    include!("model/hidden_weights");
+static EVAL_HIDDEN_WEIGHTS:  [[i16; HIDDEN]; STATE_NUMBER_INPUTS] = include!("model/hidden_weights");
+static EVAL_HIDDEN_BIAS: [i16; HIDDEN] = include!("model/hidden_bias");
+static EVAL_OUTPUT_WEIGHTS: [[i16; HIDDEN]; 1] = include!("model/output_weights");
 
-static EVAL_OUTPUT_WEIGHTS: [[i16; NUMBER_HIDDEN]; NUMBER_OUTPUTS] =
-    include!("model/output_weights");
+static EVAL_NET: EvalNet = EvalNet {
+    hidden_weights: unsafe { std::mem::transmute(EVAL_HIDDEN_WEIGHTS) },
+    hidden_bias: unsafe { std::mem::transmute(EVAL_HIDDEN_BIAS) },
+    output_weights: unsafe { std::mem::transmute(EVAL_OUTPUT_WEIGHTS) },
+};
+
+#[derive(Clone, Copy)]
+#[repr(C, align(64))]
+struct Accumulator {
+    vals: [i16; HIDDEN],
+}
+
+impl Accumulator {
+    pub fn set(&mut self, idx: usize) {
+        for (i, d) in self.vals.iter_mut().zip(&EVAL_NET.hidden_weights[idx].vals) {
+            *i += *d;
+        }
+    }
+}
+
+impl Default for Accumulator {
+    fn default() -> Self {
+        EVAL_NET.hidden_bias
+    }
+}
+
+fn activate(x: i16) -> i32 {
+    i32::from(x).max(0)
+}
+
+
+fn run_eval_net(state: &State) -> f32 {
+    let mut acc = Accumulator::default();
+
+    state.state_features_map(|idx| {
+        acc.set(idx);
+    });
+
+    let mut result: i32 = 0;
+
+    for (&x, &w) in acc.vals.iter().zip(&EVAL_NET.output_weights.vals) {
+        result += activate(x) * i32::from(w);
+    }
+
+    (result as f32 / QAB as f32).tanh()
+}
 
 const POLICY_NUMBER_INPUTS: usize = state::NUMBER_FEATURES;
 
 #[allow(clippy::excessive_precision, clippy::unreadable_literal)]
 static POLICY_WEIGHTS: [[f32; POLICY_NUMBER_INPUTS]; 384] = include!("policy/output_weights");
-
-fn run_eval_net(state: &State) -> f32 {
-    let mut hidden_layer: [i32; NUMBER_HIDDEN] = unsafe {
-        let mut out: [MaybeUninit<i32>; NUMBER_HIDDEN] = MaybeUninit::uninit().assume_init();
-
-        ptr::copy_nonoverlapping(
-            EVAL_HIDDEN_BIAS.as_ptr(),
-            out.as_mut_ptr().cast::<i32>(),
-            NUMBER_HIDDEN,
-        );
-
-        mem::transmute(out)
-    };
-
-    state.state_features_map(|idx| {
-        for (j, l) in hidden_layer.iter_mut().enumerate() {
-            *l += i32::from(EVAL_HIDDEN_WEIGHTS[idx][j]);
-        }
-    });
-
-    let mut result: i32 = 0;
-    let weights = EVAL_OUTPUT_WEIGHTS[0];
-
-    for i in 0..hidden_layer.len() {
-        result += i32::from(weights[i]) * hidden_layer[i].max(0);
-    }
-
-    (result as f32 / QAB).tanh()
-}
 
 fn run_policy_net(state: &State, moves: &MoveList, t: f32) -> Vec<f32> {
     let mut evalns = Vec::with_capacity(moves.len());
