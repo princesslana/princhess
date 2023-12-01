@@ -181,17 +181,25 @@ def train_policy(name, files, model, start_epoch):
     )
 
     if not model:
-        model = keras.Sequential()
-        model.add(keras.Input(shape=(INPUT_SIZE,)))
-        model.add(
-            layers.Dense(
-                outputs,
-                activation="linear",
-                kernel_initializer="glorot_normal",
-                use_bias=False,
-                dtype=tf.float32,
-            )
-        )
+        inp = keras.Input(shape=(INPUT_SIZE,))
+        
+        left = layers.Dense(
+            outputs,
+            activation="relu",
+            kernel_initializer="glorot_normal",
+            bias_initializer="zeros",
+        )(inp)
+
+        right = layers.Dense(
+            outputs,
+            activation="relu",
+            kernel_initializer="glorot_normal",
+            bias_initializer="zeros",
+        )(inp)
+
+        left_x_right = layers.Multiply()([left, right])
+
+        model = keras.Model(inputs=inp, outputs=left_x_right)
 
     model.summary()
 
@@ -209,7 +217,8 @@ def train_policy(name, files, model, start_epoch):
     checkpoint_dir = "checkpoints/" + name
     log_dir = "logs/fit/" + name
 
-    os.mkdir(checkpoint_dir)
+    if not os.path.exists(checkpoint_dir):
+        os.mkdir(checkpoint_dir)
 
     mc = ModelCheckpoint(
         filepath=checkpoint_dir

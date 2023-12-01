@@ -68,9 +68,9 @@ const STATE_NUMBER_INPUTS: usize = state::NUMBER_FEATURES;
 
 #[repr(C)]
 struct EvalNet {
-    hidden_weights: [Accumulator; STATE_NUMBER_INPUTS],
-    hidden_bias: Accumulator,
-    output_weights: Accumulator,
+    hidden_weights: [Accumulator<HIDDEN>; STATE_NUMBER_INPUTS],
+    hidden_bias: Accumulator<HIDDEN>,
+    output_weights: Accumulator<HIDDEN>,
 }
 
 static EVAL_HIDDEN_WEIGHTS: [[i16; HIDDEN]; STATE_NUMBER_INPUTS] = include!("model/hidden_weights");
@@ -85,21 +85,27 @@ static EVAL_NET: EvalNet = EvalNet {
 
 #[derive(Clone, Copy)]
 #[repr(C, align(64))]
-struct Accumulator {
-    vals: [i16; HIDDEN],
+struct Accumulator<const H: usize> {
+    vals: [i16; H],
 }
 
-impl Accumulator {
-    pub fn set(&mut self, idx: usize) {
-        for (i, d) in self.vals.iter_mut().zip(&EVAL_NET.hidden_weights[idx].vals) {
+impl<const H: usize> Accumulator<H> {
+    pub fn eval_hidden() -> Accumulator<HIDDEN> {
+        EVAL_NET.hidden_bias
+    }
+
+    pub fn policy_left() -> Accumulator<POLICY_NUMBER_OUTPUTS> {
+        POLICY_NET.left_bias
+    }
+
+    pub fn policy_right() -> Accumulator<POLICY_NUMBER_OUTPUTS> {
+        POLICY_NET.right_bias
+    }
+
+    pub fn set(&mut self, weights: &Accumulator<H>) {
+        for (i, d) in self.vals.iter_mut().zip(&weights.vals) {
             *i += *d;
         }
-    }
-}
-
-impl Default for Accumulator {
-    fn default() -> Self {
-        EVAL_NET.hidden_bias
     }
 }
 
@@ -108,10 +114,10 @@ fn activate(x: i16) -> i32 {
 }
 
 fn run_eval_net(state: &State) -> f32 {
-    let mut acc = Accumulator::default();
+    let mut acc = Accumulator::<HIDDEN>::eval_hidden();
 
     state.state_features_map(|idx| {
-        acc.set(idx);
+        acc.set(&EVAL_NET.hidden_weights[idx]);
     });
 
     let mut result: i32 = 0;
@@ -124,9 +130,29 @@ fn run_eval_net(state: &State) -> f32 {
 }
 
 const POLICY_NUMBER_INPUTS: usize = state::NUMBER_FEATURES;
+const POLICY_NUMBER_OUTPUTS: usize = 384;
 
-#[allow(clippy::excessive_precision, clippy::unreadable_literal)]
-static POLICY_WEIGHTS: [[f32; POLICY_NUMBER_INPUTS]; 384] = include!("policy/output_weights");
+#[repr(C)]
+struct PolicyNet {
+    left_weights: [Accumulator<POLICY_NUMBER_OUTPUTS>; POLICY_NUMBER_INPUTS],
+    left_bias: Accumulator<POLICY_NUMBER_OUTPUTS>,
+    right_weights: [Accumulator<POLICY_NUMBER_OUTPUTS>; POLICY_NUMBER_INPUTS],
+    right_bias: Accumulator<POLICY_NUMBER_OUTPUTS>,
+}
+
+static POLICY_LEFT_WEIGHTS: [[i16; POLICY_NUMBER_OUTPUTS]; POLICY_NUMBER_INPUTS] =
+    include!("policy/left_weights");
+static POLICY_LEFT_BIAS: [i16; POLICY_NUMBER_OUTPUTS] = include!("policy/left_bias");
+static POLICY_RIGHT_WEIGHTS: [[i16; POLICY_NUMBER_OUTPUTS]; POLICY_NUMBER_INPUTS] =
+    include!("policy/right_weights");
+static POLICY_RIGHT_BIAS: [i16; POLICY_NUMBER_OUTPUTS] = include!("policy/right_bias");
+
+static POLICY_NET: PolicyNet = PolicyNet {
+    left_weights: unsafe { std::mem::transmute(POLICY_LEFT_WEIGHTS) },
+    left_bias: unsafe { std::mem::transmute(POLICY_LEFT_BIAS) },
+    right_weights: unsafe { std::mem::transmute(POLICY_RIGHT_WEIGHTS) },
+    right_bias: unsafe { std::mem::transmute(POLICY_RIGHT_BIAS) },
+};
 
 fn run_policy_net(state: &State, moves: &MoveList, t: f32) -> Vec<f32> {
     let mut evalns = Vec::with_capacity(moves.len());
@@ -135,18 +161,19 @@ fn run_policy_net(state: &State, moves: &MoveList, t: f32) -> Vec<f32> {
         return evalns;
     }
 
-    let mut move_idxs = Vec::with_capacity(moves.len());
-
-    for m in 0..moves.len() {
-        move_idxs.push(state.move_to_index(&moves[m]));
-        evalns.push(0.);
-    }
+    let mut acc_left = Accumulator::<POLICY_NUMBER_OUTPUTS>::policy_left();
+    let mut acc_right = Accumulator::<POLICY_NUMBER_OUTPUTS>::policy_right();
 
     state.policy_features_map(|idx| {
-        for m in 0..moves.len() {
-            evalns[m] += POLICY_WEIGHTS[move_idxs[m]][idx];
-        }
+        acc_left.set(&POLICY_NET.left_weights[idx]);
+        acc_right.set(&POLICY_NET.right_weights[idx]);
     });
+
+    for m in moves {
+        let move_idx = state.move_to_index(m);
+        let logit = activate(acc_left.vals[move_idx]) * activate(acc_right.vals[move_idx]);
+        evalns.push(logit as f32 / QAB as f32);
+    }
 
     math::softmax(&mut evalns, t);
 
