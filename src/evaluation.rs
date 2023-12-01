@@ -94,14 +94,6 @@ impl<const H: usize> Accumulator<H> {
         EVAL_NET.hidden_bias
     }
 
-    pub fn policy_left() -> Accumulator<POLICY_NUMBER_OUTPUTS> {
-        POLICY_NET.left_bias
-    }
-
-    pub fn policy_right() -> Accumulator<POLICY_NUMBER_OUTPUTS> {
-        POLICY_NET.right_bias
-    }
-
     pub fn set(&mut self, weights: &Accumulator<H>) {
         for (i, d) in self.vals.iter_mut().zip(&weights.vals) {
             *i += *d;
@@ -161,17 +153,30 @@ fn run_policy_net(state: &State, moves: &MoveList, t: f32) -> Vec<f32> {
         return evalns;
     }
 
-    let mut acc_left = Accumulator::<POLICY_NUMBER_OUTPUTS>::policy_left();
-    let mut acc_right = Accumulator::<POLICY_NUMBER_OUTPUTS>::policy_right();
-
-    state.policy_features_map(|idx| {
-        acc_left.set(&POLICY_NET.left_weights[idx]);
-        acc_right.set(&POLICY_NET.right_weights[idx]);
-    });
+    let mut move_idxs = Vec::with_capacity(moves.len());
+    let mut acc = Vec::with_capacity(moves.len());
 
     for m in moves {
         let move_idx = state.move_to_index(m);
-        let logit = activate(acc_left.vals[move_idx]) * activate(acc_right.vals[move_idx]);
+        move_idxs.push(move_idx);
+        acc.push((
+            POLICY_NET.left_bias.vals[move_idx],
+            POLICY_NET.right_bias.vals[move_idx],
+        ));
+    }
+
+    state.policy_features_map(|idx| {
+        let lw = &POLICY_NET.left_weights[idx];
+        let rw = &POLICY_NET.right_weights[idx];
+
+        for (&move_idx, (l, r)) in move_idxs.iter().zip(acc.iter_mut()) {
+            *l += lw.vals[move_idx];
+            *r += rw.vals[move_idx];
+        }
+    });
+
+    for (l, r) in &acc {
+        let logit = activate(*l) * activate(*r);
         evalns.push(logit as f32 / QAB as f32);
     }
 
