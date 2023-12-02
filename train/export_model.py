@@ -68,6 +68,10 @@ def export_policy(file):
     write_coefs(os.path.join(output_folder, f"right_weights"), q(QA, right_weights))
     write_coefs(os.path.join(output_folder, f"right_bias"), q(QA, right_bias))
 
+    (add_weights, add_bias) = model.layers[4].get_weights()
+    write_coefs(os.path.join(output_folder, f"add_weights"), q(QA, add_weights))
+    write_coefs(os.path.join(output_folder, f"add_bias"), q(QA, add_bias))
+
 if __name__ == "__main__":
     export_what = sys.argv[1] if len(sys.argv) > 1 else None
     model_files = sys.argv[2:] if len(sys.argv) > 2 else None
