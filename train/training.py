@@ -197,9 +197,18 @@ def train_policy(name, files, model, start_epoch):
             bias_initializer="zeros",
         )(inp)
 
+        add = layers.Dense(
+            outputs,
+            activation="relu",
+            kernel_initializer="glorot_normal",
+            bias_initializer="zeros",
+        )(inp)
+
         left_x_right = layers.Multiply()([left, right])
 
-        model = keras.Model(inputs=inp, outputs=left_x_right)
+        output = layers.Add()([left_x_right, add])
+
+        model = keras.Model(inputs=inp, outputs=output)
 
     model.summary()
 
