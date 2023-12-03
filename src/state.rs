@@ -1,5 +1,4 @@
 use arrayvec::ArrayVec;
-use shakmaty::attacks;
 use shakmaty::fen::Fen;
 use shakmaty::uci::Uci;
 use shakmaty::zobrist::{Zobrist64, ZobristHash, ZobristValue};
@@ -86,10 +85,8 @@ pub struct State {
     // 101 should be enough to track 50-move rule, but some games in the dataset
     // can go above this. Hence we add a little space
     prev_state_hashes: ArrayVec<u64, 128>,
-    prev_moves: [Option<Move>; 2],
 
-    prev_move_sq: Option<Square>,
-    prev_capture_sq: Option<Square>,
+    prev_moves: [Option<Move>; 2],
 
     repetitions: usize,
     hash: Zobrist64,
@@ -118,15 +115,10 @@ impl State {
     pub fn make_move(&mut self, mov: &Move) {
         let is_pawn_move = mov.role() == Role::Pawn;
 
-        (self.prev_move_sq, self.prev_capture_sq) = match mov.capture() {
-            Some(_) => (None, Some(mov.to())),
-            None => (Some(mov.to()), None),
-        };
-
         self.prev_moves[0] = self.prev_moves[1].clone();
         self.prev_moves[1] = Some(mov.clone());
 
-        if is_pawn_move || self.prev_capture_sq.is_some() {
+        if is_pawn_move || mov.is_capture() {
             self.prev_state_hashes.clear();
         }
         self.prev_state_hashes.push(self.hash());
@@ -264,82 +256,6 @@ impl State {
 
             f(OFFSET_POSITION + feature_idx(sq, role, color));
 
-            // King Virtual Moblity
-            if role == Role::King {
-                let us = b.by_color(color);
-                let blockers = us | b.pawns();
-                let virtual_mobility = attacks::queen_attacks(sq, blockers) & !us;
-
-                for sq in virtual_mobility {
-                    f(OFFSET_THREATS + feature_idx(sq, role, color));
-                }
-            } else {
-                // Threats
-                if b.attacks_to(sq, !color, b.occupied()).any() {
-                    f(OFFSET_THREATS + feature_idx(sq, role, color));
-                }
-
-                // Defenses
-                if b.attacks_to(sq, color, b.occupied()).any() {
-                    f(OFFSET_DEFENDS + feature_idx(sq, role, color));
-                }
-            }
-        }
-
-        // We use the king defends squares for previous move
-        if let Some(prev_move_sq) = self.prev_move_sq {
-            f(OFFSET_DEFENDS + feature_idx(prev_move_sq, Role::King, stm));
-        }
-
-        if let Some(prev_capture_sq) = self.prev_capture_sq {
-            f(OFFSET_DEFENDS + feature_idx(prev_capture_sq, Role::King, !stm));
-        }
-    }
-
-    pub fn state_features_map<F>(&self, f: F)
-    where
-        F: FnMut(usize),
-    {
-        self.training_features_map(f);
-    }
-
-    pub fn policy_features_map<F>(&self, f: F)
-    where
-        F: FnMut(usize),
-    {
-        self.features_map(f);
-    }
-
-    pub fn training_features_map<F>(&self, mut f: F)
-    where
-        F: FnMut(usize),
-    {
-        let stm = self.side_to_move();
-        let b = self.board.board();
-
-        let (flip_vertical, flip_horizontal) = self.feature_flip();
-
-        let flip_square = |sq: Square| match (flip_vertical, flip_horizontal) {
-            (true, true) => sq.flip_vertical().flip_horizontal(),
-            (true, false) => sq.flip_vertical(),
-            (false, true) => sq.flip_horizontal(),
-            (false, false) => sq,
-        };
-
-        let feature_idx = |sq: Square, r: Role, c: Color| {
-            let sq_idx = flip_square(sq) as usize;
-            let role_idx = r as usize - 1;
-            let side_idx = usize::from(c != stm);
-
-            (side_idx * 6 + role_idx) * 64 + sq_idx
-        };
-
-        for sq in b.occupied() {
-            let role = b.role_at(sq).unwrap();
-            let color = b.color_at(sq).unwrap();
-
-            f(OFFSET_POSITION + feature_idx(sq, role, color));
-
             if role != Role::King {
                 // Threats
                 if b.attacks_to(sq, !color, b.occupied()).any() {
@@ -363,6 +279,27 @@ impl State {
             f(OFFSET_THREATS + feature_idx(m.to(), Role::King, stm));
             f(OFFSET_THREATS + feature_idx(m.from().unwrap(), Role::King, !stm));
         }
+    }
+
+    pub fn state_features_map<F>(&self, f: F)
+    where
+        F: FnMut(usize),
+    {
+        self.features_map(f);
+    }
+
+    pub fn policy_features_map<F>(&self, f: F)
+    where
+        F: FnMut(usize),
+    {
+        self.features_map(f);
+    }
+
+    pub fn training_features_map<F>(&self, f: F)
+    where
+        F: FnMut(usize),
+    {
+        self.features_map(f);
     }
 
     pub fn move_to_index(&self, mv: &Move) -> usize {
@@ -414,8 +351,6 @@ impl From<Builder> for State {
             board: sb.initial_state,
             prev_state_hashes: ArrayVec::new(),
             prev_moves: [None, None],
-            prev_move_sq: None,
-            prev_capture_sq: None,
             repetitions: 0,
             hash,
         };
