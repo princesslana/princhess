@@ -59,7 +59,7 @@ pub fn evaluate_policy(state: &State, moves: &MoveList, t: f32) -> Vec<f32> {
     run_policy_net(state, moves, t)
 }
 
-const HIDDEN: usize = 256;
+const HIDDEN: usize = 384;
 const QA: i32 = 256;
 const QB: i32 = 256;
 const QAB: i32 = QA * QB;

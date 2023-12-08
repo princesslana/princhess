@@ -18,7 +18,7 @@ from tensorflow.nn import softmax_cross_entropy_with_logits
 
 # pieces + threats + defenses
 INPUT_SIZE = 768 * 3;
-HIDDEN_LAYERS = 256
+HIDDEN_LAYERS = 384
 
 STATE_EPOCHS = 40
 POLICY_EPOCHS = 30
