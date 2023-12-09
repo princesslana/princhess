@@ -131,7 +131,7 @@ impl Mcts {
         moves.sort_by_key(|(h, e)| (h.average_reward().unwrap_or(*e) * SCALE) as i64);
         for (mov, e) in moves {
             println!(
-                "info string {:>6} M: {:>6} P: {:>6} V: {:7} E: {:>6} ({:>8})",
+                "info string {:7} M: {:>6} P: {:>6} V: {:7} E: {:>6} ({:>8})",
                 format!("{}", mov.get_move()),
                 format!("{:3.2}", e * 100.),
                 format!("{:3.2}", f32::from(mov.policy()) / SCALE * 100.),

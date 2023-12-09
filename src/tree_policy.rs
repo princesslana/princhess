@@ -4,7 +4,7 @@ use std::f32;
 use crate::search::SCALE;
 use crate::search_tree::MoveEdge;
 
-pub fn choose_child(moves: &[MoveEdge], cpuct: f32, fpu: i64, is_root: bool) -> &MoveEdge {
+pub fn choose_child(moves: &[MoveEdge], cpuct: f32, fpu: i64) -> &MoveEdge {
     let total_visits = moves.iter().map(|v| u64::from(v.visits())).sum::<u64>() + 1;
     let sqrt_total_visits = (total_visits as f32).sqrt();
 
@@ -17,12 +17,6 @@ pub fn choose_child(moves: &[MoveEdge], cpuct: f32, fpu: i64, is_root: bool) -> 
     let mut best_score = i64::MIN;
 
     for mov in moves {
-        if let Some(pc) = mov.get_move().promotion() {
-            if !is_root && pc != shakmaty::Role::Queen {
-                continue;
-            }
-        }
-
         let sum_rewards = mov.sum_rewards();
         let child_visits = i64::from(mov.visits());
         let policy_evaln = mov.policy();

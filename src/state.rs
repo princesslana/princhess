@@ -4,7 +4,7 @@ use shakmaty::uci::Uci;
 use shakmaty::zobrist::{Zobrist64, ZobristHash, ZobristValue};
 use shakmaty::{
     self, CastlingMode, CastlingSide, Chess, Color, EnPassantMode, File, Move, MoveList, Piece,
-    Position, Role, Square,
+    Position, Rank, Role, Square,
 };
 use std::convert::Into;
 
@@ -315,7 +315,16 @@ impl State {
         };
 
         let role_idx = mv.role() as usize - 1;
-        let to_idx = flip_square(to_sq) as usize;
+
+        let flip_to = flip_square(to_sq);
+
+        let adj_to = match mv.promotion() {
+            Some(Role::Knight) => Square::from_coords(flip_to.file(), Rank::First),
+            Some(Role::Bishop | Role::Rook) => Square::from_coords(flip_to.file(), Rank::Second),
+            _ => flip_to,
+        };
+
+        let to_idx = adj_to as usize;
 
         role_idx * 64 + to_idx
     }
