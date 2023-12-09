@@ -298,7 +298,7 @@ impl SearchTree {
                 .last()
                 .map_or(0, |x| -x.sum_rewards() / i64::from(x.visits()));
 
-            let choice = tree_policy::choose_child(node.hots(), cpuct, fpu, is_root);
+            let choice = tree_policy::choose_child(node.hots(), cpuct, fpu);
             choice.down();
             path.push(choice);
             state.make_move(&choice.mov);
