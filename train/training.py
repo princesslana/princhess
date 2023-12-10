@@ -185,7 +185,7 @@ def train_policy(name, files, model, start_epoch):
         
         left = layers.Dense(
             outputs,
-            activation="relu",
+            activation="linear",
             kernel_initializer="glorot_normal",
             bias_initializer="zeros",
         )(inp)
@@ -199,7 +199,7 @@ def train_policy(name, files, model, start_epoch):
 
         add = layers.Dense(
             outputs,
-            activation="relu",
+            activation="linear",
             kernel_initializer="glorot_normal",
             bias_initializer="zeros",
         )(inp)
