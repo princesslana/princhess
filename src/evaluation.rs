@@ -101,7 +101,7 @@ impl<const H: usize> Accumulator<H> {
     }
 }
 
-fn activate(x: i16) -> i32 {
+fn relu(x: i16) -> i32 {
     i32::from(x).max(0)
 }
 
@@ -115,7 +115,7 @@ fn run_eval_net(state: &State) -> f32 {
     let mut result: i32 = 0;
 
     for (&x, &w) in acc.vals.iter().zip(&EVAL_NET.output_weights.vals) {
-        result += activate(x) * i32::from(w);
+        result += relu(x) * i32::from(w);
     }
 
     (result as f32 / QAB as f32).tanh()
@@ -186,7 +186,7 @@ fn run_policy_net(state: &State, moves: &MoveList, t: f32) -> Vec<f32> {
     });
 
     for (a, l, r) in &acc {
-        let logit = QA * activate(*a) + activate(*l) * activate(*r);
+        let logit = QA * i32::from(*a) + i32::from(*l) * relu(*r);
         evalns.push(logit as f32 / QAB as f32);
     }
 
