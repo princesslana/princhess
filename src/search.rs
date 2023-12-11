@@ -121,16 +121,7 @@ impl Search {
         let state = manager.tree().root_state();
         let stm = state.side_to_move();
 
-        let mvs = state.available_moves();
-
-        if mvs.len() == 1 {
-            let uci_mv = to_uci(&mvs[0]);
-            println!("info depth 1 seldepth 1 nodes 1 nps 1 tbhits 0 time 1 pv {uci_mv}");
-            println!("bestmove {uci_mv}");
-            return Self {
-                search: manager.into(),
-            };
-        } else if let Some((mv, wdl)) = tablebase::probe_best_move(state.board()) {
+        if let Some((mv, wdl)) = tablebase::probe_best_move(state.board()) {
             let uci_mv = to_uci(&mv);
 
             let score = match wdl {
