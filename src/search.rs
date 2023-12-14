@@ -1,13 +1,14 @@
 use shakmaty::{CastlingMode, Color, Move};
-use std::sync::mpsc::Sender;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
-use crate::mcts::{AsyncSearchOwned, Mcts};
-use crate::options::{get_num_threads, is_chess960};
+use crate::evaluation;
+use crate::options::{get_num_threads, get_policy_temperature, is_chess960};
+use crate::search_tree::{MoveEdge, SearchTree};
 use crate::state::State;
 use crate::tablebase;
-use crate::transposition_table::TranspositionTable;
-use crate::uci::Tokens;
+use crate::transposition_table::{LRAllocator, TranspositionTable};
+use crate::uci::{read_stdin, Tokens};
 
 const DEFAULT_MOVE_TIME_SECS: u64 = 10;
 const DEFAULT_MOVE_TIME_FRACTION: u32 = 20;
@@ -43,10 +44,14 @@ impl TimeManagement {
     }
 
     pub fn infinite() -> Self {
+        let start = Instant::now();
+        let end = None;
+        let node_limit = std::usize::MAX;
+
         Self {
-            start: Instant::now(),
-            end: None,
-            node_limit: std::usize::MAX,
+            start,
+            end,
+            node_limit,
         }
     }
 
@@ -71,39 +76,30 @@ impl TimeManagement {
     }
 }
 
+pub struct ThreadData<'a> {
+    pub allocator: LRAllocator<'a>,
+}
+
+impl<'a> ThreadData<'a> {
+    fn create(tree: &'a SearchTree) -> Self {
+        Self {
+            allocator: tree.allocator(),
+        }
+    }
+}
+
 pub struct Search {
-    search: AsyncSearchOwned,
+    search_tree: SearchTree,
 }
 
 impl Search {
-    pub fn create_manager(state: State, prev_table: TranspositionTable) -> Mcts {
-        Mcts::new(state, TranspositionTable::empty(), prev_table)
-    }
-
     pub fn new(state: State, prev_table: TranspositionTable) -> Self {
-        let search = Self::create_manager(state, prev_table).into();
-        Self { search }
+        let search_tree = SearchTree::new(state, TranspositionTable::empty(), prev_table);
+        Self { search_tree }
     }
 
     pub fn table(self) -> TranspositionTable {
-        let manager = self.stop_and_print_m();
-        manager.table()
-    }
-    fn stop_and_print_m(self) -> Mcts {
-        if self.search.num_threads() == 0 {
-            return self.search.halt();
-        }
-        let manager = self.search.halt();
-        if let Some(mov) = manager.best_move() {
-            println!("bestmove {}", to_uci(&mov));
-        }
-        manager
-    }
-
-    pub fn stop_and_print(self) -> Self {
-        Self {
-            search: self.stop_and_print_m().into(),
-        }
+        self.search_tree.table()
     }
 
     fn parse_ms(tokens: &mut Tokens) -> Option<Duration> {
@@ -115,10 +111,8 @@ impl Search {
             .map(Duration::from_millis)
     }
 
-    pub fn go(self, mut tokens: Tokens, sender: &Sender<String>) -> Self {
-        let manager = self.stop_and_print_m();
-
-        let state = manager.tree().root_state();
+    pub fn go(&self, mut tokens: Tokens, next_line: &mut Option<String>) {
+        let state = self.search_tree.root_state();
         let stm = state.side_to_move();
 
         let mvs = state.available_moves();
@@ -127,9 +121,7 @@ impl Search {
             let uci_mv = to_uci(&mvs[0]);
             println!("info depth 1 seldepth 1 nodes 1 nps 1 tbhits 0 time 1 pv {uci_mv}");
             println!("bestmove {uci_mv}");
-            return Self {
-                search: manager.into(),
-            };
+            return;
         } else if let Some((mv, wdl)) = tablebase::probe_best_move(state.board()) {
             let uci_mv = to_uci(&mv);
 
@@ -142,20 +134,19 @@ impl Search {
                 "info depth 1 seldepth 1 nodes 1 nps 1 tbhits 1 score cp {score} time 1 pv {uci_mv}"
             );
             println!("bestmove {uci_mv}");
-            return Self {
-                search: manager.into(),
-            };
+            return;
         }
 
+        let mut infinite = false;
         let mut move_time = None;
         let mut increment = Duration::ZERO;
-        let mut infinite = false;
         let mut remaining = None;
         let mut movestogo: Option<u32> = None;
         let mut node_limit = std::usize::MAX;
 
         while let Some(s) = tokens.next() {
             match s {
+                "infinite" => infinite = true,
                 "movetime" => move_time = Self::parse_ms(&mut tokens),
                 "wtime" => {
                     if stm == Color::White {
@@ -177,7 +168,6 @@ impl Search {
                         increment = Self::parse_ms(&mut tokens).unwrap_or(Duration::ZERO);
                     }
                 }
-                "infinite" => infinite = true,
                 "movestogo" => {
                     movestogo = tokens.next().unwrap_or("").parse().ok();
                 }
@@ -220,17 +210,113 @@ impl Search {
 
         think_time.set_node_limit(node_limit);
 
-        Self {
-            search: manager.into_playout_parallel_async(get_num_threads(), think_time, sender),
-        }
+        self.playout_parallel(get_num_threads(), think_time, next_line);
+    }
+
+    fn playout_parallel(
+        &self,
+        num_threads: usize,
+        time_management: TimeManagement,
+        next_line: &mut Option<String>,
+    ) {
+        let stop_signal = AtomicBool::new(false);
+
+        let run_search_thread = |tm: &TimeManagement| {
+            let mut tld = ThreadData::create(&self.search_tree);
+            while self.search_tree.playout(&mut tld, tm, &stop_signal) {}
+        };
+
+        std::thread::scope(|s| {
+            s.spawn(|| {
+                run_search_thread(&time_management);
+                self.search_tree.print_info(&time_management);
+                stop_signal.store(true, Ordering::Relaxed);
+                println!("bestmove {}", to_uci(&self.best_move().unwrap()));
+            });
+
+            for _ in 0..(num_threads - 1) {
+                s.spawn(|| {
+                    run_search_thread(&TimeManagement::infinite());
+                });
+            }
+
+            while !stop_signal.load(Ordering::Relaxed) {
+                let line = read_stdin();
+
+                *next_line = match line.trim() {
+                    "stop" => {
+                        stop_signal.store(true, Ordering::Relaxed);
+                        None
+                    }
+                    "quit" => {
+                        stop_signal.store(true, Ordering::Relaxed);
+                        std::process::exit(0);
+                    }
+                    "isready" => {
+                        println!("readyok");
+                        None
+                    }
+                    _ => Some(line),
+                }
+            }
+        });
     }
 
     pub fn print_move_list(&self) {
-        self.search.get_manager().print_move_list();
+        let root_node = self.search_tree.root_node();
+        let root_state = self.search_tree.root_state();
+
+        let root_moves = root_node.hots();
+
+        let state_moves = root_state.available_moves();
+        let state_moves_eval =
+            evaluation::evaluate_policy(root_state, &state_moves, get_policy_temperature());
+
+        let mut moves: Vec<(&MoveEdge, f32)> = root_moves.iter().zip(state_moves_eval).collect();
+        moves.sort_by_key(|(h, e)| (h.average_reward().unwrap_or(*e) * SCALE) as i64);
+        for (mov, e) in moves {
+            println!(
+                "info string {:7} M: {:>6} P: {:>6} V: {:7} E: {:>6} ({:>8})",
+                format!("{}", mov.get_move()),
+                format!("{:3.2}", e * 100.),
+                format!("{:3.2}", f32::from(mov.policy()) / SCALE * 100.),
+                mov.visits(),
+                mov.average_reward()
+                    .map_or("n/a".to_string(), |r| format!("{:3.2}", r / (SCALE / 100.))),
+                mov.average_reward()
+                    .map_or("n/a".to_string(), |r| eval_in_cp(r / SCALE))
+            );
+        }
+    }
+
+    pub fn principal_variation(&self, num_moves: usize) -> Vec<Move> {
+        self.search_tree
+            .principal_variation(num_moves)
+            .into_iter()
+            .map(MoveEdge::get_move)
+            .cloned()
+            .collect()
+    }
+
+    pub fn best_move(&self) -> Option<shakmaty::Move> {
+        self.principal_variation(1).get(0).cloned()
     }
 }
 
 pub fn to_uci(mov: &Move) -> String {
     mov.to_uci(CastlingMode::from_chess960(is_chess960()))
         .to_string()
+}
+
+// eval here is [-1.0, 1.0]
+pub fn eval_in_cp(eval: f32) -> String {
+    let cps = if eval > 0.5 {
+        18. * (eval - 0.5) + 1.
+    } else if eval < -0.5 {
+        18. * (eval + 0.5) - 1.
+    } else {
+        2. * eval
+    };
+
+    format!("cp {}", (cps * 100.).round().max(-1000.).min(1000.) as i64)
 }

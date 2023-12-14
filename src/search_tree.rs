@@ -3,15 +3,17 @@ use shakmaty::Position;
 use std::fmt::Write;
 use std::mem;
 use std::ptr::null_mut;
-use std::sync::atomic::{AtomicI64, AtomicPtr, AtomicU32, AtomicU64, AtomicUsize, Ordering};
+use std::sync::atomic::{
+    AtomicBool, AtomicI64, AtomicPtr, AtomicU32, AtomicU64, AtomicUsize, Ordering,
+};
 
 use crate::arena::Error as ArenaError;
 use crate::evaluation::{self, Flag};
-use crate::mcts::{eval_in_cp, ThreadData};
 use crate::options::{
     get_cpuct, get_cpuct_root, get_cvisits_selection, get_policy_temperature,
     get_policy_temperature_root,
 };
+use crate::search::{eval_in_cp, ThreadData};
 use crate::search::{to_uci, TimeManagement, SCALE};
 use crate::state::State;
 use crate::transposition_table::{LRAllocator, LRTable, TranspositionTable};
@@ -21,8 +23,6 @@ const MAX_PLAYOUT_LENGTH: usize = 256;
 
 const VIRTUAL_LOSS: i64 = SCALE as i64;
 
-/// You're not intended to use this class (use an `MctsManager` instead),
-/// but you can use it if you want to manage the threads yourself.
 pub struct SearchTree {
     root_node: PositionNode,
     root_state: State,
@@ -267,7 +267,8 @@ impl SearchTree {
     pub fn playout<'a: 'b, 'b>(
         &'a self,
         tld: &'b mut ThreadData<'a>,
-        time_management: TimeManagement,
+        time_management: &'a TimeManagement,
+        stop_signal: &'a AtomicBool,
     ) -> bool {
         let mut state = self.root_state.clone();
         let mut node = &self.root_node;
@@ -348,12 +349,12 @@ impl SearchTree {
         let playouts = self.playouts.fetch_add(1, Ordering::Relaxed) + 1;
 
         if num_nodes >= time_management.node_limit() {
-            self.print_info(&time_management);
             return false;
         }
 
-        if playouts % 128 == 0 && time_management.is_after_end() {
-            self.print_info(&time_management);
+        if playouts % 128 == 0
+            && (time_management.is_after_end() || stop_signal.load(Ordering::Relaxed))
+        {
             return false;
         }
 
@@ -362,8 +363,8 @@ impl SearchTree {
 
             let next_info = self.next_info.fetch_max(elapsed, Ordering::Relaxed);
 
-            if next_info < elapsed {
-                self.print_info(&time_management);
+            if next_info < elapsed && !stop_signal.load(Ordering::Relaxed) {
+                self.print_info(time_management);
             }
         }
 
@@ -443,7 +444,7 @@ impl SearchTree {
         result
     }
 
-    fn print_info(&self, time_management: &TimeManagement) {
+    pub fn print_info(&self, time_management: &TimeManagement) {
         let search_time_ms = time_management.elapsed().as_millis();
 
         let nodes = self.num_nodes();
