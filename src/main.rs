@@ -5,7 +5,6 @@
 extern crate log;
 extern crate arc_swap;
 extern crate arrayvec;
-extern crate crossbeam;
 extern crate dashmap;
 extern crate fastapprox;
 extern crate memmap;
@@ -17,7 +16,6 @@ extern crate shakmaty;
 
 mod arena;
 mod math;
-mod mcts;
 mod options;
 mod search_tree;
 mod tablebase;
@@ -45,7 +43,7 @@ fn main() {
         training::train(train_pgn, &options.train_output_path);
     } else {
         info!("Init.");
-        uci::main(options.extra.clone());
+        uci::main();
         info!("Exit.");
     }
 }

@@ -1,7 +1,5 @@
-use std::io::{stdin, BufRead};
+use std::io::stdin;
 use std::str::{FromStr, SplitWhitespace};
-use std::sync::mpsc::{channel, SendError};
-use std::thread;
 
 use crate::options::{
     set_chess960, set_cpuct, set_cpuct_root, set_cvisits_selection, set_hash_size_mb,
@@ -19,31 +17,24 @@ const ENGINE_NAME: &str = "Princhess";
 const ENGINE_AUTHOR: &str = "Princess Lana";
 const VERSION: Option<&'static str> = option_env!("CARGO_PKG_VERSION");
 
-pub fn main(commands: Vec<String>) {
+pub fn main() {
     let mut search = Search::new(State::default(), TranspositionTable::empty());
-    let (sender, receiver) = channel();
-    for cmd in commands {
-        sender.send(cmd).unwrap();
-    }
-    {
-        let sender = sender.clone();
-        thread::spawn(move || -> Result<(), SendError<String>> {
-            let stdin = stdin();
-            for line in stdin.lock().lines() {
-                sender.send(line.unwrap_or_else(|_| String::new()))?;
-            }
-            sender.send("quit".into())?;
-            Ok(())
-        });
-    }
-    for line in receiver {
-        debug!("Received '{}'.", line);
+
+    let mut next_line: Option<String> = None;
+
+    loop {
+        let line = if let Some(line) = next_line.take() {
+            line
+        } else {
+            read_stdin()
+        };
+
         let mut tokens = line.split_whitespace();
         if let Some(first_word) = tokens.next() {
             match first_word {
-                "uci"        => uci(),
-                "isready"    => println!("readyok"),
-                "setoption"  => {
+                "uci" => uci(),
+                "isready" => println!("readyok"),
+                "setoption" => {
                     let option = UciOption::parse(tokens);
 
                     if let Some(opt) = option {
@@ -53,7 +44,7 @@ pub fn main(commands: Vec<String>) {
                 "ucinewgame" => {
                     search = Search::new(State::default(), TranspositionTable::empty());
                 }
-                "position"   => {
+                "position" => {
                     if let Some(state) = State::from_tokens(tokens) {
                         debug!("\n{:?}", state.board());
                         let prev_table = search.table();
@@ -61,16 +52,21 @@ pub fn main(commands: Vec<String>) {
                     } else {
                         error!("Couldn't parse '{}' as position", line);
                     }
-                },
-                "stop"       => search = search.stop_and_print(),
-                "quit"       => return,
-                "go"         => search = search.go(tokens, &sender),
-                "movelist"   => search.print_move_list(),
-                "sizelist"   => print_size_list(),
-                _ => error!("Unknown command: {} (this engine uses a reduced set of commands from the UCI protocol)", first_word)
+                }
+                "quit" => return,
+                "go" => search.go(tokens, &mut next_line),
+                "movelist" => search.print_move_list(),
+                "sizelist" => print_size_list(),
+                _ => (),
             }
         }
     }
+}
+
+pub fn read_stdin() -> String {
+    let mut input = String::new();
+    stdin().read_line(&mut input).unwrap();
+    input
 }
 
 pub fn uci() {
