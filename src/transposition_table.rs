@@ -32,10 +32,6 @@ impl TranspositionTable {
         Self { table, arena }
     }
 
-    pub fn is_empty(&self) -> bool {
-        self.table.is_empty()
-    }
-
     pub fn arena(&self) -> &Arena {
         &self.arena
     }
@@ -67,7 +63,7 @@ impl TranspositionTable {
             .map(|v| unsafe { &*v.load(Ordering::Relaxed) })
     }
 
-    pub fn lookup_into(&self, state: &State, dest: &mut PositionNode) {
+    pub fn lookup_into(&self, state: &State, dest: &mut PositionNode) -> bool {
         if let Some(src) = self.lookup(state) {
             dest.set_flag(src.flag());
 
@@ -77,6 +73,9 @@ impl TranspositionTable {
             for i in 0..lhs.len().min(rhs.len()) {
                 lhs[i].replace(&rhs[i]);
             }
+            true
+        } else {
+            false
         }
     }
 }
@@ -98,6 +97,10 @@ impl LRTable {
         }
     }
 
+    pub fn empty() -> Self {
+        Self::new(TranspositionTable::empty(), TranspositionTable::empty())
+    }
+
     pub fn is_arena_full(&self) -> bool {
         self.current_table().arena().full()
     }
@@ -112,6 +115,12 @@ impl LRTable {
 
     pub fn lookup_into(&self, state: &State, dest: &mut PositionNode) {
         self.previous_table().lookup_into(state, dest);
+    }
+
+    pub fn lookup_into_from_all(&self, state: &State, dest: &mut PositionNode) {
+        if !self.current_table().lookup_into(state, dest) {
+            self.previous_table().lookup_into(state, dest);
+        }
     }
 
     pub fn is_left_current(&self) -> bool {
@@ -140,16 +149,6 @@ impl LRTable {
             !self.is_left_current.load(Ordering::SeqCst),
             Ordering::SeqCst,
         );
-    }
-
-    pub fn table(self) -> TranspositionTable {
-        if self.left.is_empty() {
-            self.right
-        } else if self.right.is_empty() || self.is_left_current() {
-            self.left
-        } else {
-            self.right
-        }
     }
 
     pub fn flip_lock(&self) -> &Mutex<()> {

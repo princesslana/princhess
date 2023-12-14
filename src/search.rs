@@ -7,7 +7,7 @@ use crate::options::{get_num_threads, get_policy_temperature, is_chess960};
 use crate::search_tree::{MoveEdge, SearchTree};
 use crate::state::State;
 use crate::tablebase;
-use crate::transposition_table::{LRAllocator, TranspositionTable};
+use crate::transposition_table::{LRAllocator, LRTable};
 use crate::uci::{read_stdin, Tokens};
 
 const DEFAULT_MOVE_TIME_SECS: u64 = 10;
@@ -93,12 +93,16 @@ pub struct Search {
 }
 
 impl Search {
-    pub fn new(state: State, prev_table: TranspositionTable) -> Self {
-        let search_tree = SearchTree::new(state, TranspositionTable::empty(), prev_table);
+    pub fn new(state: State, table: LRTable) -> Self {
+        let search_tree = SearchTree::new(state, table);
         Self { search_tree }
     }
 
-    pub fn table(self) -> TranspositionTable {
+    pub fn reset_table(&mut self) {
+        self.search_tree.reset_table();
+    }
+
+    pub fn table(self) -> LRTable {
         self.search_tree.table()
     }
 
