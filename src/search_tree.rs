@@ -200,11 +200,7 @@ where
 }
 
 impl SearchTree {
-    pub fn new(
-        state: State,
-        current_table: TranspositionTable,
-        previous_table: TranspositionTable,
-    ) -> Self {
+    pub fn new(state: State, table: LRTable) -> Self {
         let tb_hits = 0.into();
 
         let root_table = TranspositionTable::for_root();
@@ -217,7 +213,7 @@ impl SearchTree {
         )
         .expect("Unable to create root node");
 
-        previous_table.lookup_into(&state, &mut root_node);
+        table.lookup_into_from_all(&state, &mut root_node);
 
         Self {
             root_state: state,
@@ -226,7 +222,7 @@ impl SearchTree {
             cpuct_root: get_cpuct_root(),
             policy_t: get_policy_temperature(),
             root_table,
-            ttable: LRTable::new(current_table, previous_table),
+            ttable: table,
             num_nodes: 1.into(),
             playouts: 0.into(),
             max_depth: 0.into(),
@@ -235,12 +231,17 @@ impl SearchTree {
         }
     }
 
+    pub fn reset_table(&mut self) {
+        self.ttable = LRTable::empty();
+        self.root_node.clear_children_links();
+    }
+
     fn flip_tables(&self) {
         self.ttable.flip_tables();
     }
 
-    pub fn table(self) -> TranspositionTable {
-        self.ttable.table()
+    pub fn table(self) -> LRTable {
+        self.ttable
     }
 
     pub fn num_nodes(&self) -> usize {

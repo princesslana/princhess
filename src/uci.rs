@@ -9,7 +9,7 @@ use crate::search::Search;
 use crate::search_tree::print_size_list;
 use crate::state::State;
 use crate::tablebase::set_tablebase_directory;
-use crate::transposition_table::TranspositionTable;
+use crate::transposition_table::LRTable;
 
 pub type Tokens<'a> = SplitWhitespace<'a>;
 
@@ -18,7 +18,7 @@ const ENGINE_AUTHOR: &str = "Princess Lana";
 const VERSION: Option<&'static str> = option_env!("CARGO_PKG_VERSION");
 
 pub fn main() {
-    let mut search = Search::new(State::default(), TranspositionTable::empty());
+    let mut search = Search::new(State::default(), LRTable::empty());
 
     let mut next_line: Option<String> = None;
 
@@ -38,11 +38,11 @@ pub fn main() {
                     let option = UciOption::parse(tokens);
 
                     if let Some(opt) = option {
-                        opt.set();
+                        opt.set(&mut search);
                     }
                 }
                 "ucinewgame" => {
-                    search = Search::new(State::default(), TranspositionTable::empty());
+                    search = Search::new(State::default(), LRTable::empty());
                 }
                 "position" => {
                     if let Some(state) = State::from_tokens(tokens) {
@@ -129,7 +129,7 @@ impl UciOption {
         &self.value
     }
 
-    pub fn set(&self) {
+    pub fn set(&self, search: &mut Search) {
         match self.name().as_str() {
             "syzygypath" => {
                 if let Some(path) = self.value() {
@@ -137,7 +137,10 @@ impl UciOption {
                 }
             }
             "threads" => self.set_option(set_num_threads),
-            "hash" => self.set_option(set_hash_size_mb),
+            "hash" => {
+                self.set_option(set_hash_size_mb);
+                search.reset_table();
+            }
             "cpuct" => self.set_option(set_cpuct),
             "cpuctroot" => self.set_option(set_cpuct_root),
             "cvisitsselection" => self.set_option(set_cvisits_selection),
