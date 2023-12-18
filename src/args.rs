@@ -1,10 +1,9 @@
 extern crate argparse;
-use self::argparse::{ArgumentParser, Collect, StoreOption};
+use self::argparse::{ArgumentParser, StoreOption};
 
 #[derive(Default)]
 pub struct Options {
     pub syzygy_path: Option<String>,
-    pub extra: Vec<String>,
 }
 
 pub fn init() {
@@ -15,11 +14,6 @@ pub fn init() {
             &["-s", "--syzygy"],
             StoreOption,
             "path to syzygy tablebases",
-        );
-        ap.refer(&mut options.extra).add_argument(
-            "uci_commands",
-            Collect,
-            "additional arguments are interpreted as UCI commands",
         );
         ap.parse_args_or_exit();
     }
