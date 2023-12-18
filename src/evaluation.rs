@@ -1,5 +1,6 @@
-use shakmaty::{MoveList, Position};
+use shakmaty::Position;
 
+use crate::chess::MoveList;
 use crate::math;
 use crate::search::SCALE;
 use crate::state::{self, State};
@@ -164,7 +165,7 @@ fn run_policy_net(state: &State, moves: &MoveList, t: f32) -> Vec<f32> {
     let mut acc = Vec::with_capacity(moves.len());
 
     for m in moves {
-        let move_idx = state.move_to_index(m);
+        let move_idx = state.move_to_index(*m);
         move_idxs.push(move_idx);
         acc.push((
             POLICY_NET.add_bias.vals[move_idx],

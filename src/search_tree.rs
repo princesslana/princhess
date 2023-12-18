@@ -8,13 +8,14 @@ use std::sync::atomic::{
 };
 
 use crate::arena::Error as ArenaError;
+use crate::chess;
 use crate::evaluation::{self, Flag};
 use crate::options::{
     get_cpuct, get_cpuct_root, get_cvisits_selection, get_policy_temperature,
     get_policy_temperature_root,
 };
 use crate::search::{eval_in_cp, ThreadData};
-use crate::search::{to_uci, TimeManagement, SCALE};
+use crate::search::{TimeManagement, SCALE};
 use crate::state::State;
 use crate::transposition_table::{LRAllocator, LRTable, TranspositionTable};
 use crate::tree_policy;
@@ -46,7 +47,7 @@ pub struct MoveEdge {
     sum_evaluations: AtomicI64,
     visits: AtomicU32,
     policy: u16,
-    mov: shakmaty::Move,
+    mov: chess::Move,
     child: AtomicPtr<PositionNode>,
 }
 
@@ -95,7 +96,7 @@ impl PositionNode {
 }
 
 impl MoveEdge {
-    fn new(policy: u16, mov: shakmaty::Move) -> Self {
+    fn new(policy: u16, mov: chess::Move) -> Self {
         Self {
             policy,
             sum_evaluations: AtomicI64::default(),
@@ -105,7 +106,7 @@ impl MoveEdge {
         }
     }
 
-    pub fn get_move(&self) -> &shakmaty::Move {
+    pub fn get_move(&self) -> &chess::Move {
         &self.mov
     }
 
@@ -193,7 +194,7 @@ where
 
     #[allow(clippy::cast_sign_loss)]
     for (i, x) in hots.iter_mut().enumerate() {
-        *x = MoveEdge::new((move_eval[i] * SCALE) as u16, moves[i].clone());
+        *x = MoveEdge::new((move_eval[i] * SCALE) as u16, moves[i]);
     }
 
     Ok(PositionNode::new(hots, state_flag))
@@ -303,7 +304,7 @@ impl SearchTree {
             let choice = tree_policy::choose_child(node.hots(), cpuct, fpu);
             choice.down();
             path.push(choice);
-            state.make_move(&choice.mov);
+            state.make_move(choice.mov);
 
             if choice.visits() == 1 {
                 evaln = evaluation::evaluate_state(&state);
@@ -453,7 +454,7 @@ impl SearchTree {
         let sel_depth = self.max_depth();
         let pv = self.principal_variation(depth.max(1));
         let pv_string: String = pv.into_iter().fold(String::new(), |mut out, x| {
-            write!(out, " {}", to_uci(x.get_move())).unwrap();
+            write!(out, " {}", x.get_move().to_uci()).unwrap();
             out
         });
 
