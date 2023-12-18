@@ -1,10 +1,10 @@
-use shakmaty::{CastlingMode, Color};
+use shakmaty::Color;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 use crate::chess;
 use crate::evaluation;
-use crate::options::{get_num_threads, get_policy_temperature, is_chess960};
+use crate::options::{get_num_threads, get_policy_temperature};
 use crate::search_tree::{MoveEdge, SearchTree};
 use crate::state::State;
 use crate::tablebase;
@@ -128,7 +128,7 @@ impl Search {
             println!("bestmove {uci_mv}");
             return;
         } else if let Some((mv, wdl)) = tablebase::probe_best_move(state.board()) {
-            let uci_mv = to_uci(&mv);
+            let uci_mv = mv.to_uci();
 
             let score = match wdl {
                 tablebase::Wdl::Win => 1000,
@@ -306,11 +306,6 @@ impl Search {
     pub fn best_move(&self) -> chess::Move {
         *self.principal_variation(1).get(0).unwrap()
     }
-}
-
-pub fn to_uci(mov: &shakmaty::Move) -> String {
-    mov.to_uci(CastlingMode::from_chess960(is_chess960()))
-        .to_string()
 }
 
 // eval here is [-1.0, 1.0]

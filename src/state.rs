@@ -18,30 +18,30 @@ const OFFSET_DEFENDS: usize = 768 * 2;
 
 pub const NUMBER_FEATURES: usize = 768 * 3;
 
-pub struct Builder {
-    initial_state: Chess,
-    crnt_state: Chess,
-    moves: Vec<shakmaty::Move>,
+#[derive(Clone)]
+pub struct State {
+    board: Chess,
+
+    // 101 should be enough to track 50-move rule, but some games in the dataset
+    // can go above this. Hence we add a little space
+    prev_state_hashes: ArrayVec<u64, 128>,
+
+    prev_moves: [Option<chess::Move>; 2],
+
+    repetitions: usize,
+    hash: Zobrist64,
 }
+impl State {
+    pub fn from_board(board: Chess) -> Self {
+        let hash = board.zobrist_hash(EnPassantMode::Always);
 
-impl Builder {
-    pub fn chess(&self) -> &Chess {
-        &self.crnt_state
-    }
-
-    pub fn make_move(&mut self, mov: shakmaty::Move) {
-        self.crnt_state = self.crnt_state.clone().play(&mov).unwrap();
-        self.moves.push(mov);
-    }
-
-    pub fn from_fen(fen: &str) -> Option<Self> {
-        Some(
-            fen.parse::<Fen>()
-                .ok()?
-                .into_position::<Chess>(CastlingMode::from_chess960(is_chess960()))
-                .ok()?
-                .into(),
-        )
+        Self {
+            board,
+            prev_state_hashes: ArrayVec::new(),
+            prev_moves: [None, None],
+            repetitions: 0,
+            hash,
+        }
     }
 
     pub fn from_tokens(mut tokens: Tokens) -> Option<Self> {
@@ -65,29 +65,28 @@ impl Builder {
         };
         for mov_str in tokens {
             let uci = mov_str.parse::<Uci>().ok()?;
-            let mov = uci.to_move(result.chess()).ok()?;
-            result.make_move(mov);
+            let mov = uci.to_move(result.board()).ok()?;
+            result.make_move(mov.into());
         }
         Some(result)
     }
-}
 
-#[derive(Clone)]
-pub struct State {
-    board: Chess,
+    pub fn from_fen(fen: &str) -> Option<Self> {
+        let board = fen
+            .parse::<Fen>()
+            .ok()?
+            .into_position::<Chess>(CastlingMode::from_chess960(is_chess960()))
+            .ok()?;
 
-    // 101 should be enough to track 50-move rule, but some games in the dataset
-    // can go above this. Hence we add a little space
-    prev_state_hashes: ArrayVec<u64, 128>,
+        let hash = board.zobrist_hash(EnPassantMode::Always);
 
-    prev_moves: [Option<chess::Move>; 2],
-
-    repetitions: usize,
-    hash: Zobrist64,
-}
-impl State {
-    pub fn from_tokens(tokens: Tokens) -> Option<Self> {
-        Builder::from_tokens(tokens).map(Into::into)
+        Some(Self {
+            board,
+            prev_state_hashes: ArrayVec::new(),
+            prev_moves: [None, None],
+            repetitions: 0,
+            hash,
+        })
     }
 
     pub fn board(&self) -> &Chess {
@@ -332,44 +331,8 @@ impl State {
     }
 }
 
-impl Default for Builder {
-    fn default() -> Self {
-        shakmaty::Chess::default().into()
-    }
-}
-
 impl Default for State {
     fn default() -> Self {
-        Builder::default().into()
-    }
-}
-
-impl From<shakmaty::Chess> for Builder {
-    fn from(chess: shakmaty::Chess) -> Self {
-        Self {
-            initial_state: chess.clone(),
-            crnt_state: chess,
-            moves: Vec::new(),
-        }
-    }
-}
-
-impl From<Builder> for State {
-    fn from(sb: Builder) -> Self {
-        let hash = sb.initial_state.zobrist_hash(EnPassantMode::Always);
-
-        let mut state = State {
-            board: sb.initial_state,
-            prev_state_hashes: ArrayVec::new(),
-            prev_moves: [None, None],
-            repetitions: 0,
-            hash,
-        };
-
-        for mov in sb.moves {
-            state.make_move(mov.into());
-        }
-
-        state
+        Self::from_board(Chess::default())
     }
 }

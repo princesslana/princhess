@@ -8,9 +8,11 @@
 )]
 mod bindings;
 
-use shakmaty::{Chess, Color, EnPassantMode, Move, Position, Role, Square};
+use shakmaty::{Chess, Color, EnPassantMode, Position, Role, Square};
 use std::ffi::CString;
 use std::ptr;
+
+use crate::chess;
 
 pub enum Wdl {
     Win,
@@ -72,7 +74,7 @@ pub fn probe_wdl(pos: &Chess) -> Option<Wdl> {
     }
 }
 
-pub fn probe_best_move(pos: &Chess) -> Option<(Move, Wdl)> {
+pub fn probe_best_move(pos: &Chess) -> Option<(chess::Move, Wdl)> {
     let b = pos.board();
 
     if b.occupied().count() > max_pieces() {
@@ -126,7 +128,7 @@ pub fn probe_best_move(pos: &Chess) -> Option<(Move, Wdl)> {
 
         for m in pos.legal_moves() {
             if m.from() == Some(from) && m.to() == to && m.promotion() == promotion_role {
-                return Some((m, wdl));
+                return Some((m.into(), wdl));
             }
         }
     }
