@@ -172,10 +172,10 @@ impl Visitor for ValueDataGenerator {
                 });
 
                 for m in moves.as_slice() {
-                    move_features[state.move_to_index(m)] = 2;
+                    move_features[state.move_to_index(*m)] = 2;
                 }
 
-                move_features[state.move_to_index(&made)] = 1;
+                move_features[state.move_to_index(made.clone().into())] = 1;
 
                 let mut f_vec =
                     Vec::with_capacity(1 + state::NUMBER_MOVE_IDX + state::NUMBER_FEATURES);
@@ -184,7 +184,7 @@ impl Visitor for ValueDataGenerator {
 
                 write_libsvm(&f_vec, &mut self.out_file, wdl);
             }
-            state.make_move(&made);
+            state.make_move(made.into());
         }
     }
 

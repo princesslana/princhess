@@ -28,6 +28,7 @@ train/logs
 train/.env
 train/__pycache__
 train/pgn/*
+train/pgn.all
 train_data*
 train/*_weights
 train/*_bias

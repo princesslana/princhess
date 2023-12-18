@@ -1,7 +1,8 @@
-use shakmaty::{CastlingMode, Color, Move};
+use shakmaty::{CastlingMode, Color};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
+use crate::chess;
 use crate::evaluation;
 use crate::options::{get_num_threads, get_policy_temperature, is_chess960};
 use crate::search_tree::{MoveEdge, SearchTree};
@@ -122,7 +123,7 @@ impl Search {
         let mvs = state.available_moves();
 
         if mvs.len() == 1 {
-            let uci_mv = to_uci(&mvs[0]);
+            let uci_mv = mvs[0].to_uci();
             println!("info depth 1 seldepth 1 nodes 1 nps 1 tbhits 0 time 1 pv {uci_mv}");
             println!("bestmove {uci_mv}");
             return;
@@ -235,7 +236,7 @@ impl Search {
                 run_search_thread(&time_management);
                 self.search_tree.print_info(&time_management);
                 stop_signal.store(true, Ordering::Relaxed);
-                println!("bestmove {}", to_uci(&self.best_move().unwrap()));
+                println!("bestmove {}", self.best_move().to_uci());
             });
 
             for _ in 0..(num_threads - 1) {
@@ -280,8 +281,8 @@ impl Search {
         moves.sort_by_key(|(h, e)| (h.average_reward().unwrap_or(*e) * SCALE) as i64);
         for (mov, e) in moves {
             println!(
-                "info string {:7} M: {:>6} P: {:>6} V: {:7} E: {:>6} ({:>8})",
-                format!("{}", mov.get_move()),
+                "info string {:7} M: {:5} P: {:>6} V: {:7} E: {:>6} ({:>8})",
+                format!("{}", mov.get_move().to_uci()),
                 format!("{:3.2}", e * 100.),
                 format!("{:3.2}", f32::from(mov.policy()) / SCALE * 100.),
                 mov.visits(),
@@ -293,21 +294,21 @@ impl Search {
         }
     }
 
-    pub fn principal_variation(&self, num_moves: usize) -> Vec<Move> {
+    pub fn principal_variation(&self, num_moves: usize) -> Vec<chess::Move> {
         self.search_tree
             .principal_variation(num_moves)
             .into_iter()
             .map(MoveEdge::get_move)
-            .cloned()
+            .copied()
             .collect()
     }
 
-    pub fn best_move(&self) -> Option<shakmaty::Move> {
-        self.principal_variation(1).get(0).cloned()
+    pub fn best_move(&self) -> chess::Move {
+        *self.principal_variation(1).get(0).unwrap()
     }
 }
 
-pub fn to_uci(mov: &Move) -> String {
+pub fn to_uci(mov: &shakmaty::Move) -> String {
     mov.to_uci(CastlingMode::from_chess960(is_chess960()))
         .to_string()
 }

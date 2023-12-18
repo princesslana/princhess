@@ -15,18 +15,18 @@ extern crate rand;
 extern crate shakmaty;
 
 mod arena;
+mod args;
+mod chess;
+mod evaluation;
 mod math;
 mod options;
+mod search;
 mod search_tree;
+mod state;
 mod tablebase;
+mod training;
 mod transposition_table;
 mod tree_policy;
-
-mod args;
-mod evaluation;
-mod search;
-mod state;
-mod training;
 mod uci;
 
 fn main() {

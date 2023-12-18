@@ -3,11 +3,12 @@ use shakmaty::fen::Fen;
 use shakmaty::uci::Uci;
 use shakmaty::zobrist::{Zobrist64, ZobristHash, ZobristValue};
 use shakmaty::{
-    self, CastlingMode, CastlingSide, Chess, Color, EnPassantMode, File, Move, MoveList, Piece,
-    Position, Rank, Role, Square,
+    self, CastlingMode, CastlingSide, Chess, Color, EnPassantMode, File, Piece, Position, Rank,
+    Role, Square,
 };
 use std::convert::Into;
 
+use crate::chess;
 use crate::options::is_chess960;
 use crate::uci::Tokens;
 
@@ -21,7 +22,7 @@ pub const NUMBER_MOVE_IDX: usize = 384;
 pub struct Builder {
     initial_state: Chess,
     crnt_state: Chess,
-    moves: Vec<Move>,
+    moves: Vec<shakmaty::Move>,
 }
 
 impl Builder {
@@ -29,7 +30,7 @@ impl Builder {
         &self.crnt_state
     }
 
-    pub fn make_move(&mut self, mov: Move) {
+    pub fn make_move(&mut self, mov: shakmaty::Move) {
         self.crnt_state = self.crnt_state.clone().play(&mov).unwrap();
         self.moves.push(mov);
     }
@@ -71,7 +72,7 @@ impl Builder {
         Some(result)
     }
 
-    pub fn extract(&self) -> (State, Vec<Move>) {
+    pub fn extract(&self) -> (State, Vec<shakmaty::Move>) {
         let state = Self::from(self.initial_state.clone()).into();
         let moves = self.moves.clone();
         (state, moves)
@@ -86,7 +87,7 @@ pub struct State {
     // can go above this. Hence we add a little space
     prev_state_hashes: ArrayVec<u64, 128>,
 
-    prev_moves: [Option<Move>; 2],
+    prev_moves: [Option<chess::Move>; 2],
 
     repetitions: usize,
     hash: Zobrist64,
@@ -108,24 +109,35 @@ impl State {
         self.hash.0
     }
 
-    pub fn available_moves(&self) -> MoveList {
-        self.board.legal_moves()
+    pub fn available_moves(&self) -> chess::MoveList {
+        let mut moves = chess::MoveList::new();
+
+        for m in self.board.legal_moves() {
+            moves.push(m.into());
+        }
+
+        moves
     }
 
-    pub fn make_move(&mut self, mov: &Move) {
-        let is_pawn_move = mov.role() == Role::Pawn;
+    pub fn make_move(&mut self, mov: chess::Move) {
+        let b = self.board.board();
+        let role = b.role_at(mov.from()).unwrap();
 
-        self.prev_moves[0] = self.prev_moves[1].clone();
-        self.prev_moves[1] = Some(mov.clone());
+        let is_pawn_move = role == Role::Pawn;
+        let capture = b.role_at(mov.to());
 
-        if is_pawn_move || mov.is_capture() {
+        self.prev_moves[0] = self.prev_moves[1];
+        self.prev_moves[1] = Some(mov);
+
+        if is_pawn_move || capture.is_some() {
             self.prev_state_hashes.clear();
         }
         self.prev_state_hashes.push(self.hash());
 
         self.update_hash_pre();
-        self.board.play_unchecked(mov);
-        self.update_hash(!self.side_to_move(), mov);
+        self.board
+            .play_unchecked(&mov.to_shakmaty(self.board.board()));
+        self.update_hash(!self.side_to_move(), role, capture, mov);
 
         self.check_for_repetition();
     }
@@ -148,49 +160,52 @@ impl State {
         }
     }
 
-    fn update_hash(&mut self, color: Color, mv: &Move) {
-        match mv {
-            Move::Normal {
-                role,
-                from,
+    fn update_hash(
+        &mut self,
+        color: Color,
+        role: shakmaty::Role,
+        capture: Option<shakmaty::Role>,
+        mv: chess::Move,
+    ) {
+        if !mv.is_normal() {
+            self.hash = self.board.zobrist_hash(EnPassantMode::Always);
+            return;
+        }
+
+        let from = mv.from();
+        let to = mv.to();
+
+        let pc = Piece { color, role };
+        self.hash ^= Zobrist64::zobrist_for_piece(from, pc);
+        self.hash ^= Zobrist64::zobrist_for_piece(to, pc);
+
+        if let Some(captured) = capture {
+            self.hash ^= Zobrist64::zobrist_for_piece(
                 to,
-                capture,
-                promotion: None,
-            } => {
-                let pc = Piece { color, role: *role };
-                self.hash ^= Zobrist64::zobrist_for_piece(*from, pc);
-                self.hash ^= Zobrist64::zobrist_for_piece(*to, pc);
+                Piece {
+                    color: !color,
+                    role: captured,
+                },
+            );
+        }
 
-                if let Some(captured) = capture {
-                    self.hash ^= Zobrist64::zobrist_for_piece(
-                        *to,
-                        Piece {
-                            color: !color,
-                            role: *captured,
-                        },
-                    );
-                }
+        if let Some(ep_sq) = self.board.ep_square(EnPassantMode::Always) {
+            self.hash ^= Zobrist64::zobrist_for_en_passant_file(ep_sq.file());
+        }
 
-                if let Some(ep_sq) = self.board.ep_square(EnPassantMode::Always) {
-                    self.hash ^= Zobrist64::zobrist_for_en_passant_file(ep_sq.file());
-                }
+        let castles = self.board.castles();
 
-                let castles = self.board.castles();
-
-                if !castles.is_empty() {
-                    for color in Color::ALL {
-                        for side in CastlingSide::ALL {
-                            if castles.has(color, side) {
-                                self.hash ^= Zobrist64::zobrist_for_castling_right(color, side);
-                            }
-                        }
+        if !castles.is_empty() {
+            for color in Color::ALL {
+                for side in CastlingSide::ALL {
+                    if castles.has(color, side) {
+                        self.hash ^= Zobrist64::zobrist_for_castling_right(color, side);
                     }
                 }
-
-                self.hash ^= Zobrist64::zobrist_for_white_turn();
             }
-            _ => self.hash = self.board.zobrist_hash(EnPassantMode::Always),
-        };
+        }
+
+        self.hash ^= Zobrist64::zobrist_for_white_turn();
     }
 
     fn check_for_repetition(&mut self) {
@@ -272,12 +287,12 @@ impl State {
         // We use the king threats and defenses squares for previous moves
         if let Some(m) = &self.prev_moves[0] {
             f(OFFSET_DEFENDS + feature_idx(m.to(), Role::King, stm));
-            f(OFFSET_DEFENDS + feature_idx(m.from().unwrap(), Role::King, !stm));
+            f(OFFSET_DEFENDS + feature_idx(m.from(), Role::King, !stm));
         }
 
         if let Some(m) = &self.prev_moves[1] {
             f(OFFSET_THREATS + feature_idx(m.to(), Role::King, stm));
-            f(OFFSET_THREATS + feature_idx(m.from().unwrap(), Role::King, !stm));
+            f(OFFSET_THREATS + feature_idx(m.from(), Role::King, !stm));
         }
     }
 
@@ -302,7 +317,8 @@ impl State {
         self.features_map(f);
     }
 
-    pub fn move_to_index(&self, mv: &Move) -> usize {
+    pub fn move_to_index(&self, mv: chess::Move) -> usize {
+        let role = self.board.board().role_at(mv.from()).unwrap();
         let to_sq = mv.to();
 
         let (flip_vertical, flip_horizontal) = self.feature_flip();
@@ -314,7 +330,7 @@ impl State {
             (false, false) => sq,
         };
 
-        let role_idx = mv.role() as usize - 1;
+        let role_idx = role as usize - 1;
 
         let flip_to = flip_square(to_sq);
 
@@ -365,7 +381,7 @@ impl From<Builder> for State {
         };
 
         for mov in sb.moves {
-            state.make_move(&mov);
+            state.make_move(mov.into());
         }
 
         state
