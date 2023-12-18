@@ -337,8 +337,10 @@ impl SearchTree {
         }
 
         evaln = match node.flag {
-            Flag::TerminalWin | Flag::TablebaseWin => 2 * SCALE as i64,
-            Flag::TerminalLoss | Flag::TablebaseLoss => -2 * SCALE as i64,
+            Flag::TerminalWin => 2 * SCALE as i64,
+            Flag::TerminalLoss => -2 * SCALE as i64,
+            Flag::TablebaseWin => SCALE as i64,
+            Flag::TablebaseLoss => -SCALE as i64,
             Flag::TerminalDraw | Flag::TablebaseDraw => 0,
             Flag::Standard => evaln,
         };
