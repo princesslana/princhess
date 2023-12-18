@@ -17,7 +17,6 @@ const OFFSET_THREATS: usize = 768;
 const OFFSET_DEFENDS: usize = 768 * 2;
 
 pub const NUMBER_FEATURES: usize = 768 * 3;
-pub const NUMBER_MOVE_IDX: usize = 384;
 
 pub struct Builder {
     initial_state: Chess,
@@ -70,12 +69,6 @@ impl Builder {
             result.make_move(mov);
         }
         Some(result)
-    }
-
-    pub fn extract(&self) -> (State, Vec<shakmaty::Move>) {
-        let state = Self::from(self.initial_state.clone()).into();
-        let moves = self.moves.clone();
-        (state, moves)
     }
 }
 
@@ -304,13 +297,6 @@ impl State {
     }
 
     pub fn policy_features_map<F>(&self, f: F)
-    where
-        F: FnMut(usize),
-    {
-        self.features_map(f);
-    }
-
-    pub fn training_features_map<F>(&self, f: F)
     where
         F: FnMut(usize),
     {
