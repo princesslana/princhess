@@ -11,7 +11,6 @@ extern crate memmap;
 extern crate nohash_hasher;
 extern crate once_cell;
 extern crate pretty_env_logger;
-extern crate rand;
 extern crate shakmaty;
 
 mod arena;
@@ -24,7 +23,6 @@ mod search;
 mod search_tree;
 mod state;
 mod tablebase;
-mod training;
 mod transposition_table;
 mod tree_policy;
 mod uci;
@@ -39,11 +37,5 @@ fn main() {
         tablebase::set_tablebase_directory(syzygy_path);
     }
 
-    if let Some(ref train_pgn) = options.train_pgn {
-        training::train(train_pgn, &options.train_output_path);
-    } else {
-        info!("Init.");
-        uci::main();
-        info!("Exit.");
-    }
+    uci::main();
 }
