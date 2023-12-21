@@ -1,6 +1,5 @@
 use arrayvec::ArrayVec;
 use shakmaty::fen::Fen;
-use shakmaty::uci::Uci;
 use shakmaty::zobrist::{Zobrist64, ZobristHash, ZobristValue};
 use shakmaty::{
     self, CastlingMode, CastlingSide, Chess, Color, EnPassantMode, File, Piece, Position, Rank,
@@ -64,9 +63,12 @@ impl State {
             Some(_) => return None,
         };
         for mov_str in tokens {
-            let uci = mov_str.parse::<Uci>().ok()?;
-            let mov = uci.to_move(result.board()).ok()?;
-            result.make_move(mov.into());
+            for mov in result.available_moves() {
+                if mov.to_uci() == mov_str {
+                    result.make_move(mov);
+                    break;
+                }
+            }
         }
         Some(result)
     }
@@ -113,10 +115,10 @@ impl State {
 
     pub fn make_move(&mut self, mov: chess::Move) {
         let b = self.board.board();
-        let role = b.role_at(mov.from()).unwrap();
+        let role = b.role_at(mov.from().into()).unwrap();
 
         let is_pawn_move = role == Role::Pawn;
-        let capture = b.role_at(mov.to());
+        let capture = b.role_at(mov.to().into());
 
         self.prev_moves[0] = self.prev_moves[1];
         self.prev_moves[1] = Some(mov);
@@ -164,8 +166,8 @@ impl State {
             return;
         }
 
-        let from = mv.from();
-        let to = mv.to();
+        let from = shakmaty::Square::from(mv.from());
+        let to = shakmaty::Square::from(mv.to());
 
         let pc = Piece { color, role };
         self.hash ^= Zobrist64::zobrist_for_piece(from, pc);
@@ -278,13 +280,13 @@ impl State {
 
         // We use the king threats and defenses squares for previous moves
         if let Some(m) = &self.prev_moves[0] {
-            f(OFFSET_DEFENDS + feature_idx(m.to(), Role::King, stm));
-            f(OFFSET_DEFENDS + feature_idx(m.from(), Role::King, !stm));
+            f(OFFSET_DEFENDS + feature_idx(m.to().into(), Role::King, stm));
+            f(OFFSET_DEFENDS + feature_idx(m.from().into(), Role::King, !stm));
         }
 
         if let Some(m) = &self.prev_moves[1] {
-            f(OFFSET_THREATS + feature_idx(m.to(), Role::King, stm));
-            f(OFFSET_THREATS + feature_idx(m.from(), Role::King, !stm));
+            f(OFFSET_THREATS + feature_idx(m.to().into(), Role::King, stm));
+            f(OFFSET_THREATS + feature_idx(m.from().into(), Role::King, !stm));
         }
     }
 
@@ -303,8 +305,8 @@ impl State {
     }
 
     pub fn move_to_index(&self, mv: chess::Move) -> usize {
-        let role = self.board.board().role_at(mv.from()).unwrap();
-        let to_sq = mv.to();
+        let role = self.board.board().role_at(mv.from().into()).unwrap();
+        let to_sq = mv.to().into();
 
         let (flip_vertical, flip_horizontal) = self.feature_flip();
 

@@ -1,3 +1,4 @@
+use crate::chess::Square;
 use crate::options::is_chess960;
 use arrayvec::ArrayVec;
 
@@ -40,14 +41,12 @@ impl Move {
         Self(Self::new(king, rook).0 | Self::CASTLE_FLAG)
     }
 
-    pub fn from(self) -> shakmaty::Square {
-        unsafe { shakmaty::Square::new_unchecked(u32::from(self.0 & Self::SQ_MASK)) }
+    pub fn from(self) -> Square {
+        Square::from(self.0 & Self::SQ_MASK)
     }
 
-    pub fn to(self) -> shakmaty::Square {
-        unsafe {
-            shakmaty::Square::new_unchecked(u32::from((self.0 >> Self::TO_SHIFT) & Self::SQ_MASK))
-        }
+    pub fn to(self) -> Square {
+        Square::from((self.0 >> Self::TO_SHIFT) & Self::SQ_MASK)
     }
 
     pub fn is_normal(self) -> bool {
@@ -80,10 +79,10 @@ impl Move {
         let from = self.from();
         let to = if self.is_castle() && !is_chess960() {
             match self.to() {
-                shakmaty::Square::H1 => shakmaty::Square::G1,
-                shakmaty::Square::A1 => shakmaty::Square::C1,
-                shakmaty::Square::H8 => shakmaty::Square::G8,
-                shakmaty::Square::A8 => shakmaty::Square::C8,
+                Square::H1 => Square::G1,
+                Square::A1 => Square::C1,
+                Square::H8 => Square::G8,
+                Square::A8 => Square::C8,
                 _ => panic!("Invalid castle move: {self:?}"),
             }
         } else {
@@ -98,8 +97,8 @@ impl Move {
     }
 
     pub fn to_shakmaty(self, board: &shakmaty::Board) -> shakmaty::Move {
-        let from = self.from();
-        let to = self.to();
+        let from = shakmaty::Square::from(self.from());
+        let to = shakmaty::Square::from(self.to());
 
         if self.is_enpassant() {
             return shakmaty::Move::EnPassant { from, to };
