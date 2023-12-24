@@ -1,14 +1,6 @@
 use arrayvec::ArrayVec;
-use shakmaty::fen::Fen;
-use shakmaty::zobrist::{Zobrist64, ZobristHash, ZobristValue};
-use shakmaty::{
-    self, CastlingMode, CastlingSide, Chess, Color, EnPassantMode, File, Piece, Position, Rank,
-    Role, Square,
-};
-use std::convert::Into;
 
-use crate::chess;
-use crate::options::is_chess960;
+use crate::chess::{Board, Color, File, Move, MoveList, Piece, Rank, Square};
 use crate::uci::Tokens;
 
 const OFFSET_POSITION: usize = 0;
@@ -19,27 +11,24 @@ pub const NUMBER_FEATURES: usize = 768 * 3;
 
 #[derive(Clone)]
 pub struct State {
-    board: Chess,
+    board: Board,
 
     // 101 should be enough to track 50-move rule, but some games in the dataset
     // can go above this. Hence we add a little space
     prev_state_hashes: ArrayVec<u64, 128>,
 
-    prev_moves: [Option<chess::Move>; 2],
+    prev_moves: [Option<Move>; 2],
 
     repetitions: usize,
-    hash: Zobrist64,
 }
-impl State {
-    pub fn from_board(board: Chess) -> Self {
-        let hash = board.zobrist_hash(EnPassantMode::Always);
 
+impl State {
+    pub fn from_board(board: Board) -> Self {
         Self {
             board,
             prev_state_hashes: ArrayVec::new(),
             prev_moves: [None, None],
             repetitions: 0,
-            hash,
         }
     }
 
@@ -74,51 +63,38 @@ impl State {
     }
 
     pub fn from_fen(fen: &str) -> Option<Self> {
-        let board = fen
-            .parse::<Fen>()
-            .ok()?
-            .into_position::<Chess>(CastlingMode::from_chess960(is_chess960()))
-            .ok()?;
-
-        let hash = board.zobrist_hash(EnPassantMode::Always);
+        let board = Board::from_fen(fen)?;
 
         Some(Self {
             board,
             prev_state_hashes: ArrayVec::new(),
             prev_moves: [None, None],
             repetitions: 0,
-            hash,
         })
     }
 
-    pub fn board(&self) -> &Chess {
+    pub fn board(&self) -> &Board {
         &self.board
     }
 
     pub fn side_to_move(&self) -> Color {
-        self.board.turn()
+        self.board.side_to_move()
     }
 
     pub fn hash(&self) -> u64 {
-        self.hash.0
+        self.board.hash()
     }
 
-    pub fn available_moves(&self) -> chess::MoveList {
-        let mut moves = chess::MoveList::new();
-
-        for m in self.board.legal_moves() {
-            moves.push(m.into());
-        }
-
-        moves
+    pub fn available_moves(&self) -> MoveList {
+        self.board.legal_moves()
     }
 
-    pub fn make_move(&mut self, mov: chess::Move) {
-        let b = self.board.board();
-        let role = b.role_at(mov.from().into()).unwrap();
+    pub fn make_move(&mut self, mov: Move) {
+        let b = &self.board;
+        let piece = b.piece_at(mov.from()).unwrap();
 
-        let is_pawn_move = role == Role::Pawn;
-        let capture = b.role_at(mov.to().into());
+        let is_pawn_move = piece == Piece::PAWN;
+        let capture = b.piece_at(mov.to());
 
         self.prev_moves[0] = self.prev_moves[1];
         self.prev_moves[1] = Some(mov);
@@ -128,78 +104,9 @@ impl State {
         }
         self.prev_state_hashes.push(self.hash());
 
-        self.update_hash_pre();
-        self.board
-            .play_unchecked(&mov.to_shakmaty(self.board.board()));
-        self.update_hash(!self.side_to_move(), role, capture, mov);
+        self.board.play(mov);
 
         self.check_for_repetition();
-    }
-
-    fn update_hash_pre(&mut self) {
-        if let Some(ep_sq) = self.board.ep_square(EnPassantMode::Always) {
-            self.hash ^= Zobrist64::zobrist_for_en_passant_file(ep_sq.file());
-        }
-
-        let castles = self.board.castles();
-
-        if !castles.is_empty() {
-            for color in Color::ALL {
-                for side in CastlingSide::ALL {
-                    if castles.has(color, side) {
-                        self.hash ^= Zobrist64::zobrist_for_castling_right(color, side);
-                    }
-                }
-            }
-        }
-    }
-
-    fn update_hash(
-        &mut self,
-        color: Color,
-        role: shakmaty::Role,
-        capture: Option<shakmaty::Role>,
-        mv: chess::Move,
-    ) {
-        if !mv.is_normal() {
-            self.hash = self.board.zobrist_hash(EnPassantMode::Always);
-            return;
-        }
-
-        let from = shakmaty::Square::from(mv.from());
-        let to = shakmaty::Square::from(mv.to());
-
-        let pc = Piece { color, role };
-        self.hash ^= Zobrist64::zobrist_for_piece(from, pc);
-        self.hash ^= Zobrist64::zobrist_for_piece(to, pc);
-
-        if let Some(captured) = capture {
-            self.hash ^= Zobrist64::zobrist_for_piece(
-                to,
-                Piece {
-                    color: !color,
-                    role: captured,
-                },
-            );
-        }
-
-        if let Some(ep_sq) = self.board.ep_square(EnPassantMode::Always) {
-            self.hash ^= Zobrist64::zobrist_for_en_passant_file(ep_sq.file());
-        }
-
-        let castles = self.board.castles();
-
-        if !castles.is_empty() {
-            for color in Color::ALL {
-                for side in CastlingSide::ALL {
-                    if castles.has(color, side) {
-                        self.hash ^= Zobrist64::zobrist_for_castling_right(color, side);
-                    }
-                }
-            }
-        }
-
-        self.hash ^= Zobrist64::zobrist_for_white_turn();
     }
 
     fn check_for_repetition(&mut self) {
@@ -225,14 +132,14 @@ impl State {
 
     fn feature_flip(&self) -> (bool, bool) {
         let stm = self.side_to_move();
-        let b = self.board.board();
+        let b = &self.board;
 
-        let ksq = b.king_of(stm).unwrap();
+        let ksq = b.king_of(stm);
 
-        let flip_vertical = stm == Color::Black;
-        let flip_horizontal = ksq.file() <= File::D;
+        let flip_rank = stm == Color::BLACK;
+        let flip_file = ksq.file() <= File::D;
 
-        (flip_vertical, flip_horizontal)
+        (flip_rank, flip_file)
     }
 
     fn features_map<F>(&self, mut f: F)
@@ -240,53 +147,53 @@ impl State {
         F: FnMut(usize),
     {
         let stm = self.side_to_move();
-        let b = self.board.board();
+        let b = &self.board;
 
-        let (flip_vertical, flip_horizontal) = self.feature_flip();
+        let (flip_rank, flip_file) = self.feature_flip();
 
-        let flip_square = |sq: Square| match (flip_vertical, flip_horizontal) {
-            (true, true) => sq.flip_vertical().flip_horizontal(),
-            (true, false) => sq.flip_vertical(),
-            (false, true) => sq.flip_horizontal(),
+        let flip_square = |sq: Square| match (flip_rank, flip_file) {
+            (true, true) => sq.flip_rank().flip_file(),
+            (true, false) => sq.flip_rank(),
+            (false, true) => sq.flip_file(),
             (false, false) => sq,
         };
 
-        let feature_idx = |sq: Square, r: Role, c: Color| {
-            let sq_idx = flip_square(sq) as usize;
-            let role_idx = r as usize - 1;
+        let feature_idx = |sq: Square, p: Piece, c: Color| {
+            let sq_idx = flip_square(sq).index();
+            let piece_idx = p.index();
             let side_idx = usize::from(c != stm);
 
-            (side_idx * 6 + role_idx) * 64 + sq_idx
+            (side_idx * 6 + piece_idx) * 64 + sq_idx
         };
 
         for sq in b.occupied() {
-            let role = b.role_at(sq).unwrap();
+            let piece = b.piece_at(sq).unwrap();
             let color = b.color_at(sq).unwrap();
 
-            f(OFFSET_POSITION + feature_idx(sq, role, color));
+            f(OFFSET_POSITION + feature_idx(sq, piece, color));
 
-            if role != Role::King {
+            if piece != Piece::KING {
                 // Threats
                 if b.attacks_to(sq, !color, b.occupied()).any() {
-                    f(OFFSET_THREATS + feature_idx(sq, role, color));
+                    f(OFFSET_THREATS + feature_idx(sq, piece, color));
                 }
 
                 // Defenses
                 if b.attacks_to(sq, color, b.occupied()).any() {
-                    f(OFFSET_DEFENDS + feature_idx(sq, role, color));
+                    f(OFFSET_DEFENDS + feature_idx(sq, piece, color));
                 }
             }
         }
 
         // We use the king threats and defenses squares for previous moves
         if let Some(m) = &self.prev_moves[0] {
-            f(OFFSET_DEFENDS + feature_idx(m.to().into(), Role::King, stm));
-            f(OFFSET_DEFENDS + feature_idx(m.from().into(), Role::King, !stm));
+            f(OFFSET_DEFENDS + feature_idx(m.to(), Piece::KING, stm));
+            f(OFFSET_DEFENDS + feature_idx(m.from(), Piece::KING, !stm));
         }
 
         if let Some(m) = &self.prev_moves[1] {
-            f(OFFSET_THREATS + feature_idx(m.to().into(), Role::King, stm));
-            f(OFFSET_THREATS + feature_idx(m.from().into(), Role::King, !stm));
+            f(OFFSET_THREATS + feature_idx(m.to(), Piece::KING, stm));
+            f(OFFSET_THREATS + feature_idx(m.from(), Piece::KING, !stm));
         }
     }
 
@@ -304,37 +211,37 @@ impl State {
         self.features_map(f);
     }
 
-    pub fn move_to_index(&self, mv: chess::Move) -> usize {
-        let role = self.board.board().role_at(mv.from().into()).unwrap();
-        let to_sq = mv.to().into();
+    pub fn move_to_index(&self, mv: Move) -> usize {
+        let piece = self.board.piece_at(mv.from()).unwrap();
+        let to_sq = mv.to();
 
-        let (flip_vertical, flip_horizontal) = self.feature_flip();
+        let (flip_rank, flip_file) = self.feature_flip();
 
-        let flip_square = |sq: shakmaty::Square| match (flip_vertical, flip_horizontal) {
-            (true, true) => sq.flip_vertical().flip_horizontal(),
-            (true, false) => sq.flip_vertical(),
-            (false, true) => sq.flip_horizontal(),
+        let flip_square = |sq: Square| match (flip_rank, flip_file) {
+            (true, true) => sq.flip_rank().flip_file(),
+            (true, false) => sq.flip_rank(),
+            (false, true) => sq.flip_file(),
             (false, false) => sq,
         };
 
-        let role_idx = role as usize - 1;
+        let piece_idx = piece.index();
 
         let flip_to = flip_square(to_sq);
 
         let adj_to = match mv.promotion() {
-            Some(Role::Knight) => Square::from_coords(flip_to.file(), Rank::First),
-            Some(Role::Bishop | Role::Rook) => Square::from_coords(flip_to.file(), Rank::Second),
+            Some(Piece::KNIGHT) => Square::from_coords(flip_to.file(), Rank::_1),
+            Some(Piece::BISHOP | Piece::ROOK) => Square::from_coords(flip_to.file(), Rank::_2),
             _ => flip_to,
         };
 
-        let to_idx = adj_to as usize;
+        let to_idx = adj_to.index();
 
-        role_idx * 64 + to_idx
+        piece_idx * 64 + to_idx
     }
 }
 
 impl Default for State {
     fn default() -> Self {
-        Self::from_board(Chess::default())
+        Self::from_board(Board::default())
     }
 }

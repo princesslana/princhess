@@ -1,5 +1,4 @@
 use arrayvec::ArrayVec;
-use shakmaty::Position;
 use std::fmt::Write;
 use std::mem;
 use std::ptr::null_mut;

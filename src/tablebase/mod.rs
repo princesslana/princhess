@@ -8,11 +8,10 @@
 )]
 mod bindings;
 
-use shakmaty::{Chess, Color, EnPassantMode, Position, Role, Square};
 use std::ffi::CString;
 use std::ptr;
 
-use crate::chess;
+use crate::chess::{Board, Color, Move, Piece, Square};
 
 pub enum Wdl {
     Win,
@@ -36,14 +35,12 @@ pub fn set_tablebase_directory(paths: &str) {
     }
 }
 
-pub fn probe_wdl(pos: &Chess) -> Option<Wdl> {
-    let b = pos.board();
-
+pub fn probe_wdl(b: &Board) -> Option<Wdl> {
     if b.occupied().count() > max_pieces() {
         return None;
     }
 
-    if pos.castles().any() || pos.ep_square(EnPassantMode::Always).is_some() {
+    if b.is_castling_rights() || b.ep_square().is_some() {
         return None;
     }
 
@@ -60,7 +57,7 @@ pub fn probe_wdl(pos: &Chess) -> Option<Wdl> {
             0,
             0,
             0,
-            pos.turn() == Color::White,
+            b.side_to_move() == Color::WHITE,
         );
 
         match wdl {
@@ -74,14 +71,12 @@ pub fn probe_wdl(pos: &Chess) -> Option<Wdl> {
     }
 }
 
-pub fn probe_best_move(pos: &Chess) -> Option<(chess::Move, Wdl)> {
-    let b = pos.board();
-
+pub fn probe_best_move(b: &Board) -> Option<(Move, Wdl)> {
     if b.occupied().count() > max_pieces() {
         return None;
     }
 
-    if pos.castles().any() || pos.ep_square(EnPassantMode::Always).is_some() {
+    if b.is_castling_rights() || b.ep_square().is_some() {
         return None;
     }
 
@@ -98,7 +93,7 @@ pub fn probe_best_move(pos: &Chess) -> Option<(chess::Move, Wdl)> {
             0,
             0,
             0,
-            pos.turn() == Color::White,
+            b.side_to_move() == Color::WHITE,
             ptr::null_mut(),
         );
 
@@ -113,21 +108,21 @@ pub fn probe_best_move(pos: &Chess) -> Option<(chess::Move, Wdl)> {
         };
 
         let from =
-            Square::new((root & bindings::TB_RESULT_FROM_MASK) >> bindings::TB_RESULT_FROM_SHIFT);
-        let to = Square::new((root & bindings::TB_RESULT_TO_MASK) >> bindings::TB_RESULT_TO_SHIFT);
+            Square::from((root & bindings::TB_RESULT_FROM_MASK) >> bindings::TB_RESULT_FROM_SHIFT);
+        let to = Square::from((root & bindings::TB_RESULT_TO_MASK) >> bindings::TB_RESULT_TO_SHIFT);
         let promotion =
             (root & bindings::TB_RESULT_PROMOTES_MASK) >> bindings::TB_RESULT_PROMOTES_SHIFT;
 
         let promotion_role = match promotion {
-            bindings::TB_PROMOTES_QUEEN => Some(Role::Queen),
-            bindings::TB_PROMOTES_ROOK => Some(Role::Rook),
-            bindings::TB_PROMOTES_BISHOP => Some(Role::Bishop),
-            bindings::TB_PROMOTES_KNIGHT => Some(Role::Knight),
+            bindings::TB_PROMOTES_QUEEN => Some(Piece::QUEEN),
+            bindings::TB_PROMOTES_ROOK => Some(Piece::ROOK),
+            bindings::TB_PROMOTES_BISHOP => Some(Piece::BISHOP),
+            bindings::TB_PROMOTES_KNIGHT => Some(Piece::KNIGHT),
             _ => None,
         };
 
-        for m in pos.legal_moves() {
-            if m.from() == Some(from) && m.to() == to && m.promotion() == promotion_role {
+        for m in b.legal_moves() {
+            if m.from() == from && m.to() == to && m.promotion() == promotion_role {
                 return Some((m.into(), wdl));
             }
         }

@@ -1,5 +1,3 @@
-use shakmaty::Position;
-
 use crate::chess::MoveList;
 use crate::math;
 use crate::search::SCALE;
