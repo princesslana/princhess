@@ -27,7 +27,7 @@ fn build_fathom() {
 fn generate_bindings() {
     let bindings = bindgen::Builder::default()
         .header("./deps/fathom/src/tbprobe.h")
-        .parse_callbacks(Box::new(bindgen::CargoCallbacks))
+        .parse_callbacks(Box::new(bindgen::CargoCallbacks::new()))
         .layout_tests(false)
         .generate()
         .expect("Unable to generate bindings");
