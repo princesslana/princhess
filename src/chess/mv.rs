@@ -1,6 +1,8 @@
-use crate::chess::Square;
-use crate::options::is_chess960;
 use arrayvec::ArrayVec;
+use std::convert::Into;
+
+use crate::chess::{Board, Piece, Square};
+use crate::options::is_chess960;
 
 #[derive(Debug, Copy, Clone)]
 pub struct Move(u16);
@@ -65,9 +67,9 @@ impl Move {
         self.0 & Self::PROMO_FLAG == Self::PROMO_FLAG
     }
 
-    pub fn promotion(self) -> Option<shakmaty::Role> {
+    pub fn promotion(self) -> Option<Piece> {
         if self.is_promotion() {
-            Some(promotion_idx_to_role(
+            Some(promotion_idx_to_piece(
                 (self.0 >> Self::PROMO_SHIFT) & Self::PROMO_MASK,
             ))
         } else {
@@ -91,12 +93,12 @@ impl Move {
 
         let promotion = self
             .promotion()
-            .map_or(String::new(), role_to_promotion_char);
+            .map_or(String::new(), piece_to_promotion_char);
 
         format!("{from}{to}{promotion}")
     }
 
-    pub fn to_shakmaty(self, board: &shakmaty::Board) -> shakmaty::Move {
+    pub fn to_shakmaty(self, board: &Board) -> shakmaty::Move {
         let from = shakmaty::Square::from(self.from());
         let to = shakmaty::Square::from(self.to());
 
@@ -111,9 +113,9 @@ impl Move {
             };
         }
 
-        let promotion = self.promotion();
-        let role = board.role_at(from).unwrap();
-        let capture = board.role_at(to);
+        let promotion = self.promotion().map(Into::into);
+        let role = board.piece_at(self.from()).unwrap().into();
+        let capture = board.piece_at(self.to()).map(Into::into);
 
         shakmaty::Move::Normal {
             from,
@@ -147,13 +149,13 @@ impl From<shakmaty::Move> for Move {
     }
 }
 
-fn role_to_promotion_char(role: shakmaty::Role) -> String {
-    match role {
-        shakmaty::Role::Queen => "q",
-        shakmaty::Role::Rook => "r",
-        shakmaty::Role::Bishop => "b",
-        shakmaty::Role::Knight => "n",
-        _ => panic!("Invalid promotion role: {role:?}"),
+fn piece_to_promotion_char(piece: Piece) -> String {
+    match piece {
+        Piece::QUEEN => "q",
+        Piece::ROOK => "r",
+        Piece::BISHOP => "b",
+        Piece::KNIGHT => "n",
+        _ => panic!("Invalid promotion piece: {piece:?}"),
     }
     .to_string()
 }
@@ -168,12 +170,12 @@ fn role_to_promotion_idx(role: shakmaty::Role) -> u16 {
     }
 }
 
-fn promotion_idx_to_role(idx: u16) -> shakmaty::Role {
+fn promotion_idx_to_piece(idx: u16) -> Piece {
     match idx {
-        0 => shakmaty::Role::Queen,
-        1 => shakmaty::Role::Rook,
-        2 => shakmaty::Role::Bishop,
-        3 => shakmaty::Role::Knight,
+        0 => Piece::QUEEN,
+        1 => Piece::ROOK,
+        2 => Piece::BISHOP,
+        3 => Piece::KNIGHT,
         _ => panic!("Invalid promotion index: {idx}"),
     }
 }

@@ -1,8 +1,7 @@
-use shakmaty::Color;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
-use crate::chess;
+use crate::chess::{Color, Move};
 use crate::evaluation;
 use crate::options::{get_num_threads, get_policy_temperature};
 use crate::search_tree::{MoveEdge, SearchTree};
@@ -154,22 +153,22 @@ impl Search {
                 "infinite" => infinite = true,
                 "movetime" => move_time = Self::parse_ms(&mut tokens),
                 "wtime" => {
-                    if stm == Color::White {
+                    if stm == Color::WHITE {
                         remaining = Self::parse_ms(&mut tokens);
                     }
                 }
                 "btime" => {
-                    if stm == Color::Black {
+                    if stm == Color::BLACK {
                         remaining = Self::parse_ms(&mut tokens);
                     }
                 }
                 "winc" => {
-                    if stm == Color::White {
+                    if stm == Color::WHITE {
                         increment = Self::parse_ms(&mut tokens).unwrap_or(Duration::ZERO);
                     }
                 }
                 "binc" => {
-                    if stm == Color::Black {
+                    if stm == Color::BLACK {
                         increment = Self::parse_ms(&mut tokens).unwrap_or(Duration::ZERO);
                     }
                 }
@@ -294,7 +293,7 @@ impl Search {
         }
     }
 
-    pub fn principal_variation(&self, num_moves: usize) -> Vec<chess::Move> {
+    pub fn principal_variation(&self, num_moves: usize) -> Vec<Move> {
         self.search_tree
             .principal_variation(num_moves)
             .into_iter()
@@ -303,7 +302,7 @@ impl Search {
             .collect()
     }
 
-    pub fn best_move(&self) -> chess::Move {
+    pub fn best_move(&self) -> Move {
         *self.principal_variation(1).get(0).unwrap()
     }
 }
