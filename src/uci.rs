@@ -46,11 +46,10 @@ pub fn main() {
                 }
                 "position" => {
                     if let Some(state) = State::from_tokens(tokens) {
-                        debug!("\n{:?}", state.board());
                         let prev_table = search.table();
                         search = Search::new(state, prev_table);
                     } else {
-                        error!("Couldn't parse '{}' as position", line);
+                        println!("info string Couldn't parse '{line}' as position");
                     }
                 }
                 "quit" => return,
@@ -147,7 +146,7 @@ impl UciOption {
             "policytemperature" => self.set_option(set_policy_temperature),
             "policytemperatureroot" => self.set_option(set_policy_temperature_root),
             "uci_chess960" => self.set_option(set_chess960),
-            _ => warn!("Badly formatted or unknown option"),
+            _ => println!("info string Badly formatted or unknown option"),
         }
     }
 
