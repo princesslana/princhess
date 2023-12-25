@@ -1,5 +1,4 @@
 use arc_swap::ArcSwap;
-use log::debug;
 use memmap::MmapMut;
 use std::cell::UnsafeCell;
 use std::collections::{HashSet, VecDeque};
@@ -27,10 +26,6 @@ pub struct Arena {
 impl Arena {
     pub fn new(max_size_mb: usize) -> Self {
         let max_chunks = (max_size_mb << 20) / CHUNK_SIZE;
-        debug!(
-            "Creating Arena of {}mb = {} chunks",
-            max_size_mb, max_chunks
-        );
         Self {
             owned_mappings: Mutex::default(),
             max_chunks,
@@ -125,7 +120,6 @@ impl<'a> Allocator<'a> {
         let memory = unsafe { &mut *self.memory.get() };
 
         if !self.arena.is_allocator_valid(self.id) {
-            debug!("Invalid allocator {}", self.id);
             *memory = self.arena.alloc_chunk(self.id)?;
             self.get_memory(sz)
         } else if sz <= memory.len() {
@@ -133,7 +127,6 @@ impl<'a> Allocator<'a> {
             unsafe { *self.memory.get() = right };
             Ok(left)
         } else if sz > CHUNK_SIZE {
-            debug!("sz > CHUNK_SIZE, {} > {}", sz, CHUNK_SIZE);
             Err(Error::Full)
         } else {
             *memory = self.arena.alloc_chunk(self.id)?;
