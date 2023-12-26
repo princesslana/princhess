@@ -18,8 +18,6 @@ pub struct State {
     prev_state_hashes: ArrayVec<u64, 128>,
 
     prev_moves: [Option<Move>; 2],
-
-    repetitions: usize,
 }
 
 impl State {
@@ -28,7 +26,6 @@ impl State {
             board,
             prev_state_hashes: ArrayVec::new(),
             prev_moves: [None, None],
-            repetitions: 0,
         }
     }
 
@@ -69,7 +66,6 @@ impl State {
             board,
             prev_state_hashes: ArrayVec::new(),
             prev_moves: [None, None],
-            repetitions: 0,
         })
     }
 
@@ -105,17 +101,6 @@ impl State {
         self.prev_state_hashes.push(self.hash());
 
         self.board.play(mov);
-
-        self.check_for_repetition();
-    }
-
-    fn check_for_repetition(&mut self) {
-        let crnt_hash = self.hash();
-        self.repetitions = self
-            .prev_state_hashes
-            .iter()
-            .filter(|h| **h == crnt_hash)
-            .count();
     }
 
     pub fn halfmove_counter(&self) -> usize {
@@ -127,7 +112,9 @@ impl State {
     }
 
     pub fn is_repetition(&self) -> bool {
-        self.repetitions > 0
+        let crnt_hash = self.hash();
+
+        self.prev_state_hashes.iter().rev().any(|h| *h == crnt_hash)
     }
 
     fn feature_flip(&self) -> (bool, bool) {
