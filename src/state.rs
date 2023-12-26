@@ -114,12 +114,7 @@ impl State {
     pub fn is_repetition(&self) -> bool {
         let crnt_hash = self.hash();
 
-        self.prev_state_hashes
-            .iter()
-            .rev()
-            .skip(1)
-            .step_by(2)
-            .any(|h| *h == crnt_hash)
+        self.prev_state_hashes.iter().rev().any(|h| *h == crnt_hash)
     }
 
     fn feature_flip(&self) -> (bool, bool) {
