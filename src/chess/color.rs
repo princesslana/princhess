@@ -6,6 +6,18 @@ pub struct Color(bool);
 impl Color {
     pub const WHITE: Color = Color(false);
     pub const BLACK: Color = Color(true);
+
+    pub fn index(self) -> usize {
+        usize::from(self.0)
+    }
+
+    pub fn fold<T>(self, white: T, black: T) -> T {
+        if self.0 {
+            black
+        } else {
+            white
+        }
+    }
 }
 
 impl From<shakmaty::Color> for Color {

@@ -161,12 +161,12 @@ impl State {
 
             if piece != Piece::KING {
                 // Threats
-                if b.attacks_to(sq, !color, b.occupied()).any() {
+                if b.is_attacked(sq, !color, b.occupied()) {
                     f(OFFSET_THREATS + feature_idx(sq, piece, color));
                 }
 
                 // Defenses
-                if b.attacks_to(sq, color, b.occupied()).any() {
+                if b.is_attacked(sq, color, b.occupied()) {
                     f(OFFSET_DEFENDS + feature_idx(sq, piece, color));
                 }
             }
