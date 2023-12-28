@@ -3,7 +3,7 @@ use shakmaty::zobrist::{Zobrist64, ZobristHash, ZobristValue};
 use shakmaty::{CastlingMode, CastlingSide, Chess, EnPassantMode, Position, Role};
 use std::convert::Into;
 
-use crate::chess::{Bitboard, Color, Move, MoveList, Piece, Square};
+use crate::chess::{attacks, Bitboard, Color, Move, MoveList, Piece, Square};
 use crate::options::is_chess960;
 
 #[derive(Clone, Debug)]
@@ -57,13 +57,6 @@ impl Board {
         self.shakmaty.board().pawns().into()
     }
 
-    pub fn attacks_to(&self, sq: Square, color: Color, occupied: Bitboard) -> Bitboard {
-        self.shakmaty
-            .board()
-            .attacks_to(sq.into(), color.into(), occupied.into())
-            .into()
-    }
-
     pub fn color_at(&self, sq: Square) -> Option<Color> {
         self.shakmaty.board().color_at(sq.into()).map(Into::into)
     }
@@ -80,6 +73,29 @@ impl Board {
 
     pub fn king_of(&self, color: Color) -> Square {
         self.shakmaty.board().king_of(color.into()).unwrap().into()
+    }
+
+    #[allow(clippy::similar_names)]
+    pub fn is_attacked(&self, sq: Square, attacker: Color, occ: Bitboard) -> bool {
+        let them = attacker.fold(self.white(), self.black());
+
+        if ((attacks::knight(sq) & self.knights() & them)
+            | (attacks::king(sq) & self.kings() & them)
+            | (attacks::pawn(!attacker, sq) & self.pawns() & them)).any()
+        {
+            return true;
+        }
+
+        let sboard = self.shakmaty.board();
+        let ssq = sq.into();
+        let soccupied = occ.into();
+        let sthem = shakmaty::Bitboard::from(them);
+
+        ((shakmaty::attacks::rook_attacks(ssq, soccupied) & sboard.rooks_and_queens() & sthem)
+            | (shakmaty::attacks::bishop_attacks(ssq, soccupied)
+                & sboard.bishops_and_queens()
+                & sthem))
+                .any()
     }
 
     pub fn is_castling_rights(&self) -> bool {

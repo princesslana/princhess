@@ -1,16 +1,40 @@
 use std::iter::FusedIterator;
+use std::ops::{BitAnd, BitOr};
 
 use crate::chess::Square;
 
+#[derive(Copy, Clone)]
 pub struct Bitboard(pub u64);
 
 impl Bitboard {
-    pub fn any(&self) -> bool {
+    pub const EMPTY: Self = Self(0);
+
+    pub const fn new(bb: u64) -> Self {
+        Self(bb)
+    }
+
+    pub fn any(self) -> bool {
         self.0 != 0
     }
 
-    pub fn count(&self) -> usize {
+    pub fn count(self) -> usize {
         self.0.count_ones() as usize
+    }
+}
+
+impl BitAnd for Bitboard {
+    type Output = Self;
+
+    fn bitand(self, rhs: Self) -> Self::Output {
+        Self(self.0 & rhs.0)
+    }
+}
+
+impl BitOr for Bitboard {
+    type Output = Self;
+
+    fn bitor(self, rhs: Self) -> Self::Output {
+        Self(self.0 | rhs.0)
     }
 }
 
