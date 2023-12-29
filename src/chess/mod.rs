@@ -2,6 +2,7 @@ mod attacks;
 mod bitboard;
 mod board;
 mod color;
+mod magic;
 mod mv;
 mod piece;
 mod square;

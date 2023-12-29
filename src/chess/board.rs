@@ -78,24 +78,15 @@ impl Board {
     #[allow(clippy::similar_names)]
     pub fn is_attacked(&self, sq: Square, attacker: Color, occ: Bitboard) -> bool {
         let them = attacker.fold(self.white(), self.black());
+        let bishop_and_queens = self.bishops() | self.queens();
+        let rooks_and_queens = self.rooks() | self.queens();
 
-        if ((attacks::knight(sq) & self.knights() & them)
+        (attacks::knight(sq) & self.knights() & them
             | (attacks::king(sq) & self.kings() & them)
-            | (attacks::pawn(!attacker, sq) & self.pawns() & them)).any()
-        {
-            return true;
-        }
-
-        let sboard = self.shakmaty.board();
-        let ssq = sq.into();
-        let soccupied = occ.into();
-        let sthem = shakmaty::Bitboard::from(them);
-
-        ((shakmaty::attacks::rook_attacks(ssq, soccupied) & sboard.rooks_and_queens() & sthem)
-            | (shakmaty::attacks::bishop_attacks(ssq, soccupied)
-                & sboard.bishops_and_queens()
-                & sthem))
-                .any()
+            | (attacks::pawn(!attacker, sq) & self.pawns() & them)
+            | (attacks::bishop(sq, occ) & bishop_and_queens & them)
+            | (attacks::rook(sq, occ) & rooks_and_queens & them))
+            .any()
     }
 
     pub fn is_castling_rights(&self) -> bool {
