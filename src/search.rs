@@ -303,7 +303,7 @@ impl Search {
     }
 
     pub fn best_move(&self) -> Move {
-        *self.principal_variation(1).get(0).unwrap()
+        *self.principal_variation(1).first().unwrap()
     }
 }
 
