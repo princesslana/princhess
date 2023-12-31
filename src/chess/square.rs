@@ -46,7 +46,7 @@ impl Square {
     }
 
     pub fn with_rank(self, rank: Rank) -> Square {
-        Square(self.0 & 7 + rank.0 * 8)
+        Square((self.0 & 7) + rank.0 * 8)
     }
 }
 

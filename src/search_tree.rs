@@ -481,7 +481,7 @@ impl SearchTree {
 
     pub fn eval(&self) -> f32 {
         self.principal_variation(1)
-            .get(0)
+            .first()
             .map_or(0., |x| x.average_reward().unwrap_or(-SCALE) / SCALE)
     }
 
