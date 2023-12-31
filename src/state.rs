@@ -100,7 +100,7 @@ impl State {
         }
         self.prev_state_hashes.push(self.hash());
 
-        self.board.play(mov);
+        self.board.make_move(mov);
     }
 
     pub fn halfmove_counter(&self) -> usize {

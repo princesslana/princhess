@@ -3,12 +3,14 @@ use shakmaty::zobrist::{Zobrist64, ZobristHash, ZobristValue};
 use shakmaty::{CastlingMode, CastlingSide, Chess, EnPassantMode, Position, Role};
 use std::convert::Into;
 
-use crate::chess::{attacks, Bitboard, Color, Move, MoveList, Piece, Square};
+use crate::chess::{attacks, Bitboard, Color, Move, MoveList, Piece, Rank, Square};
 use crate::options::is_chess960;
 
 #[derive(Clone, Debug)]
 pub struct Board {
     shakmaty: shakmaty::Chess,
+    stm: Color,
+    ep: Option<Square>,
     hash: Zobrist64,
 }
 
@@ -20,9 +22,16 @@ impl Board {
             .into_position::<Chess>(CastlingMode::from_chess960(is_chess960()))
             .ok()?;
 
+        let stm = shakmaty.turn().into();
+        let ep = shakmaty.ep_square(EnPassantMode::Always).map(Into::into);
         let hash = shakmaty.zobrist_hash(EnPassantMode::Always);
 
-        Some(Self { shakmaty, hash })
+        Some(Self {
+            shakmaty,
+            stm,
+            ep,
+            hash,
+        })
     }
 
     pub fn white(&self) -> Bitboard {
@@ -62,9 +71,7 @@ impl Board {
     }
 
     pub fn ep_square(&self) -> Option<Square> {
-        self.shakmaty
-            .ep_square(EnPassantMode::Always)
-            .map(Into::into)
+        self.ep
     }
 
     pub fn hash(&self) -> u64 {
@@ -115,14 +122,27 @@ impl Board {
         self.shakmaty.board().occupied().into()
     }
 
-    pub fn play(&mut self, mov: Move) {
+    pub fn make_move(&mut self, mov: Move) {
+        let color = self.stm;
+        let piece = self.piece_at(mov.from()).unwrap();
+
         let b = self.shakmaty.board();
         let role = b.role_at(mov.from().into()).unwrap();
         let capture = b.role_at(mov.to().into());
 
+        self.stm = !self.stm;
+        self.ep = None;
+
         self.update_hash_pre();
         self.shakmaty.play_unchecked(&mov.to_shakmaty(self));
         self.update_hash(!self.side_to_move(), role, capture, mov);
+
+        if piece == Piece::PAWN && (mov.to().rank() - mov.from().rank()).abs() == 2 {
+            self.ep = color.fold(
+                Some(mov.from().with_rank(Rank::_3)),
+                Some(mov.from().with_rank(Rank::_6)),
+            );
+        }
     }
 
     pub fn piece_at(&self, sq: Square) -> Option<Piece> {
@@ -130,7 +150,7 @@ impl Board {
     }
 
     pub fn side_to_move(&self) -> Color {
-        self.shakmaty.turn().into()
+        self.stm
     }
 
     fn update_hash_pre(&mut self) {
@@ -200,8 +220,15 @@ impl Board {
 impl Default for Board {
     fn default() -> Self {
         let shakmaty = shakmaty::Chess::default();
+        let stm = Color::WHITE;
+        let ep = None;
         let hash = shakmaty.zobrist_hash(EnPassantMode::Always);
 
-        Self { shakmaty, hash }
+        Self {
+            shakmaty,
+            stm,
+            ep,
+            hash,
+        }
     }
 }
