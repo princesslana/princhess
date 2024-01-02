@@ -51,10 +51,6 @@ impl Move {
         Square::from((self.0 >> Self::TO_SHIFT) & Self::SQ_MASK)
     }
 
-    pub fn is_normal(self) -> bool {
-        self.0 & Self::ENPASSANT_FLAG == 0 && self.0 & Self::CASTLE_FLAG == 0
-    }
-
     pub fn is_enpassant(self) -> bool {
         self.0 & Self::ENPASSANT_FLAG != 0 && self.0 & Self::CASTLE_FLAG == 0
     }
@@ -63,7 +59,7 @@ impl Move {
         self.0 & Self::CASTLE_FLAG != 0 && self.0 & Self::ENPASSANT_FLAG == 0
     }
 
-    fn is_promotion(self) -> bool {
+    pub fn is_promotion(self) -> bool {
         self.0 & Self::PROMO_FLAG == Self::PROMO_FLAG
     }
 
