@@ -1,5 +1,4 @@
 use std::fmt::{self, Display, Formatter};
-use std::ops::Sub;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct Square(u8);
@@ -45,29 +44,35 @@ impl Square {
         Rank(self.0 / 8)
     }
 
+    pub fn with_file(self, file: File) -> Square {
+        Square((self.0 & !7) + file.0)
+    }
+
     pub fn with_rank(self, rank: Rank) -> Square {
         Square((self.0 & 7) + rank.0 * 8)
     }
 }
 
 impl File {
+    pub const C: File = File(2);
     pub const D: File = File(3);
+    pub const F: File = File(5);
+    pub const G: File = File(6);
+
+    pub fn index(self) -> usize {
+        usize::from(self.0)
+    }
 }
 
 impl Rank {
     pub const _1: Rank = Rank(0);
     pub const _2: Rank = Rank(1);
     pub const _3: Rank = Rank(2);
+    pub const _4: Rank = Rank(3);
+    pub const _5: Rank = Rank(4);
     pub const _6: Rank = Rank(5);
-}
-
-impl Sub for Rank {
-    type Output = i8;
-
-    #[allow(clippy::cast_possible_wrap)]
-    fn sub(self, rhs: Rank) -> Self::Output {
-        self.0 as i8 - rhs.0 as i8
-    }
+    pub const _7: Rank = Rank(6);
+    pub const _8: Rank = Rank(7);
 }
 
 impl From<shakmaty::Square> for Square {
