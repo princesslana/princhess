@@ -11,6 +11,10 @@ use crate::options::is_chess960;
 #[derive(Clone, Debug)]
 pub struct Board {
     shakmaty: shakmaty::Chess,
+
+    colors: [Bitboard; Color::COUNT],
+    pieces: [Bitboard; Piece::COUNT],
+
     stm: Color,
     ep: Option<Square>,
     castling: Castling,
@@ -26,17 +30,31 @@ impl Board {
     ) -> Self {
         let hash = 0;
 
-        let mut b = Self {
+        let b = shakmaty.board();
+
+        let colors = [b.white().into(), b.black().into()];
+        let pieces = [
+            b.pawns().into(),
+            b.knights().into(),
+            b.bishops().into(),
+            b.rooks().into(),
+            b.queens().into(),
+            b.kings().into(),
+        ];
+
+        let mut board = Self {
             shakmaty,
+            colors,
+            pieces,
             stm,
             ep,
             castling,
             hash,
         };
 
-        b.hash = b.generate_zobrist_hash();
+        board.hash = board.generate_zobrist_hash();
 
-        b
+        board
     }
 
     pub fn from_fen(fen: &str) -> Option<Self> {
@@ -54,39 +72,42 @@ impl Board {
     }
 
     pub fn white(&self) -> Bitboard {
-        self.shakmaty.board().white().into()
+        self.colors[Color::WHITE.index()]
     }
 
     pub fn black(&self) -> Bitboard {
-        self.shakmaty.board().black().into()
+        self.colors[Color::BLACK.index()]
     }
 
     pub fn kings(&self) -> Bitboard {
-        self.shakmaty.board().kings().into()
+        self.pieces[Piece::KING.index()]
     }
 
     pub fn queens(&self) -> Bitboard {
-        self.shakmaty.board().queens().into()
+        self.pieces[Piece::QUEEN.index()]
     }
 
     pub fn rooks(&self) -> Bitboard {
-        self.shakmaty.board().rooks().into()
+        self.pieces[Piece::ROOK.index()]
     }
 
     pub fn bishops(&self) -> Bitboard {
-        self.shakmaty.board().bishops().into()
+        self.pieces[Piece::BISHOP.index()]
     }
 
     pub fn knights(&self) -> Bitboard {
-        self.shakmaty.board().knights().into()
+        self.pieces[Piece::KNIGHT.index()]
     }
 
     pub fn pawns(&self) -> Bitboard {
-        self.shakmaty.board().pawns().into()
+        self.pieces[Piece::PAWN.index()]
     }
 
     pub fn color_at(&self, sq: Square) -> Option<Color> {
-        self.shakmaty.board().color_at(sq.into()).map(Into::into)
+        [Color::WHITE, Color::BLACK]
+            .iter()
+            .find(|&c| self.colors[c.index()].contains(sq))
+            .copied()
     }
 
     pub fn ep_square(&self) -> Option<Square> {
@@ -98,7 +119,7 @@ impl Board {
     }
 
     pub fn king_of(&self, color: Color) -> Square {
-        self.shakmaty.board().king_of(color.into()).unwrap().into()
+        Square::from(self.kings() & self.colors[color.index()])
     }
 
     #[allow(clippy::similar_names)]
@@ -120,11 +141,19 @@ impl Board {
     }
 
     pub fn is_check(&self) -> bool {
-        self.shakmaty.is_check()
+        self.is_attacked(self.king_of(self.stm), !self.stm, self.occupied())
     }
 
     pub fn is_insufficient_material(&self) -> bool {
-        self.shakmaty.is_insufficient_material()
+        if (self.pawns() | self.queens() | self.rooks()).any() {
+            return false;
+        }
+
+        if (self.knights() | self.bishops()).count() > 1 {
+            return false;
+        }
+
+        true
     }
 
     pub fn legal_moves(&self) -> MoveList {
@@ -138,7 +167,7 @@ impl Board {
     }
 
     pub fn occupied(&self) -> Bitboard {
-        self.shakmaty.board().occupied().into()
+        self.white() | self.black()
     }
 
     pub fn make_move(&mut self, mov: Move) {
@@ -189,7 +218,12 @@ impl Board {
     }
 
     pub fn piece_at(&self, sq: Square) -> Option<Piece> {
-        self.shakmaty.board().role_at(sq.into()).map(Into::into)
+        for (idx, bb) in self.pieces.iter().enumerate() {
+            if bb.contains(sq) {
+                return Some(Piece::from(idx));
+            }
+        }
+        None
     }
 
     pub fn side_to_move(&self) -> Color {
@@ -251,6 +285,9 @@ impl Board {
     }
 
     fn toggle(&mut self, color: Color, piece: Piece, square: Square) {
+        self.colors[color.index()].toggle(square);
+        self.pieces[piece.index()].toggle(square);
+
         self.hash ^= zobrist::piece(color, piece, square);
     }
 

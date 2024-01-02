@@ -7,8 +7,10 @@ impl Color {
     pub const WHITE: Color = Color(false);
     pub const BLACK: Color = Color(true);
 
-    pub fn index(self) -> usize {
-        usize::from(self.0)
+    pub const COUNT: usize = 2;
+
+    pub const fn index(self) -> usize {
+        self.0 as usize
     }
 
     pub fn fold<T>(self, white: T, black: T) -> T {

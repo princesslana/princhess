@@ -9,8 +9,16 @@ impl Piece {
     pub const QUEEN: Piece = Piece(4);
     pub const KING: Piece = Piece(5);
 
-    pub fn index(self) -> usize {
-        usize::from(self.0)
+    pub const COUNT: usize = 6;
+
+    pub const fn index(self) -> usize {
+        self.0 as usize
+    }
+}
+
+impl From<usize> for Piece {
+    fn from(index: usize) -> Self {
+        Piece(index as u8)
     }
 }
 

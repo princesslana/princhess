@@ -1,5 +1,7 @@
 use std::fmt::{self, Display, Formatter};
 
+use crate::chess::Bitboard;
+
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct Square(u8);
 
@@ -102,6 +104,12 @@ impl From<u16> for Square {
 impl From<u32> for Square {
     fn from(square: u32) -> Self {
         Square(square as u8)
+    }
+}
+
+impl From<Bitboard> for Square {
+    fn from(square: Bitboard) -> Self {
+        Square(square.0.trailing_zeros() as u8)
     }
 }
 
