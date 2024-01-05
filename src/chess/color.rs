@@ -7,6 +7,8 @@ impl Color {
     pub const WHITE: Color = Color(false);
     pub const BLACK: Color = Color(true);
 
+    pub const ALL: [Color; 2] = [Color::WHITE, Color::BLACK];
+
     pub const COUNT: usize = 2;
 
     pub const fn index(self) -> usize {

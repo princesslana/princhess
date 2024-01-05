@@ -28,8 +28,6 @@ impl Board {
         ep: Option<Square>,
         castling: Castling,
     ) -> Self {
-        let hash = 0;
-
         let b = shakmaty.board();
 
         let colors = [b.white().into(), b.black().into()];
@@ -49,7 +47,7 @@ impl Board {
             stm,
             ep,
             castling,
-            hash,
+            hash: 0,
         };
 
         board.hash = board.generate_zobrist_hash();
@@ -104,10 +102,13 @@ impl Board {
     }
 
     pub fn color_at(&self, sq: Square) -> Option<Color> {
-        [Color::WHITE, Color::BLACK]
-            .iter()
-            .find(|&c| self.colors[c.index()].contains(sq))
-            .copied()
+        if self.colors[0].contains(sq) {
+            Some(Color::WHITE)
+        } else if self.colors[1].contains(sq) {
+            Some(Color::BLACK)
+        } else {
+            None
+        }
     }
 
     pub fn ep_square(&self) -> Option<Square> {
@@ -218,8 +219,8 @@ impl Board {
     }
 
     pub fn piece_at(&self, sq: Square) -> Option<Piece> {
-        for (idx, bb) in self.pieces.iter().enumerate() {
-            if bb.contains(sq) {
+        for idx in 0..self.pieces.len() {
+            if self.pieces[idx].contains(sq) {
                 return Some(Piece::from(idx));
             }
         }

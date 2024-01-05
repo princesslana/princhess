@@ -38,7 +38,7 @@ impl Square {
         Square(self.0 ^ 7)
     }
 
-    pub fn index(self) -> usize {
+    pub const fn index(self) -> usize {
         self.0 as usize
     }
 
@@ -61,8 +61,8 @@ impl File {
     pub const F: File = File(5);
     pub const G: File = File(6);
 
-    pub fn index(self) -> usize {
-        usize::from(self.0)
+    pub const fn index(self) -> usize {
+        self.0 as usize
     }
 }
 
