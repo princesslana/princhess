@@ -11,6 +11,11 @@ pub struct Castling {
 }
 
 impl Castling {
+    const HASH_WKS: u64 = zobrist::castling_rights(0);
+    const HASH_WQS: u64 = zobrist::castling_rights(1);
+    const HASH_BKS: u64 = zobrist::castling_rights(2);
+    const HASH_BQS: u64 = zobrist::castling_rights(3);
+
     pub fn any(self) -> bool {
         self.white_king.is_some()
             || self.white_queen.is_some()
@@ -50,19 +55,16 @@ impl Castling {
         let mut hash = 0;
 
         if self.white_king.is_some() {
-            hash ^= zobrist::castling_rights(0);
+            hash ^= Self::HASH_WKS;
         }
-
         if self.white_queen.is_some() {
-            hash ^= zobrist::castling_rights(1);
+            hash ^= Self::HASH_WQS;
         }
-
         if self.black_king.is_some() {
-            hash ^= zobrist::castling_rights(2);
+            hash ^= Self::HASH_BKS;
         }
-
         if self.black_queen.is_some() {
-            hash ^= zobrist::castling_rights(3);
+            hash ^= Self::HASH_BQS;
         }
 
         hash

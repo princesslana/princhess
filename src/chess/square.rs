@@ -1,5 +1,7 @@
 use std::fmt::{self, Display, Formatter};
 
+use crate::chess::Bitboard;
+
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct Square(u8);
 
@@ -36,7 +38,7 @@ impl Square {
         Square(self.0 ^ 7)
     }
 
-    pub fn index(self) -> usize {
+    pub const fn index(self) -> usize {
         self.0 as usize
     }
 
@@ -59,8 +61,8 @@ impl File {
     pub const F: File = File(5);
     pub const G: File = File(6);
 
-    pub fn index(self) -> usize {
-        usize::from(self.0)
+    pub const fn index(self) -> usize {
+        self.0 as usize
     }
 }
 
@@ -102,6 +104,12 @@ impl From<u16> for Square {
 impl From<u32> for Square {
     fn from(square: u32) -> Self {
         Square(square as u8)
+    }
+}
+
+impl From<Bitboard> for Square {
+    fn from(square: Bitboard) -> Self {
+        Square(square.0.trailing_zeros() as u8)
     }
 }
 
