@@ -21,30 +21,3 @@ impl From<usize> for Piece {
         Piece(index as u8)
     }
 }
-
-impl From<shakmaty::Role> for Piece {
-    fn from(role: shakmaty::Role) -> Self {
-        match role {
-            shakmaty::Role::Pawn => Piece::PAWN,
-            shakmaty::Role::Knight => Piece::KNIGHT,
-            shakmaty::Role::Bishop => Piece::BISHOP,
-            shakmaty::Role::Rook => Piece::ROOK,
-            shakmaty::Role::Queen => Piece::QUEEN,
-            shakmaty::Role::King => Piece::KING,
-        }
-    }
-}
-
-impl From<Piece> for shakmaty::Role {
-    fn from(piece: Piece) -> Self {
-        match piece {
-            Piece::PAWN => shakmaty::Role::Pawn,
-            Piece::KNIGHT => shakmaty::Role::Knight,
-            Piece::BISHOP => shakmaty::Role::Bishop,
-            Piece::ROOK => shakmaty::Role::Rook,
-            Piece::QUEEN => shakmaty::Role::Queen,
-            Piece::KING => shakmaty::Role::King,
-            _ => unreachable!(),
-        }
-    }
-}

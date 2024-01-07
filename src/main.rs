@@ -9,7 +9,6 @@ extern crate fastapprox;
 extern crate memmap;
 extern crate nohash_hasher;
 extern crate once_cell;
-extern crate shakmaty;
 
 mod arena;
 mod args;

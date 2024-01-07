@@ -1,13 +1,11 @@
 use core::mem;
-use shakmaty::fen::Fen;
-use shakmaty::{CastlingMode, Chess, EnPassantMode, Position};
-use std::convert::Into;
 
 use crate::chess::movegen::MoveGen;
 use crate::chess::{
     attacks, zobrist, Bitboard, Castling, Color, File, Move, MoveList, Piece, Rank, Square,
 };
-use crate::options::is_chess960;
+
+const STARTPOS_FEN: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
 #[derive(Clone, Debug)]
 pub struct Board {
@@ -20,50 +18,67 @@ pub struct Board {
 }
 
 impl Board {
-    pub fn new(
-        shakmaty: &shakmaty::Chess,
-        stm: Color,
-        ep: Option<Square>,
-        castling: Castling,
-    ) -> Self {
-        let b = shakmaty.board();
-
-        let colors = [b.white().into(), b.black().into()];
-        let pieces = [
-            b.pawns().into(),
-            b.knights().into(),
-            b.bishops().into(),
-            b.rooks().into(),
-            b.queens().into(),
-            b.kings().into(),
-        ];
-
-        let mut board = Self {
-            colors,
-            pieces,
-            stm,
-            ep,
-            castling,
+    fn empty() -> Self {
+        Self {
+            colors: [Bitboard::EMPTY; Color::COUNT],
+            pieces: [Bitboard::EMPTY; Piece::COUNT],
+            stm: Color::WHITE,
+            ep: None,
+            castling: Castling::default(),
             hash: 0,
+        }
+    }
+
+    pub fn from_fen(fen: &str) -> Self {
+        let mut board = Self::empty();
+
+        let parts = fen.split_whitespace().collect::<Vec<_>>();
+
+        let [fen_pos, fen_color, fen_castling, fen_ep] = parts[0..4] else {
+            println!("info string invalid fen");
+            return board;
+        };
+
+        let pos = fen_pos.chars().collect::<Vec<_>>();
+
+        let (mut file, mut rank) = (0, 7);
+
+        for c in pos {
+            match c {
+                '/' => {
+                    file = 0;
+                    rank -= 1;
+                }
+                '1'..='8' => {
+                    file += c as u8 - b'0';
+                }
+                _ => {
+                    let sq = Square::from_coords(File::from(file), Rank::from(rank));
+                    let idx = "PNBRQKpnbrqk".find(c).unwrap();
+
+                    let piece = Piece::from(idx % 6);
+                    let color = Color::from(idx > 5);
+
+                    board.colors[color.index()].toggle(sq);
+                    board.pieces[piece.index()].toggle(sq);
+
+                    file += 1;
+                }
+            }
+        }
+
+        board.stm = Color::from(fen_color == "b");
+
+        board.castling = Castling::from_fen(&board, fen_castling);
+
+        board.ep = match fen_ep {
+            "-" => None,
+            s => Some(Square::from_uci(s)),
         };
 
         board.hash = board.generate_zobrist_hash();
 
         board
-    }
-
-    pub fn from_fen(fen: &str) -> Option<Self> {
-        let shakmaty = fen
-            .parse::<Fen>()
-            .ok()?
-            .into_position::<Chess>(CastlingMode::from_chess960(is_chess960()))
-            .ok()?;
-
-        let stm = shakmaty.turn().into();
-        let ep = shakmaty.ep_square(EnPassantMode::Always).map(Into::into);
-        let castling = shakmaty.castles().clone().into();
-
-        Some(Self::new(&shakmaty, stm, ep, castling))
     }
 
     pub fn white(&self) -> Bitboard {
@@ -322,11 +337,6 @@ impl Board {
 
 impl Default for Board {
     fn default() -> Self {
-        let shakmaty = shakmaty::Chess::default();
-        let stm = Color::WHITE;
-        let ep = None;
-        let castling = Castling::default();
-
-        Self::new(&shakmaty, stm, ep, castling)
+        Self::from_fen(STARTPOS_FEN)
     }
 }
