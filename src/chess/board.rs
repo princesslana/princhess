@@ -3,6 +3,7 @@ use shakmaty::fen::Fen;
 use shakmaty::{CastlingMode, Chess, EnPassantMode, Position};
 use std::convert::Into;
 
+use crate::chess::movegen::MoveGen;
 use crate::chess::{
     attacks, zobrist, Bitboard, Castling, Color, File, Move, MoveList, Piece, Rank, Square,
 };
@@ -10,11 +11,8 @@ use crate::options::is_chess960;
 
 #[derive(Clone, Debug)]
 pub struct Board {
-    shakmaty: shakmaty::Chess,
-
     colors: [Bitboard; Color::COUNT],
     pieces: [Bitboard; Piece::COUNT],
-
     stm: Color,
     ep: Option<Square>,
     castling: Castling,
@@ -23,7 +21,7 @@ pub struct Board {
 
 impl Board {
     pub fn new(
-        shakmaty: shakmaty::Chess,
+        shakmaty: &shakmaty::Chess,
         stm: Color,
         ep: Option<Square>,
         castling: Castling,
@@ -41,7 +39,6 @@ impl Board {
         ];
 
         let mut board = Self {
-            shakmaty,
             colors,
             pieces,
             stm,
@@ -66,7 +63,7 @@ impl Board {
         let ep = shakmaty.ep_square(EnPassantMode::Always).map(Into::into);
         let castling = shakmaty.castles().clone().into();
 
-        Some(Self::new(shakmaty, stm, ep, castling))
+        Some(Self::new(&shakmaty, stm, ep, castling))
     }
 
     pub fn white(&self) -> Bitboard {
@@ -101,6 +98,26 @@ impl Board {
         self.pieces[Piece::PAWN.index()]
     }
 
+    pub fn by_piece(&self, piece: Piece) -> Bitboard {
+        self.pieces[piece.index()]
+    }
+
+    pub fn attackers(&self, sq: Square, attacker: Color, occ: Bitboard) -> Bitboard {
+        let them = attacker.fold(self.white(), self.black());
+        let bishop_and_queens = self.bishops() | self.queens();
+        let rooks_and_queens = self.rooks() | self.queens();
+
+        attacks::knight(sq) & self.knights() & them
+            | (attacks::king(sq) & self.kings() & them)
+            | (attacks::pawn(!attacker, sq) & self.pawns() & them)
+            | (attacks::bishop(sq, occ) & bishop_and_queens & them)
+            | (attacks::rook(sq, occ) & rooks_and_queens & them)
+    }
+
+    pub fn castling_rights(&self) -> Castling {
+        self.castling
+    }
+
     pub fn color_at(&self, sq: Square) -> Option<Color> {
         if self.colors[0].contains(sq) {
             Some(Color::WHITE)
@@ -125,16 +142,7 @@ impl Board {
 
     #[allow(clippy::similar_names)]
     pub fn is_attacked(&self, sq: Square, attacker: Color, occ: Bitboard) -> bool {
-        let them = attacker.fold(self.white(), self.black());
-        let bishop_and_queens = self.bishops() | self.queens();
-        let rooks_and_queens = self.rooks() | self.queens();
-
-        (attacks::knight(sq) & self.knights() & them
-            | (attacks::king(sq) & self.kings() & them)
-            | (attacks::pawn(!attacker, sq) & self.pawns() & them)
-            | (attacks::bishop(sq, occ) & bishop_and_queens & them)
-            | (attacks::rook(sq, occ) & rooks_and_queens & them))
-            .any()
+        self.attackers(sq, attacker, occ).any()
     }
 
     pub fn is_castling_rights(&self) -> bool {
@@ -160,9 +168,7 @@ impl Board {
     pub fn legal_moves(&self) -> MoveList {
         let mut moves = MoveList::new();
 
-        for m in self.shakmaty.legal_moves() {
-            moves.push(m.into());
-        }
+        MoveGen::new(self).gen(|m| moves.push(m));
 
         moves
     }
@@ -180,8 +186,6 @@ impl Board {
 
         self.update_en_passant(color, piece, mov);
         self.update_castling(color, piece, mov, capture);
-
-        self.shakmaty.play_unchecked(&mov.to_shakmaty(self));
 
         if mov.is_enpassant() {
             self.toggle(color, piece, mov.from());
@@ -323,6 +327,6 @@ impl Default for Board {
         let ep = None;
         let castling = Castling::default();
 
-        Self::new(shakmaty, stm, ep, castling)
+        Self::new(&shakmaty, stm, ep, castling)
     }
 }

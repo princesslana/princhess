@@ -23,6 +23,13 @@ impl Castling {
             || self.black_queen.is_some()
     }
 
+    pub fn by_color(self, color: Color) -> (Option<Square>, Option<Square>) {
+        match color {
+            Color::WHITE => (self.white_king, self.white_queen),
+            Color::BLACK => (self.black_king, self.black_queen),
+        }
+    }
+
     pub fn discard_color(&mut self, color: Color) {
         match color {
             Color::WHITE => {
