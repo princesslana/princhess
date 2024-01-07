@@ -1,6 +1,4 @@
-use std::convert::Into;
-
-use crate::chess::{zobrist, Color, Square};
+use crate::chess::{zobrist, Board, Color, File, Rank, Square};
 
 #[derive(Clone, Copy, Debug)]
 pub struct Castling {
@@ -15,6 +13,53 @@ impl Castling {
     const HASH_WQS: u64 = zobrist::castling_rights(1);
     const HASH_BKS: u64 = zobrist::castling_rights(2);
     const HASH_BQS: u64 = zobrist::castling_rights(3);
+
+    fn none() -> Self {
+        Self {
+            white_king: None,
+            white_queen: None,
+            black_king: None,
+            black_queen: None,
+        }
+    }
+
+    pub fn from_fen(board: &Board, fen: &str) -> Self {
+        let mut castling = Self::none();
+
+        let chars = fen.chars().map(|c| c as u8).collect::<Vec<_>>();
+
+        for c in chars {
+            match c {
+                b'K' => castling.white_king = Some(Square::H1),
+                b'Q' => castling.white_queen = Some(Square::A1),
+                b'k' => castling.black_king = Some(Square::H8),
+                b'q' => castling.black_queen = Some(Square::A8),
+                b'A'..=b'H' => {
+                    let king_file = board.king_of(Color::WHITE).file();
+                    let rook_file = File::from(c - b'A');
+
+                    if rook_file < king_file {
+                        castling.white_queen = Some(Square::from_coords(rook_file, Rank::_1));
+                    } else {
+                        castling.white_king = Some(Square::from_coords(rook_file, Rank::_1));
+                    }
+                }
+                b'a'..=b'h' => {
+                    let king_file = board.king_of(Color::BLACK).file();
+                    let rook_file = File::from(c - b'a');
+
+                    if rook_file < king_file {
+                        castling.black_queen = Some(Square::from_coords(rook_file, Rank::_8));
+                    } else {
+                        castling.black_king = Some(Square::from_coords(rook_file, Rank::_8));
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        castling
+    }
 
     pub fn any(self) -> bool {
         self.white_king.is_some()
@@ -85,33 +130,6 @@ impl Default for Castling {
             white_queen: Some(Square::A1),
             black_king: Some(Square::H8),
             black_queen: Some(Square::A8),
-        }
-    }
-}
-
-impl From<shakmaty::Castles> for Castling {
-    fn from(castles: shakmaty::Castles) -> Self {
-        let white_king = castles
-            .rook(shakmaty::Color::White, shakmaty::CastlingSide::KingSide)
-            .map(Into::into);
-
-        let white_queen = castles
-            .rook(shakmaty::Color::White, shakmaty::CastlingSide::QueenSide)
-            .map(Into::into);
-
-        let black_king = castles
-            .rook(shakmaty::Color::Black, shakmaty::CastlingSide::KingSide)
-            .map(Into::into);
-
-        let black_queen = castles
-            .rook(shakmaty::Color::Black, shakmaty::CastlingSide::QueenSide)
-            .map(Into::into);
-
-        Self {
-            white_king,
-            white_queen,
-            black_king,
-            black_queen,
         }
     }
 }

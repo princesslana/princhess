@@ -129,15 +129,3 @@ impl ExactSizeIterator for Bitloop {
 }
 
 impl FusedIterator for Bitloop {}
-
-impl From<shakmaty::Bitboard> for Bitboard {
-    fn from(b: shakmaty::Bitboard) -> Self {
-        Self(b.0)
-    }
-}
-
-impl From<Bitboard> for shakmaty::Bitboard {
-    fn from(b: Bitboard) -> Self {
-        Self(b.0)
-    }
-}

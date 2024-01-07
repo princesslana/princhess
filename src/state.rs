@@ -40,7 +40,7 @@ impl State {
                     }
                     s.push_str(tokens.next()?);
                 }
-                Self::from_fen(&s)?
+                Self::from_fen(&s)
             }
             _ => return None,
         };
@@ -59,14 +59,14 @@ impl State {
         Some(result)
     }
 
-    pub fn from_fen(fen: &str) -> Option<Self> {
-        let board = Board::from_fen(fen)?;
+    pub fn from_fen(fen: &str) -> Self {
+        let board = Board::from_fen(fen);
 
-        Some(Self {
+        Self {
             board,
             prev_state_hashes: ArrayVec::new(),
             prev_moves: [None, None],
-        })
+        }
     }
 
     pub fn board(&self) -> &Board {

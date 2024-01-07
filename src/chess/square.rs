@@ -27,6 +27,15 @@ impl Square {
         Square((rank.0 * 8) + file.0)
     }
 
+    pub fn from_uci(uci: &str) -> Square {
+        let chars = uci.chars().map(|c| c as u8).collect::<Vec<_>>();
+
+        let file = chars[0] - b'a';
+        let rank = chars[1] - b'1';
+
+        Square::from_coords(File(file), Rank(rank))
+    }
+
     pub fn file(self) -> File {
         File(self.0 & 7)
     }
@@ -78,15 +87,15 @@ impl Rank {
     pub const _8: Rank = Rank(7);
 }
 
-impl From<shakmaty::Square> for Square {
-    fn from(square: shakmaty::Square) -> Self {
-        Square::from(square as u8)
+impl From<u8> for File {
+    fn from(file: u8) -> Self {
+        File(file)
     }
 }
 
-impl From<Square> for shakmaty::Square {
-    fn from(square: Square) -> Self {
-        unsafe { shakmaty::Square::new_unchecked(u32::from(square.0)) }
+impl From<u8> for Rank {
+    fn from(rank: u8) -> Self {
+        Rank(rank)
     }
 }
 
