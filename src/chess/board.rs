@@ -260,14 +260,25 @@ impl Board {
             Piece::PAWN => {
                 let from_rank = mov.from().rank();
                 let to_rank = mov.to().rank();
-                let is_double_push = from_rank == Rank::_2 && to_rank == Rank::_4
-                    || from_rank == Rank::_7 && to_rank == Rank::_5;
+                let is_double_push = (from_rank == Rank::_2 && to_rank == Rank::_4)
+                    || (from_rank == Rank::_7 && to_rank == Rank::_5);
 
                 if is_double_push {
-                    Some(color.fold(
+                    let ep_sq = color.fold(
                         mov.from().with_rank(Rank::_3),
                         mov.from().with_rank(Rank::_6),
-                    ))
+                    );
+
+                    let them = !color;
+                    let is_psuedo_legal =
+                        (attacks::pawn(color, ep_sq) & self.pawns() & self.colors[them.index()])
+                            .any();
+
+                    if is_psuedo_legal {
+                        Some(ep_sq)
+                    } else {
+                        None
+                    }
                 } else {
                     None
                 }
