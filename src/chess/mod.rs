@@ -4,6 +4,7 @@ mod board;
 mod castling;
 mod color;
 mod magic;
+mod movegen;
 mod mv;
 mod piece;
 mod square;

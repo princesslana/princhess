@@ -1,4 +1,5 @@
 use std::fmt::{self, Display, Formatter};
+use std::ops::{Add, Sub};
 
 use crate::chess::Bitboard;
 
@@ -107,9 +108,31 @@ impl From<u32> for Square {
     }
 }
 
+impl From<Square> for u16 {
+    fn from(square: Square) -> Self {
+        u16::from(square.0)
+    }
+}
+
 impl From<Bitboard> for Square {
     fn from(square: Bitboard) -> Self {
         Square(square.0.trailing_zeros() as u8)
+    }
+}
+
+impl Add<u8> for Square {
+    type Output = Square;
+
+    fn add(self, rhs: u8) -> Self::Output {
+        Square(self.0 + rhs)
+    }
+}
+
+impl Sub<u8> for Square {
+    type Output = Square;
+
+    fn sub(self, rhs: u8) -> Self::Output {
+        Square(self.0 - rhs)
     }
 }
 

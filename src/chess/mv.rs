@@ -1,7 +1,6 @@
 use arrayvec::ArrayVec;
-use std::convert::Into;
 
-use crate::chess::{Board, Piece, Square};
+use crate::chess::{Piece, Square};
 use crate::options::is_chess960;
 
 #[derive(Debug, Copy, Clone)]
@@ -19,27 +18,23 @@ impl Move {
     const ENPASSANT_FLAG: u16 = 0b0100_0000_0000_0000;
     const CASTLE_FLAG: u16 = 0b1000_0000_0000_0000;
 
-    pub fn new(from: shakmaty::Square, to: shakmaty::Square) -> Self {
-        Self(from as u16 | ((to as u16) << Self::TO_SHIFT))
+    pub fn new(from: Square, to: Square) -> Self {
+        Self(u16::from(from) | (u16::from(to) << Self::TO_SHIFT))
     }
 
-    pub fn new_promotion(
-        from: shakmaty::Square,
-        to: shakmaty::Square,
-        promotion: shakmaty::Role,
-    ) -> Self {
+    pub fn new_promotion(from: Square, to: Square, promotion: Piece) -> Self {
         Self(
             Self::new(from, to).0
                 | Self::PROMO_FLAG
-                | ((role_to_promotion_idx(promotion)) << Self::PROMO_SHIFT),
+                | ((piece_to_promotion_idx(promotion)) << Self::PROMO_SHIFT),
         )
     }
 
-    pub fn new_enpassant(from: shakmaty::Square, to: shakmaty::Square) -> Self {
+    pub fn new_en_passant(from: Square, to: Square) -> Self {
         Self(Self::new(from, to).0 | Self::ENPASSANT_FLAG)
     }
 
-    pub fn new_castle(king: shakmaty::Square, rook: shakmaty::Square) -> Self {
+    pub fn new_castle(king: Square, rook: Square) -> Self {
         Self(Self::new(king, rook).0 | Self::CASTLE_FLAG)
     }
 
@@ -93,56 +88,6 @@ impl Move {
 
         format!("{from}{to}{promotion}")
     }
-
-    pub fn to_shakmaty(self, board: &Board) -> shakmaty::Move {
-        let from = shakmaty::Square::from(self.from());
-        let to = shakmaty::Square::from(self.to());
-
-        if self.is_enpassant() {
-            return shakmaty::Move::EnPassant { from, to };
-        }
-
-        if self.is_castle() {
-            return shakmaty::Move::Castle {
-                king: from,
-                rook: to,
-            };
-        }
-
-        let promotion = self.promotion().map(Into::into);
-        let role = board.piece_at(self.from()).unwrap().into();
-        let capture = board.piece_at(self.to()).map(Into::into);
-
-        shakmaty::Move::Normal {
-            from,
-            to,
-            promotion,
-            role,
-            capture,
-        }
-    }
-}
-
-impl From<shakmaty::Move> for Move {
-    fn from(m: shakmaty::Move) -> Self {
-        match m {
-            shakmaty::Move::Normal {
-                from,
-                to,
-                promotion: None,
-                ..
-            } => Self::new(from, to),
-            shakmaty::Move::Normal {
-                from,
-                to,
-                promotion: Some(promo),
-                ..
-            } => Self::new_promotion(from, to, promo),
-            shakmaty::Move::EnPassant { from, to } => Self::new_enpassant(from, to),
-            shakmaty::Move::Castle { king, rook } => Self::new_castle(king, rook),
-            _ => panic!("Invalid move: {m:?}"),
-        }
-    }
 }
 
 fn piece_to_promotion_char(piece: Piece) -> String {
@@ -156,13 +101,13 @@ fn piece_to_promotion_char(piece: Piece) -> String {
     .to_string()
 }
 
-fn role_to_promotion_idx(role: shakmaty::Role) -> u16 {
-    match role {
-        shakmaty::Role::Queen => 0,
-        shakmaty::Role::Rook => 1,
-        shakmaty::Role::Bishop => 2,
-        shakmaty::Role::Knight => 3,
-        _ => panic!("Invalid promotion role: {role:?}"),
+fn piece_to_promotion_idx(piece: Piece) -> u16 {
+    match piece {
+        Piece::QUEEN => 0,
+        Piece::ROOK => 1,
+        Piece::BISHOP => 2,
+        Piece::KNIGHT => 3,
+        _ => panic!("Invalid promotion piece: {piece:?}"),
     }
 }
 
