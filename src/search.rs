@@ -194,22 +194,16 @@ impl Search {
         } else if let Some(mt) = move_time {
             think_time = TimeManagement::from_duration(mt);
         } else if let Some(r) = remaining {
-            think_time =
-                if movestogo.is_none() && increment.is_zero() && r < Duration::from_millis(60000) {
-                    TimeManagement::from_duration(r / 60)
-                } else {
-                    let move_time_fraction = match movestogo {
-                        // plus 2 because we want / 3 to be the max_think_time
-                        Some(m) => (m + 2).min(DEFAULT_MOVE_TIME_FRACTION),
-                        None => DEFAULT_MOVE_TIME_FRACTION,
-                    };
+            let move_time_fraction = match movestogo {
+                // plus 2 because we want / 3 to be the max_think_time
+                Some(m) => (m + 2).min(DEFAULT_MOVE_TIME_FRACTION),
+                None => DEFAULT_MOVE_TIME_FRACTION,
+            };
 
-                    let ideal_think_time =
-                        (r + 20 * increment - MOVE_OVERHEAD) / move_time_fraction;
-                    let max_think_time = r / 3;
+            let ideal_think_time = (r + 20 * increment - MOVE_OVERHEAD) / move_time_fraction;
+            let max_think_time = r / 3;
 
-                    TimeManagement::from_duration(ideal_think_time.min(max_think_time))
-                }
+            think_time = TimeManagement::from_duration(ideal_think_time.min(max_think_time));
         }
 
         think_time.set_node_limit(node_limit);
