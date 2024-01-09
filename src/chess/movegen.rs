@@ -244,7 +244,11 @@ impl MoveGen<'_> {
         let us = self.us();
         let king_from = self.board.king_of(us);
 
-        let blockers = self.board.occupied().xor_square(rook_from);
+        let blockers = self
+            .board
+            .occupied()
+            .xor_square(rook_from)
+            .xor_square(king_from);
 
         let must_be_safe = attacks::between(king_from, king_to).or_square(king_to);
         let must_be_empty =
