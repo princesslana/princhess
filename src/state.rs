@@ -81,6 +81,14 @@ impl State {
         self.board.hash()
     }
 
+    pub fn is_check(&self) -> bool {
+        self.board.is_check()
+    }
+
+    pub fn is_available_move(&self) -> bool {
+        self.board.is_legal_move()
+    }
+
     pub fn available_moves(&self) -> MoveList {
         self.board.legal_moves()
     }

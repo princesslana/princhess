@@ -57,7 +57,14 @@ pub struct PositionNode {
 
 unsafe impl Sync for PositionNode {}
 
+static WIN_NODE: PositionNode = PositionNode::new(&[], Flag::TerminalWin);
 static DRAW_NODE: PositionNode = PositionNode::new(&[], Flag::TerminalDraw);
+static LOSS_NODE: PositionNode = PositionNode::new(&[], Flag::TerminalLoss);
+
+static TABLEBASE_WIN_NODE: PositionNode = PositionNode::new(&[], Flag::TablebaseWin);
+static TABLEBASE_DRAW_NODE: PositionNode = PositionNode::new(&[], Flag::TablebaseDraw);
+static TABLEBASE_LOSS_NODE: PositionNode = PositionNode::new(&[], Flag::TablebaseLoss);
+
 static UNEXPANDED_NODE: PositionNode = PositionNode::new(&[], Flag::Standard);
 
 impl PositionNode {
@@ -182,7 +189,7 @@ where
 {
     let moves = state.available_moves();
 
-    let state_flag = evaluation::evaluate_state_flag(state, &moves);
+    let state_flag = evaluation::evaluate_state_flag(state, !moves.is_empty());
     let move_eval = evaluation::evaluate_policy(state, &moves, policy_t);
 
     if state_flag.is_tablebase() {
@@ -306,8 +313,20 @@ impl SearchTree {
             state.make_move(choice.mov);
 
             if choice.visits() == 1 {
-                evaln = evaluation::evaluate_state(&state);
-                node = &UNEXPANDED_NODE;
+                let flag = evaluation::evaluate_state_flag(&state, state.is_available_move());
+
+                node = match flag {
+                    Flag::TerminalWin => &WIN_NODE,
+                    Flag::TerminalLoss => &LOSS_NODE,
+                    Flag::TerminalDraw => &DRAW_NODE,
+                    Flag::TablebaseWin => &TABLEBASE_WIN_NODE,
+                    Flag::TablebaseLoss => &TABLEBASE_LOSS_NODE,
+                    Flag::TablebaseDraw => &TABLEBASE_DRAW_NODE,
+                    Flag::Standard => {
+                        evaln = evaluation::evaluate_state(&state);
+                        &UNEXPANDED_NODE
+                    }
+                };
                 break;
             }
 

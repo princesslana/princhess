@@ -1,4 +1,5 @@
 use core::mem;
+use std::ops::ControlFlow;
 
 use crate::chess::movegen::MoveGen;
 use crate::chess::{
@@ -180,10 +181,19 @@ impl Board {
         true
     }
 
+    pub fn is_legal_move(&self) -> bool {
+        MoveGen::new(self)
+            .gen(|_| ControlFlow::Break(true))
+            .unwrap_or(false)
+    }
+
     pub fn legal_moves(&self) -> MoveList {
         let mut moves = MoveList::new();
 
-        MoveGen::new(self).gen(|m| moves.push(m));
+        MoveGen::new(self).gen(|m| {
+            moves.push(m);
+            ControlFlow::<()>::Continue(())
+        });
 
         moves
     }
