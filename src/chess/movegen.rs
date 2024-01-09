@@ -1,3 +1,5 @@
+use std::ops::ControlFlow::{self, Break, Continue};
+
 use crate::chess::{attacks, Bitboard, Board, Color, File, Move, Piece, Rank, Square};
 
 pub struct MoveGen<'a> {
@@ -5,6 +7,14 @@ pub struct MoveGen<'a> {
     threats: Bitboard,
     checkers: Bitboard,
     pinned: Bitboard,
+}
+
+macro_rules! shortcircuit {
+    ($($expr:expr),*) => {
+        $(if let Break(r) = $expr {
+            return Break(r);
+        })*
+    }
 }
 
 impl MoveGen<'_> {
@@ -27,25 +37,35 @@ impl MoveGen<'_> {
         }
     }
 
-    pub fn gen<F>(&self, mut f: F)
+    pub fn gen<F, R>(&self, mut f: F) -> Option<R>
     where
-        F: FnMut(Move),
+        F: FnMut(Move) -> ControlFlow<R>,
     {
-        self.gen_safe_king(&mut f);
-
-        if self.checkers.count() > 1 {
-            return;
+        if let Break(r) = self.gen_safe_king(&mut f) {
+            return Some(r);
         }
 
-        self.gen_pawn(&mut f);
+        if self.checkers.count() > 1 {
+            return None;
+        }
+
+        if let Break(r) = self.gen_pawn(&mut f) {
+            return Some(r);
+        }
 
         for pc in &[Piece::KNIGHT, Piece::BISHOP, Piece::ROOK, Piece::QUEEN] {
-            self.gen_for_piece(*pc, &mut f);
+            if let Break(r) = self.gen_for_piece(*pc, &mut f) {
+                return Some(r);
+            }
         }
 
         if !self.is_check() {
-            self.gen_castling(&mut f);
+            if let Break(r) = self.gen_castling(&mut f) {
+                return Some(r);
+            }
         }
+
+        None
     }
 
     fn us(&self) -> Color {
@@ -60,22 +80,24 @@ impl MoveGen<'_> {
         self.checkers.any()
     }
 
-    fn gen_safe_king<F>(&self, mut f: F)
+    fn gen_safe_king<F, R>(&self, mut f: F) -> ControlFlow<R>
     where
-        F: FnMut(Move),
+        F: FnMut(Move) -> ControlFlow<R>,
     {
         let from = self.board.king_of(self.us());
 
         let attacks = attacks::king(from) & !self.us_pieces() & !self.threats;
 
         for to in attacks {
-            f(Move::new(from, to));
+            shortcircuit!(f(Move::new(from, to)));
         }
+
+        Continue(())
     }
 
-    fn gen_pawn<F>(&self, mut f: F)
+    fn gen_pawn<F, R>(&self, mut f: F) -> ControlFlow<R>
     where
-        F: FnMut(Move),
+        F: FnMut(Move) -> ControlFlow<R>,
     {
         let pieces = self.board.pawns() & self.us_pieces();
         let targets = self.target_squares();
@@ -93,10 +115,10 @@ impl MoveGen<'_> {
             for to in moves {
                 if to.rank() == Rank::_1 || to.rank() == Rank::_8 {
                     for pc in &[Piece::QUEEN, Piece::ROOK, Piece::BISHOP, Piece::KNIGHT] {
-                        f(Move::new_promotion(from, to, *pc));
+                        shortcircuit!(f(Move::new_promotion(from, to, *pc)));
                     }
                 } else {
-                    f(Move::new(from, to));
+                    shortcircuit!(f(Move::new(from, to)));
                 }
             }
         }
@@ -111,23 +133,25 @@ impl MoveGen<'_> {
                 for to in moves {
                     if to.rank() == Rank::_1 || to.rank() == Rank::_8 {
                         for pc in &[Piece::QUEEN, Piece::ROOK, Piece::BISHOP, Piece::KNIGHT] {
-                            f(Move::new_promotion(from, to, *pc));
+                            shortcircuit!(f(Move::new_promotion(from, to, *pc)));
                         }
                     } else {
-                        f(Move::new(from, to));
+                        shortcircuit!(f(Move::new(from, to)));
                     }
                 }
             }
         }
 
         if self.board.ep_square().is_some() {
-            self.gen_en_passant(&mut f);
+            shortcircuit!(self.gen_en_passant(&mut f));
         }
+
+        Continue(())
     }
 
-    fn gen_en_passant<F>(&self, mut f: F)
+    fn gen_en_passant<F, R>(&self, mut f: F) -> ControlFlow<R>
     where
-        F: FnMut(Move),
+        F: FnMut(Move) -> ControlFlow<R>,
     {
         let ep_sq = self.board.ep_square().unwrap();
 
@@ -143,14 +167,16 @@ impl MoveGen<'_> {
             let king_sq = tmp.king_of(self.us());
 
             if !tmp.is_attacked(king_sq, !self.us(), tmp.occupied()) {
-                f(mv);
+                shortcircuit!(f(mv));
             }
         }
+
+        Continue(())
     }
 
-    fn gen_for_piece<F>(&self, piece: Piece, mut f: F)
+    fn gen_for_piece<F, R>(&self, piece: Piece, mut f: F) -> ControlFlow<R>
     where
-        F: FnMut(Move),
+        F: FnMut(Move) -> ControlFlow<R>,
     {
         let pieces = self.board.by_piece(piece) & self.us_pieces();
         let targets = self.target_squares();
@@ -160,7 +186,7 @@ impl MoveGen<'_> {
                 attacks::for_piece(piece, self.us(), from, self.board.occupied()) & targets;
 
             for to in attacks {
-                f(Move::new(from, to));
+                shortcircuit!(f(Move::new(from, to)));
             }
         }
 
@@ -171,15 +197,17 @@ impl MoveGen<'_> {
                     attacks::for_piece(piece, self.us(), from, self.board.occupied()) & targets;
 
                 for to in attacks {
-                    f(Move::new(from, to));
+                    shortcircuit!(f(Move::new(from, to)));
                 }
             }
         }
+
+        Continue(())
     }
 
-    fn gen_castling<F>(&self, mut f: F)
+    fn gen_castling<F, R>(&self, mut f: F) -> ControlFlow<R>
     where
-        F: FnMut(Move),
+        F: FnMut(Move) -> ControlFlow<R>,
     {
         let us = self.us();
         let back_rank = us.fold(Rank::_1, Rank::_8);
@@ -192,7 +220,7 @@ impl MoveGen<'_> {
             let rook_to = Square::from_coords(File::F, back_rank);
 
             if self.can_castle(rook_from, king_to, rook_to) {
-                f(Move::new_castle(king_from, rook_from));
+                shortcircuit!(f(Move::new_castle(king_from, rook_from)));
             }
         }
 
@@ -201,9 +229,11 @@ impl MoveGen<'_> {
             let rook_to = Square::from_coords(File::D, back_rank);
 
             if self.can_castle(rook_from, king_to, rook_to) {
-                f(Move::new_castle(king_from, rook_from));
+                shortcircuit!(f(Move::new_castle(king_from, rook_from)));
             }
         }
+
+        Continue(())
     }
 
     fn can_castle(&self, rook_from: Square, king_to: Square, rook_to: Square) -> bool {

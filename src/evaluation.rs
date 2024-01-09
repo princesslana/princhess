@@ -36,9 +36,9 @@ pub fn evaluate_state(state: &State) -> i64 {
     (run_eval_net(state) * SCALE) as i64
 }
 
-pub fn evaluate_state_flag(state: &State, moves: &MoveList) -> Flag {
-    if moves.is_empty() {
-        if state.board().is_check() {
+pub fn evaluate_state_flag(state: &State, is_legal_moves: bool) -> Flag {
+    if !is_legal_moves {
+        if state.is_check() {
             Flag::TerminalLoss
         } else {
             Flag::TerminalDraw
