@@ -11,7 +11,6 @@ extern crate nohash_hasher;
 extern crate once_cell;
 
 mod arena;
-mod args;
 mod chess;
 mod evaluation;
 mod math;
@@ -25,12 +24,5 @@ mod tree_policy;
 mod uci;
 
 fn main() {
-    args::init();
-    let options = args::options();
-
-    if let Some(ref syzygy_path) = options.syzygy_path {
-        tablebase::set_tablebase_directory(syzygy_path);
-    }
-
     uci::main();
 }
