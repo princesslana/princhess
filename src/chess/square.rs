@@ -3,12 +3,15 @@ use std::ops::{Add, Sub};
 
 use crate::chess::Bitboard;
 
+#[must_use]
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct Square(u8);
 
+#[must_use]
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct File(u8);
 
+#[must_use]
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Rank(u8);
 
@@ -48,6 +51,7 @@ impl Square {
         Square(self.0 ^ 7)
     }
 
+    #[must_use]
     pub const fn index(self) -> usize {
         self.0 as usize
     }
@@ -71,6 +75,7 @@ impl File {
     pub const F: File = File(5);
     pub const G: File = File(6);
 
+    #[must_use]
     pub const fn index(self) -> usize {
         self.0 as usize
     }

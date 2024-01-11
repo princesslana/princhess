@@ -8,6 +8,7 @@ use crate::chess::{
 
 const STARTPOS_FEN: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
+#[must_use]
 #[derive(Clone, Debug)]
 pub struct Board {
     colors: [Bitboard; Color::COUNT],
@@ -134,6 +135,7 @@ impl Board {
         self.castling
     }
 
+    #[must_use]
     pub fn color_at(&self, sq: Square) -> Option<Color> {
         if self.colors[0].contains(sq) {
             Some(Color::WHITE)
@@ -144,10 +146,12 @@ impl Board {
         }
     }
 
+    #[must_use]
     pub fn ep_square(&self) -> Option<Square> {
         self.ep
     }
 
+    #[must_use]
     pub fn hash(&self) -> u64 {
         self.hash
     }
@@ -156,19 +160,23 @@ impl Board {
         Square::from(self.kings() & self.colors[color.index()])
     }
 
+    #[must_use]
     #[allow(clippy::similar_names)]
     pub fn is_attacked(&self, sq: Square, attacker: Color, occ: Bitboard) -> bool {
         self.attackers(sq, attacker, occ).any()
     }
 
+    #[must_use]
     pub fn is_castling_rights(&self) -> bool {
         self.castling.any()
     }
 
+    #[must_use]
     pub fn is_check(&self) -> bool {
         self.is_attacked(self.king_of(self.stm), !self.stm, self.occupied())
     }
 
+    #[must_use]
     pub fn is_insufficient_material(&self) -> bool {
         if (self.pawns() | self.queens() | self.rooks()).any() {
             return false;
@@ -181,12 +189,14 @@ impl Board {
         true
     }
 
+    #[must_use]
     pub fn is_legal_move(&self) -> bool {
         MoveGen::new(self)
             .gen(|_| ControlFlow::Break(true))
             .unwrap_or(false)
     }
 
+    #[must_use]
     pub fn legal_moves(&self) -> MoveList {
         let mut moves = MoveList::new();
 
@@ -247,6 +257,7 @@ impl Board {
         }
     }
 
+    #[must_use]
     pub fn piece_at(&self, sq: Square) -> Option<Piece> {
         for idx in 0..self.pieces.len() {
             if self.pieces[idx].contains(sq) {

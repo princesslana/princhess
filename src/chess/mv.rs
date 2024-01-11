@@ -3,12 +3,15 @@ use arrayvec::ArrayVec;
 use crate::chess::{Piece, Square};
 use crate::options::is_chess960;
 
+#[must_use]
 #[derive(Debug, Copy, Clone)]
 pub struct Move(u16);
 
 pub type MoveList = ArrayVec<Move, 256>;
 
 impl Move {
+    pub const NONE: Self = Self(0);
+
     const SQ_MASK: u16 = 0b11_1111;
     const TO_SHIFT: u16 = 6;
     const PROMO_MASK: u16 = 0b11;
@@ -46,18 +49,22 @@ impl Move {
         Square::from((self.0 >> Self::TO_SHIFT) & Self::SQ_MASK)
     }
 
+    #[must_use]
     pub fn is_enpassant(self) -> bool {
         self.0 & Self::ENPASSANT_FLAG != 0 && self.0 & Self::CASTLE_FLAG == 0
     }
 
+    #[must_use]
     pub fn is_castle(self) -> bool {
         self.0 & Self::CASTLE_FLAG != 0 && self.0 & Self::ENPASSANT_FLAG == 0
     }
 
+    #[must_use]
     pub fn is_promotion(self) -> bool {
         self.0 & Self::PROMO_FLAG == Self::PROMO_FLAG
     }
 
+    #[must_use]
     pub fn promotion(self) -> Option<Piece> {
         if self.is_promotion() {
             Some(promotion_idx_to_piece(

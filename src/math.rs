@@ -1,3 +1,5 @@
+use std::time::{SystemTime, UNIX_EPOCH};
+
 pub fn softmax(arr: &mut [f32], t: f32) {
     let max = max(arr);
     let mut s = 0.;
@@ -17,4 +19,36 @@ fn max(arr: &[f32]) -> f32 {
         max = max.max(*x);
     }
     max
+}
+
+pub struct Rng {
+    seed: u64,
+}
+
+impl Rng {
+    fn with_seed(seed: u64) -> Self {
+        Self { seed }
+    }
+
+    pub fn next_u64(&mut self) -> u64 {
+        self.seed ^= self.seed << 13;
+        self.seed ^= self.seed >> 17;
+        self.seed ^= self.seed << 5;
+        self.seed
+    }
+
+    pub fn next_usize(&mut self) -> usize {
+        self.next_u64() as usize
+    }
+}
+
+impl Default for Rng {
+    fn default() -> Self {
+        let seed = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_millis();
+
+        Self::with_seed(seed as u64)
+    }
 }

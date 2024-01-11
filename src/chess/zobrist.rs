@@ -1,18 +1,22 @@
 use crate::chess::{Color, File, Piece, Square};
 
+#[must_use]
 pub fn piece(color: Color, piece: Piece, square: Square) -> u64 {
     let piece_idx = piece.index() * 2 + color.fold(0, 1);
     POLYGLOT_KEYS[piece_idx * 64 + square.index()]
 }
 
+#[must_use]
 pub const fn castling_rights(idx: usize) -> u64 {
     POLYGLOT_KEYS[768 + idx]
 }
 
+#[must_use]
 pub fn ep(file: File) -> u64 {
     POLYGLOT_KEYS[772 + file.index()]
 }
 
+#[must_use]
 pub const fn white_to_move() -> u64 {
     POLYGLOT_KEYS[780]
 }

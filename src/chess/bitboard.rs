@@ -3,6 +3,7 @@ use std::ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, Not};
 
 use crate::chess::Square;
 
+#[must_use]
 #[derive(Copy, Clone, Debug)]
 pub struct Bitboard(pub u64);
 
@@ -14,18 +15,22 @@ impl Bitboard {
         Self(bb)
     }
 
+    #[must_use]
     pub fn any(self) -> bool {
         self.0 != 0
     }
 
+    #[must_use]
     pub fn contains(self, square: Square) -> bool {
         self.0 & (1 << square.index()) != 0
     }
 
+    #[must_use]
     pub fn count(self) -> usize {
         self.0.count_ones() as usize
     }
 
+    #[must_use]
     pub fn is_empty(self) -> bool {
         self.0 == 0
     }

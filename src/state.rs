@@ -17,6 +17,7 @@ pub struct State {
 }
 
 impl State {
+    #[must_use]
     pub fn from_board(board: Board) -> Self {
         Self {
             board,
@@ -25,6 +26,7 @@ impl State {
         }
     }
 
+    #[must_use]
     pub fn from_tokens(mut tokens: Tokens) -> Option<Self> {
         let mut result = match tokens.next()? {
             "startpos" => Self::default(),
@@ -55,6 +57,7 @@ impl State {
         Some(result)
     }
 
+    #[must_use]
     pub fn from_fen(fen: &str) -> Self {
         let board = Board::from_fen(fen);
 
@@ -73,18 +76,22 @@ impl State {
         self.board.side_to_move()
     }
 
+    #[must_use]
     pub fn hash(&self) -> u64 {
         self.board.hash()
     }
 
+    #[must_use]
     pub fn is_check(&self) -> bool {
         self.board.is_check()
     }
 
+    #[must_use]
     pub fn is_available_move(&self) -> bool {
         self.board.is_legal_move()
     }
 
+    #[must_use]
     pub fn available_moves(&self) -> MoveList {
         self.board.legal_moves()
     }
@@ -108,14 +115,17 @@ impl State {
         self.board.make_move(mov);
     }
 
+    #[must_use]
     pub fn halfmove_counter(&self) -> usize {
         self.prev_state_hashes.len()
     }
 
+    #[must_use]
     pub fn drawn_by_fifty_move_rule(&self) -> bool {
         self.prev_state_hashes.len() >= 100
     }
 
+    #[must_use]
     pub fn is_repetition(&self) -> bool {
         let crnt_hash = self.hash();
 
@@ -203,6 +213,7 @@ impl State {
         self.features_map(f);
     }
 
+    #[must_use]
     pub fn move_to_index(&self, mv: Move) -> usize {
         let piece = self.board.piece_at(mv.from()).unwrap();
         let to_sq = mv.to();

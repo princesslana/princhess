@@ -1,3 +1,4 @@
+#[must_use]
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct Piece(u8);
 
@@ -11,8 +12,15 @@ impl Piece {
 
     pub const COUNT: usize = 6;
 
+    #[must_use]
     pub const fn index(self) -> usize {
         self.0 as usize
+    }
+}
+
+impl From<Piece> for u8 {
+    fn from(piece: Piece) -> Self {
+        piece.0
     }
 }
 

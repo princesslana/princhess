@@ -1,5 +1,6 @@
 use crate::chess::{zobrist, Board, Color, File, Rank, Square};
 
+#[must_use]
 #[derive(Clone, Copy, Debug)]
 pub struct Castling {
     white_king: Option<Square>,
@@ -61,6 +62,7 @@ impl Castling {
         castling
     }
 
+    #[must_use]
     pub fn any(self) -> bool {
         self.white_king.is_some()
             || self.white_queen.is_some()
@@ -68,6 +70,7 @@ impl Castling {
             || self.black_queen.is_some()
     }
 
+    #[must_use]
     pub fn by_color(self, color: Color) -> (Option<Square>, Option<Square>) {
         match color {
             Color::WHITE => (self.white_king, self.white_queen),
@@ -103,6 +106,7 @@ impl Castling {
         }
     }
 
+    #[must_use]
     pub fn hash(self) -> u64 {
         let mut hash = 0;
 

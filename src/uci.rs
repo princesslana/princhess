@@ -62,6 +62,7 @@ pub fn main() {
     }
 }
 
+#[must_use]
 pub fn read_stdin() -> String {
     let mut input = String::new();
     stdin().read_line(&mut input).unwrap();
