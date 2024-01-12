@@ -70,16 +70,19 @@ struct EvalNet {
     hidden_weights: [Accumulator<HIDDEN>; STATE_NUMBER_INPUTS],
     hidden_bias: Accumulator<HIDDEN>,
     output_weights: Accumulator<HIDDEN>,
+    output_bias: i32,
 }
 
 static EVAL_HIDDEN_WEIGHTS: [[i16; HIDDEN]; STATE_NUMBER_INPUTS] = include!("model/hidden_weights");
 static EVAL_HIDDEN_BIAS: [i16; HIDDEN] = include!("model/hidden_bias");
 static EVAL_OUTPUT_WEIGHTS: [[i16; HIDDEN]; 1] = include!("model/output_weights");
+static EVAL_OUTPUT_BIAS: i32 = include!("model/output_bias")[0];
 
 static EVAL_NET: EvalNet = EvalNet {
     hidden_weights: unsafe { std::mem::transmute(EVAL_HIDDEN_WEIGHTS) },
     hidden_bias: unsafe { std::mem::transmute(EVAL_HIDDEN_BIAS) },
     output_weights: unsafe { std::mem::transmute(EVAL_OUTPUT_WEIGHTS) },
+    output_bias: EVAL_OUTPUT_BIAS,
 };
 
 #[derive(Clone, Copy)]
@@ -111,7 +114,7 @@ fn run_eval_net(state: &State) -> f32 {
         acc.set(&EVAL_NET.hidden_weights[idx]);
     });
 
-    let mut result: i32 = 0;
+    let mut result: i32 = EVAL_NET.output_bias;
 
     for (&x, &w) in acc.vals.iter().zip(&EVAL_NET.output_weights.vals) {
         result += relu(x) * i32::from(w);

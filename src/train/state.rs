@@ -1,10 +1,9 @@
 use crate::math::Rng;
 use crate::state;
-use crate::train::activation::TanH;
 
-use goober::activation::ReLU;
+use goober::activation::{ReLU, Tanh};
 use goober::layer::{DenseConnected, SparseConnected};
-use goober::{FeedForwardNetwork, Matrix, Vector};
+use goober::{FeedForwardNetwork, Vector};
 use std::alloc::{self, Layout};
 use std::boxed::Box;
 use std::fs::{self, File};
@@ -23,7 +22,7 @@ const QAB: f32 = QA * QB;
 #[derive(FeedForwardNetwork)]
 pub struct StateNetwork {
     hidden: SparseConnected<ReLU, INPUT_SIZE, HIDDEN_SIZE>,
-    output: DenseConnected<TanH, HIDDEN_SIZE, OUTPUT_SIZE>,
+    output: DenseConnected<Tanh, HIDDEN_SIZE, OUTPUT_SIZE>,
 }
 
 impl StateNetwork {
@@ -43,23 +42,13 @@ impl StateNetwork {
     pub fn random() -> Box<Self> {
         let mut rng = Rng::default();
 
-        let mut rw = |_| f32::from(rng.next_i8()) / 127.;
+        let mut rw = |_, _| f32::from(rng.next_i8()) / (127. * 20.);
+        let mut zerof = |_| 0.;
 
-        let mut random_weights = Matrix::zeroed();
-
-        for row in random_weights.iter_mut() {
-            *row = Vector::from_fn(&mut rw);
-        }
-
-        let hidden_weights = Matrix::from_raw(*random_weights);
-        let output_weights = Matrix::from_raw([Vector::from_fn(&mut rw)]);
-
-        let mut network = Self::zeroed();
-
-        network.hidden = SparseConnected::from_raw(hidden_weights, Vector::zeroed());
-        network.output = DenseConnected::from_raw(output_weights, Vector::zeroed());
-
-        network
+        Box::new(Self {
+            hidden: SparseConnected::from_fn(&mut rw, &mut zerof),
+            output: DenseConnected::from_fn(&mut rw, &mut zerof),
+        })
     }
 
     pub fn save(&self, path: &str) {
@@ -75,6 +64,7 @@ impl StateNetwork {
         for row_idx in 0..INPUT_SIZE {
             let row = self.hidden.weights_row(row_idx);
             write_vector(&mut w, &row, QA);
+            write!(w, ",").unwrap();
         }
         writeln!(w, "]").unwrap();
 
@@ -87,6 +77,20 @@ impl StateNetwork {
         let output_weights_file =
             File::create(dir.join("output_weights")).expect("Failed to create file");
         let mut w = BufWriter::new(output_weights_file);
+
+        writeln!(w, "[").unwrap();
+        for row_idx in 0..OUTPUT_SIZE {
+            let row = self.output.weights_row(row_idx);
+            write_vector(&mut w, &row, QB);
+            write!(w, ",").unwrap();
+        }
+        writeln!(w, "]").unwrap();
+
+        let output_bias_file =
+            File::create(dir.join("output_bias")).expect("Failed to create file");
+        let mut w = BufWriter::new(output_bias_file);
+
+        write_vector(&mut w, &self.output.bias(), QAB);
     }
 }
 
@@ -105,5 +109,5 @@ fn write_vector<const N: usize>(w: &mut BufWriter<File>, v: &Vector<N>, q: f32) 
             write!(w, "    ").unwrap();
         }
     }
-    writeln!(w, "],").unwrap();
+    writeln!(w, "]").unwrap();
 }

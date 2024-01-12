@@ -7,7 +7,7 @@ use std::io::{BufRead, BufReader};
 use std::thread;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
-const EPOCHS: usize = 10;
+const EPOCHS: usize = 40;
 const BATCH_SIZE: usize = 16384;
 const THREADS: usize = 6;
 
@@ -141,10 +141,10 @@ fn update_gradient(
 
     let net_out = network.out_with_layers(&features);
 
-    let expected = position.result() as f32;
+    let expected = position.stm_relative_result() as f32;
     let actual = net_out.output_layer()[0];
 
-    let error = expected - actual;
+    let error = actual - expected;
     *loss += error * error;
 
     network.backprop(&features, gradients, Vector::from_raw([error]), &net_out);

@@ -1,5 +1,5 @@
 use crate::chess::{Bitboard, Board, Castling, Color, Move, Piece};
-use crate::search_tree::{MoveEdge, SearchTree};
+use crate::search_tree::SearchTree;
 use crate::state::State;
 
 use goober::SparseVector;
@@ -13,9 +13,16 @@ pub struct TrainingPosition {
     pieces: [u8; 16],
     stm: Color,
     result: i8,
+
+    #[allow(dead_code)]
     evaluation: i16,
+
     previous_moves: [Move; 4],
+
+    #[allow(dead_code)]
     legal_moves: [Move; TrainingPosition::MAX_MOVES],
+
+    #[allow(dead_code)]
     visits: [u8; TrainingPosition::MAX_MOVES],
 }
 
@@ -44,8 +51,8 @@ impl TrainingPosition {
     }
 
     #[must_use]
-    pub fn result(&self) -> i8 {
-        self.result
+    pub fn stm_relative_result(&self) -> i8 {
+        self.stm.fold(self.result, -self.result)
     }
 
     pub fn set_previous_moves(&mut self, moves: [Move; 4]) {
@@ -88,20 +95,19 @@ impl From<&SearchTree> for TrainingPosition {
         let mut legal_moves = [Move::NONE; Self::MAX_MOVES];
         let mut visits = [0; Self::MAX_MOVES];
 
-        let max_visits = tree
+        let sum_visits = tree
             .root_node()
             .hots()
             .iter()
-            .map(MoveEdge::visits)
-            .max()
-            .unwrap_or(0);
+            .map(|m| u64::from(m.visits()))
+            .sum::<u64>()
+            + 1;
 
-        #[allow(clippy::cast_sign_loss)]
-        let scale = (255f32 / max_visits as f32).ceil() as u32;
+        let scale_visits = |vs: u32| (u64::from(vs) * 255 / sum_visits) as u8;
 
         for (idx, mv) in tree.root_node().hots().iter().enumerate() {
             legal_moves[idx] = *mv.get_move();
-            visits[idx] = (mv.visits() / scale) as u8;
+            visits[idx] = scale_visits(mv.visits());
         }
 
         let pv = tree.principal_variation(1);
