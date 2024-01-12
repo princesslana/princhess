@@ -9,6 +9,7 @@ const OFFSET_DEFENDS: usize = 768 * 2;
 
 pub const NUMBER_FEATURES: usize = 768 * 3;
 
+#[must_use]
 #[derive(Clone)]
 pub struct State {
     board: Board,
@@ -17,12 +18,15 @@ pub struct State {
 }
 
 impl State {
-    #[must_use]
     pub fn from_board(board: Board) -> Self {
+        Self::from_board_with_prev_moves(board, [None, None])
+    }
+
+    pub fn from_board_with_prev_moves(board: Board, prev_moves: [Option<Move>; 2]) -> Self {
         Self {
             board,
             prev_state_hashes: ArrayVec::new(),
-            prev_moves: [None, None],
+            prev_moves,
         }
     }
 
@@ -57,7 +61,6 @@ impl State {
         Some(result)
     }
 
-    #[must_use]
     pub fn from_fen(fen: &str) -> Self {
         let board = Board::from_fen(fen);
 
@@ -207,6 +210,13 @@ impl State {
     }
 
     pub fn policy_features_map<F>(&self, f: F)
+    where
+        F: FnMut(usize),
+    {
+        self.features_map(f);
+    }
+
+    pub fn training_features_map<F>(&self, f: F)
     where
         F: FnMut(usize),
     {

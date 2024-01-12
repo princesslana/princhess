@@ -40,6 +40,10 @@ impl Rng {
     pub fn next_usize(&mut self) -> usize {
         self.next_u64() as usize
     }
+
+    pub fn next_i8(&mut self) -> i8 {
+        self.next_u64() as i8
+    }
 }
 
 impl Default for Rng {

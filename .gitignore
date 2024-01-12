@@ -1,10 +1,10 @@
 .DS_Store
 .env
 .token
-target/
-builds/
-data/
-out/
-pgn/
-syzygy/
-train/
+/target
+/builds
+/data
+/nets
+/pgn
+/syzygy
+/train

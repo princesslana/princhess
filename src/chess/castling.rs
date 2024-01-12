@@ -15,7 +15,7 @@ impl Castling {
     const HASH_BKS: u64 = zobrist::castling_rights(2);
     const HASH_BQS: u64 = zobrist::castling_rights(3);
 
-    fn none() -> Self {
+    pub fn none() -> Self {
         Self {
             white_king: None,
             white_queen: None,

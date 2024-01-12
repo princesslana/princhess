@@ -141,6 +141,39 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d2fabcfbdc87f4758337ca535fb41a6d701b65693ce38287d856d1674551ec9b"
 
 [[package]]
+name = "goober"
+version = "0.1.0"
+source = "git+https://github.com/jw1912/goober/?rev=08dc4d3#08dc4d3b085ac694d607d8af51a50ee04fc680e2"
+dependencies = [
+ "goober-core",
+ "goober-derive",
+ "goober-layer",
+]
+
+[[package]]
+name = "goober-core"
+version = "0.1.0"
+source = "git+https://github.com/jw1912/goober/?rev=08dc4d3#08dc4d3b085ac694d607d8af51a50ee04fc680e2"
+
+[[package]]
+name = "goober-derive"
+version = "0.1.0"
+source = "git+https://github.com/jw1912/goober/?rev=08dc4d3#08dc4d3b085ac694d607d8af51a50ee04fc680e2"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
+name = "goober-layer"
+version = "0.1.0"
+source = "git+https://github.com/jw1912/goober/?rev=08dc4d3#08dc4d3b085ac694d607d8af51a50ee04fc680e2"
+dependencies = [
+ "goober-core",
+]
+
+[[package]]
 name = "hashbrown"
 version = "0.14.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -288,6 +321,7 @@ dependencies = [
  "cc",
  "dashmap",
  "fastapprox",
+ "goober",
  "memmap",
  "nohash-hasher",
  "once_cell",

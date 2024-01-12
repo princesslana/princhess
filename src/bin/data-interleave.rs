@@ -35,7 +35,11 @@ fn main() {
     let mut writer =
         BufWriter::new(File::create(format!("data/princhess-{timestamp}-all.data")).unwrap());
 
-    println!("Interleaving {} positions from {} files...", total, inputs.len());
+    println!(
+        "Interleaving {} positions from {} files...",
+        total,
+        inputs.len()
+    );
 
     while remaining > 0 {
         let mut choice = rng.next_usize() % remaining;

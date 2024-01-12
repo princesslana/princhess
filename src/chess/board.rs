@@ -31,6 +31,27 @@ impl Board {
         }
     }
 
+    pub fn from_bitboards(
+        colors: [Bitboard; Color::COUNT],
+        pieces: [Bitboard; Piece::COUNT],
+        stm: Color,
+        ep: Option<Square>,
+        castling: Castling,
+    ) -> Self {
+        let mut board = Self::empty();
+
+        board.colors = colors;
+        board.pieces = pieces;
+
+        board.stm = stm;
+        board.ep = ep;
+        board.castling = castling;
+
+        board.hash = board.generate_zobrist_hash();
+
+        board
+    }
+
     pub fn from_fen(fen: &str) -> Self {
         let mut board = Self::empty();
 

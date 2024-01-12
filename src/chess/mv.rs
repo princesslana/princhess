@@ -4,7 +4,7 @@ use crate::chess::{Piece, Square};
 use crate::options::is_chess960;
 
 #[must_use]
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub struct Move(u16);
 
 pub type MoveList = ArrayVec<Move, 256>;

@@ -36,6 +36,12 @@ impl From<bool> for Color {
     }
 }
 
+impl From<u8> for Color {
+    fn from(b: u8) -> Self {
+        Self(b != 0)
+    }
+}
+
 impl Not for Color {
     type Output = Color;
 

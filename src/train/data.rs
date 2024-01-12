@@ -1,0 +1,165 @@
+use crate::chess::{Bitboard, Board, Castling, Color, Move, Piece};
+use crate::search_tree::{MoveEdge, SearchTree};
+use crate::state::State;
+
+use goober::SparseVector;
+use std::fs::File;
+use std::io::{BufWriter, Write};
+use std::{io, mem, slice};
+
+#[derive(Clone, Copy, Debug)]
+pub struct TrainingPosition {
+    occupied: Bitboard,
+    pieces: [u8; 16],
+    stm: Color,
+    result: i8,
+    evaluation: i16,
+    previous_moves: [Move; 4],
+    legal_moves: [Move; TrainingPosition::MAX_MOVES],
+    visits: [u8; TrainingPosition::MAX_MOVES],
+}
+
+const _SIZE_CHECK: () = assert!(mem::size_of::<TrainingPosition>() == 256);
+
+impl TrainingPosition {
+    pub const MAX_MOVES: usize = 72;
+    pub const SIZE: usize = mem::size_of::<Self>();
+
+    pub fn write_batch(out: &mut BufWriter<File>, data: &[TrainingPosition]) -> io::Result<()> {
+        let src_size = mem::size_of_val(data);
+        let data_slice = unsafe { slice::from_raw_parts(data.as_ptr().cast(), src_size) };
+        out.write_all(data_slice)?;
+        Ok(())
+    }
+
+    #[must_use]
+    pub fn read_batch(buffer: &[u8]) -> &[TrainingPosition] {
+        let len = buffer.len() / TrainingPosition::SIZE;
+        unsafe { slice::from_raw_parts(buffer.as_ptr().cast(), len) }
+    }
+
+    pub fn read_batch_mut(buffer: &mut [u8]) -> &mut [TrainingPosition] {
+        let len = buffer.len() / TrainingPosition::SIZE;
+        unsafe { slice::from_raw_parts_mut(buffer.as_mut_ptr().cast(), len) }
+    }
+
+    #[must_use]
+    pub fn result(&self) -> i8 {
+        self.result
+    }
+
+    pub fn set_previous_moves(&mut self, moves: [Move; 4]) {
+        self.previous_moves = moves;
+    }
+
+    pub fn set_result(&mut self, result: i8) {
+        self.result = result;
+    }
+
+    #[must_use]
+    pub fn get_features(&self) -> SparseVector {
+        let mut features = SparseVector::with_capacity(64);
+        let state = State::from(self);
+
+        state.training_features_map(|idx| features.push(idx));
+
+        features
+    }
+}
+
+impl From<&SearchTree> for TrainingPosition {
+    fn from(tree: &SearchTree) -> Self {
+        let board = tree.root_state().board();
+
+        let occupied = board.occupied();
+        let stm = board.side_to_move();
+
+        let mut pieces = [0; 16];
+
+        for (idx, sq) in occupied.into_iter().enumerate() {
+            let color = u8::from(board.color_at(sq).unwrap()) << 3;
+            let piece = board.piece_at(sq).unwrap();
+
+            let pc = color | u8::from(piece);
+
+            pieces[idx / 2] |= pc << (4 * (idx & 1));
+        }
+
+        let mut legal_moves = [Move::NONE; Self::MAX_MOVES];
+        let mut visits = [0; Self::MAX_MOVES];
+
+        let max_visits = tree
+            .root_node()
+            .hots()
+            .iter()
+            .map(MoveEdge::visits)
+            .max()
+            .unwrap_or(0);
+
+        #[allow(clippy::cast_sign_loss)]
+        let scale = (255f32 / max_visits as f32).ceil() as u32;
+
+        for (idx, mv) in tree.root_node().hots().iter().enumerate() {
+            legal_moves[idx] = *mv.get_move();
+            visits[idx] = (mv.visits() / scale) as u8;
+        }
+
+        let pv = tree.principal_variation(1);
+        let pv = pv.first().unwrap();
+        let mut evaluation = match pv.visits() {
+            0 => 0,
+            v => pv.sum_rewards() / i64::from(v),
+        } as i16;
+
+        // white relative evaluation
+        evaluation = stm.fold(evaluation, -evaluation);
+
+        // zero'd to be filled in later
+        let result = 0;
+        let previous_moves = [Move::NONE; 4];
+
+        TrainingPosition {
+            occupied,
+            pieces,
+            stm,
+            result,
+            evaluation,
+            previous_moves,
+            legal_moves,
+            visits,
+        }
+    }
+}
+
+impl From<&TrainingPosition> for State {
+    fn from(position: &TrainingPosition) -> Self {
+        let mut colors = [Bitboard::EMPTY; 2];
+        let mut pieces = [Bitboard::EMPTY; 6];
+
+        for (idx, sq) in position.occupied.into_iter().enumerate() {
+            let packed_piece = position.pieces[idx / 2] >> (4 * (idx & 1));
+            let color = Color::from((packed_piece >> 3) & 1);
+            let piece = Piece::from(packed_piece & 7);
+
+            colors[color.index()].toggle(sq);
+            pieces[piece.index()].toggle(sq);
+        }
+
+        let move_to_optional = |mv: Move| {
+            if mv == Move::NONE {
+                None
+            } else {
+                Some(mv)
+            }
+        };
+
+        let prev_moves = [
+            move_to_optional(position.previous_moves[0]),
+            move_to_optional(position.previous_moves[1]),
+        ];
+
+        let board = Board::from_bitboards(colors, pieces, position.stm, None, Castling::none());
+
+        State::from_board_with_prev_moves(board, prev_moves)
+    }
+}
