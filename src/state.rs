@@ -12,11 +12,7 @@ pub const NUMBER_FEATURES: usize = 768 * 3;
 #[derive(Clone)]
 pub struct State {
     board: Board,
-
-    // 101 should be enough to track 50-move rule, but some games in the dataset
-    // can go above this. Hence we add a little space
-    prev_state_hashes: ArrayVec<u64, 128>,
-
+    prev_state_hashes: ArrayVec<u64, 100>,
     prev_moves: [Option<Move>; 2],
 }
 
@@ -105,18 +101,19 @@ impl State {
 
         if is_pawn_move || capture.is_some() {
             self.prev_state_hashes.clear();
+        } else {
+            self.prev_state_hashes.push(self.hash());
         }
-        self.prev_state_hashes.push(self.hash());
 
         self.board.make_move(mov);
     }
 
     pub fn halfmove_counter(&self) -> usize {
-        self.prev_state_hashes.len() - 1
+        self.prev_state_hashes.len()
     }
 
     pub fn drawn_by_fifty_move_rule(&self) -> bool {
-        self.prev_state_hashes.len() > 100
+        self.prev_state_hashes.len() >= 100
     }
 
     pub fn is_repetition(&self) -> bool {

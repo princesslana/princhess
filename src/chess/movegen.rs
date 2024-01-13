@@ -341,7 +341,11 @@ fn pawn_pushes(color: Color, from: Square, occ: Bitboard) -> Bitboard {
     pushes &= !occ;
 
     if pushes.any() && color.fold(from.rank() == Rank::_2, from.rank() == Rank::_7) {
-        let double = color.fold(from + 16, from - 16);
+        // fold is not appropriate here because it may overflow with the square maths
+        let double = match color {
+            Color::WHITE => from + 16,
+            Color::BLACK => from - 16,
+        };
         pushes.toggle(double);
         pushes &= !occ;
     }
