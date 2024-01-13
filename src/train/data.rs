@@ -16,7 +16,7 @@ pub struct TrainingPosition {
     result: i8,
 
     #[allow(dead_code)]
-    evaluation: i16,
+    evaluation: i32,
 
     previous_moves: [Move; 4],
 
@@ -52,8 +52,13 @@ impl TrainingPosition {
     }
 
     #[must_use]
+    pub fn evaluation(&self) -> f32 {
+        self.evaluation as f32 / SCALE
+    }
+
+    #[must_use]
     pub fn stm_relative_evaluation(&self) -> f32 {
-        let e = f32::from(self.evaluation) / SCALE;
+        let e = self.evaluation();
         self.stm.fold(e, -e)
     }
 
@@ -122,10 +127,12 @@ impl From<&SearchTree> for TrainingPosition {
         let mut evaluation = match pv.visits() {
             0 => 0,
             v => pv.sum_rewards() / i64::from(v),
-        } as i16;
+        } as i32;
 
         // white relative evaluation
-        evaluation = stm.fold(evaluation, -evaluation);
+        evaluation = stm
+            .fold(evaluation, -evaluation)
+            .clamp(-SCALE as i32, SCALE as i32);
 
         // zero'd to be filled in later
         let result = 0;
@@ -186,7 +193,10 @@ mod tests {
     use crate::transposition_table::LRTable;
 
     const STARTPOS_NO_CASTLING: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w - - 0 1";
-    const KIWIPETE_NO_CASTLING: &str = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w - - 0 1";
+    const KIWIPETE_NO_CASTLING: &str =
+        "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w - - 0 1";
+    const KIWIPETE_NO_CASTLING_STMB: &str =
+        "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R b - - 0 1";
 
     #[test]
     fn test_startpos_conversion() {
@@ -222,6 +232,18 @@ mod tests {
     #[test]
     fn test_kiwipete_conversion() {
         let state_before = State::from_fen(KIWIPETE_NO_CASTLING);
+        let search = Search::new(state_before.clone(), LRTable::empty());
+
+        let training_position = TrainingPosition::from(search.tree());
+
+        let state_after = State::from(&training_position);
+
+        assert_eq!(state_before, state_after);
+    }
+
+    #[test]
+    fn test_kiwipete_stm_black_conversion() {
+        let state_before = State::from_fen(KIWIPETE_NO_CASTLING_STMB);
         let search = Search::new(state_before.clone(), LRTable::empty());
 
         let training_position = TrainingPosition::from(search.tree());

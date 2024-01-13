@@ -8,15 +8,15 @@ use princhess::transposition_table::LRTable;
 
 use std::fmt::{Display, Formatter};
 use std::fs::File;
-use std::io::BufWriter;
+use std::io::{self, BufWriter, Write};
 use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
 use std::thread;
-use std::time::{Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 const THREADS: usize = 6;
-const PLAYOUTS_PER_MOVE: usize = 2000;
 const DATA_WRITE_RATE: usize = 16384;
+const PLAYOUTS_PER_MOVE: usize = 2000;
 
 struct Stats {
     start: Instant,
@@ -26,6 +26,7 @@ struct Stats {
     white_wins: AtomicU64,
     black_wins: AtomicU64,
     draws: AtomicU64,
+    blunders: AtomicU64,
 }
 
 impl Stats {
@@ -38,6 +39,7 @@ impl Stats {
             white_wins: AtomicU64::new(0),
             black_wins: AtomicU64::new(0),
             draws: AtomicU64::new(0),
+            blunders: AtomicU64::new(0),
         }
     }
 
@@ -70,6 +72,11 @@ impl Stats {
         self.draws
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
+
+    pub fn inc_blunders(&self) {
+        self.blunders
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
 }
 
 impl Display for Stats {
@@ -80,30 +87,32 @@ impl Display for Stats {
         let black_wins = self.black_wins.load(std::sync::atomic::Ordering::Relaxed);
         let positions = self.positions.load(std::sync::atomic::Ordering::Relaxed);
         let skipped = self.skipped.load(std::sync::atomic::Ordering::Relaxed);
+        let blunders = self.blunders.load(std::sync::atomic::Ordering::Relaxed);
         let seconds = self.start.elapsed().as_secs().max(1);
 
         write!(
             f,
-            "Games: {}, W/D/B: {}/{}/{}, Positions: {}, Skipped: {}, Positions/sec: {}",
+            "G: {:>7} | +{:<6} ={:<6} -{:<6} | Bls: {:>7} ({:>2}%) | Skip: {:>4} | Pos: {:>8} ({:>3}/g) ({:>4}/s)",
             games,
             white_wins,
             draws,
             black_wins,
-            positions,
+            blunders,
+            blunders * 100 / games,
             skipped,
+            positions,
+            positions / games,
             positions / seconds
         )
     }
 }
 
-fn run_game(stats: &Stats, positions: &mut Vec<TrainingPosition>) {
+fn run_game(stats: &Stats, positions: &mut Vec<TrainingPosition>, rng: &mut Rng) {
     let mut state = State::default();
     let mut table = LRTable::empty();
 
     let mut prev_moves = [Move::NONE; 4];
     let mut result = 0;
-
-    let mut rng = Rng::default();
 
     for _ in 0..(8 + rng.next_u64() % 2) {
         let moves = state.available_moves();
@@ -141,13 +150,7 @@ fn run_game(stats: &Stats, positions: &mut Vec<TrainingPosition>) {
             let mut position = TrainingPosition::from(search.tree());
             position.set_previous_moves(prev_moves);
             positions.push(position);
-
             stats.inc_positions();
-
-            if position.stm_relative_evaluation() < -0.95 {
-                result = state.side_to_move().fold(-1, 1);
-                break;
-            }
         }
 
         state.make_move(best_move);
@@ -173,8 +176,27 @@ fn run_game(stats: &Stats, positions: &mut Vec<TrainingPosition>) {
         table = search.table();
     }
 
+    let mut blunder = false;
+
     for position in positions.iter_mut() {
         position.set_result(result);
+
+        match result {
+            1 if position.evaluation() < -0.5 => {
+                blunder = true;
+            }
+            -1 if position.evaluation() > 0.5 => {
+                blunder = true;
+            }
+            0 if position.evaluation() > 0.75 || position.evaluation() < -0.75 => {
+                blunder = true;
+            }
+            _ => {}
+        }
+    }
+
+    if blunder {
+        stats.inc_blunders();
     }
 
     stats.inc_games();
@@ -200,23 +222,27 @@ fn main() {
 
     thread::scope(|s| {
         for t in 0..THREADS {
+            thread::sleep(Duration::from_millis(10 * t as u64));
+
             let mut writer = BufWriter::new(
                 File::create(format!("data/princhess-{timestamp}-{t}.data")).unwrap(),
             );
 
             let stats = stats.clone();
+            let mut rng = Rng::default();
 
             s.spawn(move || loop {
                 let mut positions = Vec::new();
 
                 while positions.len() < DATA_WRITE_RATE {
-                    run_game(&stats, &mut positions);
+                    run_game(&stats, &mut positions, &mut rng);
                 }
 
                 TrainingPosition::write_batch(&mut writer, &positions).unwrap();
 
                 if t == 0 {
-                    println!("{}", stats);
+                    print!("{}\r", stats);
+                    io::stdout().flush().unwrap();
                 }
             });
         }

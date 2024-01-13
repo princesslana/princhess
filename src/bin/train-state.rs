@@ -3,7 +3,7 @@ use princhess::train::{StateNetwork, TrainingPosition};
 use goober::{FeedForwardNetwork, OutputLayer, Vector};
 use std::env;
 use std::fs::File;
-use std::io::{BufRead, BufReader};
+use std::io::{self, BufRead, BufReader, Write};
 use std::thread;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
@@ -92,6 +92,7 @@ fn train(
 
             batch_n += 1;
             print!("Batch {}/{}\r", batch_n, batches,);
+            io::stdout().flush().unwrap();
         }
 
         let consumed = bytes.len();
@@ -141,7 +142,8 @@ fn update_gradient(
 
     let net_out = network.out_with_layers(&features);
 
-    let expected = position.stm_relative_result() as f32;
+    //let expected = position.stm_relative_result() as f32;
+    let expected = position.stm_relative_evaluation();
     let actual = net_out.output_layer()[0];
 
     let error = actual - expected;

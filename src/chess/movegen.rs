@@ -161,7 +161,7 @@ impl MoveGen<'_> {
         for from in pieces {
             let mv = Move::new_en_passant(from, to);
 
-            let mut tmp = self.board.clone();
+            let mut tmp = *self.board;
             tmp.make_move(mv);
 
             let king_sq = tmp.king_of(self.us());
@@ -345,7 +345,7 @@ fn pawn_pushes(color: Color, from: Square, occ: Bitboard) -> Bitboard {
         let double = match color {
             Color::WHITE => from + 16,
             Color::BLACK => from - 16,
-        }
+        };
         pushes.toggle(double);
         pushes &= !occ;
     }

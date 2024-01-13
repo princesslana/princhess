@@ -187,13 +187,9 @@ fn create_node<'a, F>(
 where
     F: FnOnce(usize) -> Result<&'a mut [MoveEdge], ArenaError>,
 {
-    println!("moves=");
     let moves = state.available_moves();
 
-    println!("state_flag=");
     let state_flag = evaluation::evaluate_state_flag(state, !moves.is_empty());
-
-    println!("move_eval=");
     let move_eval = evaluation::evaluate_policy(state, &moves, policy_t);
 
     if state_flag.is_tablebase() {
