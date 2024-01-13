@@ -56,6 +56,7 @@ pub fn main() {
                 "go" => search.go(tokens, &mut next_line),
                 "movelist" => search.print_move_list(),
                 "sizelist" => print_size_list(),
+                "eval" => search.print_eval(),
                 _ => (),
             }
         }

@@ -1,4 +1,5 @@
 use crate::chess::{Bitboard, Board, Castling, Color, Move, Piece};
+use crate::search::SCALE;
 use crate::search_tree::SearchTree;
 use crate::state::State;
 
@@ -48,6 +49,12 @@ impl TrainingPosition {
     pub fn read_batch_mut(buffer: &mut [u8]) -> &mut [TrainingPosition] {
         let len = buffer.len() / TrainingPosition::SIZE;
         unsafe { slice::from_raw_parts_mut(buffer.as_mut_ptr().cast(), len) }
+    }
+
+    #[must_use]
+    pub fn stm_relative_evaluation(&self) -> f32 {
+        let e = f32::from(self.evaluation) / SCALE;
+        self.stm.fold(e, -e)
     }
 
     #[must_use]
@@ -103,7 +110,7 @@ impl From<&SearchTree> for TrainingPosition {
             .sum::<u64>()
             + 1;
 
-        let scale_visits = |vs: u32| (u64::from(vs) * 255 / sum_visits) as u8;
+        let scale_visits = |vs: u32| (u64::from(vs) * 255 / sum_visits).clamp(1, 255) as u8;
 
         for (idx, mv) in tree.root_node().hots().iter().enumerate() {
             legal_moves[idx] = *mv.get_move();
@@ -160,12 +167,67 @@ impl From<&TrainingPosition> for State {
         };
 
         let prev_moves = [
-            move_to_optional(position.previous_moves[0]),
             move_to_optional(position.previous_moves[1]),
+            move_to_optional(position.previous_moves[0]),
         ];
 
         let board = Board::from_bitboards(colors, pieces, position.stm, None, Castling::none());
 
         State::from_board_with_prev_moves(board, prev_moves)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use crate::chess::Square;
+    use crate::search::Search;
+    use crate::transposition_table::LRTable;
+
+    const STARTPOS_NO_CASTLING: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w - - 0 1";
+    const KIWIPETE_NO_CASTLING: &str = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w - - 0 1";
+
+    #[test]
+    fn test_startpos_conversion() {
+        let state_before = State::from_fen(STARTPOS_NO_CASTLING);
+        let search = Search::new(state_before.clone(), LRTable::empty());
+
+        let training_position = TrainingPosition::from(search.tree());
+
+        let state_after = State::from(&training_position);
+
+        assert_eq!(state_before, state_after);
+    }
+
+    #[test]
+    fn test_startpos_and_moves_conversion() {
+        let e2e4 = Move::new(Square::E2, Square::E4);
+        let e7e6 = Move::new(Square::E7, Square::E6);
+
+        let mut state_before = State::from_fen(STARTPOS_NO_CASTLING);
+        state_before.make_move(e2e4);
+        state_before.make_move(e7e6);
+
+        let search = Search::new(state_before.clone(), LRTable::empty());
+
+        let mut training_position = TrainingPosition::from(search.tree());
+        training_position.set_previous_moves([e7e6, e2e4, Move::NONE, Move::NONE]);
+
+        let state_after = State::from(&training_position);
+
+        assert_eq!(state_before, state_after);
+    }
+
+    #[test]
+    fn test_kiwipete_conversion() {
+        let state_before = State::from_fen(KIWIPETE_NO_CASTLING);
+        let search = Search::new(state_before.clone(), LRTable::empty());
+
+        let training_position = TrainingPosition::from(search.tree());
+
+        let state_after = State::from(&training_position);
+
+        assert_eq!(state_before, state_after);
     }
 }

@@ -9,7 +9,7 @@ use crate::chess::{
 const STARTPOS_FEN: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
 #[must_use]
-#[derive(Clone, Debug)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Board {
     colors: [Bitboard; Color::COUNT],
     pieces: [Bitboard; Piece::COUNT],

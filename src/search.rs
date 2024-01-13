@@ -312,6 +312,17 @@ impl Search {
         }
     }
 
+    pub fn print_eval(&self) {
+        let eval = evaluation::evaluate_state(self.search_tree.root_state());
+        let scaled = eval as f32 / SCALE;
+        println!(
+            "info string eval {} scaled {} cp {}",
+            eval,
+            scaled,
+            eval_in_cp(scaled)
+        );
+    }
+
     pub fn principal_variation(&self, num_moves: usize) -> Vec<Move> {
         self.search_tree
             .principal_variation(num_moves)

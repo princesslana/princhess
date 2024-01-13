@@ -15,7 +15,7 @@ use std::thread;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 const THREADS: usize = 6;
-const PLAYOUTS_PER_MOVE: usize = 1000;
+const PLAYOUTS_PER_MOVE: usize = 2000;
 const DATA_WRITE_RATE: usize = 16384;
 
 struct Stats {
@@ -23,6 +23,9 @@ struct Stats {
     games: AtomicU64,
     positions: AtomicU64,
     skipped: AtomicU64,
+    white_wins: AtomicU64,
+    black_wins: AtomicU64,
+    draws: AtomicU64,
 }
 
 impl Stats {
@@ -32,6 +35,9 @@ impl Stats {
             games: AtomicU64::new(0),
             positions: AtomicU64::new(0),
             skipped: AtomicU64::new(0),
+            white_wins: AtomicU64::new(0),
+            black_wins: AtomicU64::new(0),
+            draws: AtomicU64::new(0),
         }
     }
 
@@ -49,19 +55,40 @@ impl Stats {
         self.skipped
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
+
+    pub fn inc_white_wins(&self) {
+        self.white_wins
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    pub fn inc_black_wins(&self) {
+        self.black_wins
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    pub fn inc_draws(&self) {
+        self.draws
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
 }
 
 impl Display for Stats {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let games = self.games.load(std::sync::atomic::Ordering::Relaxed);
+        let white_wins = self.white_wins.load(std::sync::atomic::Ordering::Relaxed);
+        let draws = self.draws.load(std::sync::atomic::Ordering::Relaxed);
+        let black_wins = self.black_wins.load(std::sync::atomic::Ordering::Relaxed);
         let positions = self.positions.load(std::sync::atomic::Ordering::Relaxed);
         let skipped = self.skipped.load(std::sync::atomic::Ordering::Relaxed);
         let seconds = self.start.elapsed().as_secs().max(1);
 
         write!(
             f,
-            "Games: {}, Positions: {}, Skipped: {}, Positions/sec: {}",
+            "Games: {}, W/D/B: {}/{}/{}, Positions: {}, Skipped: {}, Positions/sec: {}",
             games,
+            white_wins,
+            draws,
+            black_wins,
             positions,
             skipped,
             positions / seconds
@@ -116,6 +143,11 @@ fn run_game(stats: &Stats, positions: &mut Vec<TrainingPosition>) {
             positions.push(position);
 
             stats.inc_positions();
+
+            if position.stm_relative_evaluation() < -0.95 {
+                result = state.side_to_move().fold(-1, 1);
+                break;
+            }
         }
 
         state.make_move(best_move);
@@ -130,7 +162,10 @@ fn run_game(stats: &Stats, positions: &mut Vec<TrainingPosition>) {
             break;
         }
 
-        if state.drawn_by_fifty_move_rule() || state.is_repetition() {
+        if state.drawn_by_fifty_move_rule()
+            || state.is_repetition()
+            || state.board().is_insufficient_material()
+        {
             result = 0;
             break;
         }
@@ -143,6 +178,14 @@ fn run_game(stats: &Stats, positions: &mut Vec<TrainingPosition>) {
     }
 
     stats.inc_games();
+
+    if result == 1 {
+        stats.inc_white_wins();
+    } else if result == -1 {
+        stats.inc_black_wins();
+    } else {
+        stats.inc_draws();
+    }
 }
 
 fn main() {

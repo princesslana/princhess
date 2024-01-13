@@ -345,7 +345,7 @@ fn pawn_pushes(color: Color, from: Square, occ: Bitboard) -> Bitboard {
         let double = match color {
             Color::WHITE => from + 16,
             Color::BLACK => from - 16,
-        };
+        }
         pushes.toggle(double);
         pushes &= !occ;
     }

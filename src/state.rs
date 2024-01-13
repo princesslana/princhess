@@ -10,7 +10,7 @@ const OFFSET_DEFENDS: usize = 768 * 2;
 pub const NUMBER_FEATURES: usize = 768 * 3;
 
 #[must_use]
-#[derive(Clone)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct State {
     board: Board,
     prev_state_hashes: ArrayVec<u64, 100>,

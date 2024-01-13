@@ -1,7 +1,7 @@
 use crate::chess::{zobrist, Board, Color, File, Rank, Square};
 
 #[must_use]
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Castling {
     white_king: Option<Square>,
     white_queen: Option<Square>,
