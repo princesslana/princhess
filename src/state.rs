@@ -255,6 +255,6 @@ impl State {
 
 impl Default for State {
     fn default() -> Self {
-        Self::from_board(Board::default())
+        Self::from_board(Board::startpos())
     }
 }

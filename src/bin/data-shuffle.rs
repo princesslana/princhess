@@ -3,7 +3,7 @@ use princhess::train::TrainingPosition;
 
 use std::env;
 use std::fs::File;
-use std::io::BufWriter;
+use std::io::{self, BufWriter, Write};
 use std::time::Instant;
 
 fn main() {
@@ -21,13 +21,21 @@ fn main() {
         let start = Instant::now();
         println!("Shuffling {} positions from {}...", positions.len(), file);
 
-        for _ in 0..positions.len() * 8 {
-            let i = rng.next_usize() % positions.len();
-            let j = rng.next_usize() % positions.len();
-            positions.swap(i, j);
+        for i in 0..positions.len() - 1 {
+            let j = rng.next_usize() % (positions.len() - i);
+            positions.swap(i, i + j);
+            if i % 16 == 0 {
+                print!(
+                    "{:>8} / {} ({:2}%)\r",
+                    i,
+                    positions.len(),
+                    i * 100 / positions.len()
+                );
+                io::stdout().flush().unwrap();
+            }
         }
 
-        println!("Done ({}ms).", start.elapsed().as_millis());
+        println!("\nDone ({}ms).", start.elapsed().as_millis());
 
         let mut writer = BufWriter::new(File::create(format!("{}.shuffled", file)).unwrap());
         TrainingPosition::write_batch(&mut writer, positions).unwrap();

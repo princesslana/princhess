@@ -24,6 +24,15 @@ impl Castling {
         }
     }
 
+    pub fn from_squares(wk: Square, wq: Square, bk: Square, bq: Square) -> Self {
+        Self {
+            white_king: Some(wk),
+            white_queen: Some(wq),
+            black_king: Some(bk),
+            black_queen: Some(bq),
+        }
+    }
+
     pub fn from_fen(board: &Board, fen: &str) -> Self {
         let mut castling = Self::none();
 

@@ -1,4 +1,4 @@
-use princhess::chess::Move;
+use princhess::chess::{Board, Move};
 use princhess::math::Rng;
 use princhess::options::set_hash_size_mb;
 use princhess::search::Search;
@@ -17,6 +17,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 const THREADS: usize = 6;
 const DATA_WRITE_RATE: usize = 16384;
 const PLAYOUTS_PER_MOVE: usize = 2000;
+const DFRC_PCT: u64 = 10;
 
 struct Stats {
     start: Instant,
@@ -108,8 +109,16 @@ impl Display for Stats {
 }
 
 fn run_game(stats: &Stats, positions: &mut Vec<TrainingPosition>, rng: &mut Rng) {
-    let mut state = State::default();
+    let startpos = if rng.next_u64() % 100 < DFRC_PCT {
+        Board::dfrc(rng.next_usize() % 960, rng.next_usize() % 960)
+    } else {
+        Board::startpos()
+    };
+
+    let mut state = State::from_board(startpos);
     let mut table = LRTable::empty();
+
+    let mut game_positions = Vec::with_capacity(256);
 
     let mut prev_moves = [Move::NONE; 4];
     let mut result = 0;
@@ -148,8 +157,17 @@ fn run_game(stats: &Stats, positions: &mut Vec<TrainingPosition>, rng: &mut Rng)
             break;
         } else {
             let mut position = TrainingPosition::from(search.tree());
+
+            if position.evaluation() > 0.95 {
+                result = 1;
+                break;
+            } else if position.evaluation() < -0.95 {
+                result = -1;
+                break;
+            }
+
             position.set_previous_moves(prev_moves);
-            positions.push(position);
+            game_positions.push(position);
             stats.inc_positions();
         }
 
@@ -178,7 +196,7 @@ fn run_game(stats: &Stats, positions: &mut Vec<TrainingPosition>, rng: &mut Rng)
 
     let mut blunder = false;
 
-    for position in positions.iter_mut() {
+    for position in game_positions.iter_mut() {
         position.set_result(result);
 
         match result {
@@ -194,6 +212,8 @@ fn run_game(stats: &Stats, positions: &mut Vec<TrainingPosition>, rng: &mut Rng)
             _ => {}
         }
     }
+
+    positions.append(&mut game_positions);
 
     if blunder {
         stats.inc_blunders();
@@ -247,4 +267,6 @@ fn main() {
             });
         }
     });
+
+    println!();
 }

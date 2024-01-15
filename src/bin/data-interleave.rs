@@ -3,7 +3,7 @@ use princhess::train::TrainingPosition;
 
 use std::env;
 use std::fs::File;
-use std::io::{BufReader, BufWriter, Read, Write};
+use std::io::{self, BufReader, BufWriter, Read, Write};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 fn main() {
@@ -64,7 +64,8 @@ fn main() {
             let written = total - remaining;
             let pct_done = (written as f64 / total as f64) * 100.0;
 
-            println!("Written {} positions ({:.2}%)", written, pct_done);
+            print!("Written {} positions ({:.2}%)\r", written, pct_done);
+            io::stdout().flush().unwrap();
         }
     }
 

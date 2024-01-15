@@ -49,10 +49,13 @@ fn main() {
             input.as_str(),
         );
 
+        let seconds = start.elapsed().as_secs();
+
         println!(
-            "Epoch {} complete in {} seconds.",
+            "Epoch {} complete in {}m {}s.",
             epoch,
-            start.elapsed().as_secs()
+            (seconds / 60),
+            (seconds % 60)
         );
 
         network.save(format!("nets/state-{}-e{:03}", timestamp, epoch).as_str());
@@ -142,8 +145,7 @@ fn update_gradient(
 
     let net_out = network.out_with_layers(&features);
 
-    //let expected = position.stm_relative_result() as f32;
-    let expected = position.stm_relative_evaluation();
+    let expected = position.stm_relative_result() as f32;
     let actual = net_out.output_layer()[0];
 
     let error = actual - expected;

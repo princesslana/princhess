@@ -6,7 +6,7 @@ use crate::chess::{
     attacks, zobrist, Bitboard, Castling, Color, File, Move, MoveList, Piece, Rank, Square,
 };
 
-const STARTPOS_FEN: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+const STARTPOS_SCHARNAGL: usize = 518;
 
 #[must_use]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -29,6 +29,56 @@ impl Board {
             castling: Castling::default(),
             hash: 0,
         }
+    }
+
+    pub fn startpos() -> Self {
+        Self::frc(STARTPOS_SCHARNAGL)
+    }
+
+    pub fn frc(scharnagl: usize) -> Self {
+        Self::dfrc(scharnagl, scharnagl)
+    }
+
+    #[allow(clippy::similar_names)]
+    pub fn dfrc(white_scharnagl: usize, black_scharnagl: usize) -> Self {
+        let white_back_rank = get_scharnagl_back_rank(white_scharnagl);
+        let black_back_rank = get_scharnagl_back_rank(black_scharnagl);
+
+        let mut board = Self::empty();
+
+        for color in &[Color::WHITE, Color::BLACK] {
+            let back_rank = color.fold(Rank::_1, Rank::_8);
+            let pawn_rank = color.fold(Rank::_2, Rank::_7);
+
+            for (file, piece) in color
+                .fold(white_back_rank, black_back_rank)
+                .iter()
+                .enumerate()
+            {
+                board.toggle(
+                    *color,
+                    *piece,
+                    Square::from_coords(File::from(file), back_rank),
+                );
+                board.toggle(
+                    *color,
+                    Piece::PAWN,
+                    Square::from_coords(File::from(file), pawn_rank),
+                );
+            }
+        }
+
+        let rooks = board.rooks().into_iter().collect::<Vec<_>>();
+
+        let [wqs, wks, bqs, bks] = &rooks[0..4] else {
+            unreachable!()
+        };
+
+        board.castling = Castling::from_squares(*wks, *wqs, *bks, *bqs);
+
+        board.hash = board.generate_zobrist_hash();
+
+        board
     }
 
     pub fn from_bitboards(
@@ -377,8 +427,95 @@ impl Board {
     }
 }
 
-impl Default for Board {
-    fn default() -> Self {
-        Self::from_fen(STARTPOS_FEN)
+fn get_scharnagl_back_rank(scharnagl: usize) -> [Piece; 8] {
+    let mut back_rank = [Piece::PAWN; 8];
+
+    let nth_empty = |back_rank: [Piece; 8], n: usize| {
+        let mut n = n;
+        for (i, sq) in back_rank.iter().enumerate() {
+            if *sq == Piece::PAWN {
+                if n == 0 {
+                    return i;
+                }
+                n -= 1;
+            }
+        }
+        unreachable!()
+    };
+
+    let n = scharnagl;
+
+    let (n, b1) = (n / 4, n % 4);
+    let (n, b2) = (n / 4, n % 4);
+    let (n, q) = (n / 6, n % 6);
+
+    let b1_file = match b1 {
+        0 => File::B,
+        1 => File::D,
+        2 => File::F,
+        3 => File::H,
+        _ => unreachable!(),
+    };
+
+    let b2_file = match b2 {
+        0 => File::A,
+        1 => File::C,
+        2 => File::E,
+        3 => File::G,
+        _ => unreachable!(),
+    };
+
+    back_rank[b1_file.index()] = Piece::BISHOP;
+    back_rank[b2_file.index()] = Piece::BISHOP;
+
+    back_rank[nth_empty(back_rank, q)] = Piece::QUEEN;
+
+    let (n1, n2) = match n {
+        0 => (0, 1),
+        1 => (0, 2),
+        2 => (0, 3),
+        3 => (0, 4),
+        4 => (1, 2),
+        5 => (1, 3),
+        6 => (1, 4),
+        7 => (2, 3),
+        8 => (2, 4),
+        9 => (3, 4),
+        _ => unreachable!(),
+    };
+
+    let n1 = nth_empty(back_rank, n1);
+    let n2 = nth_empty(back_rank, n2);
+
+    back_rank[n1] = Piece::KNIGHT;
+    back_rank[n2] = Piece::KNIGHT;
+
+    back_rank[nth_empty(back_rank, 0)] = Piece::ROOK;
+    back_rank[nth_empty(back_rank, 0)] = Piece::KING;
+    back_rank[nth_empty(back_rank, 0)] = Piece::ROOK;
+
+    back_rank
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    const STARTPOS_FEN: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+
+    #[test]
+    fn test_scharnagl() {
+        for i in 0..960 {
+            let back_rank = get_scharnagl_back_rank(i);
+
+            assert!(!back_rank.contains(&Piece::PAWN));
+        }
+    }
+
+    #[test]
+    fn test_startpos() {
+        let board = Board::startpos();
+
+        assert_eq!(board, Board::from_fen(STARTPOS_FEN));
     }
 }
