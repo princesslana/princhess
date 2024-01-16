@@ -32,8 +32,13 @@ fn main() {
         .unwrap()
         .as_secs();
 
-    let mut writer =
-        BufWriter::new(File::create(format!("data/princhess-{timestamp}-all.data")).unwrap());
+    let filename = format!(
+        "data/princhess-{}-{}m-all.data",
+        timestamp,
+        total / 1_000_000
+    );
+
+    let mut writer = BufWriter::new(File::create(filename).unwrap());
 
     println!(
         "Interleaving {} positions from {} files...",

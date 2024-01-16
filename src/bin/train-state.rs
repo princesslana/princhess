@@ -7,7 +7,7 @@ use std::io::{self, BufRead, BufReader, Write};
 use std::thread;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
-const EPOCHS: usize = 40;
+const EPOCHS: usize = 30;
 const BATCH_SIZE: usize = 16384;
 const THREADS: usize = 6;
 
@@ -72,7 +72,7 @@ fn train(
     let file = File::open(input).unwrap();
     let positions = file.metadata().unwrap().len() as usize / TrainingPosition::SIZE;
 
-    let buffer_size = 128 * BATCH_SIZE * TrainingPosition::SIZE;
+    let buffer_size = 32 * THREADS * BATCH_SIZE * TrainingPosition::SIZE;
     let mut buffer = BufReader::with_capacity(buffer_size, file);
 
     let mut running_loss = 0.0;
