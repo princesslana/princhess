@@ -11,6 +11,8 @@ const EPOCHS: usize = 30;
 const BATCH_SIZE: usize = 16384;
 const THREADS: usize = 6;
 
+const LR: f32 = 0.001;
+
 fn main() {
     println!("Running...");
     let mut args = env::args();
@@ -23,7 +25,7 @@ fn main() {
 
     let mut network = StateNetwork::random();
 
-    let lr = 0.001;
+    let lr = LR;
     let mut momentum = StateNetwork::zeroed();
     let mut velocity = StateNetwork::zeroed();
 
@@ -72,7 +74,7 @@ fn train(
     let file = File::open(input).unwrap();
     let positions = file.metadata().unwrap().len() as usize / TrainingPosition::SIZE;
 
-    let buffer_size = 32 * THREADS * BATCH_SIZE * TrainingPosition::SIZE;
+    let buffer_size = (1 << (THREADS * 2)) * BATCH_SIZE * TrainingPosition::SIZE;
     let mut buffer = BufReader::with_capacity(buffer_size, file);
 
     let mut running_loss = 0.0;

@@ -14,7 +14,6 @@ extern crate once_cell;
 mod arena;
 mod evaluation;
 mod search_tree;
-mod tablebase;
 mod tree_policy;
 
 pub mod chess;
@@ -22,6 +21,7 @@ pub mod math;
 pub mod options;
 pub mod search;
 pub mod state;
+pub mod tablebase;
 pub mod train;
 pub mod transposition_table;
 pub mod uci;

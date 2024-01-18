@@ -335,6 +335,21 @@ impl Search {
     pub fn best_move(&self) -> Move {
         *self.principal_variation(1).first().unwrap()
     }
+
+    pub fn best_move_by_visits(&self) -> Move {
+        let root_node = self.search_tree.root_node();
+        let root_moves = root_node.hots();
+
+        let mut best = &root_moves[0];
+
+        for mov in root_moves.iter().skip(1) {
+            if mov.visits() > best.visits() {
+                best = mov;
+            }
+        }
+
+        *best.get_move()
+    }
 }
 
 // eval here is [-1.0, 1.0]
