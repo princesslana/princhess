@@ -18,7 +18,6 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 const THREADS: usize = 6;
 const DATA_WRITE_RATE: usize = 16384;
 const PLAYOUTS_PER_MOVE: usize = 2000;
-const BEST_MOVE_MOST_VISITS_PCT: u64 = 0;
 const DFRC_PCT: u64 = 10;
 
 struct Stats {
@@ -30,7 +29,6 @@ struct Stats {
     black_wins: AtomicU64,
     draws: AtomicU64,
     blunders: AtomicU64,
-    most_visits: AtomicU64,
 }
 
 impl Stats {
@@ -44,7 +42,6 @@ impl Stats {
             black_wins: AtomicU64::new(0),
             draws: AtomicU64::new(0),
             blunders: AtomicU64::new(0),
-            most_visits: AtomicU64::new(0),
         }
     }
 
@@ -82,11 +79,6 @@ impl Stats {
         self.blunders
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
-
-    pub fn inc_most_visits(&self) {
-        self.most_visits
-            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    }
 }
 
 impl Display for Stats {
@@ -98,18 +90,16 @@ impl Display for Stats {
         let positions = self.positions.load(std::sync::atomic::Ordering::Relaxed);
         let skipped = self.skipped.load(std::sync::atomic::Ordering::Relaxed);
         let blunders = self.blunders.load(std::sync::atomic::Ordering::Relaxed);
-        let most_visits = self.most_visits.load(std::sync::atomic::Ordering::Relaxed);
         let seconds = self.start.elapsed().as_secs().max(1);
 
         write!(
             f,
-            "G: {:>7} | +{:>2} ={:>2} -{:>2} % | Bls: {:>2}% | Vs: {:>3.1}/g | S: {:>5.3}% | Pos: {:>5.1}m ({:>3}/g) ({:>4}/s)",
+            "G: {:>7} | +{:>2} ={:>2} -{:>2} % | Bls: {:>2}% | S: {:>5.3}% | Pos: {:>5.1}m ({:>3}/g) ({:>4}/s)",
             games,
             white_wins * 100 / games,
             draws * 100 / games,
             black_wins * 100 / games,
             blunders * 100 / games,
-            most_visits as f32 / games as f32,
             skipped as f32 / positions as f32,
             positions as f32 / 1000000.0,
             positions / games,
@@ -155,17 +145,7 @@ fn run_game(stats: &Stats, positions: &mut Vec<TrainingPosition>, rng: &mut Rng)
 
         search.playout_sync(PLAYOUTS_PER_MOVE);
 
-        let best_move = if rng.next_u64() % 100 < BEST_MOVE_MOST_VISITS_PCT {
-            let by_visits = search.best_move_by_visits();
-
-            if by_visits != search.best_move() {
-                stats.inc_most_visits();
-            }
-
-            by_visits
-        } else {
-            search.best_move()
-        };
+        let best_move = search.best_move();
 
         prev_moves.rotate_right(1);
         prev_moves[0] = best_move;
