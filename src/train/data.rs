@@ -104,22 +104,24 @@ impl From<&SearchTree> for TrainingPosition {
             pieces[idx / 2] |= pc << (4 * (idx & 1));
         }
 
+        let mut nodes = [(Move::NONE, 0); Self::MAX_MOVES];
+
+        for (node, hot) in nodes.iter_mut().zip(tree.root_node().hots().iter()) {
+            *node = (*hot.get_move(), hot.visits());
+        }
+
         let mut legal_moves = [Move::NONE; Self::MAX_MOVES];
         let mut visits = [0; Self::MAX_MOVES];
 
-        let sum_visits = tree
-            .root_node()
-            .hots()
+        let sum_visits = nodes.iter().map(|(_, v)| u64::from(*v)).sum::<u64>() + 1;
+
+        for (idx, (mv, vs)) in nodes
             .iter()
-            .map(|m| u64::from(m.visits()))
-            .sum::<u64>()
-            + 1;
-
-        let scale_visits = |vs: u32| (u64::from(vs) * 255 / sum_visits).clamp(1, 255) as u8;
-
-        for (idx, mv) in tree.root_node().hots().iter().enumerate() {
-            legal_moves[idx] = *mv.get_move();
-            visits[idx] = scale_visits(mv.visits());
+            .take_while(|(m, _)| *m != Move::NONE)
+            .enumerate()
+        {
+            legal_moves[idx] = *mv;
+            visits[idx] = (u64::from(*vs) * 255 / sum_visits).clamp(1, 255) as u8;
         }
 
         let pv = tree.principal_variation(1);

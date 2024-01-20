@@ -37,12 +37,25 @@ impl Rng {
         self.seed
     }
 
+    pub fn next_u32(&mut self) -> u32 {
+        self.next_u64() as u32
+    }
+
     pub fn next_usize(&mut self) -> usize {
         self.next_u64() as usize
     }
 
     pub fn next_i8(&mut self) -> i8 {
         self.next_u64() as i8
+    }
+
+    // Returns a random f32 in the range [0, 1).
+    pub fn next_f32(&mut self) -> f32 {
+        (self.next_u32() >> 8) as f32 / (1 << 24) as f32
+    }
+
+    pub fn next_f32_range(&mut self, min: f32, max: f32) -> f32 {
+        min + self.next_f32() * (max - min)
     }
 }
 

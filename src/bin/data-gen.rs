@@ -121,7 +121,6 @@ fn run_game(stats: &Stats, positions: &mut Vec<TrainingPosition>, rng: &mut Rng)
     let mut game_positions = Vec::with_capacity(256);
 
     let mut prev_moves = [Move::NONE; 4];
-    let mut result = 0;
 
     for _ in 0..(8 + rng.next_u64() % 2) {
         let moves = state.available_moves();
@@ -140,7 +139,7 @@ fn run_game(stats: &Stats, positions: &mut Vec<TrainingPosition>, rng: &mut Rng)
         return;
     }
 
-    loop {
+    let result = loop {
         let search = Search::new(state.clone(), table);
 
         search.playout_sync(PLAYOUTS_PER_MOVE);
@@ -154,25 +153,21 @@ fn run_game(stats: &Stats, positions: &mut Vec<TrainingPosition>, rng: &mut Rng)
 
         if legal_moves > TrainingPosition::MAX_MOVES {
             stats.inc_skipped();
-            break;
         } else {
             let mut position = TrainingPosition::from(search.tree());
 
             if position.evaluation() > 0.95 {
-                result = 1;
-                break;
+                break 1;
             } else if position.evaluation() < -0.95 {
-                result = -1;
-                break;
+                break -1;
             } else if let Some(wdl) = tablebase::probe_wdl(state.board()) {
-                result = match wdl {
+                let result = match wdl {
                     Wdl::Win => 1,
                     Wdl::Draw => 0,
                     Wdl::Loss => -1,
                 };
 
-                result = state.side_to_move().fold(result, -result);
-                break;
+                break state.side_to_move().fold(result, -result);
             }
 
             position.set_previous_moves(prev_moves);
@@ -183,42 +178,34 @@ fn run_game(stats: &Stats, positions: &mut Vec<TrainingPosition>, rng: &mut Rng)
         state.make_move(best_move);
 
         if !state.is_available_move() {
-            if state.is_check() {
+            break if state.is_check() {
                 // The stm has been checkmated. Convert to white relative result
-                result = state.side_to_move().fold(-1, 1);
+                state.side_to_move().fold(-1, 1)
             } else {
-                result = 0;
-            }
-            break;
+                0
+            };
         }
 
         if state.drawn_by_fifty_move_rule()
             || state.is_repetition()
             || state.board().is_insufficient_material()
         {
-            result = 0;
-            break;
+            break 0;
         }
 
         table = search.table();
-    }
+    };
 
     let mut blunder = false;
 
     for position in game_positions.iter_mut() {
         position.set_result(result);
 
-        match result {
-            1 if position.evaluation() < -0.5 => {
-                blunder = true;
-            }
-            -1 if position.evaluation() > 0.5 => {
-                blunder = true;
-            }
-            0 if position.evaluation() > 0.75 || position.evaluation() < -0.75 => {
-                blunder = true;
-            }
-            _ => {}
+        blunder |= match result {
+            1 => position.evaluation() < -0.5,
+            -1 => position.evaluation() > 0.5,
+            0 => position.evaluation().abs() > 0.75,
+            _ => unreachable!(),
         }
     }
 

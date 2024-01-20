@@ -7,7 +7,7 @@ use std::io::{self, BufRead, BufReader, Write};
 use std::thread;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
-const EPOCHS: usize = 30;
+const EPOCHS: usize = 20;
 const BATCH_SIZE: usize = 16384;
 const THREADS: usize = 6;
 
@@ -23,7 +23,7 @@ fn main() {
     let file = File::open(input.clone()).unwrap();
     let count = file.metadata().unwrap().len() as usize / TrainingPosition::SIZE;
 
-    let mut network = StateNetwork::random();
+    let mut network = StateNetwork::from_current();
 
     let lr = LR;
     let mut momentum = StateNetwork::zeroed();

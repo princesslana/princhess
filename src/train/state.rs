@@ -18,6 +18,11 @@ const QA: f32 = 256.;
 const QB: f32 = 256.;
 const QAB: f32 = QA * QB;
 
+static HIDDEN_WEIGHTS: [[i16; HIDDEN_SIZE]; INPUT_SIZE] = include!("../model/hidden_weights");
+static HIDDEN_BIAS: [i16; HIDDEN_SIZE] = include!("../model/hidden_bias");
+static OUTPUT_WEIGHTS: [[i16; HIDDEN_SIZE]; OUTPUT_SIZE] = include!("../model/output_weights");
+static OUTPUT_BIAS: [i32; OUTPUT_SIZE] = include!("../model/output_bias");
+
 #[allow(clippy::module_name_repetitions)]
 #[derive(FeedForwardNetwork)]
 pub struct StateNetwork {
@@ -42,12 +47,33 @@ impl StateNetwork {
     pub fn random() -> Box<Self> {
         let mut rng = Rng::default();
 
-        let mut rw = |_, _| f32::from(rng.next_i8()) / (127. * 20.);
+        let hidden_limit = (6. / (INPUT_SIZE + HIDDEN_SIZE) as f32).sqrt() * 2f32.sqrt();
+        let output_limit = (6. / (HIDDEN_SIZE + OUTPUT_SIZE) as f32).sqrt();
+
         let mut zerof = |_| 0.;
 
         Box::new(Self {
-            hidden: SparseConnected::from_fn(&mut rw, &mut zerof),
-            output: DenseConnected::from_fn(&mut rw, &mut zerof),
+            hidden: SparseConnected::from_fn(
+                |_, _| rng.next_f32_range(-hidden_limit, hidden_limit),
+                &mut zerof,
+            ),
+            output: DenseConnected::from_fn(
+                |_, _| rng.next_f32_range(-output_limit, output_limit),
+                &mut zerof,
+            ),
+        })
+    }
+
+    #[must_use]
+    pub fn from_current() -> Box<Self> {
+        let mut hidden_weights_f = |i: usize, j: usize| f32::from(HIDDEN_WEIGHTS[i][j]) / QA;
+        let mut hidden_bias_f = |i: usize| f32::from(HIDDEN_BIAS[i]) / QA;
+        let mut output_weights_f = |i: usize, j: usize| f32::from(OUTPUT_WEIGHTS[i][j]) / QB;
+        let mut output_bias_f = |i: usize| OUTPUT_BIAS[i] as f32 / QAB;
+
+        Box::new(Self {
+            hidden: SparseConnected::from_fn(&mut hidden_weights_f, &mut hidden_bias_f),
+            output: DenseConnected::from_fn(&mut output_weights_f, &mut output_bias_f),
         })
     }
 
