@@ -15,7 +15,7 @@ use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-const THREADS: usize = 6;
+const THREADS: usize = 7;
 const DATA_WRITE_RATE: usize = 16384;
 const PLAYOUTS_PER_MOVE: usize = 2000;
 const DFRC_PCT: u64 = 10;

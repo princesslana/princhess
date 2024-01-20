@@ -23,7 +23,7 @@ fn main() {
     let file = File::open(input.clone()).unwrap();
     let count = file.metadata().unwrap().len() as usize / TrainingPosition::SIZE;
 
-    let mut network = StateNetwork::from_current();
+    let mut network = StateNetwork::random();
 
     let lr = LR;
     let mut momentum = StateNetwork::zeroed();
