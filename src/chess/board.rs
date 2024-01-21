@@ -6,9 +6,10 @@ use crate::chess::{
     attacks, zobrist, Bitboard, Castling, Color, File, Move, MoveList, Piece, Rank, Square,
 };
 
-const STARTPOS_FEN: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+const STARTPOS_SCHARNAGL: usize = 518;
 
-#[derive(Clone, Debug)]
+#[must_use]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Board {
     colors: [Bitboard; Color::COUNT],
     pieces: [Bitboard; Piece::COUNT],
@@ -28,6 +29,77 @@ impl Board {
             castling: Castling::default(),
             hash: 0,
         }
+    }
+
+    pub fn startpos() -> Self {
+        Self::frc(STARTPOS_SCHARNAGL)
+    }
+
+    pub fn frc(scharnagl: usize) -> Self {
+        Self::dfrc(scharnagl, scharnagl)
+    }
+
+    #[allow(clippy::similar_names)]
+    pub fn dfrc(white_scharnagl: usize, black_scharnagl: usize) -> Self {
+        let white_back_rank = get_scharnagl_back_rank(white_scharnagl);
+        let black_back_rank = get_scharnagl_back_rank(black_scharnagl);
+
+        let mut board = Self::empty();
+
+        for color in &[Color::WHITE, Color::BLACK] {
+            let back_rank = color.fold(Rank::_1, Rank::_8);
+            let pawn_rank = color.fold(Rank::_2, Rank::_7);
+
+            for (file, piece) in color
+                .fold(white_back_rank, black_back_rank)
+                .iter()
+                .enumerate()
+            {
+                board.toggle(
+                    *color,
+                    *piece,
+                    Square::from_coords(File::from(file), back_rank),
+                );
+                board.toggle(
+                    *color,
+                    Piece::PAWN,
+                    Square::from_coords(File::from(file), pawn_rank),
+                );
+            }
+        }
+
+        let rooks = board.rooks().into_iter().collect::<Vec<_>>();
+
+        let [wqs, wks, bqs, bks] = &rooks[0..4] else {
+            unreachable!()
+        };
+
+        board.castling = Castling::from_squares(*wks, *wqs, *bks, *bqs);
+
+        board.hash = board.generate_zobrist_hash();
+
+        board
+    }
+
+    pub fn from_bitboards(
+        colors: [Bitboard; Color::COUNT],
+        pieces: [Bitboard; Piece::COUNT],
+        stm: Color,
+        ep: Option<Square>,
+        castling: Castling,
+    ) -> Self {
+        let mut board = Self::empty();
+
+        board.colors = colors;
+        board.pieces = pieces;
+
+        board.stm = stm;
+        board.ep = ep;
+        board.castling = castling;
+
+        board.hash = board.generate_zobrist_hash();
+
+        board
     }
 
     pub fn from_fen(fen: &str) -> Self {
@@ -134,6 +206,7 @@ impl Board {
         self.castling
     }
 
+    #[must_use]
     pub fn color_at(&self, sq: Square) -> Option<Color> {
         if self.colors[0].contains(sq) {
             Some(Color::WHITE)
@@ -144,10 +217,12 @@ impl Board {
         }
     }
 
+    #[must_use]
     pub fn ep_square(&self) -> Option<Square> {
         self.ep
     }
 
+    #[must_use]
     pub fn hash(&self) -> u64 {
         self.hash
     }
@@ -156,19 +231,23 @@ impl Board {
         Square::from(self.kings() & self.colors[color.index()])
     }
 
+    #[must_use]
     #[allow(clippy::similar_names)]
     pub fn is_attacked(&self, sq: Square, attacker: Color, occ: Bitboard) -> bool {
         self.attackers(sq, attacker, occ).any()
     }
 
+    #[must_use]
     pub fn is_castling_rights(&self) -> bool {
         self.castling.any()
     }
 
+    #[must_use]
     pub fn is_check(&self) -> bool {
         self.is_attacked(self.king_of(self.stm), !self.stm, self.occupied())
     }
 
+    #[must_use]
     pub fn is_insufficient_material(&self) -> bool {
         if (self.pawns() | self.queens() | self.rooks()).any() {
             return false;
@@ -181,12 +260,14 @@ impl Board {
         true
     }
 
+    #[must_use]
     pub fn is_legal_move(&self) -> bool {
         MoveGen::new(self)
             .gen(|_| ControlFlow::Break(true))
             .unwrap_or(false)
     }
 
+    #[must_use]
     pub fn legal_moves(&self) -> MoveList {
         let mut moves = MoveList::new();
 
@@ -247,6 +328,7 @@ impl Board {
         }
     }
 
+    #[must_use]
     pub fn piece_at(&self, sq: Square) -> Option<Piece> {
         for idx in 0..self.pieces.len() {
             if self.pieces[idx].contains(sq) {
@@ -345,8 +427,95 @@ impl Board {
     }
 }
 
-impl Default for Board {
-    fn default() -> Self {
-        Self::from_fen(STARTPOS_FEN)
+fn get_scharnagl_back_rank(scharnagl: usize) -> [Piece; 8] {
+    let mut back_rank = [Piece::PAWN; 8];
+
+    let nth_empty = |back_rank: [Piece; 8], n: usize| {
+        let mut n = n;
+        for (i, sq) in back_rank.iter().enumerate() {
+            if *sq == Piece::PAWN {
+                if n == 0 {
+                    return i;
+                }
+                n -= 1;
+            }
+        }
+        unreachable!()
+    };
+
+    let n = scharnagl;
+
+    let (n, b1) = (n / 4, n % 4);
+    let (n, b2) = (n / 4, n % 4);
+    let (n, q) = (n / 6, n % 6);
+
+    let b1_file = match b1 {
+        0 => File::B,
+        1 => File::D,
+        2 => File::F,
+        3 => File::H,
+        _ => unreachable!(),
+    };
+
+    let b2_file = match b2 {
+        0 => File::A,
+        1 => File::C,
+        2 => File::E,
+        3 => File::G,
+        _ => unreachable!(),
+    };
+
+    back_rank[b1_file.index()] = Piece::BISHOP;
+    back_rank[b2_file.index()] = Piece::BISHOP;
+
+    back_rank[nth_empty(back_rank, q)] = Piece::QUEEN;
+
+    let (n1, n2) = match n {
+        0 => (0, 1),
+        1 => (0, 2),
+        2 => (0, 3),
+        3 => (0, 4),
+        4 => (1, 2),
+        5 => (1, 3),
+        6 => (1, 4),
+        7 => (2, 3),
+        8 => (2, 4),
+        9 => (3, 4),
+        _ => unreachable!(),
+    };
+
+    let n1 = nth_empty(back_rank, n1);
+    let n2 = nth_empty(back_rank, n2);
+
+    back_rank[n1] = Piece::KNIGHT;
+    back_rank[n2] = Piece::KNIGHT;
+
+    back_rank[nth_empty(back_rank, 0)] = Piece::ROOK;
+    back_rank[nth_empty(back_rank, 0)] = Piece::KING;
+    back_rank[nth_empty(back_rank, 0)] = Piece::ROOK;
+
+    back_rank
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    const STARTPOS_FEN: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+
+    #[test]
+    fn test_scharnagl() {
+        for i in 0..960 {
+            let back_rank = get_scharnagl_back_rank(i);
+
+            assert!(!back_rank.contains(&Piece::PAWN));
+        }
+    }
+
+    #[test]
+    fn test_startpos() {
+        let board = Board::startpos();
+
+        assert_eq!(board, Board::from_fen(STARTPOS_FEN));
     }
 }

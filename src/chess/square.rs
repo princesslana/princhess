@@ -3,12 +3,15 @@ use std::ops::{Add, Sub};
 
 use crate::chess::Bitboard;
 
+#[must_use]
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct Square(u8);
 
+#[must_use]
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct File(u8);
 
+#[must_use]
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Rank(u8);
 
@@ -17,6 +20,11 @@ impl Square {
     pub const C1: Square = Square(2);
     pub const G1: Square = Square(6);
     pub const H1: Square = Square(7);
+
+    pub const E2: Square = Square(12);
+    pub const E4: Square = Square(28);
+    pub const E6: Square = Square(44);
+    pub const E7: Square = Square(52);
 
     pub const A8: Square = Square(56);
     pub const C8: Square = Square(58);
@@ -48,6 +56,7 @@ impl Square {
         Square(self.0 ^ 7)
     }
 
+    #[must_use]
     pub const fn index(self) -> usize {
         self.0 as usize
     }
@@ -66,11 +75,16 @@ impl Square {
 }
 
 impl File {
+    pub const A: File = File(0);
+    pub const B: File = File(1);
     pub const C: File = File(2);
     pub const D: File = File(3);
+    pub const E: File = File(4);
     pub const F: File = File(5);
     pub const G: File = File(6);
+    pub const H: File = File(7);
 
+    #[must_use]
     pub const fn index(self) -> usize {
         self.0 as usize
     }
@@ -90,6 +104,12 @@ impl Rank {
 impl From<u8> for File {
     fn from(file: u8) -> Self {
         File(file)
+    }
+}
+
+impl From<usize> for File {
+    fn from(file: usize) -> Self {
+        File(file as u8)
     }
 }
 
