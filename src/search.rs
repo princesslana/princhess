@@ -4,7 +4,7 @@ use std::time::{Duration, Instant};
 use crate::chess::{Color, Move};
 use crate::evaluation;
 use crate::options::{get_num_threads, get_policy_temperature};
-use crate::search_tree::{MoveEdge, SearchTree};
+use crate::search_tree::{MoveEdge, PositionNode, SearchTree};
 use crate::state::State;
 use crate::tablebase;
 use crate::transposition_table::{LRAllocator, LRTable};
@@ -31,6 +31,7 @@ impl Default for TimeManagement {
 }
 
 impl TimeManagement {
+    #[must_use]
     pub fn from_duration(d: Duration) -> Self {
         let start = Instant::now();
         let end = Some(start + d);
@@ -43,6 +44,7 @@ impl TimeManagement {
         }
     }
 
+    #[must_use]
     pub fn infinite() -> Self {
         let start = Instant::now();
         let end = None;
@@ -55,6 +57,7 @@ impl TimeManagement {
         }
     }
 
+    #[must_use]
     pub fn is_after_end(&self) -> bool {
         if let Some(end) = self.end {
             Instant::now() > end
@@ -63,10 +66,12 @@ impl TimeManagement {
         }
     }
 
+    #[must_use]
     pub fn elapsed(&self) -> Duration {
         self.start.elapsed()
     }
 
+    #[must_use]
     pub fn node_limit(&self) -> usize {
         self.node_limit
     }
@@ -104,6 +109,14 @@ impl Search {
 
     pub fn table(self) -> LRTable {
         self.search_tree.table()
+    }
+
+    pub fn root_node(&self) -> &PositionNode {
+        self.search_tree.root_node()
+    }
+
+    pub fn tree(&self) -> &SearchTree {
+        &self.search_tree
     }
 
     fn parse_ms(tokens: &mut Tokens) -> Option<Duration> {
@@ -260,6 +273,18 @@ impl Search {
         });
     }
 
+    pub fn playout_sync(&self, playouts: usize) {
+        let mut tld = ThreadData::create(&self.search_tree);
+        let tm = TimeManagement::infinite();
+        let stop_signal = AtomicBool::new(false);
+
+        for _ in 0..playouts {
+            if !self.search_tree.playout(&mut tld, &tm, &stop_signal) {
+                break;
+            }
+        }
+    }
+
     pub fn print_move_list(&self) {
         let root_node = self.search_tree.root_node();
         let root_state = self.search_tree.root_state();
@@ -287,6 +312,17 @@ impl Search {
         }
     }
 
+    pub fn print_eval(&self) {
+        let eval = evaluation::evaluate_state(self.search_tree.root_state());
+        let scaled = eval as f32 / SCALE;
+        println!(
+            "info string eval {} scaled {} cp {}",
+            eval,
+            scaled,
+            eval_in_cp(scaled)
+        );
+    }
+
     pub fn principal_variation(&self, num_moves: usize) -> Vec<Move> {
         self.search_tree
             .principal_variation(num_moves)
@@ -299,9 +335,25 @@ impl Search {
     pub fn best_move(&self) -> Move {
         *self.principal_variation(1).first().unwrap()
     }
+
+    pub fn best_move_by_visits(&self) -> Move {
+        let root_node = self.search_tree.root_node();
+        let root_moves = root_node.hots();
+
+        let mut best = &root_moves[0];
+
+        for mov in root_moves.iter().skip(1) {
+            if mov.visits() > best.visits() {
+                best = mov;
+            }
+        }
+
+        *best.get_move()
+    }
 }
 
 // eval here is [-1.0, 1.0]
+#[must_use]
 pub fn eval_in_cp(eval: f32) -> String {
     let cps = if eval > 0.5 {
         18. * (eval - 0.5) + 1.

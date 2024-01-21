@@ -9,7 +9,20 @@ const OFFSET_DEFENDS: usize = 768 * 2;
 
 pub const NUMBER_FEATURES: usize = 768 * 3;
 
-#[derive(Clone)]
+const STATE_NUMBER_POSITION: usize = 768;
+const STATE_NUMBER_THREATS: usize = 10 * 64;
+const STATE_NUMBER_DEFENDS: usize = 10 * 64;
+
+const STATE_OFFSET_POSITION: usize = 0;
+const STATE_OFFSET_THREATS: usize = STATE_OFFSET_POSITION + STATE_NUMBER_POSITION;
+const STATE_OFFSET_DEFENDS: usize = STATE_OFFSET_THREATS + STATE_NUMBER_THREATS;
+
+pub const STATE_NUMBER_FEATURES: usize = STATE_NUMBER_POSITION
+    + STATE_NUMBER_THREATS
+    + STATE_NUMBER_DEFENDS;
+
+#[must_use]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct State {
     board: Board,
     prev_state_hashes: ArrayVec<u64, 100>,
@@ -18,13 +31,18 @@ pub struct State {
 
 impl State {
     pub fn from_board(board: Board) -> Self {
+        Self::from_board_with_prev_moves(board, [None, None])
+    }
+
+    pub fn from_board_with_prev_moves(board: Board, prev_moves: [Option<Move>; 2]) -> Self {
         Self {
             board,
             prev_state_hashes: ArrayVec::new(),
-            prev_moves: [None, None],
+            prev_moves,
         }
     }
 
+    #[must_use]
     pub fn from_tokens(mut tokens: Tokens) -> Option<Self> {
         let mut result = match tokens.next()? {
             "startpos" => Self::default(),
@@ -73,18 +91,22 @@ impl State {
         self.board.side_to_move()
     }
 
+    #[must_use]
     pub fn hash(&self) -> u64 {
         self.board.hash()
     }
 
+    #[must_use]
     pub fn is_check(&self) -> bool {
         self.board.is_check()
     }
 
+    #[must_use]
     pub fn is_available_move(&self) -> bool {
         self.board.is_legal_move()
     }
 
+    #[must_use]
     pub fn available_moves(&self) -> MoveList {
         self.board.legal_moves()
     }
@@ -108,14 +130,17 @@ impl State {
         self.board.make_move(mov);
     }
 
+    #[must_use]
     pub fn halfmove_counter(&self) -> usize {
         self.prev_state_hashes.len()
     }
 
+    #[must_use]
     pub fn drawn_by_fifty_move_rule(&self) -> bool {
         self.prev_state_hashes.len() >= 100
     }
 
+    #[must_use]
     pub fn is_repetition(&self) -> bool {
         let crnt_hash = self.hash();
 
@@ -134,7 +159,47 @@ impl State {
         (flip_rank, flip_file)
     }
 
-    fn features_map<F>(&self, mut f: F)
+    pub fn state_features_map<F>(&self, mut f: F)
+    where
+        F: FnMut(usize),
+    {
+        let stm = self.side_to_move();
+        let b = &self.board;
+
+        let (flip_rank, flip_file) = self.feature_flip();
+
+        let flip_square = |sq: Square| match (flip_rank, flip_file) {
+            (true, true) => sq.flip_rank().flip_file(),
+            (true, false) => sq.flip_rank(),
+            (false, true) => sq.flip_file(),
+            (false, false) => sq,
+        };
+
+        for sq in b.occupied() {
+            let piece = b.piece_at(sq).unwrap();
+            let color = b.color_at(sq).unwrap();
+
+            let sq_idx = flip_square(sq).index();
+            let piece_idx = piece.index();
+            let side_idx = usize::from(color != stm);
+
+            f(STATE_OFFSET_POSITION + (side_idx * 6 + piece_idx) * 64 + sq_idx);
+
+            if piece != Piece::KING {
+                // Threats
+                if b.is_attacked(sq, !color, b.occupied()) {
+                    f(STATE_OFFSET_THREATS + (side_idx * 5 + piece_idx) * 64 + sq_idx);
+                }
+
+                // Defenses
+                if b.is_attacked(sq, color, b.occupied()) {
+                    f(STATE_OFFSET_DEFENDS + (side_idx * 5 + piece_idx) * 64 + sq_idx);
+                }
+            }
+        }
+    }
+
+    pub fn policy_features_map<F>(&self, mut f: F)
     where
         F: FnMut(usize),
     {
@@ -189,20 +254,14 @@ impl State {
         }
     }
 
-    pub fn state_features_map<F>(&self, f: F)
+    pub fn training_features_map<F>(&self, f: F)
     where
         F: FnMut(usize),
     {
-        self.features_map(f);
+        self.state_features_map(f);
     }
 
-    pub fn policy_features_map<F>(&self, f: F)
-    where
-        F: FnMut(usize),
-    {
-        self.features_map(f);
-    }
-
+    #[must_use]
     pub fn move_to_index(&self, mv: Move) -> usize {
         let piece = self.board.piece_at(mv.from()).unwrap();
         let to_sq = mv.to();
@@ -234,6 +293,6 @@ impl State {
 
 impl Default for State {
     fn default() -> Self {
-        Self::from_board(Board::default())
+        Self::from_board(Board::startpos())
     }
 }

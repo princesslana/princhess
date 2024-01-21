@@ -56,12 +56,14 @@ pub fn main() {
                 "go" => search.go(tokens, &mut next_line),
                 "movelist" => search.print_move_list(),
                 "sizelist" => print_size_list(),
+                "eval" => search.print_eval(),
                 _ => (),
             }
         }
     }
 }
 
+#[must_use]
 pub fn read_stdin() -> String {
     let mut input = String::new();
     stdin().read_line(&mut input).unwrap();

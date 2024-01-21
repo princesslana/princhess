@@ -17,6 +17,7 @@ pub struct TranspositionTable {
 }
 
 impl TranspositionTable {
+    #[must_use]
     pub fn empty() -> Self {
         let table = Table::default();
         let arena = Box::new(Arena::new(get_hash_size_mb() / 2));
@@ -24,6 +25,7 @@ impl TranspositionTable {
         Self::new(table, arena)
     }
 
+    #[must_use]
     pub fn for_root() -> Self {
         Self::new(Table::default(), Box::new(Arena::new(2)))
     }
@@ -32,6 +34,7 @@ impl TranspositionTable {
         Self { table, arena }
     }
 
+    #[must_use]
     pub fn arena(&self) -> &Arena {
         &self.arena
     }
@@ -41,6 +44,7 @@ impl TranspositionTable {
         self.arena.clear();
     }
 
+    #[must_use]
     pub fn insert<'a>(&'a self, key: &State, value: &'a PositionNode) -> &'a PositionNode {
         let hash = key.hash();
 
@@ -55,6 +59,7 @@ impl TranspositionTable {
         }
     }
 
+    #[must_use]
     pub fn lookup<'a>(&'a self, key: &State) -> Option<&'a PositionNode> {
         let hash = key.hash();
 
@@ -88,6 +93,7 @@ pub struct LRTable {
 }
 
 impl LRTable {
+    #[must_use]
     pub fn new(left: TranspositionTable, right: TranspositionTable) -> Self {
         Self {
             left,
@@ -97,6 +103,7 @@ impl LRTable {
         }
     }
 
+    #[must_use]
     pub fn empty() -> Self {
         Self::new(TranspositionTable::empty(), TranspositionTable::empty())
     }

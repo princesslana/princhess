@@ -1,5 +1,6 @@
 use std::ops::Not;
 
+#[must_use]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Color(bool);
 
@@ -9,6 +10,7 @@ impl Color {
 
     pub const COUNT: usize = 2;
 
+    #[must_use]
     pub const fn index(self) -> usize {
         self.0 as usize
     }
@@ -22,9 +24,21 @@ impl Color {
     }
 }
 
+impl From<Color> for u8 {
+    fn from(c: Color) -> Self {
+        u8::from(c.0)
+    }
+}
+
 impl From<bool> for Color {
     fn from(b: bool) -> Self {
         Self(b)
+    }
+}
+
+impl From<u8> for Color {
+    fn from(b: u8) -> Self {
+        Self(b != 0)
     }
 }
 
