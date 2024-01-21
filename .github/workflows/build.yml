@@ -23,6 +23,6 @@ jobs:
       - uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
-      - run: cargo rustc --release -- -C target-feature=+crt-static -C target-cpu=$TARGET_CPU
+      - run: cargo rustc --release --bin princhess -- -C target-feature=+crt-static -C target-cpu=$TARGET_CPU
         env:
           TARGET_CPU: ${{ matrix.cpu }}
