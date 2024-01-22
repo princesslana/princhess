@@ -12,6 +12,8 @@ const BATCH_SIZE: usize = 16384;
 const THREADS: usize = 6;
 
 const LR: f32 = 0.001;
+const LR_DROP_AT: usize = EPOCHS * 2 / 3;
+const LR_DROP_FACTOR: f32 = 0.01;
 
 fn main() {
     println!("Running...");
@@ -25,7 +27,7 @@ fn main() {
 
     let mut network = StateNetwork::random();
 
-    let lr = LR;
+    let mut lr = LR;
     let mut momentum = StateNetwork::zeroed();
     let mut velocity = StateNetwork::zeroed();
 
@@ -40,7 +42,7 @@ fn main() {
     );
 
     for epoch in 1..=EPOCHS {
-        println!("Epoch {}/{}...", epoch, EPOCHS);
+        println!("Epoch {}/{} (LR: {})...", epoch, EPOCHS, lr);
         let start = Instant::now();
 
         train(
@@ -63,6 +65,10 @@ fn main() {
         let file_name = format!("nets/state-{}-e{:03}", timestamp, epoch);
         network.save(file_name.as_str());
         println!("Saved to {}", file_name);
+
+        if epoch % LR_DROP_AT == 0 {
+            lr *= LR_DROP_FACTOR;
+        }
     }
 }
 
