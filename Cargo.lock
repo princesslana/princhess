@@ -143,7 +143,7 @@ checksum = "d2fabcfbdc87f4758337ca535fb41a6d701b65693ce38287d856d1674551ec9b"
 [[package]]
 name = "goober"
 version = "0.1.0"
-source = "git+https://github.com/jw1912/goober/?rev=30ded2d#30ded2d4849511e22eb44967e5f2d7423c1db2ea"
+source = "git+https://github.com/ianagbip1oti/goober/?rev=7b090e0#7b090e077c8a0b4873b93927f9821376b154d432"
 dependencies = [
  "goober-core",
  "goober-derive",
@@ -153,12 +153,12 @@ dependencies = [
 [[package]]
 name = "goober-core"
 version = "0.1.0"
-source = "git+https://github.com/jw1912/goober/?rev=30ded2d#30ded2d4849511e22eb44967e5f2d7423c1db2ea"
+source = "git+https://github.com/ianagbip1oti/goober/?rev=7b090e0#7b090e077c8a0b4873b93927f9821376b154d432"
 
 [[package]]
 name = "goober-derive"
 version = "0.1.0"
-source = "git+https://github.com/jw1912/goober/?rev=30ded2d#30ded2d4849511e22eb44967e5f2d7423c1db2ea"
+source = "git+https://github.com/ianagbip1oti/goober/?rev=7b090e0#7b090e077c8a0b4873b93927f9821376b154d432"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -168,7 +168,7 @@ dependencies = [
 [[package]]
 name = "goober-layer"
 version = "0.1.0"
-source = "git+https://github.com/jw1912/goober/?rev=30ded2d#30ded2d4849511e22eb44967e5f2d7423c1db2ea"
+source = "git+https://github.com/ianagbip1oti/goober/?rev=7b090e0#7b090e077c8a0b4873b93927f9821376b154d432"
 dependencies = [
  "goober-core",
 ]
