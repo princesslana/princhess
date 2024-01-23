@@ -15,6 +15,8 @@ const LR: f32 = 0.001;
 const LR_DROP_AT: usize = EPOCHS * 2 / 3;
 const LR_DROP_FACTOR: f32 = 0.01;
 
+const WEIGHT_DECAY: f32 = 0.99;
+
 fn main() {
     println!("Running...");
     let mut args = env::args();
@@ -42,8 +44,10 @@ fn main() {
     );
 
     for epoch in 1..=EPOCHS {
-        println!("Epoch {}/{} (LR: {})...", epoch, EPOCHS, lr);
+        println!("\nEpoch {}/{} (LR: {})...", epoch, EPOCHS, lr);
         let start = Instant::now();
+
+        network.decay_weights(WEIGHT_DECAY);
 
         train(
             &mut network,

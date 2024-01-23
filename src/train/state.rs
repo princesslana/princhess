@@ -59,6 +59,30 @@ impl StateNetwork {
         })
     }
 
+    pub fn decay_weights(&mut self, decay: f32) {
+        for row_idx in 0..INPUT_SIZE {
+            let row = self.hidden.weights_row_mut(row_idx);
+            for weight_idx in 0..HIDDEN_SIZE {
+                row[weight_idx] *= decay;
+            }
+        }
+
+        for weight_idx in 0..HIDDEN_SIZE {
+            self.hidden.bias_mut()[weight_idx] *= decay;
+        }
+
+        for row_idx in 0..OUTPUT_SIZE {
+            let row = self.output.weights_row_mut(row_idx);
+            for weight_idx in 0..HIDDEN_SIZE {
+                row[weight_idx] *= decay;
+            }
+        }
+
+        for weight_idx in 0..OUTPUT_SIZE {
+            self.output.bias_mut()[weight_idx] *= decay;
+        }
+    }
+
     pub fn save(&self, path: &str) {
         fs::create_dir(path).expect("Failed to create directory");
 
