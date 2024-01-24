@@ -107,6 +107,11 @@ fn relu(x: i16) -> i32 {
     i32::from(x).max(0)
 }
 
+fn screlu(x: i16) -> i32 {
+    let clamped = i32::from(x).clamp(0, QA);
+    clamped * clamped
+}
+
 fn run_eval_net(state: &State) -> f32 {
     let mut acc = Accumulator::<HIDDEN>::eval_hidden();
 
@@ -114,11 +119,13 @@ fn run_eval_net(state: &State) -> f32 {
         acc.set(&EVAL_NET.hidden_weights[idx]);
     });
 
-    let mut result: i32 = EVAL_NET.output_bias;
+    let mut result: i32 = 0;
 
     for (&x, &w) in acc.vals.iter().zip(&EVAL_NET.output_weights.vals) {
-        result += relu(x) * i32::from(w);
+        result += screlu(x) * i32::from(w);
     }
+
+    result = result / QA + EVAL_NET.output_bias;
 
     (result as f32 / QAB as f32).tanh()
 }

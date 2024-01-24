@@ -1,7 +1,7 @@
 use crate::math::Rng;
 use crate::state;
 
-use goober::activation::{ReLU, Tanh};
+use goober::activation::{SCReLU, Tanh};
 use goober::layer::{DenseConnected, SparseConnected};
 use goober::{FeedForwardNetwork, Vector};
 use std::alloc::{self, Layout};
@@ -21,7 +21,7 @@ const QAB: f32 = QA * QB;
 #[allow(clippy::module_name_repetitions)]
 #[derive(FeedForwardNetwork)]
 pub struct StateNetwork {
-    hidden: SparseConnected<ReLU, INPUT_SIZE, HIDDEN_SIZE>,
+    hidden: SparseConnected<SCReLU, INPUT_SIZE, HIDDEN_SIZE>,
     output: DenseConnected<Tanh, HIDDEN_SIZE, OUTPUT_SIZE>,
 }
 
