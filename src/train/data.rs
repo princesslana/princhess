@@ -1,12 +1,13 @@
-use crate::chess::{Bitboard, Board, Castling, Color, Move, Piece};
-use crate::search::SCALE;
-use crate::search_tree::SearchTree;
-use crate::state::State;
-
+use arrayvec::ArrayVec;
 use goober::SparseVector;
 use std::fs::File;
 use std::io::{BufWriter, Write};
 use std::{io, mem, slice};
+
+use crate::chess::{Bitboard, Board, Castling, Color, Move, Piece};
+use crate::search::SCALE;
+use crate::search_tree::SearchTree;
+use crate::state::State;
 
 #[derive(Clone, Copy, Debug)]
 pub struct TrainingPosition {
@@ -20,10 +21,7 @@ pub struct TrainingPosition {
 
     previous_moves: [Move; 4],
 
-    #[allow(dead_code)]
     legal_moves: [Move; TrainingPosition::MAX_MOVES],
-
-    #[allow(dead_code)]
     visits: [u8; TrainingPosition::MAX_MOVES],
 }
 
@@ -57,6 +55,25 @@ impl TrainingPosition {
     }
 
     #[must_use]
+    pub fn moves(&self) -> ArrayVec<(Move, f32), { TrainingPosition::MAX_MOVES }> {
+        let total_visits = self.visits.iter().map(|v| u64::from(*v)).sum::<u64>();
+
+        let mut moves = ArrayVec::new();
+
+        for (mv, visits) in self.legal_moves.iter().zip(self.visits.iter()) {
+            if *mv == Move::NONE {
+                break;
+            }
+
+            let visits_ratio = f32::from(*visits) / total_visits as f32;
+
+            moves.push((*mv, visits_ratio));
+        }
+
+        moves
+    }
+
+    #[must_use]
     pub fn stm_relative_evaluation(&self) -> f32 {
         let e = self.evaluation();
         self.stm.fold(e, -e)
@@ -76,11 +93,21 @@ impl TrainingPosition {
     }
 
     #[must_use]
-    pub fn get_features(&self) -> SparseVector {
+    pub fn get_value_features(&self) -> SparseVector {
         let mut features = SparseVector::with_capacity(64);
         let state = State::from(self);
 
-        state.training_features_map(|idx| features.push(idx));
+        state.training_value_features_map(|idx| features.push(idx));
+
+        features
+    }
+
+    #[must_use]
+    pub fn get_policy_features(&self) -> SparseVector {
+        let mut features = SparseVector::with_capacity(64);
+        let state = State::from(self);
+
+        state.training_policy_features_map(|idx| features.push(idx));
 
         features
     }
