@@ -313,7 +313,7 @@ impl Search {
     }
 
     pub fn print_eval(&self) {
-        let eval = evaluation::evaluate_state(self.search_tree.root_state());
+        let eval = evaluation::evaluate_value(self.search_tree.root_state());
         let scaled = eval as f32 / SCALE;
         println!(
             "info string eval {} scaled {} cp {}",

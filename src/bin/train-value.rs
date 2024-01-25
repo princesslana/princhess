@@ -1,4 +1,4 @@
-use princhess::train::{StateNetwork, TrainingPosition};
+use princhess::train::{ValueNetwork, TrainingPosition};
 
 use goober::{FeedForwardNetwork, OutputLayer, Vector};
 use std::env;
@@ -27,11 +27,11 @@ fn main() {
     let file = File::open(input.clone()).unwrap();
     let count = file.metadata().unwrap().len() as usize / TrainingPosition::SIZE;
 
-    let mut network = StateNetwork::random();
+    let mut network = ValueNetwork::random();
 
     let mut lr = LR;
-    let mut momentum = StateNetwork::zeroed();
-    let mut velocity = StateNetwork::zeroed();
+    let mut momentum = ValueNetwork::zeroed();
+    let mut velocity = ValueNetwork::zeroed();
 
     let timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -77,10 +77,10 @@ fn main() {
 }
 
 fn train(
-    network: &mut StateNetwork,
+    network: &mut ValueNetwork,
     lr: f32,
-    momentum: &mut StateNetwork,
-    velocity: &mut StateNetwork,
+    momentum: &mut ValueNetwork,
+    velocity: &mut ValueNetwork,
     input: &str,
 ) {
     let file = File::open(input).unwrap();
@@ -101,7 +101,7 @@ fn train(
         let data = TrainingPosition::read_batch(bytes);
 
         for batch in data.chunks(BATCH_SIZE) {
-            let mut gradients = StateNetwork::zeroed();
+            let mut gradients = ValueNetwork::zeroed();
             running_loss += gradients_batch(network, &mut gradients, batch);
             let adj = 2.0 / batch.len() as f32;
 
@@ -120,8 +120,8 @@ fn train(
 }
 
 fn gradients_batch(
-    network: &StateNetwork,
-    gradients: &mut StateNetwork,
+    network: &ValueNetwork,
+    gradients: &mut ValueNetwork,
     batch: &[TrainingPosition],
 ) -> f32 {
     let size = (batch.len() / THREADS).max(1);
@@ -133,7 +133,7 @@ fn gradients_batch(
             .zip(loss.iter_mut())
             .map(|(chunk, loss)| {
                 s.spawn(move || {
-                    let mut inner_gradients = StateNetwork::zeroed();
+                    let mut inner_gradients = ValueNetwork::zeroed();
                     for position in chunk {
                         update_gradient(position, network, &mut inner_gradients, loss);
                     }
@@ -151,8 +151,8 @@ fn gradients_batch(
 
 fn update_gradient(
     position: &TrainingPosition,
-    network: &StateNetwork,
-    gradients: &mut StateNetwork,
+    network: &ValueNetwork,
+    gradients: &mut ValueNetwork,
     loss: &mut f32,
 ) {
     let features = position.get_features();

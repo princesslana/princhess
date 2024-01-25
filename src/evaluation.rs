@@ -32,8 +32,12 @@ impl Flag {
     }
 }
 
-pub fn evaluate_state(state: &State) -> i64 {
-    (run_eval_net(state) * SCALE) as i64
+pub fn evaluate_value(state: &State) -> i64 {
+    (run_value_net(state) * SCALE) as i64
+}
+
+pub fn evaluate_policy(state: &State, moves: &MoveList, t: f32) -> Vec<f32> {
+    run_policy_net(state, moves, t)
 }
 
 pub fn evaluate_state_flag(state: &State, is_legal_moves: bool) -> Flag {
@@ -54,35 +58,32 @@ pub fn evaluate_state_flag(state: &State, is_legal_moves: bool) -> Flag {
     }
 }
 
-pub fn evaluate_policy(state: &State, moves: &MoveList, t: f32) -> Vec<f32> {
-    run_policy_net(state, moves, t)
-}
-
 const HIDDEN: usize = 384;
 const QA: i32 = 256;
 const QB: i32 = 256;
 const QAB: i32 = QA * QB;
 
-const STATE_NUMBER_INPUTS: usize = 2048;
+const VALUE_NUMBER_INPUTS: usize = 2048;
 
 #[repr(C)]
-struct EvalNet {
-    hidden_weights: [Accumulator<HIDDEN>; STATE_NUMBER_INPUTS],
+struct ValueNetwork {
+    hidden_weights: [Accumulator<HIDDEN>; VALUE_NUMBER_INPUTS],
     hidden_bias: Accumulator<HIDDEN>,
     output_weights: Accumulator<HIDDEN>,
     output_bias: i32,
 }
 
-static EVAL_HIDDEN_WEIGHTS: [[i16; HIDDEN]; STATE_NUMBER_INPUTS] = include!("model/hidden_weights");
-static EVAL_HIDDEN_BIAS: [i16; HIDDEN] = include!("model/hidden_bias");
-static EVAL_OUTPUT_WEIGHTS: [[i16; HIDDEN]; 1] = include!("model/output_weights");
-static EVAL_OUTPUT_BIAS: i32 = include!("model/output_bias")[0];
+static VALUE_HIDDEN_WEIGHTS: [[i16; HIDDEN]; VALUE_NUMBER_INPUTS] =
+    include!("value/hidden_weights");
+static VALUE_HIDDEN_BIAS: [i16; HIDDEN] = include!("value/hidden_bias");
+static VALUE_OUTPUT_WEIGHTS: [[i16; HIDDEN]; 1] = include!("value/output_weights");
+static VALUE_OUTPUT_BIAS: i32 = include!("value/output_bias")[0];
 
-static EVAL_NET: EvalNet = EvalNet {
-    hidden_weights: unsafe { std::mem::transmute(EVAL_HIDDEN_WEIGHTS) },
-    hidden_bias: unsafe { std::mem::transmute(EVAL_HIDDEN_BIAS) },
-    output_weights: unsafe { std::mem::transmute(EVAL_OUTPUT_WEIGHTS) },
-    output_bias: EVAL_OUTPUT_BIAS,
+static VALUE_NETWORK: ValueNetwork = ValueNetwork {
+    hidden_weights: unsafe { std::mem::transmute(VALUE_HIDDEN_WEIGHTS) },
+    hidden_bias: unsafe { std::mem::transmute(VALUE_HIDDEN_BIAS) },
+    output_weights: unsafe { std::mem::transmute(VALUE_OUTPUT_WEIGHTS) },
+    output_bias: VALUE_OUTPUT_BIAS,
 };
 
 #[derive(Clone, Copy)]
@@ -92,10 +93,6 @@ struct Accumulator<const H: usize> {
 }
 
 impl<const H: usize> Accumulator<H> {
-    pub fn eval_hidden() -> Accumulator<HIDDEN> {
-        EVAL_NET.hidden_bias
-    }
-
     pub fn set(&mut self, weights: &Accumulator<H>) {
         for (i, d) in self.vals.iter_mut().zip(&weights.vals) {
             *i += *d;
@@ -107,16 +104,16 @@ fn relu(x: i16) -> i32 {
     i32::from(x).max(0)
 }
 
-fn run_eval_net(state: &State) -> f32 {
-    let mut acc = Accumulator::<HIDDEN>::eval_hidden();
+fn run_value_net(state: &State) -> f32 {
+    let mut acc = VALUE_NETWORK.hidden_bias;
 
-    state.state_features_map(|idx| {
-        acc.set(&EVAL_NET.hidden_weights[idx]);
+    state.value_features_map(|idx| {
+        acc.set(&VALUE_NETWORK.hidden_weights[idx]);
     });
 
-    let mut result: i32 = EVAL_NET.output_bias;
+    let mut result: i32 = VALUE_NETWORK.output_bias;
 
-    for (&x, &w) in acc.vals.iter().zip(&EVAL_NET.output_weights.vals) {
+    for (&x, &w) in acc.vals.iter().zip(&VALUE_NETWORK.output_weights.vals) {
         result += relu(x) * i32::from(w);
     }
 
