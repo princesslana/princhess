@@ -1,5 +1,5 @@
 mod data;
-mod state;
+mod value;
 
 pub use crate::train::data::TrainingPosition;
-pub use crate::train::state::StateNetwork;
+pub use crate::train::value::ValueNetwork;

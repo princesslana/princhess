@@ -9,16 +9,16 @@ const OFFSET_DEFENDS: usize = 768 * 2;
 
 pub const NUMBER_FEATURES: usize = 768 * 3;
 
-const STATE_NUMBER_POSITION: usize = 768;
-const STATE_NUMBER_THREATS: usize = 10 * 64;
-const STATE_NUMBER_DEFENDS: usize = 10 * 64;
+const VALUE_NUMBER_POSITION: usize = 768;
+const VALUE_NUMBER_THREATS: usize = 10 * 64;
+const VALUE_NUMBER_DEFENDS: usize = 10 * 64;
 
-const STATE_OFFSET_POSITION: usize = 0;
-const STATE_OFFSET_THREATS: usize = STATE_OFFSET_POSITION + STATE_NUMBER_POSITION;
-const STATE_OFFSET_DEFENDS: usize = STATE_OFFSET_THREATS + STATE_NUMBER_THREATS;
+const VALUE_OFFSET_POSITION: usize = 0;
+const VALUE_OFFSET_THREATS: usize = VALUE_OFFSET_POSITION + VALUE_NUMBER_POSITION;
+const VALUE_OFFSET_DEFENDS: usize = VALUE_OFFSET_THREATS + VALUE_NUMBER_THREATS;
 
-pub const STATE_NUMBER_FEATURES: usize =
-    STATE_NUMBER_POSITION + STATE_NUMBER_THREATS + STATE_NUMBER_DEFENDS;
+pub const VALUE_NUMBER_FEATURES: usize =
+    VALUE_NUMBER_POSITION + VALUE_NUMBER_THREATS + VALUE_NUMBER_DEFENDS;
 
 #[must_use]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -158,7 +158,7 @@ impl State {
         (flip_rank, flip_file)
     }
 
-    pub fn state_features_map<F>(&self, mut f: F)
+    pub fn value_features_map<F>(&self, mut f: F)
     where
         F: FnMut(usize),
     {
@@ -182,17 +182,17 @@ impl State {
             let piece_idx = piece.index();
             let side_idx = usize::from(color != stm);
 
-            f(STATE_OFFSET_POSITION + (side_idx * 6 + piece_idx) * 64 + sq_idx);
+            f(VALUE_OFFSET_POSITION + (side_idx * 6 + piece_idx) * 64 + sq_idx);
 
             if piece != Piece::KING {
                 // Threats
                 if b.is_attacked(sq, !color, b.occupied()) {
-                    f(STATE_OFFSET_THREATS + (side_idx * 5 + piece_idx) * 64 + sq_idx);
+                    f(VALUE_OFFSET_THREATS + (side_idx * 5 + piece_idx) * 64 + sq_idx);
                 }
 
                 // Defenses
                 if b.is_attacked(sq, color, b.occupied()) {
-                    f(STATE_OFFSET_DEFENDS + (side_idx * 5 + piece_idx) * 64 + sq_idx);
+                    f(VALUE_OFFSET_DEFENDS + (side_idx * 5 + piece_idx) * 64 + sq_idx);
                 }
             }
         }
@@ -257,7 +257,7 @@ impl State {
     where
         F: FnMut(usize),
     {
-        self.state_features_map(f);
+        self.value_features_map(f);
     }
 
     #[must_use]

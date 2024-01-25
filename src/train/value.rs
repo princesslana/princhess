@@ -10,7 +10,7 @@ use std::fs::{self, File};
 use std::io::{BufWriter, Write};
 use std::path::Path;
 
-const INPUT_SIZE: usize = state::STATE_NUMBER_FEATURES;
+const INPUT_SIZE: usize = state::VALUE_NUMBER_FEATURES;
 const HIDDEN_SIZE: usize = 384;
 const OUTPUT_SIZE: usize = 1;
 
@@ -20,12 +20,12 @@ const QAB: f32 = QA * QB;
 
 #[allow(clippy::module_name_repetitions)]
 #[derive(FeedForwardNetwork)]
-pub struct StateNetwork {
+pub struct ValueNetwork {
     hidden: SparseConnected<ReLU, INPUT_SIZE, HIDDEN_SIZE>,
     output: DenseConnected<Tanh, HIDDEN_SIZE, OUTPUT_SIZE>,
 }
 
-impl StateNetwork {
+impl ValueNetwork {
     #[must_use]
     pub fn zeroed() -> Box<Self> {
         unsafe {
