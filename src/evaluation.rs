@@ -124,7 +124,7 @@ const POLICY_NUMBER_INPUTS: usize = state::NUMBER_FEATURES;
 const POLICY_NUMBER_OUTPUTS: usize = 384;
 
 #[repr(C)]
-struct PolicyNet {
+struct PolicyNetwork {
     left_weights: [Accumulator<POLICY_NUMBER_OUTPUTS>; POLICY_NUMBER_INPUTS],
     left_bias: Accumulator<POLICY_NUMBER_OUTPUTS>,
     right_weights: [Accumulator<POLICY_NUMBER_OUTPUTS>; POLICY_NUMBER_INPUTS],
@@ -143,7 +143,7 @@ static POLICY_ADD_WEIGHTS: [[i16; POLICY_NUMBER_OUTPUTS]; POLICY_NUMBER_INPUTS] 
     include!("policy/add_weights");
 static POLICY_ADD_BIAS: [i16; POLICY_NUMBER_OUTPUTS] = include!("policy/add_bias");
 
-static POLICY_NET: PolicyNet = PolicyNet {
+static POLICY_NET: PolicyNetwork = PolicyNetwork {
     left_weights: unsafe { std::mem::transmute(POLICY_LEFT_WEIGHTS) },
     left_bias: unsafe { std::mem::transmute(POLICY_LEFT_BIAS) },
     right_weights: unsafe { std::mem::transmute(POLICY_RIGHT_WEIGHTS) },

@@ -1,4 +1,4 @@
-use princhess::train::{ValueNetwork, TrainingPosition};
+use princhess::train::{TrainingPosition, ValueNetwork};
 
 use goober::{FeedForwardNetwork, OutputLayer, Vector};
 use std::env;
