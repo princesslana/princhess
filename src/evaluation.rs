@@ -74,10 +74,10 @@ struct ValueNetwork {
 }
 
 static VALUE_HIDDEN_WEIGHTS: [[i16; HIDDEN]; VALUE_NUMBER_INPUTS] =
-    include!("model/hidden_weights");
-static VALUE_HIDDEN_BIAS: [i16; HIDDEN] = include!("model/hidden_bias");
-static VALUE_OUTPUT_WEIGHTS: [[i16; HIDDEN]; 1] = include!("model/output_weights");
-static VALUE_OUTPUT_BIAS: i32 = include!("model/output_bias")[0];
+    include!("value/hidden_weights");
+static VALUE_HIDDEN_BIAS: [i16; HIDDEN] = include!("value/hidden_bias");
+static VALUE_OUTPUT_WEIGHTS: [[i16; HIDDEN]; 1] = include!("value/output_weights");
+static VALUE_OUTPUT_BIAS: i32 = include!("value/output_bias")[0];
 
 static VALUE_NETWORK: ValueNetwork = ValueNetwork {
     hidden_weights: unsafe { std::mem::transmute(VALUE_HIDDEN_WEIGHTS) },
