@@ -120,7 +120,7 @@ fn run_value_net(state: &State) -> f32 {
     (result as f32 / QAB as f32).tanh()
 }
 
-const POLICY_NUMBER_INPUTS: usize = state::NUMBER_FEATURES;
+const POLICY_NUMBER_INPUTS: usize = state::POLICY_NUMBER_FEATURES;
 const POLICY_NUMBER_OUTPUTS: usize = 384;
 
 #[repr(C)]
@@ -129,8 +129,8 @@ struct PolicyNetwork {
     left_bias: Accumulator<POLICY_NUMBER_OUTPUTS>,
     right_weights: [Accumulator<POLICY_NUMBER_OUTPUTS>; POLICY_NUMBER_INPUTS],
     right_bias: Accumulator<POLICY_NUMBER_OUTPUTS>,
-    add_weights: [Accumulator<POLICY_NUMBER_OUTPUTS>; POLICY_NUMBER_INPUTS],
-    add_bias: Accumulator<POLICY_NUMBER_OUTPUTS>,
+    constant_weights: [Accumulator<POLICY_NUMBER_OUTPUTS>; POLICY_NUMBER_INPUTS],
+    constant_bias: Accumulator<POLICY_NUMBER_OUTPUTS>,
 }
 
 static POLICY_LEFT_WEIGHTS: [[i16; POLICY_NUMBER_OUTPUTS]; POLICY_NUMBER_INPUTS] =
@@ -140,16 +140,16 @@ static POLICY_RIGHT_WEIGHTS: [[i16; POLICY_NUMBER_OUTPUTS]; POLICY_NUMBER_INPUTS
     include!("policy/right_weights");
 static POLICY_RIGHT_BIAS: [i16; POLICY_NUMBER_OUTPUTS] = include!("policy/right_bias");
 static POLICY_ADD_WEIGHTS: [[i16; POLICY_NUMBER_OUTPUTS]; POLICY_NUMBER_INPUTS] =
-    include!("policy/add_weights");
-static POLICY_ADD_BIAS: [i16; POLICY_NUMBER_OUTPUTS] = include!("policy/add_bias");
+    include!("policy/constant_weights");
+static POLICY_ADD_BIAS: [i16; POLICY_NUMBER_OUTPUTS] = include!("policy/constant_bias");
 
 static POLICY_NET: PolicyNetwork = PolicyNetwork {
     left_weights: unsafe { std::mem::transmute(POLICY_LEFT_WEIGHTS) },
     left_bias: unsafe { std::mem::transmute(POLICY_LEFT_BIAS) },
     right_weights: unsafe { std::mem::transmute(POLICY_RIGHT_WEIGHTS) },
     right_bias: unsafe { std::mem::transmute(POLICY_RIGHT_BIAS) },
-    add_weights: unsafe { std::mem::transmute(POLICY_ADD_WEIGHTS) },
-    add_bias: unsafe { std::mem::transmute(POLICY_ADD_BIAS) },
+    constant_weights: unsafe { std::mem::transmute(POLICY_ADD_WEIGHTS) },
+    constant_bias: unsafe { std::mem::transmute(POLICY_ADD_BIAS) },
 };
 
 fn run_policy_net(state: &State, moves: &MoveList, t: f32) -> Vec<f32> {
@@ -166,26 +166,26 @@ fn run_policy_net(state: &State, moves: &MoveList, t: f32) -> Vec<f32> {
         let move_idx = state.move_to_index(*m);
         move_idxs.push(move_idx);
         acc.push((
-            POLICY_NET.add_bias.vals[move_idx],
+            POLICY_NET.constant_bias.vals[move_idx],
             POLICY_NET.left_bias.vals[move_idx],
             POLICY_NET.right_bias.vals[move_idx],
         ));
     }
 
     state.policy_features_map(|idx| {
-        let aw = &POLICY_NET.add_weights[idx];
+        let cw = &POLICY_NET.constant_weights[idx];
         let lw = &POLICY_NET.left_weights[idx];
         let rw = &POLICY_NET.right_weights[idx];
 
-        for (&move_idx, (a, l, r)) in move_idxs.iter().zip(acc.iter_mut()) {
-            *a += aw.vals[move_idx];
+        for (&move_idx, (c, l, r)) in move_idxs.iter().zip(acc.iter_mut()) {
+            *c += cw.vals[move_idx];
             *l += lw.vals[move_idx];
             *r += rw.vals[move_idx];
         }
     });
 
-    for (a, l, r) in &acc {
-        let logit = QA * i32::from(*a) + i32::from(*l) * relu(*r);
+    for (c, l, r) in &acc {
+        let logit = QA * i32::from(*c) + i32::from(*l) * relu(*r);
         evalns.push(logit as f32 / QAB as f32);
     }
 

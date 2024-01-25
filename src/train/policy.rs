@@ -1,23 +1,40 @@
+#![allow(clippy::module_name_repetitions)]
+
 use goober::activation::{Identity, ReLU};
 use goober::layer::SparseConnected;
 use goober::{FeedForwardNetwork, OutputLayer, SparseVector, Vector};
+use std::fs;
+use std::ops::AddAssign;
+use std::path::Path;
 
+use crate::math::Rng;
 use crate::state;
+use crate::train::{boxed_and_zeroed, randomize, write_layer};
 
-const INPUT_SIZE: usize = state::NUMBER_FEATURES;
+const INPUT_SIZE: usize = state::POLICY_NUMBER_FEATURES;
 const OUTPUT_SIZE: usize = 384;
+
+const QA: f32 = 256.;
 
 type ConstantLayer = SparseConnected<Identity, INPUT_SIZE, OUTPUT_SIZE>;
 type LeftLayer = SparseConnected<Identity, INPUT_SIZE, OUTPUT_SIZE>;
 type RightLayer = SparseConnected<ReLU, INPUT_SIZE, OUTPUT_SIZE>;
 
-struct PolicyNetwork {
+pub struct PolicyNetwork {
     constant: ConstantLayer,
     left: LeftLayer,
     right: RightLayer,
 }
 
-struct PolicyNetworkLayers {
+impl AddAssign<&Self> for PolicyNetwork {
+    fn add_assign(&mut self, rhs: &Self) {
+        self.constant += &rhs.constant;
+        self.left += &rhs.left;
+        self.right += &rhs.right;
+    }
+}
+
+pub struct PolicyNetworkLayers {
     constant: <ConstantLayer as FeedForwardNetwork>::Layers,
     left: <LeftLayer as FeedForwardNetwork>::Layers,
     right: <RightLayer as FeedForwardNetwork>::Layers,
@@ -65,5 +82,35 @@ impl FeedForwardNetwork for PolicyNetwork {
             .backprop(i, &mut g.right, e * l.left.output_layer(), &l.right);
 
         SparseVector::with_capacity(0)
+    }
+}
+
+impl PolicyNetwork {
+    #[must_use]
+    pub fn zeroed() -> Box<Self> {
+        boxed_and_zeroed()
+    }
+
+    #[must_use]
+    pub fn random() -> Box<Self> {
+        let mut rng = Rng::default();
+
+        let mut network = Self::zeroed();
+
+        randomize(&mut network.constant, &mut rng);
+        randomize(&mut network.left, &mut rng);
+        randomize(&mut network.right, &mut rng);
+
+        network
+    }
+
+    pub fn save(&self, path: &str) {
+        fs::create_dir(path).expect("Failed to create directory");
+
+        let dir = Path::new(path);
+
+        write_layer(dir, "constant", &self.constant, QA);
+        write_layer(dir, "left", &self.left, QA);
+        write_layer(dir, "right", &self.right, QA);
     }
 }

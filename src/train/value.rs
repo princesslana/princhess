@@ -1,10 +1,10 @@
 use crate::math::Rng;
 use crate::state;
+use crate::train::{boxed_and_zeroed, randomize, write_layer, write_vector};
 
 use goober::activation::{ReLU, Tanh};
 use goober::layer::{DenseConnected, SparseConnected};
-use goober::{FeedForwardNetwork, Vector};
-use std::alloc::{self, Layout};
+use goober::FeedForwardNetwork;
 use std::boxed::Box;
 use std::fs::{self, File};
 use std::io::{BufWriter, Write};
@@ -28,35 +28,28 @@ pub struct ValueNetwork {
 impl ValueNetwork {
     #[must_use]
     pub fn zeroed() -> Box<Self> {
-        unsafe {
-            let layout = Layout::new::<Self>();
-            let ptr = alloc::alloc_zeroed(layout);
-            if ptr.is_null() {
-                alloc::handle_alloc_error(layout);
-            }
-            Box::from_raw(ptr.cast())
-        }
+        boxed_and_zeroed()
     }
 
     #[must_use]
     pub fn random() -> Box<Self> {
         let mut rng = Rng::default();
 
-        let hidden_limit = (6. / (INPUT_SIZE + HIDDEN_SIZE) as f32).sqrt() * 2f32.sqrt();
-        let output_limit = (6. / (HIDDEN_SIZE + OUTPUT_SIZE) as f32).sqrt();
+        let mut network = Self::zeroed();
 
-        let mut zerof = |_| 0.;
+        randomize(&mut network.hidden, &mut rng);
 
-        Box::new(Self {
-            hidden: SparseConnected::from_fn(
-                |_, _| rng.next_f32_range(-hidden_limit, hidden_limit),
-                &mut zerof,
-            ),
-            output: DenseConnected::from_fn(
-                |_, _| rng.next_f32_range(-output_limit, output_limit),
-                &mut zerof,
-            ),
-        })
+        // cos output layer is dense, we can't use randomize
+        let limit = (6. / (HIDDEN_SIZE + OUTPUT_SIZE) as f32).sqrt();
+
+        for row_idx in 0..OUTPUT_SIZE {
+            let row = network.output.weights_row_mut(row_idx);
+            for weight_idx in 0..HIDDEN_SIZE {
+                row[weight_idx] = rng.next_f32_range(-limit, limit);
+            }
+        }
+
+        network
     }
 
     pub fn decay_weights(&mut self, decay: f32) {
@@ -88,23 +81,7 @@ impl ValueNetwork {
 
         let dir = Path::new(path);
 
-        let hidden_weights_file =
-            File::create(dir.join("hidden_weights")).expect("Failed to create file");
-        let mut w = BufWriter::new(hidden_weights_file);
-
-        writeln!(w, "[").unwrap();
-        for row_idx in 0..INPUT_SIZE {
-            let row = self.hidden.weights_row(row_idx);
-            write_vector(&mut w, &row, QA);
-            write!(w, ",").unwrap();
-        }
-        writeln!(w, "]").unwrap();
-
-        let hidden_bias_file =
-            File::create(dir.join("hidden_bias")).expect("Failed to create file");
-        let mut w = BufWriter::new(hidden_bias_file);
-
-        write_vector(&mut w, &self.hidden.bias(), QA);
+        write_layer(dir, "hidden", &self.hidden, QA);
 
         let output_weights_file =
             File::create(dir.join("output_weights")).expect("Failed to create file");
@@ -124,22 +101,4 @@ impl ValueNetwork {
 
         write_vector(&mut w, &self.output.bias(), QAB);
     }
-}
-
-fn write_vector<const N: usize>(w: &mut BufWriter<File>, v: &Vector<N>, q: f32) {
-    writeln!(w, "    [").unwrap();
-    write!(w, "    ").unwrap();
-    for weight_idx in 0..N {
-        write!(w, "{:>6}, ", (v[weight_idx] * q) as i16).unwrap();
-
-        if weight_idx % 8 == 7 {
-            writeln!(w).unwrap();
-            write!(w, "    ").unwrap();
-        }
-        if weight_idx % 64 == 63 {
-            writeln!(w).unwrap();
-            write!(w, "    ").unwrap();
-        }
-    }
-    writeln!(w, "]").unwrap();
 }

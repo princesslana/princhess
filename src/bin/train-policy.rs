@@ -1,5 +1,3 @@
-use princhess::train::{TrainingPosition, ValueNetwork};
-
 use goober::{FeedForwardNetwork, OutputLayer, Vector};
 use std::env;
 use std::fs::File;
@@ -7,15 +5,15 @@ use std::io::{self, BufRead, BufReader, Write};
 use std::thread;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
+use princhess::math;
+use princhess::state::State;
+use princhess::train::{PolicyNetwork, TrainingPosition};
+
 const EPOCHS: usize = 20;
 const BATCH_SIZE: usize = 16384;
 const THREADS: usize = 6;
 
-const LR: f32 = 0.001;
-const LR_DROP_AT: usize = EPOCHS * 2 / 3;
-const LR_DROP_FACTOR: f32 = 0.01;
-
-const WEIGHT_DECAY: f32 = 0.99;
+const LR: f32 = 0.0001;
 
 fn main() {
     println!("Running...");
@@ -27,11 +25,11 @@ fn main() {
     let file = File::open(input.clone()).unwrap();
     let count = file.metadata().unwrap().len() as usize / TrainingPosition::SIZE;
 
-    let mut network = ValueNetwork::random();
+    let mut network = PolicyNetwork::random();
 
-    let mut lr = LR;
-    let mut momentum = ValueNetwork::zeroed();
-    let mut velocity = ValueNetwork::zeroed();
+    let lr = LR;
+    let mut momentum = PolicyNetwork::zeroed();
+    let mut velocity = PolicyNetwork::zeroed();
 
     let timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -46,8 +44,6 @@ fn main() {
     for epoch in 1..=EPOCHS {
         println!("\nEpoch {}/{} (LR: {})...", epoch, EPOCHS, lr);
         let start = Instant::now();
-
-        network.decay_weights(WEIGHT_DECAY);
 
         train(
             &mut network,
@@ -66,21 +62,17 @@ fn main() {
             (seconds % 60)
         );
 
-        let file_name = format!("nets/value-{}-e{:03}", timestamp, epoch);
+        let file_name = format!("nets/policy-{}-e{:03}", timestamp, epoch);
         network.save(file_name.as_str());
         println!("Saved to {}", file_name);
-
-        if epoch % LR_DROP_AT == 0 {
-            lr *= LR_DROP_FACTOR;
-        }
     }
 }
 
 fn train(
-    network: &mut ValueNetwork,
+    network: &mut PolicyNetwork,
     lr: f32,
-    momentum: &mut ValueNetwork,
-    velocity: &mut ValueNetwork,
+    momentum: &mut PolicyNetwork,
+    velocity: &mut PolicyNetwork,
     input: &str,
 ) {
     let file = File::open(input).unwrap();
@@ -101,7 +93,7 @@ fn train(
         let data = TrainingPosition::read_batch(bytes);
 
         for batch in data.chunks(BATCH_SIZE) {
-            let mut gradients = ValueNetwork::zeroed();
+            let mut gradients = PolicyNetwork::zeroed();
             running_loss += gradients_batch(network, &mut gradients, batch);
             let adj = 2.0 / batch.len() as f32;
 
@@ -120,8 +112,8 @@ fn train(
 }
 
 fn gradients_batch(
-    network: &ValueNetwork,
-    gradients: &mut ValueNetwork,
+    network: &PolicyNetwork,
+    gradients: &mut PolicyNetwork,
     batch: &[TrainingPosition],
 ) -> f32 {
     let size = (batch.len() / THREADS).max(1);
@@ -133,7 +125,7 @@ fn gradients_batch(
             .zip(loss.iter_mut())
             .map(|(chunk, loss)| {
                 s.spawn(move || {
-                    let mut inner_gradients = ValueNetwork::zeroed();
+                    let mut inner_gradients = PolicyNetwork::zeroed();
                     for position in chunk {
                         update_gradient(position, network, &mut inner_gradients, loss);
                     }
@@ -151,19 +143,45 @@ fn gradients_batch(
 
 fn update_gradient(
     position: &TrainingPosition,
-    network: &ValueNetwork,
-    gradients: &mut ValueNetwork,
+    network: &PolicyNetwork,
+    gradients: &mut PolicyNetwork,
     loss: &mut f32,
 ) {
-    let features = position.get_value_features();
+    let state = State::from(position);
+    let features = position.get_policy_features();
+    let moves = position.moves();
 
-    let net_out = network.out_with_layers(&features);
+    let output_layers = network.out_with_layers(&features);
+    let output = output_layers.output_layer();
 
-    let expected = position.stm_relative_result() as f32;
-    let actual = net_out.output_layer()[0];
+    let mut move_idxs = Vec::with_capacity(moves.len());
+    let mut actual = Vec::with_capacity(moves.len());
 
-    let error = actual - expected;
-    *loss += error * error;
+    for (m, v) in &moves {
+        let move_idx = state.move_to_index(*m);
+        move_idxs.push(move_idx);
+        actual.push(output[move_idx]);
+    }
 
-    network.backprop(&features, gradients, Vector::from_raw([error]), &net_out);
+    math::softmax(&mut actual, 1.);
+
+    let mut errors = Vector::zeroed();
+    let best_move_idx = state.move_to_index(position.best_move());
+
+    for idx in 0..moves.len() {
+        let move_idx = move_idxs[idx];
+
+        let expected = if move_idx == best_move_idx {
+            1.0
+        } else {
+            0.0
+        };
+
+        let actual = actual[idx];
+
+        errors[move_idx] = actual - expected;
+        *loss -= expected * actual.ln();
+    }
+
+    network.backprop(&features, gradients, errors, &output_layers);
 }
