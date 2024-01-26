@@ -65,8 +65,6 @@ impl TrainingPosition {
 
     #[must_use]
     pub fn moves(&self) -> ArrayVec<(Move, f32), { TrainingPosition::MAX_MOVES }> {
-        let total_visits = self.visits.iter().map(|v| u64::from(*v)).sum::<u64>();
-
         let mut moves = ArrayVec::new();
 
         for (mv, visits) in self.legal_moves.iter().zip(self.visits.iter()) {
@@ -74,7 +72,7 @@ impl TrainingPosition {
                 break;
             }
 
-            let visits_ratio = f32::from(*visits) / total_visits as f32;
+            let visits_ratio = f32::from(*visits) / 255.;
 
             moves.push((*mv, visits_ratio));
         }
@@ -113,7 +111,7 @@ impl TrainingPosition {
 
     #[must_use]
     pub fn get_policy_features(&self) -> SparseVector {
-        let mut features = SparseVector::with_capacity(64);
+        let mut features = SparseVector::with_capacity(68);
         let state = State::from(self);
 
         state.training_policy_features_map(|idx| features.push(idx));

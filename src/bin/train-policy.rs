@@ -9,11 +9,12 @@ use princhess::math;
 use princhess::state::State;
 use princhess::train::{PolicyNetwork, TrainingPosition};
 
-const EPOCHS: usize = 20;
+const EPOCHS: usize = 15;
 const BATCH_SIZE: usize = 16384;
 const THREADS: usize = 6;
+const BUFFER_COUNT: usize = (1 << (THREADS * 2)) * BATCH_SIZE;
 
-const LR: f32 = 0.0001;
+const LR: f32 = 0.001;
 
 fn main() {
     println!("Running...");
@@ -36,10 +37,10 @@ fn main() {
         .unwrap()
         .as_secs();
 
-    println!(
-        "Beginning training on {} positions from {}...",
-        count, input
-    );
+    println!("Beginning training...");
+    println!("Network: {}", network);
+    println!("Positions: {}", count);
+    println!("File: {}", input);
 
     for epoch in 1..=EPOCHS {
         println!("\nEpoch {}/{} (LR: {})...", epoch, EPOCHS, lr);
@@ -78,7 +79,7 @@ fn train(
     let file = File::open(input).unwrap();
     let positions = file.metadata().unwrap().len() as usize / TrainingPosition::SIZE;
 
-    let buffer_size = (1 << (THREADS * 2)) * BATCH_SIZE * TrainingPosition::SIZE;
+    let buffer_size = BUFFER_COUNT * TrainingPosition::SIZE;
     let mut buffer = BufReader::with_capacity(buffer_size, file);
 
     let mut running_loss = 0.0;
@@ -154,16 +155,20 @@ fn update_gradient(
     let output_layers = network.out_with_layers(&features);
     let output = output_layers.output_layer();
 
-    let mut move_idxs = Vec::with_capacity(moves.len());
-    let mut actual = Vec::with_capacity(moves.len());
+    let mut move_idxs = [0; TrainingPosition::MAX_MOVES];
+    let mut expected = [0.0; TrainingPosition::MAX_MOVES];
+    let mut actual = [0.0; TrainingPosition::MAX_MOVES];
 
-    for (m, v) in &moves {
-        let move_idx = state.move_to_index(*m);
-        move_idxs.push(move_idx);
-        actual.push(output[move_idx]);
+    for idx in 0..moves.len() {
+        let (m, v) = moves[idx];
+        let move_idx = state.move_to_index(m);
+
+        move_idxs[idx] = move_idx;
+        expected[idx] = v;
+        actual[idx] = output[move_idx];
     }
 
-    math::softmax(&mut actual, 1.);
+    math::softmax(&mut actual[..moves.len()], 1.);
 
     let mut errors = Vector::zeroed();
     let best_move_idx = state.move_to_index(position.best_move());
@@ -179,7 +184,7 @@ fn update_gradient(
 
         let actual = actual[idx];
 
-        errors[move_idx] = actual - expected;
+        errors[move_idx] += actual - expected;
         *loss -= expected * actual.ln();
     }
 
