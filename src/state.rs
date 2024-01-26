@@ -213,8 +213,8 @@ impl State {
 
         for idx in 0..1 {
             if let Some(m) = &self.prev_moves[idx] {
-                f(OFFSET_PREVIOUS_MOVES + idx * 128 + flip_square(m.to()).index());
-                f(OFFSET_PREVIOUS_MOVES + idx * 128 + 64 + flip_square(m.from()).index());
+                f(OFFSET_PREVIOUS_MOVES + idx * 128 + flip_square(m.from()).index());
+                f(OFFSET_PREVIOUS_MOVES + idx * 128 + 64 + flip_square(m.to()).index());
             }
         }
     }

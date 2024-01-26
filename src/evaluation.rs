@@ -139,17 +139,17 @@ static POLICY_LEFT_BIAS: [i16; POLICY_NUMBER_OUTPUTS] = include!("policy/left_bi
 static POLICY_RIGHT_WEIGHTS: [[i16; POLICY_NUMBER_OUTPUTS]; POLICY_NUMBER_INPUTS] =
     include!("policy/right_weights");
 static POLICY_RIGHT_BIAS: [i16; POLICY_NUMBER_OUTPUTS] = include!("policy/right_bias");
-static POLICY_ADD_WEIGHTS: [[i16; POLICY_NUMBER_OUTPUTS]; POLICY_NUMBER_INPUTS] =
+static POLICY_CONSTANT_WEIGHTS: [[i16; POLICY_NUMBER_OUTPUTS]; POLICY_NUMBER_INPUTS] =
     include!("policy/constant_weights");
-static POLICY_ADD_BIAS: [i16; POLICY_NUMBER_OUTPUTS] = include!("policy/constant_bias");
+static POLICY_CONSTANT_BIAS: [i16; POLICY_NUMBER_OUTPUTS] = include!("policy/constant_bias");
 
 static POLICY_NET: PolicyNetwork = PolicyNetwork {
     left_weights: unsafe { std::mem::transmute(POLICY_LEFT_WEIGHTS) },
     left_bias: unsafe { std::mem::transmute(POLICY_LEFT_BIAS) },
     right_weights: unsafe { std::mem::transmute(POLICY_RIGHT_WEIGHTS) },
     right_bias: unsafe { std::mem::transmute(POLICY_RIGHT_BIAS) },
-    constant_weights: unsafe { std::mem::transmute(POLICY_ADD_WEIGHTS) },
-    constant_bias: unsafe { std::mem::transmute(POLICY_ADD_BIAS) },
+    constant_weights: unsafe { std::mem::transmute(POLICY_CONSTANT_WEIGHTS) },
+    constant_bias: unsafe { std::mem::transmute(POLICY_CONSTANT_BIAS) },
 };
 
 fn run_policy_net(state: &State, moves: &MoveList, t: f32) -> Vec<f32> {
