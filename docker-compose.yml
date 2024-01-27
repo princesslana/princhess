@@ -46,7 +46,7 @@ services:
       -engine cmd=/engines/princhess name=princhess
       -engine cmd=/engines/princhess-main name=princhess-main
 
-      -each proto=uci tc=inf nodes=5000
+      -each proto=uci tc=inf nodes=1
             option.SyzygyPath=/syzygy option.Hash=128 option.Threads=1
       -sprt elo0=0 elo1=5 alpha=0.05 beta=0.1
       -openings file=/books/4moves_noob.epd format=epd order=random

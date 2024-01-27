@@ -3,8 +3,8 @@
 use goober::activation::{Identity, ReLU};
 use goober::layer::SparseConnected;
 use goober::{FeedForwardNetwork, OutputLayer, SparseVector, Vector};
-use std::fs;
 use std::fmt::{self, Display, Formatter};
+use std::fs;
 use std::ops::AddAssign;
 use std::path::Path;
 
@@ -37,13 +37,9 @@ impl AddAssign<&Self> for PolicyNetwork {
 
 impl Display for PolicyNetwork {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        let layer = format!("{}->{}", INPUT_SIZE, OUTPUT_SIZE);
+        let layer = format!("{INPUT_SIZE}->{OUTPUT_SIZE}");
 
-        write!(f, "{} + {}*{}",
-            layer,
-            layer,
-            layer,
-        )
+        write!(f, "{layer} + {layer}*{layer}")
     }
 }
 

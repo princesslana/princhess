@@ -14,7 +14,7 @@ const BATCH_SIZE: usize = 16384;
 const THREADS: usize = 6;
 const BUFFER_COUNT: usize = (1 << (THREADS * 2)) * BATCH_SIZE;
 
-const LR: f32 = 0.001;
+const LR: f32 = 0.0001;
 
 fn main() {
     println!("Running...");
