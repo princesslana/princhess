@@ -13,12 +13,14 @@ pub struct TrainingPosition {
     occupied: Bitboard,
     pieces: [u8; 16],
     stm: Color,
-    result: i8,
 
-    #[allow(dead_code)]
+    result: i8,
     evaluation: i32,
 
     previous_moves: [Move; 4],
+
+    #[allow(dead_code)]
+    best_move: Move,
 
     #[allow(dead_code)]
     legal_moves: [Move; TrainingPosition::MAX_MOVES],
@@ -131,6 +133,8 @@ impl From<&SearchTree> for TrainingPosition {
             v => pv.sum_rewards() / i64::from(v),
         } as i32;
 
+        let best_move = *pv.get_move();
+
         // white relative evaluation
         evaluation = stm
             .fold(evaluation, -evaluation)
@@ -147,6 +151,7 @@ impl From<&SearchTree> for TrainingPosition {
             result,
             evaluation,
             previous_moves,
+            best_move,
             legal_moves,
             visits,
         }
