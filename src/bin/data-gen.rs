@@ -10,7 +10,7 @@ use princhess::transposition_table::LRTable;
 use std::fmt::{Display, Formatter};
 use std::fs::File;
 use std::io::{self, BufWriter, Write};
-use std::sync::atomic::AtomicU64;
+use std::sync::atomic::{AtomicU64, AtomicUsize};
 use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -29,6 +29,7 @@ struct Stats {
     black_wins: AtomicU64,
     draws: AtomicU64,
     blunders: AtomicU64,
+    nodes: AtomicUsize,
 }
 
 impl Stats {
@@ -42,6 +43,7 @@ impl Stats {
             black_wins: AtomicU64::new(0),
             draws: AtomicU64::new(0),
             blunders: AtomicU64::new(0),
+            nodes: AtomicUsize::new(0),
         }
     }
 
@@ -79,6 +81,11 @@ impl Stats {
         self.blunders
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
+
+    pub fn plus_nodes(&self, nodes: usize) {
+        self.nodes
+            .fetch_add(nodes, std::sync::atomic::Ordering::Relaxed);
+    }
 }
 
 impl Display for Stats {
@@ -90,17 +97,19 @@ impl Display for Stats {
         let positions = self.positions.load(std::sync::atomic::Ordering::Relaxed);
         let skipped = self.skipped.load(std::sync::atomic::Ordering::Relaxed);
         let blunders = self.blunders.load(std::sync::atomic::Ordering::Relaxed);
+        let nodes = self.nodes.load(std::sync::atomic::Ordering::Relaxed);
         let seconds = self.start.elapsed().as_secs().max(1);
 
         write!(
             f,
-            "G: {:>7} | +{:>2} ={:>2} -{:>2} % | Bls: {:>2}% | S: {:>5.3}% | Pos: {:>5.1}m ({:>3}/g) ({:>4}/s)",
+            "G: {:>7} | +{:>2} ={:>2} -{:>2} % | Bls: {:>2}% | S: {:>4} | N/P: {:>5} | Pos: {:>5.1}m ({:>3}/g) ({:>4}/s)",
             games,
             white_wins * 100 / games,
             draws * 100 / games,
             black_wins * 100 / games,
             blunders * 100 / games,
-            skipped as f32 / positions as f32,
+            skipped,
+            nodes / positions as usize,
             positions as f32 / 1000000.0,
             positions / games,
             positions / seconds
@@ -170,6 +179,7 @@ fn run_game(stats: &Stats, positions: &mut Vec<TrainingPosition>, rng: &mut Rng)
             position.set_previous_moves(prev_moves);
             game_positions.push(position);
             stats.inc_positions();
+            stats.plus_nodes(search.tree().num_nodes());
         }
 
         state.make_move(best_move);
