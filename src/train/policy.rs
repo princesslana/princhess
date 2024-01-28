@@ -95,6 +95,8 @@ impl FeedForwardNetwork for PolicyNetwork {
 }
 
 impl PolicyNetwork {
+    pub const OUTPUT_SIZE: usize = OUTPUT_SIZE;
+
     #[must_use]
     pub fn zeroed() -> Box<Self> {
         boxed_and_zeroed()

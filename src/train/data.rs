@@ -21,11 +21,7 @@ pub struct TrainingPosition {
     previous_moves: [Move; 4],
 
     best_move: Move,
-
-    #[allow(dead_code)]
     legal_moves: [Move; TrainingPosition::MAX_MOVES],
-
-    #[allow(dead_code)]
     visits: [u8; TrainingPosition::MAX_MOVES],
 }
 

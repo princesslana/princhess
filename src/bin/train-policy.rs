@@ -14,7 +14,7 @@ const BATCH_SIZE: usize = 16384;
 const THREADS: usize = 6;
 const BUFFER_COUNT: usize = (1 << (THREADS * 2)) * BATCH_SIZE;
 
-const LR: f32 = 0.0001;
+const LR: f32 = 0.001;
 
 fn main() {
     println!("Running...");
@@ -155,36 +155,29 @@ fn update_gradient(
     let output_layers = network.out_with_layers(&features);
     let output = output_layers.output_layer();
 
-    let mut move_idxs = [0; TrainingPosition::MAX_MOVES];
-    let mut expected = [0.0; TrainingPosition::MAX_MOVES];
-    let mut actual = [0.0; TrainingPosition::MAX_MOVES];
+    let mut expected = [0.0; PolicyNetwork::OUTPUT_SIZE];
+    let mut actual = [-1e10; PolicyNetwork::OUTPUT_SIZE];
 
-    for idx in 0..moves.len() {
-        let (m, v) = moves[idx];
-        let move_idx = state.move_to_index(m);
-
-        move_idxs[idx] = move_idx;
-        expected[idx] = v;
-        actual[idx] = output[move_idx];
-    }
-
-    math::softmax(&mut actual[..moves.len()], 1.);
-
-    let mut errors = Vector::zeroed();
     let best_move_idx = state.move_to_index(position.best_move());
 
+    expected[best_move_idx] = 1.0;
+
     for idx in 0..moves.len() {
-        let move_idx = move_idxs[idx];
+        let (m, _) = moves[idx];
+        let move_idx = state.move_to_index(m);
 
-        let expected = if move_idx == best_move_idx {
-            1.0
-        } else {
-            0.0
-        };
+        actual[move_idx] = output[move_idx];
+    }
 
+    math::softmax(&mut actual, 1.);
+
+    let mut errors = Vector::zeroed();
+
+    for idx in 0..PolicyNetwork::OUTPUT_SIZE {
+        let expected = expected[idx];
         let actual = actual[idx];
 
-        errors[move_idx] += actual - expected;
+        errors[idx] = actual - expected;
         *loss -= expected * actual.ln();
     }
 
