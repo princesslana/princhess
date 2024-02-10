@@ -66,7 +66,7 @@ fn main() {
             (seconds % 60)
         );
 
-        let file_name = format!("nets/state-{}-e{:03}", timestamp, epoch);
+        let file_name = format!("nets/value-{}-e{:03}", timestamp, epoch);
         network.save(file_name.as_str());
         println!("Saved to {}", file_name);
 
