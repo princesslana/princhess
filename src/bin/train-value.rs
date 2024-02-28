@@ -13,9 +13,11 @@ const THREADS: usize = 6;
 
 const LR: f32 = 0.001;
 const LR_DROP_AT: usize = EPOCHS * 2 / 3;
-const LR_DROP_FACTOR: f32 = 0.01;
+const LR_DROP_FACTOR: f32 = 0.1;
 
-const WEIGHT_DECAY: f32 = 0.99;
+const WEIGHT_DECAY: f32 = 0.01;
+
+const WDL_WEIGHT: f32 = 0.5;
 
 fn main() {
     println!("Running...");
@@ -46,8 +48,6 @@ fn main() {
     for epoch in 1..=EPOCHS {
         println!("\nEpoch {}/{} (LR: {})...", epoch, EPOCHS, lr);
         let start = Instant::now();
-
-        network.decay_weights(WEIGHT_DECAY);
 
         train(
             &mut network,
@@ -105,6 +105,7 @@ fn train(
             running_loss += gradients_batch(network, &mut gradients, batch);
             let adj = 2.0 / batch.len() as f32;
 
+            network.decay_weights(1.0 - WEIGHT_DECAY * lr);
             network.adam(&gradients, momentum, velocity, adj, lr);
 
             batch_n += 1;
@@ -159,7 +160,8 @@ fn update_gradient(
 
     let net_out = network.out_with_layers(&features);
 
-    let expected = position.stm_relative_result() as f32;
+    let expected = position.stm_relative_result() as f32 * WDL_WEIGHT
+        + position.stm_relative_evaluation() * (1.0 - WDL_WEIGHT);
     let actual = net_out.output_layer()[0];
 
     let error = actual - expected;
