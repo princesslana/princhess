@@ -16,11 +16,9 @@ RUN mkdir /engines
 COPY bin/gm2001.bin /books/gm2001.bin
 COPY bin/first_moves.epd /books/first_moves.epd
 
-RUN curl -ssL https://raw.githubusercontent.com/AndyGrant/OpenBench/master/Books/4moves_noob.epd.zip -o /books/4moves_noob.epd.zip
-RUN curl -ssL https://raw.githubusercontent.com/AndyGrant/OpenBench/master/Books/8moves_v3.epd.zip -o /books/8moves_v3.epd.zip
-RUN curl -ssL https://raw.githubusercontent.com/AndyGrant/OpenBench/master/Books/Pohl.epd.zip -o /books/Pohl.epd.zip
+RUN curl -ssL https://github.com/AndyGrant/openbench-books/raw/master/4moves_noob.epd.zip -o /books/4moves_noob.epd.zip
+RUN curl -ssL https://github.com/AndyGrant/openbench-books/raw/master/8moves_v3.epd.zip -o /books/8moves_v3.epd.zip
 RUN unzip /books/4moves_noob.epd.zip -d /books
 RUN unzip /books/8moves_v3.epd.zip -d /books
-RUN unzip /books/Pohl.epd.zip -d /books
 
 ENTRYPOINT ["cutechess/build/cutechess-cli"]
