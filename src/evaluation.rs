@@ -104,6 +104,11 @@ fn relu(x: i16) -> i32 {
     i32::from(x).max(0)
 }
 
+fn screlu(x: i16) -> i32 {
+    let clamped = i32::from(x).clamp(0, QA);
+    clamped * clamped
+}
+
 fn run_value_net(state: &State) -> f32 {
     let mut acc = VALUE_NETWORK.hidden_bias;
 
@@ -111,13 +116,13 @@ fn run_value_net(state: &State) -> f32 {
         acc.set(&VALUE_NETWORK.hidden_weights[idx]);
     });
 
-    let mut result: i32 = VALUE_NETWORK.output_bias;
+    let mut result: i32 = 0;
 
     for (&x, &w) in acc.vals.iter().zip(&VALUE_NETWORK.output_weights.vals) {
-        result += relu(x) * i32::from(w);
+        result += screlu(x) * i32::from(w);
     }
 
-    (result as f32 / QAB as f32).tanh()
+    ((result / QA + VALUE_NETWORK.output_bias) as f32 / QAB as f32).tanh()
 }
 
 const POLICY_NUMBER_INPUTS: usize = state::NUMBER_FEATURES;
