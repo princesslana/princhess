@@ -33,6 +33,7 @@ const _SIZE_CHECK: () = assert!(mem::size_of::<TrainingPosition>() == 256);
 
 impl TrainingPosition {
     pub const MAX_MOVES: usize = 72;
+    pub const MAX_VISITS: u32 = 255 * 4;
     pub const SIZE: usize = mem::size_of::<Self>();
 
     pub fn write_batch(out: &mut BufWriter<File>, data: &[TrainingPosition]) -> io::Result<()> {
@@ -115,16 +116,25 @@ impl From<&SearchTree> for TrainingPosition {
         let mut legal_moves = [Move::NONE; Self::MAX_MOVES];
         let mut visits = [0; Self::MAX_MOVES];
 
-        let sum_visits = nodes.iter().map(|(_, v)| u64::from(*v)).sum::<u64>() + 1;
+        let mut max_visits = 0;
 
         for (idx, (mv, vs)) in nodes
             .iter()
             .take_while(|(m, _)| *m != Move::NONE)
             .enumerate()
         {
+            assert!(*vs <= Self::MAX_VISITS);
+            assert!(*vs / 4 <= u8::MAX as u32);
+
+            if *vs > max_visits {
+                max_visits = *vs;
+            }
+
             legal_moves[idx] = *mv;
-            visits[idx] = (u64::from(*vs) * 255 / sum_visits).clamp(1, 255) as u8;
+            visits[idx] = (*vs / 4) as u8;
         }
+
+        assert!(max_visits == Self::MAX_VISITS);
 
         let pv = tree.principal_variation(1);
         let pv = pv.first().unwrap();

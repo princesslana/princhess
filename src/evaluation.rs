@@ -58,7 +58,7 @@ pub fn evaluate_state_flag(state: &State, is_legal_moves: bool) -> Flag {
     }
 }
 
-const HIDDEN: usize = 384;
+const HIDDEN: usize = 448;
 const QA: i32 = 256;
 const QB: i32 = 256;
 const QAB: i32 = QA * QB;

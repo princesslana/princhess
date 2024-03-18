@@ -17,7 +17,6 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 const THREADS: usize = 6;
 const DATA_WRITE_RATE: usize = 16384;
-const PLAYOUTS_PER_MOVE: usize = 2000;
 const DFRC_PCT: u64 = 10;
 
 struct Stats {
@@ -102,17 +101,18 @@ impl Display for Stats {
 
         write!(
             f,
-            "G: {:>7} | +{:>2} ={:>2} -{:>2} % | Bls: {:>2}% | S: {:>4} | N/P: {:>5} | Pos: {:>5.1}m ({:>3}/g) ({:>4}/s)",
+            "G: {:>7} | +{:>2} ={:>2} -{:>2} % | Bls: {:>2}% | S: {:>4.2}% | N/P: {:>5} | Pos: {:>5.1}m ({:>3}/g, {:>4}/s, {:>3.1}m/h)",
             games,
             white_wins * 100 / games,
             draws * 100 / games,
             black_wins * 100 / games,
             blunders * 100 / games,
-            skipped,
+            skipped as f32 * 100. / positions as f32,
             nodes / positions as usize,
             positions as f32 / 1000000.0,
             positions / games,
-            positions / seconds
+            positions / seconds,
+            (positions * 3600 / seconds) as f32 / 1000000.0
         )
     }
 }
@@ -150,14 +150,36 @@ fn run_game(stats: &Stats, positions: &mut Vec<TrainingPosition>, rng: &mut Rng)
 
     let result = loop {
         let search = Search::new(state.clone(), table);
+        let legal_moves = search.root_node().hots().len();
 
-        search.playout_sync(PLAYOUTS_PER_MOVE);
+        let mut max_visits = search
+            .root_node()
+            .hots()
+            .iter()
+            .map(|hot| hot.visits())
+            .max()
+            .unwrap_or(0);
+
+        if legal_moves > 1 {
+            while max_visits < TrainingPosition::MAX_VISITS {
+                search.playout_sync((TrainingPosition::MAX_VISITS - max_visits) as usize);
+
+                max_visits = search
+                    .root_node()
+                    .hots()
+                    .iter()
+                    .map(|hot| hot.visits())
+                    .max()
+                    .unwrap_or(0);
+            }
+        }
 
         let best_move = search.best_move();
 
-        let legal_moves = search.root_node().hots().len();
-
-        if legal_moves > TrainingPosition::MAX_MOVES {
+        if legal_moves <= 1
+            || legal_moves > TrainingPosition::MAX_MOVES
+            || max_visits > TrainingPosition::MAX_VISITS
+        {
             stats.inc_skipped();
         } else {
             let mut position = TrainingPosition::from(search.tree());
@@ -166,14 +188,6 @@ fn run_game(stats: &Stats, positions: &mut Vec<TrainingPosition>, rng: &mut Rng)
                 break 1;
             } else if position.evaluation() < -0.95 {
                 break -1;
-            } else if let Some(wdl) = tablebase::probe_wdl(state.board()) {
-                let result = match wdl {
-                    Wdl::Win => 1,
-                    Wdl::Draw => 0,
-                    Wdl::Loss => -1,
-                };
-
-                break state.side_to_move().fold(result, -result);
             }
 
             position.set_previous_moves(prev_moves);
@@ -201,6 +215,16 @@ fn run_game(stats: &Stats, positions: &mut Vec<TrainingPosition>, rng: &mut Rng)
             || state.board().is_insufficient_material()
         {
             break 0;
+        }
+
+        if let Some(wdl) = tablebase::probe_wdl(state.board()) {
+            let result = match wdl {
+                Wdl::Win => 1,
+                Wdl::Draw => 0,
+                Wdl::Loss => -1,
+            };
+
+            break state.side_to_move().fold(result, -result);
         }
 
         table = search.table();
