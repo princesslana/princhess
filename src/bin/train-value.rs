@@ -10,6 +10,7 @@ use std::time::{Instant, SystemTime, UNIX_EPOCH};
 const EPOCHS: usize = 20;
 const BATCH_SIZE: usize = 16384;
 const THREADS: usize = 6;
+const BUFFER_COUNT: usize = 1 << 24;
 
 const LR: f32 = 0.001;
 const LR_DROP_AT: usize = EPOCHS * 2 / 3;
@@ -86,7 +87,7 @@ fn train(
     let file = File::open(input).unwrap();
     let positions = file.metadata().unwrap().len() as usize / TrainingPosition::SIZE;
 
-    let buffer_size = (1 << (THREADS * 2)) * BATCH_SIZE * TrainingPosition::SIZE;
+    let buffer_size = BUFFER_COUNT * TrainingPosition::SIZE;
     let mut buffer = BufReader::with_capacity(buffer_size, file);
 
     let mut running_loss = 0.0;

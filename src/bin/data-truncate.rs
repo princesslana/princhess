@@ -22,8 +22,7 @@ fn main() {
         let mut buffer = BufReader::with_capacity(buffer_size, file);
 
         let out_file = format!("{}.{}m.truncated", input, truncate_to);
-        let mut writer =
-            BufWriter::new(File::create(out_file).unwrap());
+        let mut writer = BufWriter::new(File::create(out_file).unwrap());
 
         let start = Instant::now();
         println!(

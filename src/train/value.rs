@@ -11,7 +11,7 @@ use std::io::{BufWriter, Write};
 use std::path::Path;
 
 const INPUT_SIZE: usize = state::VALUE_NUMBER_FEATURES;
-const HIDDEN_SIZE: usize = 384;
+const HIDDEN_SIZE: usize = 448;
 const OUTPUT_SIZE: usize = 1;
 
 const QA: f32 = 256.;
