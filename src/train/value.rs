@@ -42,21 +42,26 @@ impl ValueNetwork {
     pub fn random() -> Box<Self> {
         let mut rng = Rng::default();
 
+        let mut network = Self::zeroed();
+
         let hidden_limit = (6. / (INPUT_SIZE + HIDDEN_SIZE) as f32).sqrt() * 2f32.sqrt();
         let output_limit = (6. / (HIDDEN_SIZE + OUTPUT_SIZE) as f32).sqrt();
 
-        let mut zerof = |_| 0.;
+        for row_idx in 0..INPUT_SIZE {
+            let row = network.hidden.weights_row_mut(row_idx);
+            for weight_idx in 0..HIDDEN_SIZE {
+                row[weight_idx] = rng.next_f32_range(-hidden_limit, hidden_limit);
+            }
+        }
 
-        Box::new(Self {
-            hidden: SparseConnected::from_fn(
-                |_, _| rng.next_f32_range(-hidden_limit, hidden_limit),
-                &mut zerof,
-            ),
-            output: DenseConnected::from_fn(
-                |_, _| rng.next_f32_range(-output_limit, output_limit),
-                &mut zerof,
-            ),
-        })
+        for row_idx in 0..OUTPUT_SIZE {
+            let row = network.output.weights_row_mut(row_idx);
+            for weight_idx in 0..HIDDEN_SIZE {
+                row[weight_idx] = rng.next_f32_range(-output_limit, output_limit);
+            }
+        }
+
+        network
     }
 
     pub fn decay_weights(&mut self, decay: f32) {

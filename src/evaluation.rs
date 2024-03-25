@@ -63,7 +63,7 @@ const QA: i32 = 256;
 const QB: i32 = 256;
 const QAB: i32 = QA * QB;
 
-const VALUE_NUMBER_INPUTS: usize = 2048;
+const VALUE_NUMBER_INPUTS: usize = state::VALUE_NUMBER_FEATURES;
 
 #[repr(C)]
 struct ValueNetwork {
@@ -120,7 +120,7 @@ fn run_value_net(state: &State) -> f32 {
     (result as f32 / QAB as f32).tanh()
 }
 
-const POLICY_NUMBER_INPUTS: usize = state::NUMBER_FEATURES;
+const POLICY_NUMBER_INPUTS: usize = state::POLICY_NUMBER_FEATURES;
 const POLICY_NUMBER_OUTPUTS: usize = 384;
 
 #[repr(C)]

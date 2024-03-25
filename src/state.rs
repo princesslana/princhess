@@ -7,18 +7,21 @@ const OFFSET_POSITION: usize = 0;
 const OFFSET_THREATS: usize = 768;
 const OFFSET_DEFENDS: usize = 768 * 2;
 
-pub const NUMBER_FEATURES: usize = 768 * 3;
+const NUMBER_KING_BUCKETS: usize = 3;
 
 const VALUE_NUMBER_POSITION: usize = 768;
 const VALUE_NUMBER_THREATS: usize = 10 * 64;
 const VALUE_NUMBER_DEFENDS: usize = 10 * 64;
 
 const VALUE_OFFSET_POSITION: usize = 0;
-const VALUE_OFFSET_THREATS: usize = VALUE_OFFSET_POSITION + VALUE_NUMBER_POSITION;
+const VALUE_OFFSET_THREATS: usize =
+    VALUE_OFFSET_POSITION + VALUE_NUMBER_POSITION * NUMBER_KING_BUCKETS;
 const VALUE_OFFSET_DEFENDS: usize = VALUE_OFFSET_THREATS + VALUE_NUMBER_THREATS;
 
 pub const VALUE_NUMBER_FEATURES: usize =
-    VALUE_NUMBER_POSITION + VALUE_NUMBER_THREATS + VALUE_NUMBER_DEFENDS;
+    VALUE_NUMBER_POSITION * NUMBER_KING_BUCKETS + VALUE_NUMBER_THREATS + VALUE_NUMBER_DEFENDS;
+
+pub const POLICY_NUMBER_FEATURES: usize = 768 * 3;
 
 #[must_use]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -174,6 +177,9 @@ impl State {
             (false, false) => sq,
         };
 
+        let king_bucket = KING_BUCKETS[flip_square(b.king_of(stm)).index()];
+        let offset_position = VALUE_OFFSET_POSITION + king_bucket * VALUE_NUMBER_POSITION;
+
         for sq in b.occupied() {
             let piece = b.piece_at(sq).unwrap();
             let color = b.color_at(sq).unwrap();
@@ -182,7 +188,7 @@ impl State {
             let piece_idx = piece.index();
             let side_idx = usize::from(color != stm);
 
-            f(VALUE_OFFSET_POSITION + (side_idx * 6 + piece_idx) * 64 + sq_idx);
+            f(offset_position + (side_idx * 6 + piece_idx) * 64 + sq_idx);
 
             if piece != Piece::KING {
                 // Threats
@@ -295,3 +301,15 @@ impl Default for State {
         Self::from_board(Board::startpos())
     }
 }
+
+#[rustfmt::skip]
+const KING_BUCKETS: [usize; Square::COUNT] = [
+    0, 0, 0, 1, 1, 0, 0, 0,
+    0, 0, 1, 1, 1, 1, 0, 0,
+    2, 2, 2, 2, 2, 2, 2, 2,
+    2, 2, 2, 2, 2, 2, 2, 2,
+    2, 2, 2, 2, 2, 2, 2, 2,
+    2, 2, 2, 2, 2, 2, 2, 2,
+    2, 2, 2, 2, 2, 2, 2, 2,
+    2, 2, 2, 2, 2, 2, 2, 2,
+];
