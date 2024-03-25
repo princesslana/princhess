@@ -31,6 +31,8 @@ impl Square {
     pub const G8: Square = Square(62);
     pub const H8: Square = Square(63);
 
+    pub const COUNT: usize = 64;
+
     pub fn from_coords(file: File, rank: Rank) -> Square {
         Square((rank.0 * 8) + file.0)
     }

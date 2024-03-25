@@ -124,7 +124,7 @@ impl From<&SearchTree> for TrainingPosition {
             .enumerate()
         {
             assert!(*vs <= Self::MAX_VISITS);
-            assert!(*vs / 4 <= u8::MAX as u32);
+            assert!(u8::try_from(*vs / 4).is_ok());
 
             if *vs > max_visits {
                 max_visits = *vs;
