@@ -1,9 +1,11 @@
+use princhess::evaluation;
 use princhess::train::{TrainingPosition, ValueNetwork};
 
 use goober::{FeedForwardNetwork, OutputLayer, Vector};
 use std::env;
-use std::fs::File;
+use std::fs::{self, File};
 use std::io::{self, BufRead, BufReader, Write};
+use std::path::Path;
 use std::thread;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
@@ -67,9 +69,16 @@ fn main() {
             (seconds % 60)
         );
 
-        let file_name = format!("nets/value-{}-e{:03}", timestamp, epoch);
-        network.save(file_name.as_str());
-        println!("Saved to {}", file_name);
+        let dir_name = format!("nets/value-{}-e{:03}", timestamp, epoch);
+
+        fs::create_dir(dir_name.clone()).expect("Failed to create directory");
+
+        let dir = Path::new(&dir_name);
+
+        network.save(dir);
+        evaluation::ValueNetwork::from(&network).save_to_bin(dir);
+
+        println!("Saved to {}", dir_name);
 
         if epoch % LR_DROP_AT == 0 {
             lr *= LR_DROP_FACTOR;

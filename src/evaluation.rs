@@ -4,6 +4,12 @@ use crate::search::SCALE;
 use crate::state::{self, State};
 use crate::tablebase::{self, Wdl};
 
+use std::fs;
+use std::io::Write;
+use std::mem;
+use std::path::Path;
+use std::slice;
+
 #[derive(Clone, Copy, Debug)]
 pub enum Flag {
     Standard,
@@ -17,6 +23,7 @@ pub enum Flag {
 }
 
 impl Flag {
+    #[must_use]
     pub fn is_terminal(self) -> bool {
         matches!(
             self,
@@ -24,6 +31,7 @@ impl Flag {
         )
     }
 
+    #[must_use]
     pub fn is_tablebase(self) -> bool {
         matches!(
             self,
@@ -32,14 +40,17 @@ impl Flag {
     }
 }
 
+#[must_use]
 pub fn evaluate_value(state: &State) -> i64 {
     (run_value_net(state) * SCALE) as i64
 }
 
+#[must_use]
 pub fn evaluate_policy(state: &State, moves: &MoveList, t: f32) -> Vec<f32> {
     run_policy_net(state, moves, t)
 }
 
+#[must_use]
 pub fn evaluate_state_flag(state: &State, is_legal_moves: bool) -> Flag {
     if !is_legal_moves {
         if state.is_check() {
@@ -66,29 +77,49 @@ const QAB: i32 = QA * QB;
 const VALUE_NUMBER_INPUTS: usize = state::VALUE_NUMBER_FEATURES;
 
 #[repr(C)]
-struct ValueNetwork {
+pub struct ValueNetwork {
     hidden_weights: [Accumulator<HIDDEN>; VALUE_NUMBER_INPUTS],
     hidden_bias: Accumulator<HIDDEN>,
     output_weights: Accumulator<HIDDEN>,
     output_bias: i32,
 }
 
-static VALUE_HIDDEN_WEIGHTS: [[i16; HIDDEN]; VALUE_NUMBER_INPUTS] =
-    include!("value/hidden_weights");
-static VALUE_HIDDEN_BIAS: [i16; HIDDEN] = include!("value/hidden_bias");
-static VALUE_OUTPUT_WEIGHTS: [[i16; HIDDEN]; 1] = include!("value/output_weights");
-static VALUE_OUTPUT_BIAS: i32 = include!("value/output_bias")[0];
+static VALUE_NETWORK: ValueNetwork =
+    unsafe { std::mem::transmute(*include_bytes!("nets/value.bin")) };
 
-static VALUE_NETWORK: ValueNetwork = ValueNetwork {
-    hidden_weights: unsafe { std::mem::transmute(VALUE_HIDDEN_WEIGHTS) },
-    hidden_bias: unsafe { std::mem::transmute(VALUE_HIDDEN_BIAS) },
-    output_weights: unsafe { std::mem::transmute(VALUE_OUTPUT_WEIGHTS) },
-    output_bias: VALUE_OUTPUT_BIAS,
-};
+impl ValueNetwork {
+    #[must_use]
+    pub const fn from_slices(
+        hidden_weights: &[[i16; HIDDEN]; VALUE_NUMBER_INPUTS],
+        hidden_bias: &[i16; HIDDEN],
+        output_weights: &[[i16; HIDDEN]; 1],
+        output_bias: i32,
+    ) -> Self {
+        Self {
+            hidden_weights: unsafe { std::mem::transmute(*hidden_weights) },
+            hidden_bias: unsafe { std::mem::transmute(*hidden_bias) },
+            output_weights: unsafe { std::mem::transmute(*output_weights) },
+            output_bias,
+        }
+    }
+
+    pub fn save_to_bin(&self, dir: &Path) {
+        let mut file = fs::File::create(dir.join("value.bin")).expect("Failed to create file");
+
+        let size_of = mem::size_of::<Self>();
+
+        unsafe {
+            let ptr: *const Self = self;
+            let slice_ptr: *const u8 = ptr.cast::<u8>();
+            let slice = slice::from_raw_parts(slice_ptr, size_of);
+            file.write_all(slice).unwrap();
+        }
+    }
+}
 
 #[derive(Clone, Copy)]
 #[repr(C, align(64))]
-struct Accumulator<const H: usize> {
+pub struct Accumulator<const H: usize> {
     vals: [i16; H],
 }
 

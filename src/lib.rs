@@ -12,11 +12,11 @@ extern crate nohash_hasher;
 extern crate once_cell;
 
 mod arena;
-mod evaluation;
 mod search_tree;
 mod tree_policy;
 
 pub mod chess;
+pub mod evaluation;
 pub mod math;
 pub mod options;
 pub mod search;
