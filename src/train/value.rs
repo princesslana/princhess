@@ -1,3 +1,4 @@
+use crate::evaluation;
 use crate::math::Rng;
 use crate::state;
 
@@ -6,7 +7,7 @@ use goober::layer::{DenseConnected, SparseConnected};
 use goober::{FeedForwardNetwork, Vector};
 use std::alloc::{self, Layout};
 use std::boxed::Box;
-use std::fs::{self, File};
+use std::fs::File;
 use std::io::{BufWriter, Write};
 use std::path::Path;
 
@@ -88,11 +89,7 @@ impl ValueNetwork {
         }
     }
 
-    pub fn save(&self, path: &str) {
-        fs::create_dir(path).expect("Failed to create directory");
-
-        let dir = Path::new(path);
-
+    pub fn save(&self, dir: &Path) {
         let hidden_weights_file =
             File::create(dir.join("hidden_weights")).expect("Failed to create file");
         let mut w = BufWriter::new(hidden_weights_file);
@@ -147,4 +144,52 @@ fn write_vector<const N: usize>(w: &mut BufWriter<File>, v: &Vector<N>, q: f32) 
         }
     }
     writeln!(w, "]").unwrap();
+}
+
+#[allow(clippy::large_stack_arrays)]
+impl From<&Box<ValueNetwork>> for evaluation::ValueNetwork {
+    fn from(network: &Box<ValueNetwork>) -> Self {
+        let mut hidden_weights = [[0; HIDDEN_SIZE]; INPUT_SIZE];
+        let mut hidden_bias = [0; HIDDEN_SIZE];
+        let mut output_weights = [[0; HIDDEN_SIZE]; 1];
+
+        for (row_idx, weights) in hidden_weights.iter_mut().enumerate() {
+            let row = network.hidden.weights_row(row_idx);
+            for weight_idx in 0..HIDDEN_SIZE {
+                weights[weight_idx] = q_i16(row[weight_idx], QA);
+            }
+        }
+
+        for (weight_idx, bias) in hidden_bias.iter_mut().enumerate() {
+            *bias = q_i16(network.hidden.bias()[weight_idx], QA);
+        }
+
+        for (row_idx, weights) in output_weights.iter_mut().enumerate() {
+            let row = network.output.weights_row(row_idx);
+            for weight_idx in 0..HIDDEN_SIZE {
+                weights[weight_idx] = q_i16(row[weight_idx], QB);
+            }
+        }
+
+        let output_bias = q_i32(network.output.bias()[0], QAB);
+
+        evaluation::ValueNetwork::from_slices(
+            &hidden_weights,
+            &hidden_bias,
+            &output_weights,
+            output_bias,
+        )
+    }
+}
+
+fn q_i16(x: f32, q: f32) -> i16 {
+    let quantized = x * q;
+    assert!(f32::from(i16::MIN) < quantized && quantized < f32::from(i16::MAX),);
+    quantized as i16
+}
+
+fn q_i32(x: f32, q: f32) -> i32 {
+    let quantized = x * q;
+    assert!((i32::MIN as f32) < quantized && quantized < i32::MAX as f32);
+    quantized as i32
 }
