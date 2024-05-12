@@ -43,10 +43,10 @@ fn main() {
         .unwrap()
         .as_secs();
 
-    println!(
-        "Beginning training on {} positions from {}...",
-        count, input
-    );
+    println!("Beginning training...");
+    println!("Network: {}", network);
+    println!("Positions: {}", count);
+    println!("File: {}", input);
 
     for epoch in 1..=EPOCHS {
         println!("\nEpoch {}/{} (LR: {})...", epoch, EPOCHS, lr);
@@ -75,7 +75,6 @@ fn main() {
 
         let dir = Path::new(&dir_name);
 
-        network.save(dir);
         evaluation::ValueNetwork::from(&network).save_to_bin(dir);
 
         println!("Saved to {}", dir_name);
