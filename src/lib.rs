@@ -2,7 +2,6 @@
 #![allow(clippy::cast_precision_loss, clippy::cast_possible_truncation)]
 #![allow(clippy::missing_errors_doc, clippy::missing_panics_doc)]
 
-#[macro_use]
 extern crate arc_swap;
 extern crate arrayvec;
 extern crate dashmap;

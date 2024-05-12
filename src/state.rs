@@ -8,18 +8,12 @@ const OFFSET_THREATS: usize = 768;
 const OFFSET_DEFENDS: usize = 768 * 2;
 
 const NUMBER_KING_BUCKETS: usize = 3;
+const NUMBER_THREAT_BUCKETS: usize = 4;
 
 const VALUE_NUMBER_POSITION: usize = 768;
-const VALUE_NUMBER_THREATS: usize = 10 * 64;
-const VALUE_NUMBER_DEFENDS: usize = 10 * 64;
-
-const VALUE_OFFSET_POSITION: usize = 0;
-const VALUE_OFFSET_THREATS: usize =
-    VALUE_OFFSET_POSITION + VALUE_NUMBER_POSITION * NUMBER_KING_BUCKETS;
-const VALUE_OFFSET_DEFENDS: usize = VALUE_OFFSET_THREATS + VALUE_NUMBER_THREATS;
 
 pub const VALUE_NUMBER_FEATURES: usize =
-    VALUE_NUMBER_POSITION * NUMBER_KING_BUCKETS + VALUE_NUMBER_THREATS + VALUE_NUMBER_DEFENDS;
+    VALUE_NUMBER_POSITION * NUMBER_KING_BUCKETS * NUMBER_THREAT_BUCKETS;
 
 pub const POLICY_NUMBER_FEATURES: usize = 768 * 3;
 
@@ -167,6 +161,7 @@ impl State {
     {
         let stm = self.side_to_move();
         let b = &self.board;
+        let occ = b.occupied();
 
         let (flip_rank, flip_file) = self.feature_flip();
 
@@ -178,7 +173,6 @@ impl State {
         };
 
         let king_bucket = KING_BUCKETS[flip_square(b.king_of(stm)).index()];
-        let offset_position = VALUE_OFFSET_POSITION + king_bucket * VALUE_NUMBER_POSITION;
 
         for sq in b.occupied() {
             let piece = b.piece_at(sq).unwrap();
@@ -188,19 +182,16 @@ impl State {
             let piece_idx = piece.index();
             let side_idx = usize::from(color != stm);
 
-            f(offset_position + (side_idx * 6 + piece_idx) * 64 + sq_idx);
+            let threatened = b.is_attacked(sq, !color, occ);
+            let defended = b.is_attacked(sq, color, occ);
 
-            if piece != Piece::KING {
-                // Threats
-                if b.is_attacked(sq, !color, b.occupied()) {
-                    f(VALUE_OFFSET_THREATS + (side_idx * 5 + piece_idx) * 64 + sq_idx);
-                }
+            let threat_bucket = usize::from(threatened) * 2 + usize::from(defended);
 
-                // Defenses
-                if b.is_attacked(sq, color, b.occupied()) {
-                    f(VALUE_OFFSET_DEFENDS + (side_idx * 5 + piece_idx) * 64 + sq_idx);
-                }
-            }
+            let bucket = threat_bucket * NUMBER_KING_BUCKETS + king_bucket;
+            let position = [0, 384][side_idx] + piece_idx * 64 + sq_idx;
+            let index = bucket * 768 + position;
+
+            f(index);
         }
     }
 
