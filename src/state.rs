@@ -3,10 +3,6 @@ use arrayvec::ArrayVec;
 use crate::chess::{Board, Color, File, Move, MoveList, Piece, Rank, Square};
 use crate::uci::Tokens;
 
-const OFFSET_POSITION: usize = 0;
-const OFFSET_THREATS: usize = 768;
-const OFFSET_DEFENDS: usize = 768 * 2;
-
 const NUMBER_KING_BUCKETS: usize = 3;
 const NUMBER_THREAT_BUCKETS: usize = 4;
 
@@ -15,7 +11,11 @@ const VALUE_NUMBER_POSITION: usize = 768;
 pub const VALUE_NUMBER_FEATURES: usize =
     VALUE_NUMBER_POSITION * NUMBER_KING_BUCKETS * NUMBER_THREAT_BUCKETS;
 
-pub const POLICY_NUMBER_FEATURES: usize = 768 * 3;
+const NUMBER_PREVIOUS_MOVES: usize = 2;
+const POLICY_PREVIOUS_MOVES_OFFSET: usize = VALUE_NUMBER_FEATURES;
+
+pub const POLICY_NUMBER_FEATURES: usize = VALUE_NUMBER_FEATURES + 128 * NUMBER_PREVIOUS_MOVES;
+
 
 #[must_use]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -199,8 +199,7 @@ impl State {
     where
         F: FnMut(usize),
     {
-        let stm = self.side_to_move();
-        let b = &self.board;
+        self.value_features_map(&mut f);
 
         let (flip_rank, flip_file) = self.feature_flip();
 
@@ -211,50 +210,15 @@ impl State {
             (false, false) => sq,
         };
 
-        let feature_idx = |sq: Square, p: Piece, c: Color| {
-            let sq_idx = flip_square(sq).index();
-            let piece_idx = p.index();
-            let side_idx = usize::from(c != stm);
+        for idx in 0..NUMBER_PREVIOUS_MOVES {
+            if let Some(mv) = self.prev_moves[idx] {
+                let from = idx * 128 + flip_square(mv.from()).index();
+                let to = idx * 128 + 64 + flip_square(mv.to()).index();
 
-            (side_idx * 6 + piece_idx) * 64 + sq_idx
-        };
-
-        for sq in b.occupied() {
-            let piece = b.piece_at(sq).unwrap();
-            let color = b.color_at(sq).unwrap();
-
-            f(OFFSET_POSITION + feature_idx(sq, piece, color));
-
-            if piece != Piece::KING {
-                // Threats
-                if b.is_attacked(sq, !color, b.occupied()) {
-                    f(OFFSET_THREATS + feature_idx(sq, piece, color));
-                }
-
-                // Defenses
-                if b.is_attacked(sq, color, b.occupied()) {
-                    f(OFFSET_DEFENDS + feature_idx(sq, piece, color));
-                }
+                f(POLICY_PREVIOUS_MOVES_OFFSET + from);
+                f(POLICY_PREVIOUS_MOVES_OFFSET + to);
             }
         }
-
-        // We use the king threats and defenses squares for previous moves
-        if let Some(m) = &self.prev_moves[0] {
-            f(OFFSET_DEFENDS + feature_idx(m.to(), Piece::KING, stm));
-            f(OFFSET_DEFENDS + feature_idx(m.from(), Piece::KING, !stm));
-        }
-
-        if let Some(m) = &self.prev_moves[1] {
-            f(OFFSET_THREATS + feature_idx(m.to(), Piece::KING, stm));
-            f(OFFSET_THREATS + feature_idx(m.from(), Piece::KING, !stm));
-        }
-    }
-
-    pub fn training_features_map<F>(&self, f: F)
-    where
-        F: FnMut(usize),
-    {
-        self.value_features_map(f);
     }
 
     #[must_use]

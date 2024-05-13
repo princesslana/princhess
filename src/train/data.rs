@@ -3,6 +3,7 @@ use crate::search::SCALE;
 use crate::search_tree::SearchTree;
 use crate::state::State;
 
+use arrayvec::ArrayVec;
 use goober::SparseVector;
 use std::fs::File;
 use std::io::{BufWriter, Write};
@@ -22,10 +23,7 @@ pub struct TrainingPosition {
     #[allow(dead_code)]
     best_move: Move,
 
-    #[allow(dead_code)]
     legal_moves: [Move; TrainingPosition::MAX_MOVES],
-
-    #[allow(dead_code)]
     visits: [u8; TrainingPosition::MAX_MOVES],
 }
 
@@ -33,7 +31,7 @@ const _SIZE_CHECK: () = assert!(mem::size_of::<TrainingPosition>() == 256);
 
 impl TrainingPosition {
     pub const MAX_MOVES: usize = 72;
-    pub const MAX_VISITS: u32 = 255 * 4;
+    pub const MAX_VISITS: u32 = 2048;
     pub const SIZE: usize = mem::size_of::<Self>();
 
     pub fn write_batch(out: &mut BufWriter<File>, data: &[TrainingPosition]) -> io::Result<()> {
@@ -70,6 +68,16 @@ impl TrainingPosition {
         self.stm.fold(self.result, -self.result)
     }
 
+    #[must_use]
+    pub fn moves(&self) -> ArrayVec<(Move, u8), { Self::MAX_MOVES }> {
+        self.legal_moves
+            .iter()
+            .zip(self.visits.iter())
+            .take_while(|(m, _)| **m != Move::NONE)
+            .map(|(m, v)| (*m, *v))
+            .collect()
+    }
+
     pub fn set_previous_moves(&mut self, moves: [Move; 4]) {
         self.previous_moves = moves;
     }
@@ -79,11 +87,21 @@ impl TrainingPosition {
     }
 
     #[must_use]
-    pub fn get_features(&self) -> SparseVector {
+    pub fn get_value_features(&self) -> SparseVector {
         let mut features = SparseVector::with_capacity(64);
         let state = State::from(self);
 
-        state.training_features_map(|idx| features.push(idx));
+        state.value_features_map(|idx| features.push(idx));
+
+        features
+    }
+
+    #[must_use]
+    pub fn get_policy_features(&self) -> SparseVector {
+        let mut features = SparseVector::with_capacity(64);
+        let state = State::from(self);
+
+        state.policy_features_map(|idx| features.push(idx));
 
         features
     }
@@ -124,14 +142,14 @@ impl From<&SearchTree> for TrainingPosition {
             .enumerate()
         {
             assert!(*vs <= Self::MAX_VISITS);
-            assert!(u8::try_from(*vs / 4).is_ok());
+            assert!(u8::try_from(*vs * u32::from(u8::MAX) / Self::MAX_VISITS).is_ok());
 
             if *vs > max_visits {
                 max_visits = *vs;
             }
 
             legal_moves[idx] = *mv;
-            visits[idx] = (*vs / 4) as u8;
+            visits[idx] = (*vs * u32::from(u8::MAX) / Self::MAX_VISITS) as u8;
         }
 
         assert!(max_visits == Self::MAX_VISITS);

@@ -164,7 +164,7 @@ fn update_gradient(
     gradients: &mut ValueNetwork,
     loss: &mut f32,
 ) {
-    let features = position.get_features();
+    let features = position.get_value_features();
 
     let net_out = network.out_with_layers(&features);
 

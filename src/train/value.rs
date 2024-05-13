@@ -8,6 +8,7 @@ use crate::evaluation;
 use crate::math::Rng;
 use crate::state;
 use crate::mem::boxed_and_zeroed;
+use crate::train::{q_i16, q_i32, randomize_dense, randomize_sparse};
 
 const INPUT_SIZE: usize = state::VALUE_NUMBER_FEATURES;
 const HIDDEN_SIZE: usize = 512;
@@ -42,22 +43,8 @@ impl ValueNetwork {
 
         let mut network = Self::zeroed();
 
-        let hidden_limit = (6. / (INPUT_SIZE + HIDDEN_SIZE) as f32).sqrt() * 2f32.sqrt();
-        let output_limit = (6. / (HIDDEN_SIZE + OUTPUT_SIZE) as f32).sqrt();
-
-        for row_idx in 0..INPUT_SIZE {
-            let row = network.hidden.weights_row_mut(row_idx);
-            for weight_idx in 0..HIDDEN_SIZE {
-                row[weight_idx] = rng.next_f32_range(-hidden_limit, hidden_limit);
-            }
-        }
-
-        for row_idx in 0..OUTPUT_SIZE {
-            let row = network.output.weights_row_mut(row_idx);
-            for weight_idx in 0..HIDDEN_SIZE {
-                row[weight_idx] = rng.next_f32_range(-output_limit, output_limit);
-            }
-        }
+        randomize_sparse(&mut network.hidden, &mut rng);
+        randomize_dense(&mut network.output, &mut rng);
 
         network
     }
@@ -119,16 +106,4 @@ impl ValueNetwork {
             output_bias,
         )
     }
-}
-
-fn q_i16(x: f32, q: f32) -> i16 {
-    let quantized = x * q;
-    assert!(f32::from(i16::MIN) < quantized && quantized < f32::from(i16::MAX),);
-    quantized as i16
-}
-
-fn q_i32(x: f32, q: f32) -> i32 {
-    let quantized = x * q;
-    assert!((i32::MIN as f32) < quantized && quantized < i32::MAX as f32);
-    quantized as i32
 }
