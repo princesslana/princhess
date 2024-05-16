@@ -178,6 +178,7 @@ pub struct PolicyNetwork {
     constant_bias: Accumulator<POLICY_NUMBER_OUTPUTS>,
 }
 
+#[cfg(not(feature = "no-net"))]
 static POLICY_NET: PolicyNetwork =
     unsafe { std::mem::transmute(*include_bytes!("nets/policy.bin")) };
 
@@ -234,6 +235,18 @@ impl PolicyNetwork {
     }
 }
 
+#[cfg(feature = "no-net")]
+fn run_policy_net(_state: &State, moves: &MoveList, _t: f32) -> Vec<f32> {
+    let mut evalns = Vec::with_capacity(moves.len());
+
+    for _ in moves {
+        evalns.push(1.0 / moves.len() as f32);
+    }
+
+    evalns
+}
+
+#[cfg(not(feature = "no-net"))]
 fn run_policy_net(state: &State, moves: &MoveList, t: f32) -> Vec<f32> {
     let mut evalns = Vec::with_capacity(moves.len());
 
