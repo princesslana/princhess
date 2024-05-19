@@ -1,7 +1,7 @@
 use arrayvec::ArrayVec;
 use std::fmt::Write;
 use std::mem;
-use std::ptr::null_mut;
+use std::ptr::{self, null_mut};
 use std::sync::atomic::{
     AtomicBool, AtomicI64, AtomicPtr, AtomicU32, AtomicU64, AtomicUsize, Ordering,
 };
@@ -168,7 +168,7 @@ impl MoveEdge {
     pub fn set_or_get_child<'a>(&'a self, new_child: &'a PositionNode) -> Option<&'a PositionNode> {
         match self.child.compare_exchange(
             null_mut(),
-            (new_child as *const PositionNode).cast_mut(),
+            ptr::from_ref(new_child).cast_mut(),
             Ordering::Relaxed,
             Ordering::Relaxed,
         ) {
@@ -428,7 +428,7 @@ impl SearchTree {
         }
 
         let inserted = self.ttable.insert(state, created);
-        let inserted_ptr = (inserted as *const PositionNode).cast_mut();
+        let inserted_ptr = ptr::from_ref(inserted).cast_mut();
         choice.child.store(inserted_ptr, Ordering::Relaxed);
         Ok(inserted)
     }

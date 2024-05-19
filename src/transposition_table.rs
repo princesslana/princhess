@@ -1,5 +1,6 @@
 use dashmap::DashMap;
 use nohash_hasher::BuildNoHashHasher;
+use std::ptr;
 use std::sync::atomic::{AtomicBool, AtomicPtr, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -51,10 +52,8 @@ impl TranspositionTable {
         if let Some(value_here) = self.table.get(&hash) {
             unsafe { &*value_here.load(Ordering::Relaxed) }
         } else {
-            self.table.insert(
-                hash,
-                AtomicPtr::new((value as *const PositionNode).cast_mut()),
-            );
+            self.table
+                .insert(hash, AtomicPtr::new(ptr::from_ref(value).cast_mut()));
             value
         }
     }

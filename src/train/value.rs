@@ -10,7 +10,7 @@ use crate::state;
 use crate::train::boxed_and_zeroed;
 
 const INPUT_SIZE: usize = state::VALUE_NUMBER_FEATURES;
-const HIDDEN_SIZE: usize = 448;
+const HIDDEN_SIZE: usize = 512;
 const OUTPUT_SIZE: usize = 1;
 
 const QA: f32 = 256.;
@@ -85,34 +85,32 @@ impl ValueNetwork {
             self.output.bias_mut()[weight_idx] *= decay;
         }
     }
-}
 
-#[allow(clippy::large_stack_arrays)]
-impl From<&Box<ValueNetwork>> for evaluation::ValueNetwork {
-    fn from(network: &Box<ValueNetwork>) -> Self {
+    #[must_use]
+    pub fn to_boxed_evaluation_network(&self) -> Box<evaluation::ValueNetwork> {
         let mut hidden_weights: Box<[[i16; HIDDEN_SIZE]; INPUT_SIZE]> = boxed_and_zeroed();
         let mut hidden_bias = [0; HIDDEN_SIZE];
         let mut output_weights = [[0; HIDDEN_SIZE]; 1];
 
         for (row_idx, weights) in hidden_weights.iter_mut().enumerate() {
-            let row = network.hidden.weights_row(row_idx);
+            let row = self.hidden.weights_row(row_idx);
             for weight_idx in 0..HIDDEN_SIZE {
                 weights[weight_idx] = q_i16(row[weight_idx], QA);
             }
         }
 
         for (weight_idx, bias) in hidden_bias.iter_mut().enumerate() {
-            *bias = q_i16(network.hidden.bias()[weight_idx], QA);
+            *bias = q_i16(self.hidden.bias()[weight_idx], QA);
         }
 
         for (row_idx, weights) in output_weights.iter_mut().enumerate() {
-            let row = network.output.weights_row(row_idx);
+            let row = self.output.weights_row(row_idx);
             for weight_idx in 0..HIDDEN_SIZE {
                 weights[weight_idx] = q_i16(row[weight_idx], QB);
             }
         }
 
-        let output_bias = q_i32(network.output.bias()[0], QAB);
+        let output_bias = q_i32(self.output.bias()[0], QAB);
 
         evaluation::ValueNetwork::from_slices(
             &hidden_weights,

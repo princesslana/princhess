@@ -11,6 +11,7 @@ extern crate nohash_hasher;
 extern crate once_cell;
 
 mod arena;
+mod mem;
 mod search_tree;
 mod tree_policy;
 
