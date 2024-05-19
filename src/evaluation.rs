@@ -1,5 +1,6 @@
 use crate::chess::MoveList;
 use crate::math;
+use crate::mem::boxed_and_zeroed;
 use crate::search::SCALE;
 use crate::state::{self, State};
 use crate::tablebase::{self, Wdl};
@@ -69,7 +70,7 @@ pub fn evaluate_state_flag(state: &State, is_legal_moves: bool) -> Flag {
     }
 }
 
-const HIDDEN: usize = 448;
+const HIDDEN: usize = 512;
 const QA: i32 = 256;
 const QB: i32 = 256;
 const QAB: i32 = QA * QB;
@@ -84,23 +85,30 @@ pub struct ValueNetwork {
     output_bias: i32,
 }
 
+#[cfg(not(feature = "no-net"))]
 static VALUE_NETWORK: ValueNetwork =
     unsafe { std::mem::transmute(*include_bytes!("nets/value.bin")) };
 
 impl ValueNetwork {
+    fn boxed_and_zeroed() -> Box<Self> {
+        boxed_and_zeroed()
+    }
+
     #[must_use]
-    pub const fn from_slices(
+    pub fn from_slices(
         hidden_weights: &[[i16; HIDDEN]; VALUE_NUMBER_INPUTS],
         hidden_bias: &[i16; HIDDEN],
         output_weights: &[[i16; HIDDEN]; 1],
         output_bias: i32,
-    ) -> Self {
-        Self {
-            hidden_weights: unsafe { std::mem::transmute(*hidden_weights) },
-            hidden_bias: unsafe { std::mem::transmute(*hidden_bias) },
-            output_weights: unsafe { std::mem::transmute(*output_weights) },
-            output_bias,
-        }
+    ) -> Box<Self> {
+        let mut network = Self::boxed_and_zeroed();
+
+        network.hidden_weights = unsafe { std::mem::transmute(*hidden_weights) };
+        network.hidden_bias = unsafe { std::mem::transmute(*hidden_bias) };
+        network.output_weights = unsafe { std::mem::transmute(*output_weights) };
+        network.output_bias = output_bias;
+
+        network
     }
 
     pub fn save_to_bin(&self, dir: &Path) {
@@ -135,6 +143,12 @@ fn relu(x: i16) -> i32 {
     i32::from(x).max(0)
 }
 
+#[cfg(feature = "no-net")]
+fn run_value_net(_state: &State) -> f32 {
+    0.0
+}
+
+#[cfg(not(feature = "no-net"))]
 fn run_value_net(state: &State) -> f32 {
     let mut acc = VALUE_NETWORK.hidden_bias;
 

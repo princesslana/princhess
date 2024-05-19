@@ -1,4 +1,3 @@
-use princhess::evaluation;
 use princhess::train::{TrainingPosition, ValueNetwork};
 
 use goober::{FeedForwardNetwork, OutputLayer, Vector};
@@ -75,7 +74,7 @@ fn main() {
 
         let dir = Path::new(&dir_name);
 
-        evaluation::ValueNetwork::from(&network).save_to_bin(dir);
+        network.to_boxed_evaluation_network().save_to_bin(dir);
 
         println!("Saved to {}", dir_name);
 
