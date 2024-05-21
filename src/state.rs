@@ -16,7 +16,6 @@ const POLICY_PREVIOUS_MOVES_OFFSET: usize = VALUE_NUMBER_FEATURES;
 
 pub const POLICY_NUMBER_FEATURES: usize = VALUE_NUMBER_FEATURES + 128 * NUMBER_PREVIOUS_MOVES;
 
-
 #[must_use]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct State {

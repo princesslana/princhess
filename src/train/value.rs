@@ -6,8 +6,8 @@ use std::fmt::{self, Display, Formatter};
 
 use crate::evaluation;
 use crate::math::Rng;
-use crate::state;
 use crate::mem::boxed_and_zeroed;
+use crate::state;
 use crate::train::{q_i16, q_i32, randomize_dense, randomize_sparse};
 
 const INPUT_SIZE: usize = state::VALUE_NUMBER_FEATURES;

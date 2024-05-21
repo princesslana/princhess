@@ -9,6 +9,7 @@ use std::fs;
 use std::io::Write;
 use std::mem;
 use std::path::Path;
+use std::ptr;
 use std::slice;
 
 #[derive(Clone, Copy, Debug)]
@@ -200,17 +201,17 @@ impl PolicyNetwork {
         let mut network = Self::boxed_and_zeroed();
 
         network.left_weights.copy_from_slice(unsafe {
-            &*((left_weights as *const [[i16; POLICY_NUMBER_OUTPUTS]; POLICY_NUMBER_INPUTS])
+            &*(ptr::from_ref(left_weights)
                 .cast::<[Accumulator<POLICY_NUMBER_OUTPUTS>; POLICY_NUMBER_INPUTS]>())
         });
 
         network.right_weights.copy_from_slice(unsafe {
-            &*((right_weights as *const [[i16; POLICY_NUMBER_OUTPUTS]; POLICY_NUMBER_INPUTS])
+            &*(ptr::from_ref(right_weights)
                 .cast::<[Accumulator<POLICY_NUMBER_OUTPUTS>; POLICY_NUMBER_INPUTS]>())
         });
 
         network.constant_weights.copy_from_slice(unsafe {
-            &*((constant_weights as *const [[i16; POLICY_NUMBER_OUTPUTS]; POLICY_NUMBER_INPUTS])
+            &*(ptr::from_ref(constant_weights)
                 .cast::<[Accumulator<POLICY_NUMBER_OUTPUTS>; POLICY_NUMBER_INPUTS]>())
         });
 

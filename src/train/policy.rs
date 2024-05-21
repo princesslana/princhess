@@ -8,8 +8,9 @@ use std::ops::AddAssign;
 
 use crate::evaluation;
 use crate::math::Rng;
+use crate::mem::boxed_and_zeroed;
 use crate::state;
-use crate::train::{boxed_and_zeroed, q_i16, randomize_sparse};
+use crate::train::{q_i16, randomize_sparse};
 
 const INPUT_SIZE: usize = state::POLICY_NUMBER_FEATURES;
 const OUTPUT_SIZE: usize = 384;

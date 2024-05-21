@@ -8,8 +8,6 @@ pub use crate::train::value::ValueNetwork;
 
 use goober::activation::Activation;
 use goober::layer::{DenseConnected, SparseConnected};
-use std::alloc::{self, Layout};
-use std::boxed::Box;
 
 use crate::math::Rng;
 
