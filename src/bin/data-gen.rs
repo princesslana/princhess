@@ -29,6 +29,9 @@ struct Stats {
     draws: AtomicU64,
     blunders: AtomicU64,
     nodes: AtomicUsize,
+    playouts: AtomicUsize,
+    depth: AtomicUsize,
+    seldepth: AtomicUsize,
 }
 
 impl Stats {
@@ -43,6 +46,9 @@ impl Stats {
             draws: AtomicU64::new(0),
             blunders: AtomicU64::new(0),
             nodes: AtomicUsize::new(0),
+            playouts: AtomicUsize::new(0),
+            depth: AtomicUsize::new(0),
+            seldepth: AtomicUsize::new(0),
         }
     }
 
@@ -85,6 +91,21 @@ impl Stats {
         self.nodes
             .fetch_add(nodes, std::sync::atomic::Ordering::Relaxed);
     }
+
+    pub fn plus_playouts(&self, playouts: usize) {
+        self.playouts
+            .fetch_add(playouts, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    pub fn plus_depth(&self, depth: usize) {
+        self.depth
+            .fetch_add(depth, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    pub fn plus_seldepth(&self, seldepth: usize) {
+        self.seldepth
+            .fetch_add(seldepth, std::sync::atomic::Ordering::Relaxed);
+    }
 }
 
 impl Display for Stats {
@@ -97,18 +118,24 @@ impl Display for Stats {
         let skipped = self.skipped.load(std::sync::atomic::Ordering::Relaxed);
         let blunders = self.blunders.load(std::sync::atomic::Ordering::Relaxed);
         let nodes = self.nodes.load(std::sync::atomic::Ordering::Relaxed);
+        let playouts = self.playouts.load(std::sync::atomic::Ordering::Relaxed);
+        let depth = self.depth.load(std::sync::atomic::Ordering::Relaxed);
+        let seldepth = self.seldepth.load(std::sync::atomic::Ordering::Relaxed);
         let seconds = self.start.elapsed().as_secs().max(1);
 
         write!(
             f,
-            "G: {:>7} | +{:>2} ={:>2} -{:>2} % | Bls: {:>2}% | S: {:>4.2}% | N/P: {:>5} | Pos: {:>5.1}m ({:>3}/g, {:>4}/s, {:>3.1}m/h)",
+            "G {:>7} | +{:>2} ={:>2} -{:>2} % | B {:>3.1}% | S {:>3.1}% | N {:>5} P {:>5} | D {:>2}/{:>2} | P {:>5.1}m ({:>3}/g, {:>4}/s, {:>3.1}m/h)",
             games,
             white_wins * 100 / games,
             draws * 100 / games,
             black_wins * 100 / games,
-            blunders * 100 / games,
+            blunders  as f32 * 100. / games as f32,
             skipped as f32 * 100. / positions as f32,
             nodes / positions as usize,
+            playouts / positions as usize,
+            depth / positions as usize,
+            seldepth / positions as usize,
             positions as f32 / 1000000.0,
             positions / games,
             positions / seconds,
@@ -194,6 +221,9 @@ fn run_game(stats: &Stats, positions: &mut Vec<TrainingPosition>, rng: &mut Rng)
             game_positions.push(position);
             stats.inc_positions();
             stats.plus_nodes(search.tree().num_nodes());
+            stats.plus_playouts(search.tree().playouts());
+            stats.plus_depth(search.tree().depth());
+            stats.plus_seldepth(search.tree().max_depth());
         }
 
         state.make_move(best_move);
