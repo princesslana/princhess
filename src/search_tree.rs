@@ -259,6 +259,13 @@ impl SearchTree {
         self.playouts.load(Ordering::Relaxed)
     }
 
+    pub fn depth(&self) -> usize {
+        match self.playouts() {
+            0 => 0,
+            _ => self.num_nodes() / self.playouts(),
+        }
+    }
+
     pub fn max_depth(&self) -> usize {
         self.max_depth.load(Ordering::Relaxed)
     }
@@ -470,7 +477,7 @@ impl SearchTree {
         let search_time_ms = time_management.elapsed().as_millis();
 
         let nodes = self.num_nodes();
-        let depth = nodes / self.playouts();
+        let depth = self.depth();
         let sel_depth = self.max_depth();
         let pv = self.principal_variation(depth.max(1));
         let pv_string: String = pv.into_iter().fold(String::new(), |mut out, x| {
