@@ -1,4 +1,3 @@
-use goober::{FeedForwardNetwork, OutputLayer, Vector};
 use std::env;
 use std::fs::{self, File};
 use std::io::{self, BufRead, BufReader, Write};
@@ -6,9 +5,11 @@ use std::path::Path;
 use std::thread;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
+use princhess::chess::MoveIndex;
 use princhess::math;
+use princhess::policy::PolicyNetwork;
 use princhess::state::State;
-use princhess::train::{PolicyNetwork, TrainingPosition};
+use princhess::train::TrainingPosition;
 
 const EPOCHS: usize = 15;
 const BATCH_SIZE: usize = 16384;
@@ -72,7 +73,7 @@ fn main() {
 
         let dir = Path::new(&dir_name);
 
-        network.to_boxed_evaluation_network().save_to_bin(dir);
+        network.save_to_bin(dir);
 
         println!("Saved to {}", dir_name);
 
@@ -116,7 +117,6 @@ fn train(
 
             let adj = 2.0 / batch.len() as f32;
 
-            //network.decay_weights(1.0 - WEIGHT_DECAY * lr);
             network.adam(&gradients, momentum, velocity, adj, lr);
 
             batch_n += 1;
@@ -174,7 +174,7 @@ fn update_gradient(
     let features = position.get_policy_features();
     let moves = position.moves();
 
-    let mut move_idxes = [0; TrainingPosition::MAX_MOVES];
+    let mut move_idxes = [MoveIndex::NONE; TrainingPosition::MAX_MOVES];
     let mut actual = [0.; TrainingPosition::MAX_MOVES];
     let mut expected = [0.; TrainingPosition::MAX_MOVES];
 
@@ -182,25 +182,8 @@ fn update_gradient(
         let (m, v) = moves[idx];
         let move_idx = state.move_to_index(m);
 
-        let c = &network.constant[move_idx]
-            .out_with_layers(&features)
-            .output_layer()[0];
-        let l = &network.left[move_idx]
-            .out_with_layers(&features)
-            .output_layer()[0];
-        let r = &network.right[move_idx]
-            .out_with_layers(&features)
-            .output_layer()[0];
-
         move_idxes[idx] = move_idx;
-        actual[idx] = c + l * r;
-
-        /*
-        expected[idx] = if m == position.best_move() {
-            1.0
-        } else {
-            0.0
-        };*/
+        actual[idx] = network.get(&features, move_idx);
         expected[idx] = f32::from(v);
     }
 
@@ -220,39 +203,10 @@ fn update_gradient(
         let error = actual - expected;
         *loss -= expected * actual.ln();
 
-        let c = &network.constant[move_idx];
-        let l = &network.left[move_idx];
-        let r = &network.right[move_idx];
-
-        let c_layers = c.out_with_layers(&features);
-        let l_layers = l.out_with_layers(&features);
-        let r_layers = r.out_with_layers(&features);
-
-        let error_v = Vector::from_raw([error]);
-
-        c.backprop(
-            &features,
-            &mut gradients.constant[move_idx],
-            error_v,
-            &c_layers,
-        );
-
-        l.backprop(
-            &features,
-            &mut gradients.left[move_idx],
-            error_v * r_layers.output_layer(),
-            &l_layers,
-        );
-
-        r.backprop(
-            &features,
-            &mut gradients.right[move_idx],
-            error_v * l_layers.output_layer(),
-            &r_layers,
-        );
+        network.backprop(&features, gradients, move_idx, error);
     }
 
-    if move_idxes[argmax(&expected)] == move_idxes[argmax(&actual)] {
+    if argmax(&expected) == argmax(&actual) {
         *acc += 1.;
     }
 }

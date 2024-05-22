@@ -1,5 +1,5 @@
-use princhess::state::State;
-use princhess::train::{PolicyNetwork, TrainingPosition};
+use princhess::state::{self, State};
+use princhess::train::TrainingPosition;
 
 use std::env;
 use std::fs::File;
@@ -17,8 +17,10 @@ fn main() {
     let capacity = 16 * TrainingPosition::SIZE;
     let mut buffer = BufReader::with_capacity(capacity, file);
 
-    let mut policy_inputs: [u64; PolicyNetwork::INPUT_SIZE] = [0; PolicyNetwork::INPUT_SIZE];
-    let mut policy_outputs: [u64; PolicyNetwork::OUTPUT_SIZE] = [0; PolicyNetwork::OUTPUT_SIZE];
+    let mut policy_inputs: [u64; state::POLICY_NUMBER_FEATURES] =
+        [0; state::POLICY_NUMBER_FEATURES];
+    let mut policy_outputs_from: [u64; 64] = [0; 64];
+    let mut policy_outputs_to: [u64; 384] = [0; 384];
 
     let mut count = 0;
 
@@ -40,7 +42,8 @@ fn main() {
 
             for (m, _) in moves.iter() {
                 let move_idx = state.move_to_index(*m);
-                policy_outputs[move_idx] += 1;
+                policy_outputs_from[move_idx.from_index()] += 1;
+                policy_outputs_to[move_idx.piece_to_index()] += 1;
             }
         }
 
@@ -61,11 +64,7 @@ fn main() {
     println!("records: {}", records);
 
     println!("policy inputs:");
-    for (idx, input) in policy_inputs
-        .iter()
-        .enumerate()
-        .take(PolicyNetwork::INPUT_SIZE)
-    {
+    for (idx, input) in policy_inputs.iter().enumerate() {
         print!(
             "{:>8}/{:>5.2}%  ",
             input,
@@ -80,12 +79,24 @@ fn main() {
         }
     }
 
-    println!("policy outputs:");
-    for (idx, output) in policy_outputs
-        .iter()
-        .enumerate()
-        .take(PolicyNetwork::OUTPUT_SIZE)
-    {
+    println!("policy outputs (from):");
+    for (idx, output) in policy_outputs_from.iter().enumerate() {
+        print!(
+            "{:>8}/{:>5.2}%  ",
+            output,
+            *output as f32 / records as f32 * 100.0
+        );
+
+        if idx % 8 == 7 {
+            println!();
+        }
+        if idx % 64 == 63 {
+            println!();
+        }
+    }
+
+    println!("policy outputs (to):");
+    for (idx, output) in policy_outputs_to.iter().enumerate() {
         print!(
             "{:>8}/{:>5.2}%  ",
             output,

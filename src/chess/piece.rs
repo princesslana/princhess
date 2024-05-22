@@ -24,6 +24,12 @@ impl From<Piece> for u8 {
     }
 }
 
+impl From<Piece> for u16 {
+    fn from(piece: Piece) -> Self {
+        u16::from(piece.0)
+    }
+}
+
 impl From<u8> for Piece {
     fn from(piece: u8) -> Self {
         Piece(piece)

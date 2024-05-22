@@ -5,10 +5,10 @@ use std::boxed::Box;
 use std::fmt::{self, Display, Formatter};
 
 use crate::evaluation;
-use crate::math::Rng;
+use crate::math::{randomize_dense, randomize_sparse, Rng};
 use crate::mem::boxed_and_zeroed;
 use crate::state;
-use crate::train::{q_i16, q_i32, randomize_dense, randomize_sparse};
+use crate::train::{q_i16, q_i32};
 
 const INPUT_SIZE: usize = state::VALUE_NUMBER_FEATURES;
 const HIDDEN_SIZE: usize = 512;
@@ -61,10 +61,10 @@ impl ValueNetwork {
             self.hidden.bias_mut()[weight_idx] *= decay;
         }
 
-        for row_idx in 0..OUTPUT_SIZE {
-            let row = self.output.weights_row_mut(row_idx);
+        for col_idx in 0..INPUT_SIZE {
+            let col = self.output.weights_col_mut(col_idx);
             for weight_idx in 0..HIDDEN_SIZE {
-                row[weight_idx] *= decay;
+                col[weight_idx] *= decay;
             }
         }
 
@@ -90,10 +90,10 @@ impl ValueNetwork {
             *bias = q_i16(self.hidden.bias()[weight_idx], QA);
         }
 
-        for (row_idx, weights) in output_weights.iter_mut().enumerate() {
-            let row = self.output.weights_row(row_idx);
-            for weight_idx in 0..HIDDEN_SIZE {
-                weights[weight_idx] = q_i16(row[weight_idx], QB);
+        for (col_idx, weights) in output_weights.iter_mut().enumerate() {
+            let col = self.output.weights_col(col_idx);
+            for weight_idx in 0..OUTPUT_SIZE {
+                weights[weight_idx] = q_i16(col[weight_idx], QB);
             }
         }
 

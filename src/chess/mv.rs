@@ -97,6 +97,37 @@ impl Move {
     }
 }
 
+#[must_use]
+#[derive(Debug, Copy, Clone)]
+pub struct MoveIndex(u16);
+
+impl MoveIndex {
+    pub const NONE: Self = Self(0);
+
+    const TO_SHIFT: u16 = 6;
+    const PIECE_SHIFT: u16 = 12;
+
+    const SQ_MASK: u16 = 0b11_1111;
+
+    pub fn new(from: Square, to: Square, piece: Piece) -> Self {
+        Self(
+            u16::from(from)
+                | (u16::from(to) << Self::TO_SHIFT)
+                | (u16::from(piece) << Self::PIECE_SHIFT),
+        )
+    }
+
+    #[must_use]
+    pub fn from_index(&self) -> usize {
+        (self.0 & Self::SQ_MASK) as usize
+    }
+
+    #[must_use]
+    pub fn piece_to_index(&self) -> usize {
+        (self.0 >> Self::TO_SHIFT) as usize
+    }
+}
+
 fn piece_to_promotion_char(piece: Piece) -> String {
     match piece {
         Piece::QUEEN => "q",

@@ -1,15 +1,16 @@
 use crate::chess::MoveList;
 use crate::math;
 use crate::mem::boxed_and_zeroed;
+use crate::policy::PolicyNetwork;
 use crate::search::SCALE;
 use crate::state::{self, State};
 use crate::tablebase::{self, Wdl};
 
+use goober::SparseVector;
 use std::fs;
 use std::io::Write;
 use std::mem;
 use std::path::Path;
-use std::ptr;
 use std::slice;
 
 #[derive(Clone, Copy, Debug)]
@@ -166,75 +167,9 @@ fn run_value_net(state: &State) -> f32 {
     (result as f32 / QAB as f32).tanh()
 }
 
-const POLICY_NUMBER_INPUTS: usize = state::POLICY_NUMBER_FEATURES;
-const POLICY_NUMBER_OUTPUTS: usize = 384;
-
-#[repr(C)]
-pub struct PolicyNetwork {
-    left_weights: [Accumulator<POLICY_NUMBER_OUTPUTS>; POLICY_NUMBER_INPUTS],
-    left_bias: Accumulator<POLICY_NUMBER_OUTPUTS>,
-    right_weights: [Accumulator<POLICY_NUMBER_OUTPUTS>; POLICY_NUMBER_INPUTS],
-    right_bias: Accumulator<POLICY_NUMBER_OUTPUTS>,
-    constant_weights: [Accumulator<POLICY_NUMBER_OUTPUTS>; POLICY_NUMBER_INPUTS],
-    constant_bias: Accumulator<POLICY_NUMBER_OUTPUTS>,
-}
-
 #[cfg(not(feature = "no-net"))]
 static POLICY_NET: PolicyNetwork =
     unsafe { std::mem::transmute(*include_bytes!("nets/policy.bin")) };
-
-impl PolicyNetwork {
-    fn boxed_and_zeroed() -> Box<Self> {
-        boxed_and_zeroed()
-    }
-
-    #[must_use]
-    #[allow(clippy::cast_ptr_alignment)]
-    pub fn from_slices(
-        left_weights: &[[i16; POLICY_NUMBER_OUTPUTS]; POLICY_NUMBER_INPUTS],
-        left_bias: &[i16; POLICY_NUMBER_OUTPUTS],
-        right_weights: &[[i16; POLICY_NUMBER_OUTPUTS]; POLICY_NUMBER_INPUTS],
-        right_bias: &[i16; POLICY_NUMBER_OUTPUTS],
-        constant_weights: &[[i16; POLICY_NUMBER_OUTPUTS]; POLICY_NUMBER_INPUTS],
-        constant_bias: &[i16; POLICY_NUMBER_OUTPUTS],
-    ) -> Box<Self> {
-        let mut network = Self::boxed_and_zeroed();
-
-        network.left_weights.copy_from_slice(unsafe {
-            &*(ptr::from_ref(left_weights)
-                .cast::<[Accumulator<POLICY_NUMBER_OUTPUTS>; POLICY_NUMBER_INPUTS]>())
-        });
-
-        network.right_weights.copy_from_slice(unsafe {
-            &*(ptr::from_ref(right_weights)
-                .cast::<[Accumulator<POLICY_NUMBER_OUTPUTS>; POLICY_NUMBER_INPUTS]>())
-        });
-
-        network.constant_weights.copy_from_slice(unsafe {
-            &*(ptr::from_ref(constant_weights)
-                .cast::<[Accumulator<POLICY_NUMBER_OUTPUTS>; POLICY_NUMBER_INPUTS]>())
-        });
-
-        network.left_bias = unsafe { std::mem::transmute(*left_bias) };
-        network.right_bias = unsafe { std::mem::transmute(*right_bias) };
-        network.constant_bias = unsafe { std::mem::transmute(*constant_bias) };
-
-        network
-    }
-
-    pub fn save_to_bin(&self, dir: &Path) {
-        let mut file = fs::File::create(dir.join("policy.bin")).expect("Failed to create file");
-
-        let size_of = mem::size_of::<Self>();
-
-        unsafe {
-            let ptr: *const Self = self;
-            let slice_ptr: *const u8 = ptr.cast::<u8>();
-            let slice = slice::from_raw_parts(slice_ptr, size_of);
-            file.write_all(slice).unwrap();
-        }
-    }
-}
 
 #[cfg(feature = "no-net")]
 fn run_policy_net(_state: &State, moves: &MoveList, _t: f32) -> Vec<f32> {
@@ -255,34 +190,11 @@ fn run_policy_net(state: &State, moves: &MoveList, t: f32) -> Vec<f32> {
         return evalns;
     }
 
-    let mut move_idxs = Vec::with_capacity(moves.len());
-    let mut acc = Vec::with_capacity(moves.len());
+    let mut features = SparseVector::with_capacity(64);
+    state.policy_features_map(|idx| features.push(idx));
 
     for m in moves {
-        let move_idx = state.move_to_index(*m);
-        move_idxs.push(move_idx);
-        acc.push((
-            POLICY_NET.constant_bias.vals[move_idx],
-            POLICY_NET.left_bias.vals[move_idx],
-            POLICY_NET.right_bias.vals[move_idx],
-        ));
-    }
-
-    state.policy_features_map(|idx| {
-        let cw = &POLICY_NET.constant_weights[idx];
-        let lw = &POLICY_NET.left_weights[idx];
-        let rw = &POLICY_NET.right_weights[idx];
-
-        for (&move_idx, (c, l, r)) in move_idxs.iter().zip(acc.iter_mut()) {
-            *c += cw.vals[move_idx];
-            *l += lw.vals[move_idx];
-            *r += rw.vals[move_idx];
-        }
-    });
-
-    for (c, l, r) in &acc {
-        let logit = QA * i32::from(*c) + i32::from(*l) * relu(*r);
-        evalns.push(logit as f32 / QAB as f32);
+        evalns.push(POLICY_NET.get(&features, state.move_to_index(*m)));
     }
 
     math::softmax(&mut evalns, t);

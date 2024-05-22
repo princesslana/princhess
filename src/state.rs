@@ -1,6 +1,6 @@
 use arrayvec::ArrayVec;
 
-use crate::chess::{Board, Color, File, Move, MoveList, Piece, Rank, Square};
+use crate::chess::{Board, Color, File, Move, MoveIndex, MoveList, Piece, Rank, Square};
 use crate::uci::Tokens;
 
 const NUMBER_KING_BUCKETS: usize = 3;
@@ -11,10 +11,7 @@ const VALUE_NUMBER_POSITION: usize = 768;
 pub const VALUE_NUMBER_FEATURES: usize =
     VALUE_NUMBER_POSITION * NUMBER_KING_BUCKETS * NUMBER_THREAT_BUCKETS;
 
-const NUMBER_PREVIOUS_MOVES: usize = 2;
-const POLICY_PREVIOUS_MOVES_OFFSET: usize = VALUE_NUMBER_FEATURES;
-
-pub const POLICY_NUMBER_FEATURES: usize = VALUE_NUMBER_FEATURES + 128 * NUMBER_PREVIOUS_MOVES;
+pub const POLICY_NUMBER_FEATURES: usize = VALUE_NUMBER_POSITION;
 
 #[must_use]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -198,7 +195,8 @@ impl State {
     where
         F: FnMut(usize),
     {
-        self.value_features_map(&mut f);
+        let stm = self.side_to_move();
+        let b = &self.board;
 
         let (flip_rank, flip_file) = self.feature_flip();
 
@@ -209,20 +207,23 @@ impl State {
             (false, false) => sq,
         };
 
-        for idx in 0..NUMBER_PREVIOUS_MOVES {
-            if let Some(mv) = self.prev_moves[idx] {
-                let from = idx * 128 + flip_square(mv.from()).index();
-                let to = idx * 128 + 64 + flip_square(mv.to()).index();
+        for sq in b.occupied() {
+            let piece = b.piece_at(sq).unwrap();
+            let color = b.color_at(sq).unwrap();
 
-                f(POLICY_PREVIOUS_MOVES_OFFSET + from);
-                f(POLICY_PREVIOUS_MOVES_OFFSET + to);
-            }
+            let sq_idx = flip_square(sq).index();
+            let piece_idx = piece.index();
+            let side_idx = usize::from(color != stm);
+
+            let index = [0, 384][side_idx] + piece_idx * 64 + sq_idx;
+
+            f(index);
         }
     }
 
-    #[must_use]
-    pub fn move_to_index(&self, mv: Move) -> usize {
+    pub fn move_to_index(&self, mv: Move) -> MoveIndex {
         let piece = self.board.piece_at(mv.from()).unwrap();
+        let from_sq = mv.from();
         let to_sq = mv.to();
 
         let (flip_rank, flip_file) = self.feature_flip();
@@ -234,9 +235,8 @@ impl State {
             (false, false) => sq,
         };
 
-        let piece_idx = piece.index();
-
         let flip_to = flip_square(to_sq);
+        let flip_from = flip_square(from_sq);
 
         let adj_to = match mv.promotion() {
             Some(Piece::KNIGHT) => Square::from_coords(flip_to.file(), Rank::_1),
@@ -244,9 +244,7 @@ impl State {
             _ => flip_to,
         };
 
-        let to_idx = adj_to.index();
-
-        piece_idx * 64 + to_idx
+        MoveIndex::new(flip_from, adj_to, piece)
     }
 }
 

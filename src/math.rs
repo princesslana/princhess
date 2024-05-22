@@ -1,3 +1,5 @@
+use goober::activation::Activation;
+use goober::layer::{DenseConnected, SparseConnected};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 pub fn softmax(arr: &mut [f32], t: f32) {
@@ -67,5 +69,33 @@ impl Default for Rng {
             .as_millis();
 
         Self::with_seed(seed as u64)
+    }
+}
+
+pub fn randomize_sparse<A: Activation, const I: usize, const O: usize>(
+    layer: &mut SparseConnected<A, I, O>,
+    rng: &mut Rng,
+) {
+    let limit = (6. / (I + O) as f32).sqrt();
+
+    for row_idx in 0..I {
+        let row = layer.weights_row_mut(row_idx);
+        for weight_idx in 0..O {
+            row[weight_idx] = rng.next_f32_range(-limit, limit);
+        }
+    }
+}
+
+pub fn randomize_dense<A: Activation, const I: usize, const O: usize>(
+    layer: &mut DenseConnected<A, I, O>,
+    rng: &mut Rng,
+) {
+    let limit = (6. / (I + O) as f32).sqrt();
+
+    for col_idx in 0..I {
+        let col = layer.weights_col_mut(col_idx);
+        for weight_idx in 0..O {
+            col[weight_idx] = rng.next_f32_range(-limit, limit);
+        }
     }
 }
