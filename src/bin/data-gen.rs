@@ -1,6 +1,9 @@
 use princhess::chess::{Board, Move};
 use princhess::math::Rng;
-use princhess::options::set_hash_size_mb;
+use princhess::options::{
+    set_cpuct, set_cpuct_root, set_hash_size_mb, set_policy_temperature,
+    set_policy_temperature_root,
+};
 use princhess::search::Search;
 use princhess::state::State;
 use princhess::tablebase::{self, Wdl};
@@ -18,6 +21,11 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 const THREADS: usize = 6;
 const DATA_WRITE_RATE: usize = 16384;
 const DFRC_PCT: u64 = 10;
+
+const CPUCT: f32 = 1.2;
+const CPUCT_ROOT: f32 = 2.4;
+const PST: f32 = 1.0;
+const PST_ROOT: f32 = 3.0;
 
 struct Stats {
     start: Instant,
@@ -292,6 +300,11 @@ fn run_game(stats: &Stats, positions: &mut Vec<TrainingPosition>, rng: &mut Rng)
 
 fn main() {
     set_hash_size_mb(128);
+
+    set_cpuct(CPUCT);
+    set_cpuct_root(CPUCT_ROOT);
+    set_policy_temperature(PST);
+    set_policy_temperature_root(PST_ROOT);
 
     tablebase::set_tablebase_directory("syzygy");
 

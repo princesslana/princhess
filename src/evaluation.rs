@@ -87,7 +87,7 @@ pub struct ValueNetwork {
     output_bias: i32,
 }
 
-#[cfg(not(feature = "no-net"))]
+#[cfg(not(feature = "no-value-net"))]
 static VALUE_NETWORK: ValueNetwork =
     unsafe { std::mem::transmute(*include_bytes!("nets/value.bin")) };
 
@@ -145,12 +145,12 @@ fn relu(x: i16) -> i32 {
     i32::from(x).max(0)
 }
 
-#[cfg(feature = "no-net")]
+#[cfg(feature = "no-value-net")]
 fn run_value_net(_state: &State) -> f32 {
     0.0
 }
 
-#[cfg(not(feature = "no-net"))]
+#[cfg(not(feature = "no-value-net"))]
 fn run_value_net(state: &State) -> f32 {
     let mut acc = VALUE_NETWORK.hidden_bias;
 
@@ -167,11 +167,11 @@ fn run_value_net(state: &State) -> f32 {
     (result as f32 / QAB as f32).tanh()
 }
 
-#[cfg(not(feature = "no-net"))]
+#[cfg(not(feature = "no-policy-net"))]
 static POLICY_NET: PolicyNetwork =
     unsafe { std::mem::transmute(*include_bytes!("nets/policy.bin")) };
 
-#[cfg(feature = "no-net")]
+#[cfg(feature = "no-policy-net")]
 fn run_policy_net(_state: &State, moves: &MoveList, _t: f32) -> Vec<f32> {
     let mut evalns = Vec::with_capacity(moves.len());
 
@@ -182,7 +182,7 @@ fn run_policy_net(_state: &State, moves: &MoveList, _t: f32) -> Vec<f32> {
     evalns
 }
 
-#[cfg(not(feature = "no-net"))]
+#[cfg(not(feature = "no-policy-net"))]
 fn run_policy_net(state: &State, moves: &MoveList, t: f32) -> Vec<f32> {
     let mut evalns = Vec::with_capacity(moves.len());
 
@@ -190,12 +190,10 @@ fn run_policy_net(state: &State, moves: &MoveList, t: f32) -> Vec<f32> {
         return evalns;
     }
 
-    let mut features = SparseVector::with_capacity(64);
+    let mut features = SparseVector::with_capacity(32);
     state.policy_features_map(|idx| features.push(idx));
 
-    for m in moves {
-        evalns.push(POLICY_NET.get(&features, state.move_to_index(*m)));
-    }
+    POLICY_NET.get_all(&features, moves.iter().map(|m| state.move_to_index(*m)), &mut evalns);
 
     math::softmax(&mut evalns, t);
 

@@ -92,6 +92,26 @@ impl PolicyNetwork {
         from.dot(piece_to)
     }
 
+    pub fn get_all<I: Iterator<Item=MoveIndex>>(
+        &self,
+        features: &SparseVector,
+        move_idxes: I,
+        out: &mut Vec<f32>,
+    ) {
+        let mut from_logits = [None; 64];
+
+        for move_idx in move_idxes {
+            let from_idx = move_idx.from_index();
+            let piece_to_idx = move_idx.piece_to_index();
+
+            let from =
+                from_logits[from_idx].get_or_insert_with(|| self.from[from_idx].out(features));
+            let piece_to = self.piece_to[piece_to_idx].out(features);
+
+            out.push(from.dot(&piece_to));
+        }
+    }
+
     pub fn adam(&mut self, g: &Self, m: &mut Self, v: &mut Self, adj: f32, lr: f32) {
         for subnet_idx in 0..64 {
             self.from[subnet_idx].adam(

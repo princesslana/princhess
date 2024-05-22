@@ -63,10 +63,10 @@ services:
     command:
       -engine cmd=/engines/princhess name=princhess
               option.CPuct=1.2 option.PolicyTemperature=1.0
-              option.CPuctRoot=3.2 option.PolicyTemperatureRoot=3.0
+              option.CPuctRoot=2.2 option.PolicyTemperatureRoot=3.0
       -engine cmd=/engines/princhess-main name=princhess-main
 
-      -each proto=uci tc=inf nodes=25000
+      -each proto=uci tc=inf nodes=1000
             option.SyzygyPath=/syzygy option.Hash=128 option.Threads=1
       -sprt elo0=0 elo1=5 alpha=0.05 beta=0.1
       -openings file=/books/4moves_noob.epd format=epd order=random
