@@ -18,19 +18,13 @@ pub const POLICY_NUMBER_FEATURES: usize = VALUE_NUMBER_POSITION;
 pub struct State {
     board: Board,
     prev_state_hashes: ArrayVec<u64, 100>,
-    prev_moves: [Option<Move>; 2],
 }
 
 impl State {
     pub fn from_board(board: Board) -> Self {
-        Self::from_board_with_prev_moves(board, [None, None])
-    }
-
-    pub fn from_board_with_prev_moves(board: Board, prev_moves: [Option<Move>; 2]) -> Self {
         Self {
             board,
             prev_state_hashes: ArrayVec::new(),
-            prev_moves,
         }
     }
 
@@ -71,7 +65,6 @@ impl State {
         Self {
             board,
             prev_state_hashes: ArrayVec::new(),
-            prev_moves: [None, None],
         }
     }
 
@@ -109,9 +102,6 @@ impl State {
 
         let is_pawn_move = piece == Piece::PAWN;
         let capture = b.piece_at(mov.to());
-
-        self.prev_moves[0] = self.prev_moves[1];
-        self.prev_moves[1] = Some(mov);
 
         if is_pawn_move || capture.is_some() {
             self.prev_state_hashes.clear();

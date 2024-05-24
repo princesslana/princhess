@@ -76,11 +76,11 @@ pub fn uci() {
     println!("option name Hash type spin min 8 max 65536 default 16");
     println!("option name Threads type spin min 1 max 255 default 1");
     println!("option name SyzygyPath type string default <empty>");
-    println!("option name CPuct type string default 1.06");
-    println!("option name CPuctRoot type string default 3.17");
+    println!("option name CPuct type string default 0.9");
+    println!("option name CPuctRoot type string default 3.0");
     println!("option name CVisitsSelection type string default 0.01");
-    println!("option name PolicyTemperature type string default 1.29");
-    println!("option name PolicyTemperatureRoot type string default 5.25");
+    println!("option name PolicyTemperature type string default 1.0");
+    println!("option name PolicyTemperatureRoot type string default 5.0");
     println!("option name UCI_Chess960 type check default false");
 
     println!("uciok");

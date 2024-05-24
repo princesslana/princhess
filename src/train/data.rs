@@ -200,22 +200,9 @@ impl From<&TrainingPosition> for State {
             pieces[piece.index()].toggle(sq);
         }
 
-        let move_to_optional = |mv: Move| {
-            if mv == Move::NONE {
-                None
-            } else {
-                Some(mv)
-            }
-        };
-
-        let prev_moves = [
-            move_to_optional(position.previous_moves[1]),
-            move_to_optional(position.previous_moves[0]),
-        ];
-
         let board = Board::from_bitboards(colors, pieces, position.stm, None, Castling::none());
 
-        State::from_board_with_prev_moves(board, prev_moves)
+        State::from_board(board)
     }
 }
 
