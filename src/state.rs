@@ -1,6 +1,6 @@
 use arrayvec::ArrayVec;
 
-use crate::chess::{Board, Color, File, Move, MoveIndex, MoveList, Piece, Rank, Square};
+use crate::chess::{Board, Color, File, Move, MoveIndex, MoveList, Piece, Square};
 use crate::uci::Tokens;
 
 const NUMBER_KING_BUCKETS: usize = 3;
@@ -11,7 +11,7 @@ const VALUE_NUMBER_POSITION: usize = 768;
 pub const VALUE_NUMBER_FEATURES: usize =
     VALUE_NUMBER_POSITION * NUMBER_KING_BUCKETS * NUMBER_THREAT_BUCKETS;
 
-pub const POLICY_NUMBER_FEATURES: usize = VALUE_NUMBER_POSITION;
+pub const POLICY_NUMBER_FEATURES: usize = VALUE_NUMBER_POSITION * NUMBER_THREAT_BUCKETS;
 
 #[must_use]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -205,7 +205,13 @@ impl State {
             let piece_idx = piece.index();
             let side_idx = usize::from(color != stm);
 
-            let index = [0, 384][side_idx] + piece_idx * 64 + sq_idx;
+            let threatened = b.is_attacked(sq, !color, occ);
+            let defended = b.is_attacked(sq, color, occ);
+
+            let bucket = usize::from(threatened) * 2 + usize::from(defended);
+            let position = [0, 384][side_idx] + piece_idx * 64 + sq_idx;
+
+            let index = bucket * 768 + position;
 
             f(index);
         }
@@ -228,13 +234,7 @@ impl State {
         let flip_to = flip_square(to_sq);
         let flip_from = flip_square(from_sq);
 
-        let adj_to = match mv.promotion() {
-            Some(Piece::KNIGHT) => Square::from_coords(flip_to.file(), Rank::_1),
-            Some(Piece::BISHOP | Piece::ROOK) => Square::from_coords(flip_to.file(), Rank::_2),
-            _ => flip_to,
-        };
-
-        MoveIndex::new(flip_from, adj_to, piece)
+        MoveIndex::new(flip_from, flip_to, piece)
     }
 }
 

@@ -5,13 +5,12 @@ use std::path::Path;
 use std::thread;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
-use princhess::chess::MoveIndex;
 use princhess::math;
 use princhess::policy::PolicyNetwork;
 use princhess::state::State;
 use princhess::train::TrainingPosition;
 
-const EPOCHS: usize = 15;
+const EPOCHS: usize = 10;
 const BATCH_SIZE: usize = 16384;
 const THREADS: usize = 6;
 const BUFFER_COUNT: usize = 1 << 16;
@@ -174,18 +173,11 @@ fn update_gradient(
     let features = position.get_policy_features();
     let moves = position.moves();
 
-    let mut move_idxes = [MoveIndex::NONE; TrainingPosition::MAX_MOVES];
-    let mut actual = [0.; TrainingPosition::MAX_MOVES];
-    let mut expected = [0.; TrainingPosition::MAX_MOVES];
+    let mut actual = Vec::with_capacity(moves.len());
 
-    for idx in 0..moves.len() {
-        let (m, v) = moves[idx];
-        let move_idx = state.move_to_index(m);
-
-        move_idxes[idx] = move_idx;
-        actual[idx] = network.get(&features, move_idx);
-        expected[idx] = f32::from(v);
-    }
+    let move_idxes = moves.iter().map(|(m, _)| state.move_to_index(*m)).collect::<Vec<_>>();
+    network.get_all(&features, move_idxes.iter().copied(), &mut actual);
+    let mut expected = moves.iter().map(|(_, v)| f32::from(*v)).collect::<Vec<_>>();
 
     math::softmax(&mut actual[..moves.len()], 1.);
 

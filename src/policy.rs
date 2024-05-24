@@ -38,14 +38,14 @@ impl SubNetwork {
 #[repr(C)]
 pub struct PolicyNetwork {
     from: [SubNetwork; 64],
-    piece_to: [SubNetwork; 384],
+    to: [SubNetwork; 64],
 }
 
 impl Display for PolicyNetwork {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let from = format!("from: [{INPUT_SIZE}->{HIDDEN_SIZE}->{ATTENTION_SIZE}; 64]");
-        let piece_to = format!("piece_to: [{INPUT_SIZE}->{HIDDEN_SIZE}->{ATTENTION_SIZE}; 384]");
-        write!(f, "{from} * {piece_to}")
+        let to = format!("to: [{INPUT_SIZE}->{HIDDEN_SIZE}->{ATTENTION_SIZE}; 64]");
+        write!(f, "{from} * {to}")
     }
 }
 
@@ -56,7 +56,7 @@ impl AddAssign<&Self> for PolicyNetwork {
             lhs_subnet.output += &rhs_subnet.output;
         }
 
-        for (lhs_subnet, rhs_subnet) in self.piece_to.iter_mut().zip(&rhs.piece_to) {
+        for (lhs_subnet, rhs_subnet) in self.to.iter_mut().zip(&rhs.to) {
             lhs_subnet.hidden += &rhs_subnet.hidden;
             lhs_subnet.output += &rhs_subnet.output;
         }
@@ -77,7 +77,7 @@ impl PolicyNetwork {
             subnetwork.randomize();
         }
 
-        for subnetwork in &mut network.piece_to {
+        for subnetwork in &mut network.to {
             subnetwork.randomize();
         }
 
@@ -87,9 +87,9 @@ impl PolicyNetwork {
     #[must_use]
     pub fn get(&self, features: &SparseVector, move_idx: MoveIndex) -> f32 {
         let from = &self.from[move_idx.from_index()].out(features);
-        let piece_to = &self.piece_to[move_idx.piece_to_index()].out(features);
+        let to = &self.to[move_idx.to_index()].out(features);
 
-        from.dot(piece_to)
+        from.dot(to)
     }
 
     pub fn get_all<I: Iterator<Item=MoveIndex>>(
@@ -99,21 +99,22 @@ impl PolicyNetwork {
         out: &mut Vec<f32>,
     ) {
         let mut from_logits = [None; 64];
+        let mut to_logits = [None; 64];
 
         for move_idx in move_idxes {
             let from_idx = move_idx.from_index();
-            let piece_to_idx = move_idx.piece_to_index();
+            let to_idx = move_idx.to_index();
 
             let from =
                 from_logits[from_idx].get_or_insert_with(|| self.from[from_idx].out(features));
-            let piece_to = self.piece_to[piece_to_idx].out(features);
+            let to = to_logits[to_idx].get_or_insert_with(|| self.to[to_idx].out(features));
 
-            out.push(from.dot(&piece_to));
+            out.push(from.dot(&to));
         }
     }
 
     pub fn adam(&mut self, g: &Self, m: &mut Self, v: &mut Self, adj: f32, lr: f32) {
-        for subnet_idx in 0..64 {
+        for subnet_idx in 0..self.from.len() {
             self.from[subnet_idx].adam(
                 &g.from[subnet_idx],
                 &mut m.from[subnet_idx],
@@ -123,11 +124,11 @@ impl PolicyNetwork {
             );
         }
 
-        for subnet_idx in 0..384 {
-            self.piece_to[subnet_idx].adam(
-                &g.piece_to[subnet_idx],
-                &mut m.piece_to[subnet_idx],
-                &mut v.piece_to[subnet_idx],
+        for subnet_idx in 0..self.to.len() {
+            self.to[subnet_idx].adam(
+                &g.to[subnet_idx],
+                &mut m.to[subnet_idx],
+                &mut v.to[subnet_idx],
                 adj,
                 lr,
             );
@@ -136,23 +137,23 @@ impl PolicyNetwork {
 
     pub fn backprop(&self, features: &SparseVector, g: &mut Self, move_idx: MoveIndex, error: f32) {
         let from = &self.from[move_idx.from_index()];
-        let piece_to = &self.piece_to[move_idx.piece_to_index()];
+        let to = &self.to[move_idx.to_index()];
 
         let from_out = from.out_with_layers(features);
-        let piece_to_out = piece_to.out_with_layers(features);
+        let to_out = to.out_with_layers(features);
 
         from.backprop(
             features,
             &mut g.from[move_idx.from_index()],
-            error * piece_to_out.output_layer(),
+            error * to_out.output_layer(),
             &from_out,
         );
 
-        piece_to.backprop(
+        to.backprop(
             features,
-            &mut g.piece_to[move_idx.piece_to_index()],
+            &mut g.to[move_idx.to_index()],
             error * from_out.output_layer(),
-            &piece_to_out,
+            &to_out,
         );
     }
 

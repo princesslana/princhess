@@ -20,7 +20,7 @@ fn main() {
     let mut policy_inputs: [u64; state::POLICY_NUMBER_FEATURES] =
         [0; state::POLICY_NUMBER_FEATURES];
     let mut policy_outputs_from: [u64; 64] = [0; 64];
-    let mut policy_outputs_to: [u64; 384] = [0; 384];
+    let mut policy_outputs_to: [u64; 64] = [0; 64];
 
     let mut count = 0;
 
@@ -43,7 +43,7 @@ fn main() {
             for (m, _) in moves.iter() {
                 let move_idx = state.move_to_index(*m);
                 policy_outputs_from[move_idx.from_index()] += 1;
-                policy_outputs_to[move_idx.piece_to_index()] += 1;
+                policy_outputs_to[move_idx.to_index()] += 1;
             }
         }
 

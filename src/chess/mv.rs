@@ -123,8 +123,8 @@ impl MoveIndex {
     }
 
     #[must_use]
-    pub fn piece_to_index(&self) -> usize {
-        (self.0 >> Self::TO_SHIFT) as usize
+    pub fn to_index(&self) -> usize {
+        ((self.0 >> Self::TO_SHIFT) & Self::SQ_MASK) as usize
     }
 }
 
