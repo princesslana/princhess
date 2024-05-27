@@ -523,7 +523,7 @@ fn select_child_after_search(children: &[MoveEdge]) -> &MoveEdge {
         let visits = child.visits();
 
         if visits == 0 {
-            return -SCALE;
+            return - (2. * SCALE) + child.policy() as f32;
         }
 
         let sum_rewards = child.sum_rewards();
