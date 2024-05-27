@@ -6,11 +6,11 @@ use std::sync::RwLock;
 static NUM_THREADS: AtomicUsize = AtomicUsize::new(1);
 static HASH_SIZE_MB: AtomicUsize = AtomicUsize::new(16);
 
-static CPUCT: Lazy<RwLock<f32>> = Lazy::new(|| RwLock::new(1.02));
-static CPUCT_ROOT: Lazy<RwLock<f32>> = Lazy::new(|| RwLock::new(4.15));
+static CPUCT: Lazy<RwLock<f32>> = Lazy::new(|| RwLock::new(1.19));
+static CPUCT_ROOT: Lazy<RwLock<f32>> = Lazy::new(|| RwLock::new(3.94));
 static CVISITS_SELECTION: Lazy<RwLock<f32>> = Lazy::new(|| RwLock::new(0.01));
-static POLICY_TEMPERATURE: Lazy<RwLock<f32>> = Lazy::new(|| RwLock::new(0.9));
-static POLICY_TEMPERATURE_ROOT: Lazy<RwLock<f32>> = Lazy::new(|| RwLock::new(4.13));
+static POLICY_TEMPERATURE: Lazy<RwLock<f32>> = Lazy::new(|| RwLock::new(0.94));
+static POLICY_TEMPERATURE_ROOT: Lazy<RwLock<f32>> = Lazy::new(|| RwLock::new(2.83));
 
 static CHESS960: AtomicBool = AtomicBool::new(false);
 

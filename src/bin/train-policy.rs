@@ -10,7 +10,7 @@ use princhess::policy::PolicyNetwork;
 use princhess::state::State;
 use princhess::train::TrainingPosition;
 
-const EPOCHS: usize = 10;
+const EPOCHS: usize = 15;
 const BATCH_SIZE: usize = 16384;
 const THREADS: usize = 6;
 const BUFFER_COUNT: usize = 1 << 16;
