@@ -1,7 +1,7 @@
 url: "https://lichess.org"
 
 engine:
-  dir: "../target/release"
+  dir: "/engines"
   name: "princhess"
   protocol: "uci"
   ponder: false
