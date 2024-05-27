@@ -17,3 +17,11 @@ jobs:
         password: ${{ secrets.DOCKER_PASSWORD }}
         repository: ianagbip1oti/princhess-lichess
         tags: latest
+    - name: Build and push Docker policy images
+      uses: docker/build-push-action@v1
+      with:
+        dockerfile: bin/Dockerfile.lichess.policy
+        username: ${{ secrets.DOCKER_USERNAME }}
+        password: ${{ secrets.DOCKER_PASSWORD }}
+        repository: ianagbip1oti/princhess-policy-lichess
+        tags: latest

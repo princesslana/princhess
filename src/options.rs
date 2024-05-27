@@ -13,6 +13,7 @@ static POLICY_TEMPERATURE: Lazy<RwLock<f32>> = Lazy::new(|| RwLock::new(1.29));
 static POLICY_TEMPERATURE_ROOT: Lazy<RwLock<f32>> = Lazy::new(|| RwLock::new(5.25));
 
 static CHESS960: AtomicBool = AtomicBool::new(false);
+static POLICY_ONLY: AtomicBool = AtomicBool::new(false);
 
 pub fn set_num_threads(threads: usize) {
     NUM_THREADS.store(threads, Ordering::Relaxed);
@@ -86,4 +87,12 @@ pub fn set_chess960(c: bool) {
 
 pub fn is_chess960() -> bool {
     CHESS960.load(Ordering::Relaxed)
+}
+
+pub fn set_policy_only(c: bool) {
+    POLICY_ONLY.store(c, Ordering::Relaxed);
+}
+
+pub fn is_policy_only() -> bool {
+    POLICY_ONLY.load(Ordering::Relaxed)
 }
