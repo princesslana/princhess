@@ -3,7 +3,7 @@ use std::time::{Duration, Instant};
 
 use crate::chess::{Color, Move};
 use crate::evaluation;
-use crate::options::{get_num_threads, get_policy_temperature};
+use crate::options::{get_num_threads, get_policy_temperature, is_policy_only};
 use crate::search_tree::{MoveEdge, PositionNode, SearchTree};
 use crate::state::State;
 use crate::tablebase;
@@ -217,6 +217,10 @@ impl Search {
             let max_think_time = r / 3;
 
             think_time = TimeManagement::from_duration(ideal_think_time.min(max_think_time));
+        }
+
+        if is_policy_only() {
+            node_limit = 1;
         }
 
         think_time.set_node_limit(node_limit);

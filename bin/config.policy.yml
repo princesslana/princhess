@@ -1,0 +1,46 @@
+url: "https://lichess.org"
+
+engine:
+  dir: "../target/release"
+  name: "princhess"
+  protocol: "uci"
+  ponder: false
+  polyglot:
+    enabled: false
+  uci_options:
+    SyzygyPath: /syzygy
+    PolicyOnly: true
+
+challenge:
+  concurrency: 1
+  sort_by: "first"
+  accept_bot: true
+  variants:
+    - standard
+    - fromPosition
+    - chess960
+  time_controls:
+    - bullet
+    - blitz
+    - rapid
+    - classical
+  modes:
+    - casual
+    - rated
+
+matchmaking:
+  allow_matchmaking: true
+  challenge_variant: random
+  challenge_timeout: 30
+  challenge_initial_time:
+    - 30
+    - 60
+    - 120
+  challenge_increment:
+    - 0
+    - 1
+    - 2
+  opponent_rating_difference: 400
+  opponent_allow_tos_violations: false
+  challenge_mode: rated
+

@@ -3,7 +3,7 @@ use std::str::{FromStr, SplitWhitespace};
 
 use crate::options::{
     set_chess960, set_cpuct, set_cpuct_root, set_cvisits_selection, set_hash_size_mb,
-    set_num_threads, set_policy_temperature, set_policy_temperature_root,
+    set_num_threads, set_policy_only, set_policy_temperature, set_policy_temperature_root,
 };
 use crate::search::Search;
 use crate::search_tree::print_size_list;
@@ -82,6 +82,7 @@ pub fn uci() {
     println!("option name PolicyTemperature type string default 1.29");
     println!("option name PolicyTemperatureRoot type string default 5.25");
     println!("option name UCI_Chess960 type check default false");
+    println!("option name PolicyOnly type check default false");
 
     println!("uciok");
 }
@@ -148,6 +149,7 @@ impl UciOption {
             "policytemperature" => self.set_option(set_policy_temperature),
             "policytemperatureroot" => self.set_option(set_policy_temperature_root),
             "uci_chess960" => self.set_option(set_chess960),
+            "policyonly" => self.set_option(set_policy_only),
             _ => println!("info string Badly formatted or unknown option"),
         }
     }
