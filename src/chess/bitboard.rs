@@ -39,6 +39,10 @@ impl Bitboard {
         self.0 ^= 1 << square.index();
     }
 
+    pub fn and_not_square(self, square: Square) -> Self {
+        Self(self.0 & !(1 << square.index()))
+    }
+
     pub fn or_square(self, square: Square) -> Self {
         Self(self.0 | (1 << square.index()))
     }

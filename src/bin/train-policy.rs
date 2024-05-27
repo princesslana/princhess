@@ -175,8 +175,13 @@ fn update_gradient(
 
     let mut actual = Vec::with_capacity(moves.len());
 
-    let move_idxes = moves.iter().map(|(m, _)| state.move_to_index(*m)).collect::<Vec<_>>();
+    let move_idxes = moves
+        .iter()
+        .map(|(m, _)| state.move_to_index(*m))
+        .collect::<Vec<_>>();
+
     network.get_all(&features, move_idxes.iter().copied(), &mut actual);
+
     let mut expected = moves.iter().map(|(_, v)| f32::from(*v)).collect::<Vec<_>>();
 
     math::softmax(&mut actual[..moves.len()], 1.);

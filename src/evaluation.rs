@@ -193,7 +193,9 @@ fn run_policy_net(state: &State, moves: &MoveList, t: f32) -> Vec<f32> {
     let mut features = SparseVector::with_capacity(32);
     state.policy_features_map(|idx| features.push(idx));
 
-    POLICY_NET.get_all(&features, moves.iter().map(|m| state.move_to_index(*m)), &mut evalns);
+    POLICY_NET.get_all(&features,
+                       moves.iter().map(|m| state.move_to_index(*m)),
+                       &mut evalns);
 
     math::softmax(&mut evalns, t);
 

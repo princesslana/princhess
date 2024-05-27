@@ -216,6 +216,7 @@ impl State {
         let b = self.board;
         let color = b.color_at(mv.from()).unwrap();
 
+        let piece = mv.promotion().unwrap_or_else(|| b.piece_at(mv.from()).unwrap());
         let from_sq = mv.from();
         let to_sq = mv.to();
 
@@ -231,7 +232,7 @@ impl State {
         let flip_to = flip_square(to_sq);
         let flip_from = flip_square(from_sq);
 
-        let mut mi = MoveIndex::new(flip_from, flip_to);
+        let mut mi = MoveIndex::new(piece, flip_from, flip_to);
 
         if b.is_attacked(from_sq, !color, b.occupied()) {
             mi.set_from_threat();
@@ -245,10 +246,7 @@ impl State {
             mi.set_to_threat();
         }
 
-        if b.attackers(to_sq, color, b.occupied().and_not_square(from_sq))
-            .and_not_square(from_sq)
-            .any()
-        {
+        if (b.attackers(to_sq, color, b.occupied()) & !Bitboard::from(from_sq)).any() {
             mi.set_to_defend();
         }
 

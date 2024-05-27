@@ -37,14 +37,20 @@ impl SubNetwork {
 #[allow(clippy::module_name_repetitions)]
 #[repr(C)]
 pub struct PolicyNetwork {
-    from: [SubNetwork; 64],
-    to: [SubNetwork; 64],
+    from: [SubNetwork; MoveIndex::FROM_COUNT],
+    to: [SubNetwork; MoveIndex::TO_COUNT],
 }
 
 impl Display for PolicyNetwork {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let from = format!("from: [{INPUT_SIZE}->{HIDDEN_SIZE}->{ATTENTION_SIZE}; 64]");
-        let to = format!("to: [{INPUT_SIZE}->{HIDDEN_SIZE}->{ATTENTION_SIZE}; 64]");
+        let from = format!(
+            "from: [{INPUT_SIZE}->{HIDDEN_SIZE}->{ATTENTION_SIZE}; {}]",
+            MoveIndex::FROM_COUNT
+        );
+        let to = format!(
+            "to: [{INPUT_SIZE}->{HIDDEN_SIZE}->{ATTENTION_SIZE}; {}]",
+            MoveIndex::TO_COUNT
+        );
         write!(f, "{from} * {to}")
     }
 }
@@ -98,8 +104,8 @@ impl PolicyNetwork {
         move_idxes: I,
         out: &mut Vec<f32>,
     ) {
-        let mut from_logits = [None; 64];
-        let mut to_logits = [None; 64];
+        let mut from_logits = [None; MoveIndex::FROM_COUNT];
+        let mut to_logits = [None; MoveIndex::TO_COUNT];
 
         for move_idx in move_idxes {
             let from_idx = move_idx.from_index();

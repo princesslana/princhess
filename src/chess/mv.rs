@@ -99,32 +99,56 @@ impl Move {
 
 #[must_use]
 #[derive(Debug, Copy, Clone)]
-pub struct MoveIndex(u16);
+pub struct MoveIndex {
+    from_sq: Square,
+    to_sq: Square,
+    from_threat: bool,
+    from_defend: bool,
+    to_threat: bool,
+    to_defend: bool,
+}
 
 impl MoveIndex {
-    pub const NONE: Self = Self(0);
+    pub const FROM_COUNT: usize = 64 * 4;
+    pub const TO_COUNT: usize = 64 * 4;
 
-    const TO_SHIFT: u16 = 6;
-    const PIECE_SHIFT: u16 = 12;
+    pub fn new(from: Square, to: Square) -> Self {
+        Self {
+            from_sq: from,
+            to_sq: to,
+            from_threat: false,
+            from_defend: false,
+            to_threat: false,
+            to_defend: false,
+        }
+    }
 
-    const SQ_MASK: u16 = 0b11_1111;
+    pub fn set_from_threat(&mut self) {
+        self.from_threat = true;
+    }
 
-    pub fn new(from: Square, to: Square, piece: Piece) -> Self {
-        Self(
-            u16::from(from)
-                | (u16::from(to) << Self::TO_SHIFT)
-                | (u16::from(piece) << Self::PIECE_SHIFT),
-        )
+    pub fn set_from_defend(&mut self) {
+        self.from_defend = true;
+    }
+
+    pub fn set_to_threat(&mut self) {
+        self.to_threat = true;
+    }
+
+    pub fn set_to_defend(&mut self) {
+        self.to_defend = true;
     }
 
     #[must_use]
     pub fn from_index(&self) -> usize {
-        (self.0 & Self::SQ_MASK) as usize
+        let threat_bucket = usize::from(self.from_threat) * 2 + usize::from(self.from_defend);
+        self.from_sq.index() + threat_bucket * 64
     }
 
     #[must_use]
     pub fn to_index(&self) -> usize {
-        ((self.0 >> Self::TO_SHIFT) & Self::SQ_MASK) as usize
+        let threat_bucket = usize::from(self.to_threat) * 2 + usize::from(self.to_defend);
+        self.to_sq.index() + threat_bucket * 64
     }
 }
 
