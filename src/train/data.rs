@@ -31,7 +31,7 @@ const _SIZE_CHECK: () = assert!(mem::size_of::<TrainingPosition>() == 256);
 
 impl TrainingPosition {
     pub const MAX_MOVES: usize = 72;
-    pub const MAX_VISITS: u32 = 2048;
+    pub const MAX_VISITS: u32 = 1024;
     pub const SIZE: usize = mem::size_of::<Self>();
 
     pub fn write_batch(out: &mut BufWriter<File>, data: &[TrainingPosition]) -> io::Result<()> {
@@ -141,8 +141,10 @@ impl From<&SearchTree> for TrainingPosition {
             .take_while(|(m, _)| *m != Move::NONE)
             .enumerate()
         {
+            let vs = vs.min(&Self::MAX_VISITS);
+
             assert!(*vs <= Self::MAX_VISITS);
-            assert!(u8::try_from(*vs * u32::from(u8::MAX) / Self::MAX_VISITS).is_ok());
+            assert!(u8::try_from(vs * u32::from(u8::MAX) / Self::MAX_VISITS).is_ok());
 
             if *vs > max_visits {
                 max_visits = *vs;

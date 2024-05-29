@@ -4,13 +4,13 @@ services:
       context: .
       dockerfile: bin/Dockerfile.cutechess-cli
     command:
+      -engine cmd=/engines/princhess-main name=princhess-main
       -engine cmd=/engines/princhess-0.16.0 name=princhess-0.16.0
-      -engine cmd=/engines/princhess-0.15.0 name=princhess-0.15.0
 
       -each proto=uci tc=8+0.08
             option.SyzygyPath=/syzygy option.Hash=128 option.Threads=1
       -openings file=/books/8moves_v3.epd format=epd order=random
-      -games 2 -repeat -rounds 1000
+      -games 2 -repeat -rounds 250
       -recover -ratinginterval 10 -concurrency 6
     volumes:
       - ./target/release/princhess:/engines/princhess

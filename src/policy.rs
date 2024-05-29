@@ -98,7 +98,7 @@ impl PolicyNetwork {
         from.dot(to)
     }
 
-    pub fn get_all<I: Iterator<Item=MoveIndex>>(
+    pub fn get_all<I: Iterator<Item = MoveIndex>>(
         &self,
         features: &SparseVector,
         move_idxes: I,
