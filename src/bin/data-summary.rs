@@ -1,3 +1,4 @@
+use princhess::chess::MoveIndex;
 use princhess::state::{self, State};
 use princhess::train::TrainingPosition;
 
@@ -19,8 +20,8 @@ fn main() {
 
     let mut policy_inputs: [u64; state::POLICY_NUMBER_FEATURES] =
         [0; state::POLICY_NUMBER_FEATURES];
-    let mut policy_outputs_from: [u64; 64] = [0; 64];
-    let mut policy_outputs_to: [u64; 64] = [0; 64];
+    let mut policy_outputs_from: [u64; MoveIndex::FROM_COUNT] = [0; MoveIndex::FROM_COUNT];
+    let mut policy_outputs_to: [u64; MoveIndex::TO_COUNT] = [0; MoveIndex::TO_COUNT];
 
     let mut count = 0;
 

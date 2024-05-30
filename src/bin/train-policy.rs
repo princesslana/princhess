@@ -10,14 +10,12 @@ use princhess::policy::PolicyNetwork;
 use princhess::state::State;
 use princhess::train::TrainingPosition;
 
-const EPOCHS: usize = 15;
+const EPOCHS: usize = 8;
 const BATCH_SIZE: usize = 16384;
 const THREADS: usize = 6;
 const BUFFER_COUNT: usize = 1 << 16;
 
 const LR: f32 = 0.001;
-const LR_DROP_AT: usize = EPOCHS * 2 / 3;
-const LR_DROP_FACTOR: f32 = 0.1;
 
 fn main() {
     println!("Running...");
@@ -31,7 +29,7 @@ fn main() {
 
     let mut network = PolicyNetwork::random();
 
-    let mut lr = LR;
+    let lr = LR;
     let mut momentum = PolicyNetwork::zeroed();
     let mut velocity = PolicyNetwork::zeroed();
 
@@ -75,10 +73,6 @@ fn main() {
         network.save_to_bin(dir);
 
         println!("Saved to {}", dir_name);
-
-        if epoch % LR_DROP_AT == 0 {
-            lr *= LR_DROP_FACTOR;
-        }
     }
 }
 
