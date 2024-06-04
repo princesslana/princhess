@@ -162,7 +162,7 @@ fn run_value_net(state: &State) -> f32 {
         result += relu(x) * i32::from(w);
     }
 
-    result = result * (200 - state.fifty_move_counter() as i32) / 200;
+    result -= result * (state.fifty_move_counter() - 36).max(0) as i32 / 128;
 
     (result as f32 / QAB as f32).tanh()
 }
