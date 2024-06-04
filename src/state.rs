@@ -131,6 +131,10 @@ impl State {
         self.prev_state_hashes.len()
     }
 
+    pub fn fifty_move_counter(&self) -> usize {
+        self.prev_state_hashes.len()
+    }
+
     #[must_use]
     pub fn drawn_by_fifty_move_rule(&self) -> bool {
         self.prev_state_hashes.len() >= 100
