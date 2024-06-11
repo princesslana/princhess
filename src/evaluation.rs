@@ -149,6 +149,7 @@ fn run_value_net(_state: &State) -> f32 {
 }
 
 #[cfg(not(feature = "no-net"))]
+#[allow(clippy::cast_possible_wrap)]
 fn run_value_net(state: &State) -> f32 {
     let mut acc = VALUE_NETWORK.hidden_bias;
 

@@ -65,12 +65,14 @@ services:
       -engine cmd=/engines/princhess name=princhess
       -engine cmd=/engines/princhess-main name=princhess-main
 
-      -each proto=uci tc=60+1
+      -each proto=uci tc=40+0.4
             option.SyzygyPath=/syzygy option.Hash=128 option.Threads=1
       -sprt elo0=0 elo1=5 alpha=0.1 beta=0.2
       -openings file=/books/4moves_noob.epd format=epd order=random
       -games 2 -repeat -rounds 7500
       -recover -ratinginterval 10 -concurrency 6
+      -resign movecount=3 score=500 twosided=true
+      -draw movenumber=40 movecount=8 score=15
     volumes:
       - ./target/release/princhess:/engines/princhess
       - ./builds/princhess-main:/engines/princhess-main
