@@ -10,7 +10,7 @@ use crate::arena::Error as ArenaError;
 use crate::chess;
 use crate::evaluation::{self, Flag};
 use crate::options::{
-    get_cpuct, get_cpuct_root, get_cvisits_selection, get_policy_temperature,
+    get_cpuct, get_cpuct_tau, get_cvisits_selection, get_policy_temperature,
     get_policy_temperature_root,
 };
 use crate::search::{eval_in_cp, ThreadData};
@@ -28,7 +28,7 @@ pub struct SearchTree {
     root_state: State,
 
     cpuct: f32,
-    cpuct_root: f32,
+    cpuct_tau: f32,
     policy_t: f32,
 
     #[allow(dead_code)]
@@ -226,7 +226,7 @@ impl SearchTree {
             root_state: state,
             root_node,
             cpuct: get_cpuct(),
-            cpuct_root: get_cpuct_root(),
+            cpuct_tau: get_cpuct_tau(),
             policy_t: get_policy_temperature(),
             root_table,
             ttable: table,
@@ -306,15 +306,11 @@ impl SearchTree {
                 break;
             }
 
-            let is_root = path.is_empty();
-
-            let cpuct = if is_root { self.cpuct_root } else { self.cpuct };
-
             let fpu = path
                 .last()
                 .map_or(0, |x| -x.sum_rewards() / i64::from(x.visits()));
 
-            let choice = tree_policy::choose_child(node.hots(), cpuct, fpu);
+            let choice = tree_policy::choose_child(node.hots(), self.cpuct, self.cpuct_tau, fpu);
             choice.down();
             path.push(choice);
             state.make_move(choice.mov);
@@ -523,7 +519,7 @@ fn select_child_after_search(children: &[MoveEdge]) -> &MoveEdge {
         let visits = child.visits();
 
         if visits == 0 {
-            return - (2. * SCALE) + child.policy() as f32;
+            return -(2. * SCALE) + f32::from(child.policy());
         }
 
         let sum_rewards = child.sum_rewards();

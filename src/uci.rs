@@ -2,7 +2,7 @@ use std::io::stdin;
 use std::str::{FromStr, SplitWhitespace};
 
 use crate::options::{
-    set_chess960, set_cpuct, set_cpuct_root, set_cvisits_selection, set_hash_size_mb,
+    set_chess960, set_cpuct, set_cpuct_tau, set_cvisits_selection, set_hash_size_mb,
     set_num_threads, set_policy_only, set_policy_temperature, set_policy_temperature_root,
 };
 use crate::search::Search;
@@ -76,11 +76,11 @@ pub fn uci() {
     println!("option name Hash type spin min 8 max 65536 default 16");
     println!("option name Threads type spin min 1 max 255 default 1");
     println!("option name SyzygyPath type string default <empty>");
-    println!("option name CPuct type string default 1.06");
-    println!("option name CPuctRoot type string default 3.17");
+    println!("option name CPuct type string default 0.16");
+    println!("option name CPuctTau type string default 0.84");
     println!("option name CVisitsSelection type string default 0.01");
-    println!("option name PolicyTemperature type string default 1.29");
-    println!("option name PolicyTemperatureRoot type string default 5.25");
+    println!("option name PolicyTemperature type string default 1.23");
+    println!("option name PolicyTemperatureRoot type string default 14.5");
     println!("option name UCI_Chess960 type check default false");
     println!("option name PolicyOnly type check default false");
 
@@ -144,7 +144,7 @@ impl UciOption {
                 search.reset_table();
             }
             "cpuct" => self.set_option(set_cpuct),
-            "cpuctroot" => self.set_option(set_cpuct_root),
+            "cpucttau" => self.set_option(set_cpuct_tau),
             "cvisitsselection" => self.set_option(set_cvisits_selection),
             "policytemperature" => self.set_option(set_policy_temperature),
             "policytemperatureroot" => self.set_option(set_policy_temperature_root),

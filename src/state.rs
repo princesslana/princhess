@@ -131,6 +131,7 @@ impl State {
         self.prev_state_hashes.len()
     }
 
+    #[must_use]
     pub fn fifty_move_counter(&self) -> usize {
         self.prev_state_hashes.len()
     }
