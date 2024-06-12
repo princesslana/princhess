@@ -40,7 +40,7 @@ pub fn probe_wdl(b: &Board) -> Option<Wdl> {
         return None;
     }
 
-    if b.is_castling_rights() || b.ep_square().is_some() {
+    if b.is_castling_rights() || b.ep_square() != Square::NONE {
         return None;
     }
 
@@ -76,7 +76,7 @@ pub fn probe_best_move(b: &Board) -> Option<(Move, Wdl)> {
         return None;
     }
 
-    if b.is_castling_rights() || b.ep_square().is_some() {
+    if b.is_castling_rights() || b.ep_square() != Square::NONE {
         return None;
     }
 

@@ -1,4 +1,3 @@
-use core::mem;
 use std::ops::ControlFlow;
 
 use crate::chess::movegen::MoveGen;
@@ -14,7 +13,7 @@ pub struct Board {
     colors: [Bitboard; Color::COUNT],
     pieces: [Bitboard; Piece::COUNT],
     stm: Color,
-    ep: Option<Square>,
+    ep: Square,
     castling: Castling,
     hash: u64,
 }
@@ -25,7 +24,7 @@ impl Board {
             colors: [Bitboard::EMPTY; Color::COUNT],
             pieces: [Bitboard::EMPTY; Piece::COUNT],
             stm: Color::WHITE,
-            ep: None,
+            ep: Square::NONE,
             castling: Castling::default(),
             hash: 0,
         }
@@ -85,7 +84,7 @@ impl Board {
         colors: [Bitboard; Color::COUNT],
         pieces: [Bitboard; Piece::COUNT],
         stm: Color,
-        ep: Option<Square>,
+        ep: Square,
         castling: Castling,
     ) -> Self {
         let mut board = Self::empty();
@@ -145,8 +144,8 @@ impl Board {
         board.castling = Castling::from_fen(&board, fen_castling);
 
         board.ep = match fen_ep {
-            "-" => None,
-            s => Some(Square::from_uci(s)),
+            "-" => Square::NONE,
+            s => Square::from_uci(s),
         };
 
         board.hash = board.generate_zobrist_hash();
@@ -206,19 +205,17 @@ impl Board {
         self.castling
     }
 
-    #[must_use]
-    pub fn color_at(&self, sq: Square) -> Option<Color> {
+    pub fn color_at(&self, sq: Square) -> Color {
         if self.colors[0].contains(sq) {
-            Some(Color::WHITE)
+            Color::WHITE
         } else if self.colors[1].contains(sq) {
-            Some(Color::BLACK)
+            Color::BLACK
         } else {
-            None
+            panic!("no color at square {sq}");
         }
     }
 
-    #[must_use]
-    pub fn ep_square(&self) -> Option<Square> {
+    pub fn ep_square(&self) -> Square {
         self.ep
     }
 
@@ -285,7 +282,7 @@ impl Board {
 
     pub fn make_move(&mut self, mov: Move) {
         let color = self.stm;
-        let piece = self.piece_at(mov.from()).unwrap();
+        let piece = self.piece_at(mov.from());
         let capture = self.piece_at(mov.to());
 
         self.flip_side_to_move();
@@ -315,27 +312,26 @@ impl Board {
             self.toggle(color, piece, mov.from());
             self.toggle(color, promotion, mov.to());
 
-            if let Some(capture) = capture {
+            if capture != Piece::NONE {
                 self.toggle(!color, capture, mov.to());
             }
         } else {
             self.toggle(color, piece, mov.from());
             self.toggle(color, piece, mov.to());
 
-            if let Some(capture) = capture {
+            if capture != Piece::NONE {
                 self.toggle(!color, capture, mov.to());
             }
         }
     }
 
-    #[must_use]
-    pub fn piece_at(&self, sq: Square) -> Option<Piece> {
+    pub fn piece_at(&self, sq: Square) -> Piece {
         for idx in 0..self.pieces.len() {
             if self.pieces[idx].contains(sq) {
-                return Some(Piece::from(idx));
+                return Piece::from(idx);
             }
         }
-        None
+        Piece::NONE
     }
 
     pub fn side_to_move(&self) -> Color {
@@ -356,28 +352,30 @@ impl Board {
                     || from_rank == Rank::_7 && to_rank == Rank::_5;
 
                 if is_double_push {
-                    Some(color.fold(
+                    color.fold(
                         mov.from().with_rank(Rank::_3),
                         mov.from().with_rank(Rank::_6),
-                    ))
+                    )
                 } else {
-                    None
+                    Square::NONE
                 }
             }
-            _ => None,
+            _ => Square::NONE,
         };
 
-        if let Some(ep) = mem::replace(&mut self.ep, new_ep) {
-            self.hash ^= zobrist::ep(ep.file());
+        if self.ep != Square::NONE {
+            self.hash ^= zobrist::ep(self.ep.file());
         }
 
-        if let Some(ep) = self.ep {
-            self.hash ^= zobrist::ep(ep.file());
+        if new_ep != Square::NONE {
+            self.hash ^= zobrist::ep(new_ep.file());
         }
+
+        self.ep = new_ep;
     }
 
-    fn update_castling(&mut self, color: Color, piece: Piece, mov: Move, capture: Option<Piece>) {
-        if piece != Piece::KING && piece != Piece::ROOK && capture != Some(Piece::ROOK) {
+    fn update_castling(&mut self, color: Color, piece: Piece, mov: Move, capture: Piece) {
+        if piece != Piece::KING && piece != Piece::ROOK && capture != Piece::ROOK {
             return;
         }
 
@@ -389,7 +387,7 @@ impl Board {
             _ => (),
         }
 
-        if let Some(Piece::ROOK) = capture {
+        if capture == Piece::ROOK {
             self.castling.discard_rook(mov.to());
         }
 
@@ -407,14 +405,14 @@ impl Board {
         let mut hash = 0;
 
         for sq in self.occupied() {
-            let piece = self.piece_at(sq).unwrap();
-            let color = self.color_at(sq).unwrap();
+            let piece = self.piece_at(sq);
+            let color = self.color_at(sq);
 
             hash ^= zobrist::piece(color, piece, sq);
         }
 
-        if let Some(ep) = self.ep {
-            hash ^= zobrist::ep(ep.file());
+        if self.ep != Square::NONE {
+            hash ^= zobrist::ep(self.ep.file());
         }
 
         hash ^= self.castling.hash();

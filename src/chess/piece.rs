@@ -10,6 +10,8 @@ impl Piece {
     pub const QUEEN: Piece = Piece(4);
     pub const KING: Piece = Piece(5);
 
+    pub const NONE: Piece = Piece(u8::MAX);
+
     pub const COUNT: usize = 6;
 
     #[must_use]

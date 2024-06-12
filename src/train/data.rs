@@ -1,4 +1,4 @@
-use crate::chess::{Bitboard, Board, Castling, Color, Move, Piece};
+use crate::chess::{Bitboard, Board, Castling, Color, Move, Piece, Square};
 use crate::search::SCALE;
 use crate::search_tree::SearchTree;
 use crate::state::State;
@@ -99,8 +99,8 @@ impl From<&SearchTree> for TrainingPosition {
         let mut pieces = [0; 16];
 
         for (idx, sq) in occupied.into_iter().enumerate() {
-            let color = u8::from(board.color_at(sq).unwrap()) << 3;
-            let piece = board.piece_at(sq).unwrap();
+            let color = u8::from(board.color_at(sq)) << 3;
+            let piece = board.piece_at(sq);
 
             let pc = color | u8::from(piece);
 
@@ -195,7 +195,7 @@ impl From<&TrainingPosition> for State {
             move_to_optional(position.previous_moves[0]),
         ];
 
-        let board = Board::from_bitboards(colors, pieces, position.stm, None, Castling::none());
+        let board = Board::from_bitboards(colors, pieces, position.stm, Square::NONE, Castling::none());
 
         State::from_board_with_prev_moves(board, prev_moves)
     }

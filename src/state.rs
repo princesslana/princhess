@@ -109,7 +109,7 @@ impl State {
 
     pub fn make_move(&mut self, mov: Move) {
         let b = &self.board;
-        let piece = b.piece_at(mov.from()).unwrap();
+        let piece = b.piece_at(mov.from());
 
         let is_pawn_move = piece == Piece::PAWN;
         let capture = b.piece_at(mov.to());
@@ -117,7 +117,7 @@ impl State {
         self.prev_moves[0] = self.prev_moves[1];
         self.prev_moves[1] = Some(mov);
 
-        if is_pawn_move || capture.is_some() {
+        if is_pawn_move || capture != Piece::NONE {
             self.prev_state_hashes.clear();
         } else {
             self.prev_state_hashes.push(self.hash());
@@ -180,8 +180,8 @@ impl State {
         let king_bucket = KING_BUCKETS[flip_square(b.king_of(stm)).index()];
 
         for sq in b.occupied() {
-            let piece = b.piece_at(sq).unwrap();
-            let color = b.color_at(sq).unwrap();
+            let piece = b.piece_at(sq);
+            let color = b.color_at(sq);
 
             let sq_idx = flip_square(sq).index();
             let piece_idx = piece.index();
@@ -225,8 +225,8 @@ impl State {
         };
 
         for sq in b.occupied() {
-            let piece = b.piece_at(sq).unwrap();
-            let color = b.color_at(sq).unwrap();
+            let piece = b.piece_at(sq);
+            let color = b.color_at(sq);
 
             f(OFFSET_POSITION + feature_idx(sq, piece, color));
 
@@ -264,7 +264,7 @@ impl State {
 
     #[must_use]
     pub fn move_to_index(&self, mv: Move) -> usize {
-        let piece = self.board.piece_at(mv.from()).unwrap();
+        let piece = self.board.piece_at(mv.from());
         let to_sq = mv.to();
 
         let (flip_rank, flip_file) = self.feature_flip();

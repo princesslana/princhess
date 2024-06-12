@@ -142,7 +142,7 @@ impl MoveGen<'_> {
             }
         }
 
-        if self.board.ep_square().is_some() {
+        if self.board.ep_square() != Square::NONE {
             shortcircuit!(self.gen_en_passant(&mut f));
         }
 
@@ -153,7 +153,7 @@ impl MoveGen<'_> {
     where
         F: FnMut(Move) -> ControlFlow<R>,
     {
-        let ep_sq = self.board.ep_square().unwrap();
+        let ep_sq = self.board.ep_square();
 
         let pieces = attacks::pawn(!self.us(), ep_sq) & self.board.pawns() & self.us_pieces();
         let to = ep_sq;
@@ -213,23 +213,23 @@ impl MoveGen<'_> {
         let back_rank = us.fold(Rank::_1, Rank::_8);
         let king_from = self.board.king_of(us);
 
-        let (king_side, queen_side) = self.board.castling_rights().by_color(self.us());
+        let (king_side_rook, queen_side_rook) = self.board.castling_rights().by_color(self.us());
 
-        if let Some(rook_from) = king_side {
+        if king_side_rook != Square::NONE {
             let king_to = Square::from_coords(File::G, back_rank);
             let rook_to = Square::from_coords(File::F, back_rank);
 
-            if self.can_castle(rook_from, king_to, rook_to) {
-                shortcircuit!(f(Move::new_castle(king_from, rook_from)));
+            if self.can_castle(king_side_rook, king_to, rook_to) {
+                shortcircuit!(f(Move::new_castle(king_from, king_side_rook)));
             }
         }
 
-        if let Some(rook_from) = queen_side {
+        if queen_side_rook != Square::NONE {
             let king_to = Square::from_coords(File::C, back_rank);
             let rook_to = Square::from_coords(File::D, back_rank);
 
-            if self.can_castle(rook_from, king_to, rook_to) {
-                shortcircuit!(f(Move::new_castle(king_from, rook_from)));
+            if self.can_castle(queen_side_rook, king_to, rook_to) {
+                shortcircuit!(f(Move::new_castle(king_from, queen_side_rook)));
             }
         }
 
