@@ -3,10 +3,10 @@ use crate::chess::{zobrist, Board, Color, File, Rank, Square};
 #[must_use]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Castling {
-    white_king: Option<Square>,
-    white_queen: Option<Square>,
-    black_king: Option<Square>,
-    black_queen: Option<Square>,
+    white_king: Square,
+    white_queen: Square,
+    black_king: Square,
+    black_queen: Square,
 }
 
 impl Castling {
@@ -17,19 +17,19 @@ impl Castling {
 
     pub fn none() -> Self {
         Self {
-            white_king: None,
-            white_queen: None,
-            black_king: None,
-            black_queen: None,
+            white_king: Square::NONE,
+            white_queen: Square::NONE,
+            black_king: Square::NONE,
+            black_queen: Square::NONE,
         }
     }
 
     pub fn from_squares(wk: Square, wq: Square, bk: Square, bq: Square) -> Self {
         Self {
-            white_king: Some(wk),
-            white_queen: Some(wq),
-            black_king: Some(bk),
-            black_queen: Some(bq),
+            white_king: wk,
+            white_queen: wq,
+            black_king: bk,
+            black_queen: bq,
         }
     }
 
@@ -40,18 +40,18 @@ impl Castling {
 
         for c in chars {
             match c {
-                b'K' => castling.white_king = Some(Square::H1),
-                b'Q' => castling.white_queen = Some(Square::A1),
-                b'k' => castling.black_king = Some(Square::H8),
-                b'q' => castling.black_queen = Some(Square::A8),
+                b'K' => castling.white_king = Square::H1,
+                b'Q' => castling.white_queen = Square::A1,
+                b'k' => castling.black_king = Square::H8,
+                b'q' => castling.black_queen = Square::A8,
                 b'A'..=b'H' => {
                     let king_file = board.king_of(Color::WHITE).file();
                     let rook_file = File::from(c - b'A');
 
                     if rook_file < king_file {
-                        castling.white_queen = Some(Square::from_coords(rook_file, Rank::_1));
+                        castling.white_queen = Square::from_coords(rook_file, Rank::_1);
                     } else {
-                        castling.white_king = Some(Square::from_coords(rook_file, Rank::_1));
+                        castling.white_king = Square::from_coords(rook_file, Rank::_1);
                     }
                 }
                 b'a'..=b'h' => {
@@ -59,9 +59,9 @@ impl Castling {
                     let rook_file = File::from(c - b'a');
 
                     if rook_file < king_file {
-                        castling.black_queen = Some(Square::from_coords(rook_file, Rank::_8));
+                        castling.black_queen = Square::from_coords(rook_file, Rank::_8);
                     } else {
-                        castling.black_king = Some(Square::from_coords(rook_file, Rank::_8));
+                        castling.black_king = Square::from_coords(rook_file, Rank::_8);
                     }
                 }
                 _ => {}
@@ -73,14 +73,13 @@ impl Castling {
 
     #[must_use]
     pub fn any(self) -> bool {
-        self.white_king.is_some()
-            || self.white_queen.is_some()
-            || self.black_king.is_some()
-            || self.black_queen.is_some()
+        self.white_king != Square::NONE
+            || self.white_queen != Square::NONE
+            || self.black_king != Square::NONE
+            || self.black_queen != Square::NONE
     }
 
-    #[must_use]
-    pub fn by_color(self, color: Color) -> (Option<Square>, Option<Square>) {
+    pub fn by_color(self, color: Color) -> (Square, Square) {
         match color {
             Color::WHITE => (self.white_king, self.white_queen),
             Color::BLACK => (self.black_king, self.black_queen),
@@ -90,28 +89,28 @@ impl Castling {
     pub fn discard_color(&mut self, color: Color) {
         match color {
             Color::WHITE => {
-                self.white_king = None;
-                self.white_queen = None;
+                self.white_king = Square::NONE;
+                self.white_queen = Square::NONE;
             }
             Color::BLACK => {
-                self.black_king = None;
-                self.black_queen = None;
+                self.black_king = Square::NONE;
+                self.black_queen = Square::NONE;
             }
         }
     }
 
     pub fn discard_rook(&mut self, sq: Square) {
-        if self.white_king == Some(sq) {
-            self.white_king = None;
+        if self.white_king == sq {
+            self.white_king = Square::NONE;
         }
-        if self.white_queen == Some(sq) {
-            self.white_queen = None;
+        if self.white_queen == sq {
+            self.white_queen = Square::NONE;
         }
-        if self.black_king == Some(sq) {
-            self.black_king = None;
+        if self.black_king == sq {
+            self.black_king = Square::NONE;
         }
-        if self.black_queen == Some(sq) {
-            self.black_queen = None;
+        if self.black_queen == sq {
+            self.black_queen = Square::NONE;
         }
     }
 
@@ -119,16 +118,16 @@ impl Castling {
     pub fn hash(self) -> u64 {
         let mut hash = 0;
 
-        if self.white_king.is_some() {
+        if self.white_king != Square::NONE {
             hash ^= Self::HASH_WKS;
         }
-        if self.white_queen.is_some() {
+        if self.white_queen != Square::NONE {
             hash ^= Self::HASH_WQS;
         }
-        if self.black_king.is_some() {
+        if self.black_king != Square::NONE {
             hash ^= Self::HASH_BKS;
         }
-        if self.black_queen.is_some() {
+        if self.black_queen != Square::NONE {
             hash ^= Self::HASH_BQS;
         }
 
@@ -139,10 +138,10 @@ impl Castling {
 impl Default for Castling {
     fn default() -> Self {
         Self {
-            white_king: Some(Square::H1),
-            white_queen: Some(Square::A1),
-            black_king: Some(Square::H8),
-            black_queen: Some(Square::A8),
+            white_king: Square::H1,
+            white_queen: Square::A1,
+            black_king: Square::H8,
+            black_queen: Square::A8,
         }
     }
 }
