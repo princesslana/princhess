@@ -195,7 +195,8 @@ impl From<&TrainingPosition> for State {
             move_to_optional(position.previous_moves[0]),
         ];
 
-        let board = Board::from_bitboards(colors, pieces, position.stm, Square::NONE, Castling::none());
+        let board =
+            Board::from_bitboards(colors, pieces, position.stm, Square::NONE, Castling::none());
 
         State::from_board_with_prev_moves(board, prev_moves)
     }

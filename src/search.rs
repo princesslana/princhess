@@ -35,7 +35,7 @@ impl TimeManagement {
     pub fn from_duration(d: Duration) -> Self {
         let start = Instant::now();
         let end = Some(start + d);
-        let node_limit = std::usize::MAX;
+        let node_limit = usize::MAX;
 
         Self {
             start,
@@ -48,7 +48,7 @@ impl TimeManagement {
     pub fn infinite() -> Self {
         let start = Instant::now();
         let end = None;
-        let node_limit = std::usize::MAX;
+        let node_limit = usize::MAX;
 
         Self {
             start,
@@ -159,7 +159,7 @@ impl Search {
         let mut increment = Duration::ZERO;
         let mut remaining = None;
         let mut movestogo: Option<u32> = None;
-        let mut node_limit = std::usize::MAX;
+        let mut node_limit = usize::MAX;
 
         while let Some(s) = tokens.next() {
             match s {
@@ -194,7 +194,7 @@ impl Search {
                         .unwrap_or("")
                         .parse()
                         .ok()
-                        .unwrap_or(std::usize::MAX);
+                        .unwrap_or(usize::MAX);
                 }
                 _ => (),
             }
@@ -367,5 +367,5 @@ pub fn eval_in_cp(eval: f32) -> String {
         2. * eval
     };
 
-    format!("cp {}", (cps * 100.).round().max(-1000.).min(1000.) as i64)
+    format!("cp {}", (cps * 100.).round().clamp(-1000., 1000.) as i64)
 }
