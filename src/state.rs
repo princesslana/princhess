@@ -281,8 +281,8 @@ impl State {
         let flip_to = flip_square(to_sq);
 
         let adj_to = match mv.promotion() {
-            Some(Piece::KNIGHT) => Square::from_coords(flip_to.file(), Rank::_1),
-            Some(Piece::BISHOP | Piece::ROOK) => Square::from_coords(flip_to.file(), Rank::_2),
+            Piece::KNIGHT => Square::from_coords(flip_to.file(), Rank::_1),
+            Piece::BISHOP | Piece::ROOK => Square::from_coords(flip_to.file(), Rank::_2),
             _ => flip_to,
         };
 

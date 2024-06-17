@@ -14,7 +14,7 @@ pub fn softmax(arr: &mut [f32], t: f32) {
 }
 
 fn max(arr: &[f32]) -> f32 {
-    let mut max = std::f32::NEG_INFINITY;
+    let mut max = f32::NEG_INFINITY;
     for x in arr {
         max = max.max(*x);
     }

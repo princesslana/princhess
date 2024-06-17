@@ -307,7 +307,7 @@ impl Board {
             self.toggle(color, Piece::ROOK, mov.to());
             self.toggle(color, Piece::ROOK, mov.to().with_file(rook_to));
         } else if mov.is_promotion() {
-            let promotion = mov.promotion().unwrap();
+            let promotion = mov.promotion();
 
             self.toggle(color, piece, mov.from());
             self.toggle(color, promotion, mov.to());

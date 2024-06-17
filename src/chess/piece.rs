@@ -18,6 +18,39 @@ impl Piece {
     pub const fn index(self) -> usize {
         self.0 as usize
     }
+
+    pub fn from_promotion_idx(idx: u16) -> Piece {
+        match idx {
+            0 => Piece::KNIGHT,
+            1 => Piece::BISHOP,
+            2 => Piece::ROOK,
+            3 => Piece::QUEEN,
+            _ => panic!("Invalid promotion index: {idx}"),
+        }
+    }
+
+    #[must_use]
+    pub fn to_promotion_idx(self) -> u16 {
+        match self {
+            Piece::KNIGHT => 0,
+            Piece::BISHOP => 1,
+            Piece::ROOK => 2,
+            Piece::QUEEN => 3,
+            _ => panic!("Invalid promotion piece: {self:?}"),
+        }
+    }
+
+    #[must_use]
+    pub fn to_promotion_char(self) -> String {
+        match self {
+            Piece::QUEEN => "q",
+            Piece::ROOK => "r",
+            Piece::BISHOP => "b",
+            Piece::KNIGHT => "n",
+            _ => "",
+        }
+        .to_string()
+    }
 }
 
 impl From<Piece> for u8 {

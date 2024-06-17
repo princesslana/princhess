@@ -114,11 +114,11 @@ pub fn probe_best_move(b: &Board) -> Option<(Move, Wdl)> {
             (root & bindings::TB_RESULT_PROMOTES_MASK) >> bindings::TB_RESULT_PROMOTES_SHIFT;
 
         let promotion_role = match promotion {
-            bindings::TB_PROMOTES_QUEEN => Some(Piece::QUEEN),
-            bindings::TB_PROMOTES_ROOK => Some(Piece::ROOK),
-            bindings::TB_PROMOTES_BISHOP => Some(Piece::BISHOP),
-            bindings::TB_PROMOTES_KNIGHT => Some(Piece::KNIGHT),
-            _ => None,
+            bindings::TB_PROMOTES_QUEEN => Piece::QUEEN,
+            bindings::TB_PROMOTES_ROOK => Piece::ROOK,
+            bindings::TB_PROMOTES_BISHOP => Piece::BISHOP,
+            bindings::TB_PROMOTES_KNIGHT => Piece::KNIGHT,
+            _ => Piece::NONE,
         };
 
         for m in b.legal_moves() {

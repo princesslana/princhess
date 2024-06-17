@@ -29,7 +29,7 @@ impl Move {
         Self(
             Self::new(from, to).0
                 | Self::PROMO_FLAG
-                | ((piece_to_promotion_idx(promotion)) << Self::PROMO_SHIFT),
+                | (promotion.to_promotion_idx() << Self::PROMO_SHIFT),
         )
     }
 
@@ -64,17 +64,15 @@ impl Move {
         self.0 & Self::PROMO_FLAG == Self::PROMO_FLAG
     }
 
-    #[must_use]
-    pub fn promotion(self) -> Option<Piece> {
+    pub fn promotion(self) -> Piece {
         if self.is_promotion() {
-            Some(promotion_idx_to_piece(
-                (self.0 >> Self::PROMO_SHIFT) & Self::PROMO_MASK,
-            ))
+            Piece::from_promotion_idx((self.0 >> Self::PROMO_SHIFT) & Self::PROMO_MASK)
         } else {
-            None
+            Piece::NONE
         }
     }
 
+    #[must_use]
     pub fn to_uci(self) -> String {
         let from = self.from();
         let to = if self.is_castle() && !is_chess960() {
@@ -89,41 +87,8 @@ impl Move {
             self.to()
         };
 
-        let promotion = self
-            .promotion()
-            .map_or(String::new(), piece_to_promotion_char);
+        let promotion = self.promotion().to_promotion_char();
 
         format!("{from}{to}{promotion}")
-    }
-}
-
-fn piece_to_promotion_char(piece: Piece) -> String {
-    match piece {
-        Piece::QUEEN => "q",
-        Piece::ROOK => "r",
-        Piece::BISHOP => "b",
-        Piece::KNIGHT => "n",
-        _ => panic!("Invalid promotion piece: {piece:?}"),
-    }
-    .to_string()
-}
-
-fn piece_to_promotion_idx(piece: Piece) -> u16 {
-    match piece {
-        Piece::QUEEN => 0,
-        Piece::ROOK => 1,
-        Piece::BISHOP => 2,
-        Piece::KNIGHT => 3,
-        _ => panic!("Invalid promotion piece: {piece:?}"),
-    }
-}
-
-fn promotion_idx_to_piece(idx: u16) -> Piece {
-    match idx {
-        0 => Piece::QUEEN,
-        1 => Piece::ROOK,
-        2 => Piece::BISHOP,
-        3 => Piece::KNIGHT,
-        _ => panic!("Invalid promotion index: {idx}"),
     }
 }
