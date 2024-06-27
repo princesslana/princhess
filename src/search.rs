@@ -327,32 +327,8 @@ impl Search {
         );
     }
 
-    pub fn principal_variation(&self, num_moves: usize) -> Vec<Move> {
-        self.search_tree
-            .principal_variation(num_moves)
-            .into_iter()
-            .map(MoveEdge::get_move)
-            .copied()
-            .collect()
-    }
-
     pub fn best_move(&self) -> Move {
-        *self.principal_variation(1).first().unwrap()
-    }
-
-    pub fn best_move_by_visits(&self) -> Move {
-        let root_node = self.search_tree.root_node();
-        let root_moves = root_node.hots();
-
-        let mut best = &root_moves[0];
-
-        for mov in root_moves.iter().skip(1) {
-            if mov.visits() > best.visits() {
-                best = mov;
-            }
-        }
-
-        *best.get_move()
+        self.search_tree.best_move()
     }
 }
 

@@ -5,6 +5,7 @@ use std::sync::RwLock;
 
 static NUM_THREADS: AtomicUsize = AtomicUsize::new(1);
 static HASH_SIZE_MB: AtomicUsize = AtomicUsize::new(16);
+static MULTI_PV: AtomicUsize = AtomicUsize::new(1);
 
 static CPUCT: Lazy<RwLock<f32>> = Lazy::new(|| RwLock::new(0.16));
 static CPUCT_TAU: Lazy<RwLock<f32>> = Lazy::new(|| RwLock::new(0.84));
@@ -29,6 +30,14 @@ pub fn set_hash_size_mb(hs: usize) {
 
 pub fn get_hash_size_mb() -> usize {
     max(1, HASH_SIZE_MB.load(Ordering::Relaxed))
+}
+
+pub fn set_multi_pv(pv: usize) {
+    MULTI_PV.store(pv, Ordering::Relaxed);
+}
+
+pub fn get_multi_pv() -> usize {
+    max(1, MULTI_PV.load(Ordering::Relaxed))
 }
 
 pub fn set_cpuct(c: f32) {
