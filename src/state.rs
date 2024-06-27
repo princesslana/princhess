@@ -168,22 +168,30 @@ impl State {
         let b = &self.board;
         let occ = b.occupied();
 
-        let (flip_rank, flip_file) = self.feature_flip();
+        let stm_ksq = b.king_of(stm);
+        let nstm_ksq = b.king_of(!stm);
 
-        let flip_square = |sq: Square| match (flip_rank, flip_file) {
+        let flip_stm = |sq: Square| match (stm == Color::BLACK, stm_ksq.file() <= File::D) {
             (true, true) => sq.flip_rank().flip_file(),
             (true, false) => sq.flip_rank(),
             (false, true) => sq.flip_file(),
             (false, false) => sq,
         };
 
-        let king_bucket = KING_BUCKETS[flip_square(b.king_of(stm)).index()];
+        let flip_nstm = |sq: Square| match (stm == Color::WHITE, nstm_ksq.file() <= File::D) {
+            (true, true) => sq.flip_rank().flip_file(),
+            (true, false) => sq.flip_rank(),
+            (false, true) => sq.flip_file(),
+            (false, false) => sq,
+        };
+
+        let stm_king_bucket = KING_BUCKETS[flip_stm(stm_ksq).index()];
+        let nstm_king_bucket = KING_BUCKETS[flip_nstm(nstm_ksq).index()];
 
         for sq in b.occupied() {
             let piece = b.piece_at(sq);
             let color = b.color_at(sq);
 
-            let sq_idx = flip_square(sq).index();
             let piece_idx = piece.index();
             let side_idx = usize::from(color != stm);
 
@@ -192,11 +200,27 @@ impl State {
 
             let threat_bucket = usize::from(threatened) * 2 + usize::from(defended);
 
-            let bucket = threat_bucket * NUMBER_KING_BUCKETS + king_bucket;
-            let position = [0, 384][side_idx] + piece_idx * 64 + sq_idx;
-            let index = bucket * 768 + position;
+            // stm
+            {
+                let sq_idx = flip_stm(sq).index();
 
-            f(index);
+                let bucket = threat_bucket * NUMBER_KING_BUCKETS + stm_king_bucket;
+                let position = [0, 384][side_idx] + piece_idx * 64 + sq_idx;
+                let index = bucket * 768 + position;
+
+                f(index);
+            }
+
+            //nstm
+            {
+                let sq_idx = flip_nstm(sq).index();
+
+                let bucket = threat_bucket * NUMBER_KING_BUCKETS + nstm_king_bucket;
+                let position = [384, 0][side_idx] + piece_idx * 64 + sq_idx;
+                let index = bucket * 768 + position;
+
+                f(index + VALUE_NUMBER_FEATURES);
+            }
         }
     }
 

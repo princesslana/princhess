@@ -1,4 +1,5 @@
-use princhess::train::{TrainingPosition, ValueNetwork};
+use princhess::train::TrainingPosition;
+use princhess::value::ValueNetwork;
 
 use goober::{FeedForwardNetwork, OutputLayer, Vector};
 use std::env;
@@ -74,7 +75,7 @@ fn main() {
 
         let dir = Path::new(&dir_name);
 
-        network.to_boxed_evaluation_network().save_to_bin(dir);
+        network.to_boxed_and_quantized().save_to_bin(dir);
 
         println!("Saved to {}", dir_name);
 
