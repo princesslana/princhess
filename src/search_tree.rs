@@ -326,7 +326,7 @@ impl SearchTree {
                     Flag::TablebaseLoss => &TABLEBASE_LOSS_NODE,
                     Flag::TablebaseDraw => &TABLEBASE_DRAW_NODE,
                     Flag::Standard => {
-                        evaln = evaluation::evaluate_value(&state);
+                        evaln = evaluation::value(&state);
                         &UNEXPANDED_NODE
                     }
                 };

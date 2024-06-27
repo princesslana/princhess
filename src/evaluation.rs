@@ -1,15 +1,10 @@
 use crate::chess::MoveList;
 use crate::math;
-use crate::mem::boxed_and_zeroed;
+use crate::nets::{relu, Accumulator};
 use crate::search::SCALE;
 use crate::state::{self, State};
 use crate::tablebase::{self, Wdl};
-
-use std::fs;
-use std::io::Write;
-use std::mem;
-use std::path::Path;
-use std::slice;
+use crate::value::QuantizedValueNetwork;
 
 #[derive(Clone, Copy, Debug)]
 pub enum Flag {
@@ -41,9 +36,20 @@ impl Flag {
     }
 }
 
+#[cfg(not(feature = "no-net"))]
+static VALUE_NETWORK: QuantizedValueNetwork =
+    unsafe { std::mem::transmute(*include_bytes!("nets/value.bin")) };
+
 #[must_use]
-pub fn evaluate_value(state: &State) -> i64 {
-    (run_value_net(state) * SCALE) as i64
+#[cfg(not(feature = "no-net"))]
+pub fn value(state: &State) -> i64 {
+    (VALUE_NETWORK.get(state) * SCALE) as i64
+}
+
+#[must_use]
+#[cfg(feature = "no-net")]
+pub fn value(_state: &State) -> i64 {
+    0
 }
 
 #[must_use]
@@ -70,103 +76,8 @@ pub fn evaluate_state_flag(state: &State, is_legal_moves: bool) -> Flag {
     }
 }
 
-const HIDDEN: usize = 512;
 const QA: i32 = 256;
-const QB: i32 = 256;
-const QAB: i32 = QA * QB;
-
-const VALUE_NUMBER_INPUTS: usize = state::VALUE_NUMBER_FEATURES;
-
-#[repr(C)]
-pub struct ValueNetwork {
-    hidden_weights: [Accumulator<HIDDEN>; VALUE_NUMBER_INPUTS],
-    hidden_bias: Accumulator<HIDDEN>,
-    output_weights: Accumulator<HIDDEN>,
-    output_bias: i32,
-}
-
-#[cfg(not(feature = "no-net"))]
-static VALUE_NETWORK: ValueNetwork =
-    unsafe { std::mem::transmute(*include_bytes!("nets/value.bin")) };
-
-impl ValueNetwork {
-    fn boxed_and_zeroed() -> Box<Self> {
-        boxed_and_zeroed()
-    }
-
-    #[must_use]
-    pub fn from_slices(
-        hidden_weights: &[[i16; HIDDEN]; VALUE_NUMBER_INPUTS],
-        hidden_bias: &[i16; HIDDEN],
-        output_weights: &[[i16; HIDDEN]; 1],
-        output_bias: i32,
-    ) -> Box<Self> {
-        let mut network = Self::boxed_and_zeroed();
-
-        network.hidden_weights = unsafe { std::mem::transmute(*hidden_weights) };
-        network.hidden_bias = unsafe { std::mem::transmute(*hidden_bias) };
-        network.output_weights = unsafe { std::mem::transmute(*output_weights) };
-        network.output_bias = output_bias;
-
-        network
-    }
-
-    pub fn save_to_bin(&self, dir: &Path) {
-        let mut file = fs::File::create(dir.join("value.bin")).expect("Failed to create file");
-
-        let size_of = mem::size_of::<Self>();
-
-        unsafe {
-            let ptr: *const Self = self;
-            let slice_ptr: *const u8 = ptr.cast::<u8>();
-            let slice = slice::from_raw_parts(slice_ptr, size_of);
-            file.write_all(slice).unwrap();
-        }
-    }
-}
-
-#[derive(Clone, Copy)]
-#[repr(C, align(64))]
-pub struct Accumulator<const H: usize> {
-    vals: [i16; H],
-}
-
-impl<const H: usize> Accumulator<H> {
-    pub fn set(&mut self, weights: &Accumulator<H>) {
-        for (i, d) in self.vals.iter_mut().zip(&weights.vals) {
-            *i += *d;
-        }
-    }
-}
-
-fn relu(x: i16) -> i32 {
-    i32::from(x).max(0)
-}
-
-#[cfg(feature = "no-net")]
-fn run_value_net(_state: &State) -> f32 {
-    0.0
-}
-
-#[cfg(not(feature = "no-net"))]
-#[allow(clippy::cast_possible_wrap)]
-fn run_value_net(state: &State) -> f32 {
-    let mut acc = VALUE_NETWORK.hidden_bias;
-
-    state.value_features_map(|idx| {
-        acc.set(&VALUE_NETWORK.hidden_weights[idx]);
-    });
-
-    let mut result: i32 = VALUE_NETWORK.output_bias;
-
-    for (&x, &w) in acc.vals.iter().zip(&VALUE_NETWORK.output_weights.vals) {
-        result += relu(x) * i32::from(w);
-    }
-
-    result -= result * (state.fifty_move_counter() - 36).max(0) as i32 / 128;
-
-    (result as f32 / QAB as f32).tanh()
-}
+const QAA: i32 = QA * QA;
 
 const POLICY_NUMBER_INPUTS: usize = state::POLICY_NUMBER_FEATURES;
 const POLICY_NUMBER_OUTPUTS: usize = 384;
@@ -234,7 +145,7 @@ fn run_policy_net(state: &State, moves: &MoveList, t: f32) -> Vec<f32> {
 
     for (a, l, r) in &acc {
         let logit = QA * i32::from(*a) + i32::from(*l) * relu(*r);
-        evalns.push(logit as f32 / QAB as f32);
+        evalns.push(logit as f32 / QAA as f32);
     }
 
     math::softmax(&mut evalns, t);
