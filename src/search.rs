@@ -294,17 +294,8 @@ impl Search {
         }
     }
 
-    pub fn principal_variation(&self, num_moves: usize) -> Vec<chess::Move> {
-        self.search_tree
-            .principal_variation(num_moves)
-            .into_iter()
-            .map(MoveEdge::get_move)
-            .copied()
-            .collect()
-    }
-
     pub fn best_move(&self) -> chess::Move {
-        *self.principal_variation(1).get(0).unwrap()
+        self.search_tree.best_move()
     }
 }
 
