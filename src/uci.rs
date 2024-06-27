@@ -2,7 +2,7 @@ use std::io::stdin;
 use std::str::{FromStr, SplitWhitespace};
 
 use crate::options::{
-    set_chess960, set_cpuct, set_cpuct_tau, set_cvisits_selection, set_hash_size_mb,
+    set_chess960, set_cpuct, set_cpuct_tau, set_cvisits_selection, set_hash_size_mb, set_multi_pv,
     set_num_threads, set_policy_only, set_policy_temperature, set_policy_temperature_root,
 };
 use crate::search::Search;
@@ -75,6 +75,7 @@ pub fn uci() {
     println!("id author {ENGINE_AUTHOR}");
     println!("option name Hash type spin min 8 max 65536 default 16");
     println!("option name Threads type spin min 1 max 255 default 1");
+    println!("option name MultiPV type spin min 1 max 255 default 1");
     println!("option name SyzygyPath type string default <empty>");
     println!("option name CPuct type string default 0.16");
     println!("option name CPuctTau type string default 0.84");
@@ -143,6 +144,7 @@ impl UciOption {
                 self.set_option(set_hash_size_mb);
                 search.reset_table();
             }
+            "multipv" => self.set_option(set_multi_pv),
             "cpuct" => self.set_option(set_cpuct),
             "cpucttau" => self.set_option(set_cpuct_tau),
             "cvisitsselection" => self.set_option(set_cvisits_selection),

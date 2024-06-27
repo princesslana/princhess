@@ -10,7 +10,7 @@ use crate::arena::Error as ArenaError;
 use crate::chess;
 use crate::evaluation::{self, Flag};
 use crate::options::{
-    get_cpuct, get_cpuct_tau, get_cvisits_selection, get_policy_temperature,
+    get_cpuct, get_cpuct_tau, get_cvisits_selection, get_multi_pv, get_policy_temperature,
     get_policy_temperature_root,
 };
 use crate::search::{eval_in_cp, ThreadData};
@@ -98,6 +98,24 @@ impl PositionNode {
         for h in hots {
             h.child.store(null_mut(), Ordering::SeqCst);
         }
+    }
+
+    pub fn select_child_by_rewards(&self) -> &MoveEdge {
+        let children = self.hots();
+
+        let mut best = &children[0];
+        let mut best_reward = best.average_reward().unwrap_or(-SCALE);
+
+        for child in children.iter().skip(1) {
+            let reward = child.average_reward().unwrap_or(-SCALE);
+
+            if reward > best_reward {
+                best = child;
+                best_reward = reward;
+            }
+        }
+
+        best
     }
 }
 
@@ -452,21 +470,12 @@ impl SearchTree {
         &self.root_node
     }
 
-    pub fn principal_variation(&self, num_moves: usize) -> Vec<&MoveEdge> {
-        let mut result = Vec::new();
-        let mut crnt = &self.root_node;
-        while !crnt.hots().is_empty() && result.len() < num_moves {
-            let choice = select_child_after_search(crnt.hots());
-            result.push(choice);
-            let child = choice.child.load(Ordering::SeqCst).cast_const();
-            if child.is_null() {
-                break;
-            }
-            unsafe {
-                crnt = &*child;
-            }
-        }
-        result
+    pub fn best_move(&self) -> chess::Move {
+        *self.best_edge().get_move()
+    }
+
+    pub fn best_edge(&self) -> &MoveEdge {
+        sort_moves(self.root_node.hots())[0]
     }
 
     pub fn print_info(&self, time_management: &TimeManagement) {
@@ -475,44 +484,62 @@ impl SearchTree {
         let nodes = self.num_nodes();
         let depth = self.depth();
         let sel_depth = self.max_depth();
-        let pv = self.principal_variation(depth.max(1));
-        let pv_string: String = pv.into_iter().fold(String::new(), |mut out, x| {
-            write!(out, " {}", x.get_move().to_uci()).unwrap();
-            out
-        });
-
         let nps = if search_time_ms == 0 {
             nodes
         } else {
             nodes * 1000 / search_time_ms as usize
         };
 
-        let info_str = format!(
-            "info depth {} seldepth {} nodes {} nps {} tbhits {} score {} time {} pv{}",
-            depth.max(1),
-            sel_depth.max(1),
-            nodes,
-            nps,
-            self.tb_hits(),
-            self.eval_in_cp(),
-            search_time_ms,
-            pv_string,
-        );
-        println!("{info_str}");
-    }
+        let moves = sort_moves(self.root_node.hots());
 
-    pub fn eval(&self) -> f32 {
-        self.principal_variation(1)
-            .first()
-            .map_or(0., |x| x.average_reward().unwrap_or(-SCALE) / SCALE)
-    }
+        for (idx, edge) in moves.iter().enumerate().take(get_multi_pv()) {
+            let pv = match edge.child() {
+                Some(child) => principal_variation(child, depth.max(1) - 1),
+                None => vec![],
+            };
 
-    fn eval_in_cp(&self) -> String {
-        eval_in_cp(self.eval())
+            let pv_string: String = pv.into_iter().fold(edge.get_move().to_uci(), |mut out, x| {
+                write!(out, " {}", x.get_move().to_uci()).unwrap();
+                out
+            });
+
+            let eval = eval_in_cp(edge.average_reward().unwrap_or(-SCALE) / SCALE);
+
+            let info_str = format!(
+                "info depth {} seldepth {} nodes {} nps {} tbhits {} score {} time {} multipv {} pv {}",
+                depth.max(1),
+                sel_depth.max(1),
+                nodes,
+                nps,
+                self.tb_hits(),
+                eval,
+                search_time_ms,
+                idx + 1,
+                pv_string,
+            );
+            println!("{info_str}");
+        }
     }
 }
 
-fn select_child_after_search(children: &[MoveEdge]) -> &MoveEdge {
+fn principal_variation(from: &PositionNode, num_moves: usize) -> Vec<&MoveEdge> {
+    let mut result = Vec::with_capacity(num_moves);
+    let mut crnt = from;
+
+    while !crnt.hots().is_empty() && result.len() < num_moves {
+        let choice = crnt.select_child_by_rewards();
+        result.push(choice);
+
+        match choice.child() {
+            Some(child) => crnt = child,
+            None => break,
+        }
+    }
+
+    result
+}
+
+fn sort_moves(children: &[MoveEdge]) -> Vec<&MoveEdge> {
     let k = get_cvisits_selection();
 
     let reward = |child: &MoveEdge| {
@@ -527,18 +554,16 @@ fn select_child_after_search(children: &[MoveEdge]) -> &MoveEdge {
         sum_rewards as f32 / visits as f32 - (k * 2. * SCALE) / (visits as f32).sqrt()
     };
 
-    let mut best = &children[0];
-    let mut best_reward = reward(best);
+    let mut result = Vec::with_capacity(children.len());
 
-    for child in children.iter().skip(1) {
-        let reward = reward(child);
-        if reward > best_reward {
-            best = child;
-            best_reward = reward;
-        }
+    for child in children {
+        result.push((child, reward(child)));
     }
 
-    best
+    result.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
+    result.reverse();
+
+    result.into_iter().map(|x| x.0).collect()
 }
 
 pub fn print_size_list() {
