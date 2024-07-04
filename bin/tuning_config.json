@@ -18,10 +18,9 @@
     }
   ],
   "parameter_ranges": {
-    "CPuct": "Real(0.0, 5.0)",
-    "CPuctTau": "Real(0.0, 1.0)",
-    "PolicyTemperature": "Real(0.1, 2.0)",
-    "PolicyTemperatureRoot": "Real(0.1, 20.0)"
+    "CPuct": "Real(0.0, 3.0)",
+    "CPuctTau": "Real(0.5, 1.0)",
+    "PolicyTemperatureRoot": "Real(1.0, 20.0)"
   },
   "rounds": 12,
   "engine1_npm": "25000",

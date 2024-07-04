@@ -203,10 +203,7 @@ fn run_game(stats: &Stats, positions: &mut Vec<TrainingPosition>, rng: &mut Rng)
 
         let best_move = search.best_move();
 
-        if legal_moves <= 1
-            || legal_moves > TrainingPosition::MAX_MOVES
-            || max_visits > TrainingPosition::MAX_VISITS
-        {
+        if legal_moves <= 1 || legal_moves > TrainingPosition::MAX_MOVES {
             stats.inc_skipped();
         } else {
             let mut position = TrainingPosition::from(search.tree());

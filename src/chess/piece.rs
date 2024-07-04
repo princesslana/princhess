@@ -19,6 +19,17 @@ impl Piece {
         self.0 as usize
     }
 
+    #[must_use]
+    pub const fn see_value(self) -> i32 {
+        match self {
+            Piece::PAWN => 100,
+            Piece::KNIGHT | Piece::BISHOP => 450,
+            Piece::ROOK => 650,
+            Piece::QUEEN => 1250,
+            _ => 0,
+        }
+    }
+
     pub fn from_promotion_idx(idx: u16) -> Piece {
         match idx {
             0 => Piece::KNIGHT,
@@ -56,6 +67,12 @@ impl Piece {
 impl From<Piece> for u8 {
     fn from(piece: Piece) -> Self {
         piece.0
+    }
+}
+
+impl From<Piece> for u16 {
+    fn from(piece: Piece) -> Self {
+        u16::from(piece.0)
     }
 }
 

@@ -1,8 +1,11 @@
+use goober::SparseVector;
+
 use crate::chess::MoveList;
 use crate::math;
-use crate::nets::{relu, Accumulator};
+
+use crate::policy::QuantizedPolicyNetwork;
 use crate::search::SCALE;
-use crate::state::{self, State};
+use crate::state::State;
 use crate::tablebase::{self, Wdl};
 use crate::value::QuantizedValueNetwork;
 
@@ -53,7 +56,7 @@ pub fn value(_state: &State) -> i64 {
 }
 
 #[must_use]
-pub fn evaluate_policy(state: &State, moves: &MoveList, t: f32) -> Vec<f32> {
+pub fn policy(state: &State, moves: &MoveList, t: f32) -> Vec<f32> {
     run_policy_net(state, moves, t)
 }
 
@@ -76,41 +79,22 @@ pub fn evaluate_state_flag(state: &State, is_legal_moves: bool) -> Flag {
     }
 }
 
-const QA: i32 = 256;
-const QAA: i32 = QA * QA;
+#[cfg(not(feature = "no-policy-net"))]
+static POLICY_NETWORK: QuantizedPolicyNetwork =
+    unsafe { std::mem::transmute(*include_bytes!("nets/policy.bin")) };
 
-const POLICY_NUMBER_INPUTS: usize = state::POLICY_NUMBER_FEATURES;
-const POLICY_NUMBER_OUTPUTS: usize = 384;
+#[cfg(feature = "no-policy-net")]
+fn run_policy_net(_state: &State, moves: &MoveList, _t: f32) -> Vec<f32> {
+    let mut evalns = Vec::with_capacity(moves.len());
 
-#[repr(C)]
-struct PolicyNet {
-    left_weights: [Accumulator<POLICY_NUMBER_OUTPUTS>; POLICY_NUMBER_INPUTS],
-    left_bias: Accumulator<POLICY_NUMBER_OUTPUTS>,
-    right_weights: [Accumulator<POLICY_NUMBER_OUTPUTS>; POLICY_NUMBER_INPUTS],
-    right_bias: Accumulator<POLICY_NUMBER_OUTPUTS>,
-    add_weights: [Accumulator<POLICY_NUMBER_OUTPUTS>; POLICY_NUMBER_INPUTS],
-    add_bias: Accumulator<POLICY_NUMBER_OUTPUTS>,
+    for _ in moves {
+        evalns.push(1.0 / moves.len() as f32);
+    }
+
+    evalns
 }
 
-static POLICY_LEFT_WEIGHTS: [[i16; POLICY_NUMBER_OUTPUTS]; POLICY_NUMBER_INPUTS] =
-    include!("policy/left_weights");
-static POLICY_LEFT_BIAS: [i16; POLICY_NUMBER_OUTPUTS] = include!("policy/left_bias");
-static POLICY_RIGHT_WEIGHTS: [[i16; POLICY_NUMBER_OUTPUTS]; POLICY_NUMBER_INPUTS] =
-    include!("policy/right_weights");
-static POLICY_RIGHT_BIAS: [i16; POLICY_NUMBER_OUTPUTS] = include!("policy/right_bias");
-static POLICY_ADD_WEIGHTS: [[i16; POLICY_NUMBER_OUTPUTS]; POLICY_NUMBER_INPUTS] =
-    include!("policy/add_weights");
-static POLICY_ADD_BIAS: [i16; POLICY_NUMBER_OUTPUTS] = include!("policy/add_bias");
-
-static POLICY_NET: PolicyNet = PolicyNet {
-    left_weights: unsafe { std::mem::transmute(POLICY_LEFT_WEIGHTS) },
-    left_bias: unsafe { std::mem::transmute(POLICY_LEFT_BIAS) },
-    right_weights: unsafe { std::mem::transmute(POLICY_RIGHT_WEIGHTS) },
-    right_bias: unsafe { std::mem::transmute(POLICY_RIGHT_BIAS) },
-    add_weights: unsafe { std::mem::transmute(POLICY_ADD_WEIGHTS) },
-    add_bias: unsafe { std::mem::transmute(POLICY_ADD_BIAS) },
-};
-
+#[cfg(not(feature = "no-policy-net"))]
 fn run_policy_net(state: &State, moves: &MoveList, t: f32) -> Vec<f32> {
     let mut evalns = Vec::with_capacity(moves.len());
 
@@ -118,35 +102,10 @@ fn run_policy_net(state: &State, moves: &MoveList, t: f32) -> Vec<f32> {
         return evalns;
     }
 
-    let mut move_idxs = Vec::with_capacity(moves.len());
-    let mut acc = Vec::with_capacity(moves.len());
+    let mut features = SparseVector::with_capacity(32);
+    state.policy_features_map(|idx| features.push(idx));
 
-    for m in moves {
-        let move_idx = state.move_to_index(*m);
-        move_idxs.push(move_idx);
-        acc.push((
-            POLICY_NET.add_bias.vals[move_idx],
-            POLICY_NET.left_bias.vals[move_idx],
-            POLICY_NET.right_bias.vals[move_idx],
-        ));
-    }
-
-    state.policy_features_map(|idx| {
-        let aw = &POLICY_NET.add_weights[idx];
-        let lw = &POLICY_NET.left_weights[idx];
-        let rw = &POLICY_NET.right_weights[idx];
-
-        for (&move_idx, (a, l, r)) in move_idxs.iter().zip(acc.iter_mut()) {
-            *a += aw.vals[move_idx];
-            *l += lw.vals[move_idx];
-            *r += rw.vals[move_idx];
-        }
-    });
-
-    for (a, l, r) in &acc {
-        let logit = QA * i32::from(*a) + i32::from(*l) * relu(*r);
-        evalns.push(logit as f32 / QAA as f32);
-    }
+    POLICY_NETWORK.get_all(&features, state.moves_to_indexes(moves), &mut evalns);
 
     math::softmax(&mut evalns, t);
 

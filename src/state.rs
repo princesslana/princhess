@@ -1,40 +1,29 @@
 use arrayvec::ArrayVec;
 
-use crate::chess::{Board, Color, File, Move, MoveList, Piece, Rank, Square};
+use crate::chess::{Board, Color, File, Move, MoveIndex, MoveList, Piece, Square};
 use crate::uci::Tokens;
-
-const OFFSET_POSITION: usize = 0;
-const OFFSET_THREATS: usize = 768;
-const OFFSET_DEFENDS: usize = 768 * 2;
 
 const NUMBER_KING_BUCKETS: usize = 3;
 const NUMBER_THREAT_BUCKETS: usize = 4;
-
-const VALUE_NUMBER_POSITION: usize = 768;
+const NUMBER_POSITIONS: usize = 768;
 
 pub const VALUE_NUMBER_FEATURES: usize =
-    VALUE_NUMBER_POSITION * NUMBER_KING_BUCKETS * NUMBER_THREAT_BUCKETS;
+    NUMBER_POSITIONS * NUMBER_KING_BUCKETS * NUMBER_THREAT_BUCKETS;
 
-pub const POLICY_NUMBER_FEATURES: usize = 768 * 3;
+pub const POLICY_NUMBER_FEATURES: usize = NUMBER_POSITIONS;
 
 #[must_use]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct State {
     board: Board,
     prev_state_hashes: ArrayVec<u64, 100>,
-    prev_moves: [Option<Move>; 2],
 }
 
 impl State {
     pub fn from_board(board: Board) -> Self {
-        Self::from_board_with_prev_moves(board, [None, None])
-    }
-
-    pub fn from_board_with_prev_moves(board: Board, prev_moves: [Option<Move>; 2]) -> Self {
         Self {
             board,
             prev_state_hashes: ArrayVec::new(),
-            prev_moves,
         }
     }
 
@@ -75,7 +64,6 @@ impl State {
         Self {
             board,
             prev_state_hashes: ArrayVec::new(),
-            prev_moves: [None, None],
         }
     }
 
@@ -114,9 +102,6 @@ impl State {
         let is_pawn_move = piece == Piece::PAWN;
         let capture = b.piece_at(mov.to());
 
-        self.prev_moves[0] = self.prev_moves[1];
-        self.prev_moves[1] = Some(mov);
-
         if is_pawn_move || capture != Piece::NONE {
             self.prev_state_hashes.clear();
         } else {
@@ -148,18 +133,7 @@ impl State {
         self.prev_state_hashes.iter().rev().any(|h| *h == crnt_hash)
     }
 
-    fn feature_flip(&self) -> (bool, bool) {
-        let stm = self.side_to_move();
-        let b = &self.board;
-
-        let ksq = b.king_of(stm);
-
-        let flip_rank = stm == Color::BLACK;
-        let flip_file = ksq.file() <= File::D;
-
-        (flip_rank, flip_file)
-    }
-
+    #[allow(clippy::similar_names)]
     pub fn value_features_map<F>(&self, mut f: F)
     where
         F: FnMut(usize),
@@ -230,89 +204,67 @@ impl State {
     {
         let stm = self.side_to_move();
         let b = &self.board;
+        let occ = b.occupied();
 
-        let (flip_rank, flip_file) = self.feature_flip();
-
-        let flip_square = |sq: Square| match (flip_rank, flip_file) {
-            (true, true) => sq.flip_rank().flip_file(),
-            (true, false) => sq.flip_rank(),
-            (false, true) => sq.flip_file(),
-            (false, false) => sq,
+        let flip_square = match (stm == Color::BLACK, b.king_of(stm).file() <= File::D) {
+            (true, true) => |sq: Square| sq.flip_rank().flip_file(),
+            (true, false) => |sq: Square| sq.flip_rank(),
+            (false, true) => |sq: Square| sq.flip_file(),
+            (false, false) => |sq: Square| sq,
         };
 
-        let feature_idx = |sq: Square, p: Piece, c: Color| {
-            let sq_idx = flip_square(sq).index();
-            let piece_idx = p.index();
-            let side_idx = usize::from(c != stm);
-
-            (side_idx * 6 + piece_idx) * 64 + sq_idx
-        };
-
-        for sq in b.occupied() {
+        for sq in occ {
             let piece = b.piece_at(sq);
             let color = b.color_at(sq);
 
-            f(OFFSET_POSITION + feature_idx(sq, piece, color));
+            let sq_idx = flip_square(sq).index();
+            let piece_idx = piece.index();
+            let side_idx = usize::from(color != stm);
 
-            if piece != Piece::KING {
-                // Threats
-                if b.is_attacked(sq, !color, b.occupied()) {
-                    f(OFFSET_THREATS + feature_idx(sq, piece, color));
-                }
+            let index = [0, 384][side_idx] + piece_idx * 64 + sq_idx;
 
-                // Defenses
-                if b.is_attacked(sq, color, b.occupied()) {
-                    f(OFFSET_DEFENDS + feature_idx(sq, piece, color));
-                }
+            f(index);
+        }
+    }
+
+    pub fn moves_to_indexes<'a>(
+        &'a self,
+        mvs: &'a MoveList,
+    ) -> impl Iterator<Item = MoveIndex> + '_ {
+        let b = self.board;
+        let occ = b.occupied();
+        let color = self.side_to_move();
+
+        let flip_square = match (color == Color::BLACK, b.king_of(color).file() <= File::D) {
+            (true, true) => |sq: Square| sq.flip_rank().flip_file(),
+            (true, false) => |sq: Square| sq.flip_rank(),
+            (false, true) => |sq: Square| sq.flip_file(),
+            (false, false) => |sq: Square| sq,
+        };
+
+        let threats = b.threats_by(!color, occ);
+        let defends = b.threats_by(color, occ);
+
+        mvs.iter().map(move |mv| {
+            let piece = b.piece_at(mv.from());
+
+            let from_sq = mv.from();
+            let to_sq = mv.to();
+
+            let flip_from = flip_square(from_sq);
+            let flip_to = flip_square(to_sq);
+
+            let mut mi = MoveIndex::new(piece, flip_from, flip_to);
+
+            mi.set_from_threat(threats.contains(from_sq));
+            mi.set_from_defend(defends.contains(from_sq));
+
+            if piece != Piece::PAWN && piece != Piece::KING {
+                mi.set_to_good_see(b.see(*mv, -108));
             }
-        }
 
-        // We use the king threats and defenses squares for previous moves
-        if let Some(m) = &self.prev_moves[0] {
-            f(OFFSET_DEFENDS + feature_idx(m.to(), Piece::KING, stm));
-            f(OFFSET_DEFENDS + feature_idx(m.from(), Piece::KING, !stm));
-        }
-
-        if let Some(m) = &self.prev_moves[1] {
-            f(OFFSET_THREATS + feature_idx(m.to(), Piece::KING, stm));
-            f(OFFSET_THREATS + feature_idx(m.from(), Piece::KING, !stm));
-        }
-    }
-
-    pub fn training_features_map<F>(&self, f: F)
-    where
-        F: FnMut(usize),
-    {
-        self.value_features_map(f);
-    }
-
-    #[must_use]
-    pub fn move_to_index(&self, mv: Move) -> usize {
-        let piece = self.board.piece_at(mv.from());
-        let to_sq = mv.to();
-
-        let (flip_rank, flip_file) = self.feature_flip();
-
-        let flip_square = |sq: Square| match (flip_rank, flip_file) {
-            (true, true) => sq.flip_rank().flip_file(),
-            (true, false) => sq.flip_rank(),
-            (false, true) => sq.flip_file(),
-            (false, false) => sq,
-        };
-
-        let piece_idx = piece.index();
-
-        let flip_to = flip_square(to_sq);
-
-        let adj_to = match mv.promotion() {
-            Piece::KNIGHT => Square::from_coords(flip_to.file(), Rank::_1),
-            Piece::BISHOP | Piece::ROOK => Square::from_coords(flip_to.file(), Rank::_2),
-            _ => flip_to,
-        };
-
-        let to_idx = adj_to.index();
-
-        piece_idx * 64 + to_idx
+            mi
+        })
     }
 }
 

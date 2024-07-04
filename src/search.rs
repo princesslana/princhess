@@ -297,7 +297,7 @@ impl Search {
 
         let state_moves = root_state.available_moves();
         let state_moves_eval =
-            evaluation::evaluate_policy(root_state, &state_moves, get_policy_temperature());
+            evaluation::policy(root_state, &state_moves, get_policy_temperature());
 
         let mut moves: Vec<(&MoveEdge, f32)> = root_moves.iter().zip(state_moves_eval).collect();
         moves.sort_by_key(|(h, e)| (h.average_reward().unwrap_or(*e) * SCALE) as i64);

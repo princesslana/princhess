@@ -20,6 +20,7 @@ pub mod chess;
 pub mod evaluation;
 pub mod math;
 pub mod options;
+pub mod policy;
 pub mod search;
 pub mod state;
 pub mod tablebase;
