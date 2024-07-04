@@ -161,6 +161,10 @@ impl Board {
         self.colors[Color::BLACK.index()]
     }
 
+    fn by_color(&self, color: Color) -> Bitboard {
+        self.colors[color.index()]
+    }
+
     pub fn kings(&self) -> Bitboard {
         self.pieces[Piece::KING.index()]
     }
@@ -199,6 +203,34 @@ impl Board {
             | (attacks::pawn(!attacker, sq) & self.pawns() & them)
             | (attacks::bishop(sq, occ) & bishop_and_queens & them)
             | (attacks::rook(sq, occ) & rooks_and_queens & them)
+    }
+
+    pub fn threats_by(&self, attacker: Color, occ: Bitboard) -> Bitboard {
+        let mut threats = Bitboard::EMPTY;
+
+        let color = self.colors[attacker.index()];
+
+        for sq in self.kings() & color {
+            threats |= attacks::king(sq);
+        }
+
+        for sq in (self.queens() | self.rooks()) & color {
+            threats |= attacks::rook(sq, occ);
+        }
+
+        for sq in (self.queens() | self.bishops()) & color {
+            threats |= attacks::bishop(sq, occ);
+        }
+
+        for sq in self.knights() & color {
+            threats |= attacks::knight(sq);
+        }
+
+        for sq in self.pawns() & color {
+            threats |= attacks::pawn(attacker, sq);
+        }
+
+        threats
     }
 
     pub fn castling_rights(&self) -> Castling {
@@ -423,6 +455,96 @@ impl Board {
 
         hash
     }
+
+    fn gain(&self, mv: Move) -> i32 {
+        if mv.is_enpassant() {
+            return Piece::PAWN.see_value();
+        }
+
+        let promotion_value = match mv.promotion() {
+            Piece::NONE => 0,
+            p => p.see_value() - Piece::PAWN.see_value(),
+        };
+
+        self.piece_at(mv.to()).see_value() + promotion_value
+    }
+
+    #[must_use]
+    pub fn see(&self, mv: Move, threshold: i32) -> bool {
+        let sq = mv.to();
+
+        let mut next = match mv.promotion() {
+            Piece::NONE => self.piece_at(mv.from()),
+            p => p,
+        };
+
+        let mut score = self.gain(mv) - threshold - next.see_value();
+
+        if score >= 0 {
+            return true;
+        }
+
+        let mut occ = self.occupied().xor_square(mv.from()).xor_square(sq);
+
+        if mv.is_enpassant() {
+            occ = occ.xor_square(mv.to().with_rank(mv.from().rank()));
+        }
+
+        let bishops = self.bishops() | self.queens();
+        let rooks = self.rooks() | self.queens();
+
+        let mut us = !self.side_to_move();
+
+        let mut attackers = attacks::knight(sq) & self.knights()
+            | attacks::king(sq) & self.kings()
+            | attacks::pawn(Color::WHITE, sq) & self.pawns() & self.black()
+            | attacks::pawn(Color::BLACK, sq) & self.pawns() & self.white()
+            | attacks::bishop(sq, occ) & bishops
+            | attacks::rook(sq, occ) & rooks;
+
+        loop {
+            let our_attackers = attackers & self.by_color(us);
+            if our_attackers.is_empty() {
+                break;
+            }
+
+            for pc in [
+                Piece::PAWN,
+                Piece::KNIGHT,
+                Piece::BISHOP,
+                Piece::ROOK,
+                Piece::QUEEN,
+                Piece::KING,
+            ] {
+                let board = our_attackers & self.by_piece(pc);
+                if board.any() {
+                    occ.toggle(board.into_iter().next().unwrap());
+                    next = pc;
+                    break;
+                }
+            }
+
+            if [Piece::PAWN, Piece::BISHOP, Piece::QUEEN].contains(&next) {
+                attackers |= attacks::bishop(sq, occ) & bishops;
+            }
+            if [Piece::ROOK, Piece::QUEEN].contains(&next) {
+                attackers |= attacks::rook(sq, occ) & rooks;
+            }
+
+            attackers &= occ;
+            score = -score - 1 - next.see_value();
+            us = !us;
+
+            if score >= 0 {
+                if next == Piece::KING && (attackers & self.by_color(us)).any() {
+                    us = !us;
+                }
+                break;
+            }
+        }
+
+        self.side_to_move() != us
+    }
 }
 
 fn get_scharnagl_back_rank(scharnagl: usize) -> [Piece; 8] {
@@ -515,5 +637,69 @@ mod test {
         let board = Board::startpos();
 
         assert_eq!(board, Board::from_fen(STARTPOS_FEN));
+    }
+
+    #[test]
+    fn test_see() {
+        assert_see(
+            true,
+            "6k1/1pp4p/p1pb4/6q1/3P1pRr/2P4P/PP1Br1P1/5RKN w - -",
+            "f1",
+            "f4",
+        );
+
+        assert_see(
+            true,
+            "5rk1/1pp2q1p/p1pb4/8/3P1NP1/2P5/1P1BQ1P1/5RK1 b - - ",
+            "d6",
+            "f4",
+        );
+
+        assert_see(
+            false,
+            "6rr/6pk/p1Qp1b1p/2n5/1B3p2/5p2/P1P2P2/4RK1R w - -",
+            "e1",
+            "e8",
+        );
+
+        assert_see_promo(
+            true,
+            "7R/5P2/8/8/6r1/3K4/5p2/4k3 w - -",
+            "f7",
+            "f8",
+            Piece::QUEEN,
+        );
+
+        assert_see(true, "8/8/1k6/8/8/2N1N3/4p1K1/3n4 w - -", "c3", "d1");
+
+        assert_see(
+            false,
+            "2r1k3/pbr3pp/5p1b/2KB3n/1N2N3/3P1PB1/PPP1P1PP/R2Q3R w - -",
+            "d5",
+            "c6",
+        );
+    }
+
+    fn assert_see(expected: bool, fen: &str, from: &str, to: &str) {
+        assert_see_mv(
+            expected,
+            fen,
+            Move::new(Square::from_uci(from), Square::from_uci(to)),
+        );
+    }
+
+    fn assert_see_promo(expected: bool, fen: &str, from: &str, to: &str, promo: Piece) {
+        assert_see_mv(
+            expected,
+            fen,
+            Move::new_promotion(Square::from_uci(from), Square::from_uci(to), promo),
+        );
+    }
+
+    fn assert_see_mv(expected: bool, fen: &str, mv: Move) {
+        let board = Board::from_fen(fen);
+        let result = Board::from_fen(fen).see(mv, -108);
+
+        assert_eq!(result, expected);
     }
 }

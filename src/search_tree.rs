@@ -208,7 +208,7 @@ where
     let moves = state.available_moves();
 
     let state_flag = evaluation::evaluate_state_flag(state, !moves.is_empty());
-    let move_eval = evaluation::evaluate_policy(state, &moves, policy_t);
+    let move_eval = evaluation::policy(state, &moves, policy_t);
 
     if state_flag.is_tablebase() {
         tb_hits.fetch_add(1, Ordering::Relaxed);

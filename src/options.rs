@@ -10,7 +10,7 @@ static MULTI_PV: AtomicUsize = AtomicUsize::new(1);
 static CPUCT: Lazy<RwLock<f32>> = Lazy::new(|| RwLock::new(0.16));
 static CPUCT_TAU: Lazy<RwLock<f32>> = Lazy::new(|| RwLock::new(0.84));
 static CVISITS_SELECTION: Lazy<RwLock<f32>> = Lazy::new(|| RwLock::new(0.01));
-static POLICY_TEMPERATURE: Lazy<RwLock<f32>> = Lazy::new(|| RwLock::new(1.23));
+static POLICY_TEMPERATURE: Lazy<RwLock<f32>> = Lazy::new(|| RwLock::new(1.0));
 static POLICY_TEMPERATURE_ROOT: Lazy<RwLock<f32>> = Lazy::new(|| RwLock::new(14.5));
 
 static CHESS960: AtomicBool = AtomicBool::new(false);

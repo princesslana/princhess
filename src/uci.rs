@@ -80,7 +80,7 @@ pub fn uci() {
     println!("option name CPuct type string default 0.16");
     println!("option name CPuctTau type string default 0.84");
     println!("option name CVisitsSelection type string default 0.01");
-    println!("option name PolicyTemperature type string default 1.23");
+    println!("option name PolicyTemperature type string default 1.00");
     println!("option name PolicyTemperatureRoot type string default 14.5");
     println!("option name UCI_Chess960 type check default false");
     println!("option name PolicyOnly type check default false");

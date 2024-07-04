@@ -3,16 +3,12 @@ use goober::layer::{DenseConnected, SparseConnected};
 use goober::{FeedForwardNetwork, OutputLayer, SparseVector, Vector};
 use std::boxed::Box;
 use std::fmt::{self, Display, Formatter};
-use std::fs;
-use std::io::Write;
-use std::mem;
 use std::ops::AddAssign;
 use std::path::Path;
-use std::slice;
 
 use crate::math::{randomize_dense, randomize_sparse, Rng};
-use crate::mem::boxed_and_zeroed;
-use crate::nets::{q_i16, q_i32, relu, Accumulator};
+use crate::mem::{boxed_and_zeroed, Align64};
+use crate::nets::{q_i16, q_i32, relu, save_to_bin, Accumulator};
 use crate::state::{self, State};
 
 const INPUT_SIZE: usize = state::VALUE_NUMBER_FEATURES;
@@ -26,9 +22,9 @@ const QAB: i32 = QA * QB;
 type Feature = SparseConnected<ReLU, INPUT_SIZE, HIDDEN_SIZE>;
 type Output = DenseConnected<Tanh, { HIDDEN_SIZE * 2 }, OUTPUT_SIZE>;
 
-type QuantizedFeatureWeights = [Accumulator<HIDDEN_SIZE>; INPUT_SIZE];
-type QuantizedFeatureBias = Accumulator<HIDDEN_SIZE>;
-type QuantizedOutputWeights = [Accumulator<HIDDEN_SIZE>; 2];
+type QuantizedFeatureWeights = [Align64<Accumulator<HIDDEN_SIZE>>; INPUT_SIZE];
+type QuantizedFeatureBias = Align64<Accumulator<HIDDEN_SIZE>>;
+type QuantizedOutputWeights = [Align64<Accumulator<HIDDEN_SIZE>>; 2];
 
 type RawFeatureWeights = [[i16; HIDDEN_SIZE]; INPUT_SIZE];
 type RawFeatureBias = [i16; HIDDEN_SIZE];
@@ -269,16 +265,7 @@ impl QuantizedValueNetwork {
     }
 
     pub fn save_to_bin(&self, dir: &Path) {
-        let mut file = fs::File::create(dir.join("value.bin")).expect("Failed to create file");
-
-        let size_of = mem::size_of::<Self>();
-
-        unsafe {
-            let ptr: *const Self = self;
-            let slice_ptr: *const u8 = ptr.cast::<u8>();
-            let slice = slice::from_raw_parts(slice_ptr, size_of);
-            file.write_all(slice).unwrap();
-        }
+        save_to_bin(dir, "value.bin", self);
     }
 
     #[must_use]

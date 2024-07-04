@@ -12,7 +12,7 @@ use std::time::{Instant, SystemTime, UNIX_EPOCH};
 const EPOCHS: usize = 20;
 const BATCH_SIZE: usize = 16384;
 const THREADS: usize = 6;
-const BUFFER_COUNT: usize = 1 << 24;
+const BUFFER_SIZE: usize = 1 << 24;
 
 const LR: f32 = 0.001;
 const LR_DROP_AT: usize = EPOCHS * 2 / 3;
@@ -21,6 +21,8 @@ const LR_DROP_FACTOR: f32 = 0.1;
 const WEIGHT_DECAY: f32 = 0.01;
 
 const WDL_WEIGHT: f32 = 0.5;
+
+const _BUFFER_SIZE_CHECK: () = assert!(BUFFER_SIZE % BATCH_SIZE == 0);
 
 fn main() {
     println!("Running...");
@@ -95,7 +97,7 @@ fn train(
     let file = File::open(input).unwrap();
     let positions = file.metadata().unwrap().len() as usize / TrainingPosition::SIZE;
 
-    let buffer_size = BUFFER_COUNT * TrainingPosition::SIZE;
+    let buffer_size = BUFFER_SIZE * TrainingPosition::SIZE;
     let mut buffer = BufReader::with_capacity(buffer_size, file);
 
     let mut running_loss = 0.0;
@@ -165,7 +167,7 @@ fn update_gradient(
     gradients: &mut ValueNetwork,
     loss: &mut f32,
 ) {
-    let features = position.get_features();
+    let features = position.get_value_features();
 
     let net_out = network.out_with_layers(&features);
 

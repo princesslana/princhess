@@ -92,3 +92,63 @@ impl Move {
         format!("{from}{to}{promotion}")
     }
 }
+
+#[must_use]
+#[derive(Debug, Copy, Clone)]
+pub struct MoveIndex {
+    piece: Piece,
+    from_sq: Square,
+    to_sq: Square,
+    from_threats: u8,
+    to_threats: u8,
+}
+
+impl MoveIndex {
+    const FROM_BUCKETS: usize = 4;
+    const TO_BUCKETS: usize = 10;
+
+    pub const FROM_COUNT: usize = 64 * Self::FROM_BUCKETS;
+    pub const TO_COUNT: usize = 64 * Self::TO_BUCKETS;
+
+    const THREAT_SHIFT: u8 = 0;
+    const DEFEND_SHIFT: u8 = 1;
+    const SEE_SHIFT: u8 = 0;
+
+    pub fn new(piece: Piece, from: Square, to: Square) -> Self {
+        Self {
+            piece,
+            from_sq: from,
+            to_sq: to,
+            from_threats: 0,
+            to_threats: 0,
+        }
+    }
+
+    pub fn set_from_threat(&mut self, is_threat: bool) {
+        self.from_threats |= u8::from(is_threat) << Self::THREAT_SHIFT;
+    }
+
+    pub fn set_from_defend(&mut self, is_defend: bool) {
+        self.from_threats |= u8::from(is_defend) << Self::DEFEND_SHIFT;
+    }
+
+    pub fn set_to_good_see(&mut self, is_good_see: bool) {
+        self.to_threats |= u8::from(is_good_see) << Self::SEE_SHIFT;
+    }
+
+    #[must_use]
+    pub fn from_index(&self) -> usize {
+        let bucket = usize::from(self.from_threats);
+        bucket * 64 + self.from_sq.index()
+    }
+
+    #[must_use]
+    pub fn to_index(&self) -> usize {
+        let bucket = match self.piece {
+            Piece::KING => 0,
+            Piece::PAWN => 1,
+            p => 2 + usize::from(self.to_threats) * 4 + p.index() - 1,
+        };
+        bucket * 64 + self.to_sq.index()
+    }
+}
