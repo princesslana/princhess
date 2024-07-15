@@ -260,7 +260,7 @@ impl State {
             mi.set_from_defend(defends.contains(from_sq));
 
             if piece != Piece::PAWN && piece != Piece::KING {
-                mi.set_to_good_see(b.see(*mv, -108));
+                mi.set_to_good_see(b.see(*mv, 8));
             }
 
             mi
