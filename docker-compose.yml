@@ -2,14 +2,14 @@ services:
   elo_check:
     build:
       context: .
-      dockerfile: bin/Dockerfile.cutechess-cli
+      dockerfile: bin/Dockerfile.fastchess
     command:
       -engine cmd=/engines/princhess-main name=princhess-main
       -engine cmd=/engines/princhess-0.18.0 name=princhess-0.18.0
 
       -each proto=uci tc=8+0.08
             option.SyzygyPath=/syzygy option.Hash=128 option.Threads=1
-      -openings file=/books/8moves_v3.epd format=epd order=random
+      -randomseed -openings file=/books/8moves_v3.epd format=epd order=random
       -games 2 -repeat -rounds 500
       -recover -ratinginterval 10 -concurrency 6
     volumes:
@@ -22,14 +22,14 @@ services:
   policy_elo_check:
     build:
       context: .
-      dockerfile: bin/Dockerfile.cutechess-cli
+      dockerfile: bin/Dockerfile.fastchess
     command:
       -engine cmd=/engines/princhess name=princhess
       -engine cmd=/engines/princhess-main name=princhess-main
 
       -each proto=uci tc=inf nodes=1
             option.SyzygyPath=/syzygy option.Hash=128 option.Threads=1
-      -openings file=/books/8moves_v3.epd format=epd order=random
+      -randomseed -openings file=/books/8moves_v3.epd format=epd order=random
       -games 2 -repeat -rounds 2500
       -recover -ratinginterval 10 -concurrency 6
     volumes:
@@ -40,7 +40,7 @@ services:
   sprt_gain:
     build:
       context: .
-      dockerfile: bin/Dockerfile.cutechess-cli
+      dockerfile: bin/Dockerfile.fastchess
     command:
       -engine cmd=/engines/princhess name=princhess
       -engine cmd=/engines/princhess-main name=princhess-main
@@ -48,7 +48,7 @@ services:
       -each proto=uci tc=8+0.08
             option.SyzygyPath=/syzygy option.Hash=128 option.Threads=1
       -sprt elo0=0 elo1=5 alpha=0.05 beta=0.1
-      -openings file=/books/4moves_noob.epd format=epd order=random
+      -randomseed -openings file=/books/4moves_noob.epd format=epd order=random
       -games 2 -repeat -rounds 7500
       -recover -ratinginterval 10 -concurrency 6
     volumes:
@@ -59,7 +59,7 @@ services:
   sprt_gain_5k:
     build:
       context: .
-      dockerfile: bin/Dockerfile.cutechess-cli
+      dockerfile: bin/Dockerfile.fastchess
     command:
       -engine cmd=/engines/princhess name=princhess
       -engine cmd=/engines/princhess-main name=princhess-main
@@ -67,7 +67,7 @@ services:
       -each proto=uci tc=inf nodes=5000
             option.SyzygyPath=/syzygy option.Hash=128 option.Threads=1
       -sprt elo0=0 elo1=5 alpha=0.05 beta=0.1
-      -openings file=/books/4moves_noob.epd format=epd order=random
+      -randomseed -openings file=/books/4moves_noob.epd format=epd order=random
       -games 2 -repeat -rounds 2500
       -recover -ratinginterval 10 -concurrency 6
     volumes:
@@ -78,7 +78,7 @@ services:
   sprt_gain_ltc:
     build:
       context: .
-      dockerfile: bin/Dockerfile.cutechess-cli
+      dockerfile: bin/Dockerfile.fastchess
     command:
       -engine cmd=/engines/princhess name=princhess
       -engine cmd=/engines/princhess-main name=princhess-main
@@ -86,7 +86,7 @@ services:
       -each proto=uci tc=40+0.4
             option.SyzygyPath=/syzygy option.Hash=128 option.Threads=1
       -sprt elo0=0 elo1=5 alpha=0.1 beta=0.2
-      -openings file=/books/4moves_noob.epd format=epd order=random
+      -randomseed -openings file=/books/4moves_noob.epd format=epd order=random
       -games 2 -repeat -rounds 7500
       -recover -ratinginterval 10 -concurrency 6
       -resign movecount=3 score=500 twosided=true
@@ -99,7 +99,7 @@ services:
   sprt_equal:
     build:
       context: .
-      dockerfile: bin/Dockerfile.cutechess-cli
+      dockerfile: bin/Dockerfile.fastchess
     command:
       -engine cmd=/engines/princhess name=princhess
       -engine cmd=/engines/princhess-main name=princhess-main
@@ -107,7 +107,7 @@ services:
       -each proto=uci tc=8+0.08
             option.SyzygyPath=/syzygy option.Hash=128 option.Threads=1
       -sprt elo0=-5 elo1=0 alpha=0.05 beta=0.1
-      -openings file=/books/4moves_noob.epd format=epd order=random
+      -randomseed -openings file=/books/4moves_noob.epd format=epd order=random
       -games 2 -repeat -rounds 7500
       -recover -ratinginterval 10 -concurrency 6
     volumes:
@@ -118,14 +118,14 @@ services:
   self_play:
     build:
       context: .
-      dockerfile: bin/Dockerfile.cutechess-cli
+      dockerfile: bin/Dockerfile.fastchess
     command:
       -engine cmd=/engines/princhess-0.15.0 name=princhess-0.15.0
       -engine cmd=/engines/princhess-0.15.0 name=princhess-0.15.0
 
       -each proto=uci tc=inf nodes=5000
             option.Hash=128 option.Threads=1
-      -openings file=/books/8moves_v3.epd format=epd order=random
+      -randomseed -openings file=/books/8moves_v3.epd format=epd order=random
       -rounds 100000
       -recover -ratinginterval 100 -concurrency 6
       -pgnout /pgn/self_play-0.15.0.pgn min fi
@@ -136,14 +136,14 @@ services:
   debug:
     build:
       context: .
-      dockerfile: bin/Dockerfile.cutechess-cli
+      dockerfile: bin/Dockerfile.fastchess
     command:
       -engine cmd=/engines/princhess name=princhess
       -engine cmd=/engines/princhess-main name=princhess-main
 
       -each proto=uci tc=8+0.08
             option.SyzygyPath=/syzygy option.Hash=128 option.Threads=1
-      -openings file=/books/8moves_v3.epd format=epd order=random
+      -randomseed -openings file=/books/8moves_v3.epd format=epd order=random
       -debug -rounds 1
       -pgnout /pgn/debug.pgn
     volumes:
@@ -155,7 +155,7 @@ services:
   tune_gauntlet:
     build:
       context: .
-      dockerfile: bin/Dockerfile.cutechess-cli
+      dockerfile: bin/Dockerfile.fastchess
     command:
       -engine cmd=/engines/princhess-main name=princhess-main
       -engine cmd=/engines/princhess name=princhess- option.
@@ -163,7 +163,7 @@ services:
       -each proto=uci tc=inf nodes=5000
             option.SyzygyPath=/syzygy option.Hash=128 option.Threads=1
       -tournament gauntlet
-      -openings file=/books/4moves_noob.epd format=epd order=random
+      -randomseed -openings file=/books/4moves_noob.epd format=epd order=random
       -games 2 -repeat -rounds 250
       -recover -ratinginterval 100 -concurrency 6
     volumes:

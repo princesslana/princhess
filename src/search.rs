@@ -136,7 +136,7 @@ impl Search {
 
         if mvs.len() == 1 {
             let uci_mv = mvs[0].to_uci();
-            println!("info depth 1 seldepth 1 nodes 1 nps 1 tbhits 0 time 1 pv {uci_mv}");
+            println!("info depth 1 seldepth 1 nodes 1 nps 1 tbhits 0 score cp 0 time 1 pv {uci_mv}");
             println!("bestmove {uci_mv}");
             return;
         } else if let Some((mv, wdl)) = tablebase::probe_best_move(state.board()) {
