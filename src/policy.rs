@@ -243,10 +243,33 @@ impl QuantizedPolicyNetwork {
     ) -> Box<Self> {
         let mut network = Self::zeroed();
 
-        network.from_weights = unsafe { mem::transmute(*from_weights) };
-        network.from_bias = unsafe { mem::transmute(*from_bias) };
-        network.to_weights = unsafe { mem::transmute(*to_weights) };
-        network.to_bias = unsafe { mem::transmute(*to_bias) };
+        network.from_weights = unsafe {
+            mem::transmute::<
+                [RawOutputWeights; MoveIndex::FROM_COUNT],
+                [QuantizedOutputWeights; MoveIndex::FROM_COUNT],
+            >(*from_weights)
+        };
+
+        network.from_bias = unsafe {
+            mem::transmute::<
+                [RawOutputBias; MoveIndex::FROM_COUNT],
+                [QuantizedOutputBias; MoveIndex::FROM_COUNT],
+            >(*from_bias)
+        };
+
+        network.to_weights = unsafe {
+            mem::transmute::<
+                [RawOutputWeights; MoveIndex::TO_COUNT],
+                [QuantizedOutputWeights; MoveIndex::TO_COUNT],
+            >(*to_weights)
+        };
+
+        network.to_bias = unsafe {
+            mem::transmute::<
+                [RawOutputBias; MoveIndex::TO_COUNT],
+                [QuantizedOutputBias; MoveIndex::TO_COUNT],
+            >(*to_bias)
+        };
 
         network
     }
@@ -296,8 +319,8 @@ impl QuantizedPolicyNetwork {
                 let from_weight = self.get_from_weights(from_idx, *f);
                 let to_weight = self.get_to_weights(to_idx, *f);
 
-                from.set(&from_weight);
-                to.set(&to_weight);
+                from.set(from_weight);
+                to.set(to_weight);
             }
 
             out.push(from.dot_relu(&to) as f32 / QAA as f32);

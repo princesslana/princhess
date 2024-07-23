@@ -136,7 +136,9 @@ impl Search {
 
         if mvs.len() == 1 {
             let uci_mv = mvs[0].to_uci();
-            println!("info depth 1 seldepth 1 nodes 1 nps 1 tbhits 0 score cp 0 time 1 pv {uci_mv}");
+            println!(
+                "info depth 1 seldepth 1 nodes 1 nps 1 tbhits 0 score cp 0 time 1 pv {uci_mv}"
+            );
             println!("bestmove {uci_mv}");
             return;
         } else if let Some((mv, wdl)) = tablebase::probe_best_move(state.board()) {
@@ -300,18 +302,18 @@ impl Search {
             evaluation::policy(root_state, &state_moves, get_policy_temperature());
 
         let mut moves: Vec<(&MoveEdge, f32)> = root_moves.iter().zip(state_moves_eval).collect();
-        moves.sort_by_key(|(h, e)| (h.average_reward().unwrap_or(*e) * SCALE) as i64);
+        moves.sort_by_key(|(h, e)| (h.reward().average, (e * SCALE) as i64));
         for (mov, e) in moves {
+            let reward = mov.reward();
+
             println!(
                 "info string {:7} M: {:5} P: {:>6} V: {:7} E: {:>6} ({:>8})",
                 format!("{}", mov.get_move().to_uci()),
                 format!("{:3.2}", e * 100.),
                 format!("{:3.2}", f32::from(mov.policy()) / SCALE * 100.),
                 mov.visits(),
-                mov.average_reward()
-                    .map_or("n/a".to_string(), |r| format!("{:3.2}", r / (SCALE / 100.))),
-                mov.average_reward()
-                    .map_or("n/a".to_string(), |r| eval_in_cp(r / SCALE))
+                format!("{:3.2}", reward.average as f32 / (SCALE / 100.)),
+                format!("{:3.2}", eval_in_cp(reward.average as f32 / SCALE))
             );
         }
     }
