@@ -157,10 +157,7 @@ impl From<&SearchTree> for TrainingPosition {
         assert!(max_visits == Self::MAX_VISITS);
 
         let pv = tree.best_edge();
-        let mut evaluation = match pv.visits() {
-            0 => 0,
-            v => pv.sum_rewards() / i64::from(v),
-        } as i32;
+        let mut evaluation = pv.reward().average;
 
         let best_move = *pv.get_move();
 

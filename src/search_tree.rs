@@ -55,6 +55,18 @@ pub struct PositionNode {
     flag: Flag,
 }
 
+pub struct Reward {
+    pub average: i32,
+    pub visits: u32,
+}
+
+impl Reward {
+    const ZERO: Self = Self {
+        average: -SCALE as i32,
+        visits: 0,
+    };
+}
+
 unsafe impl Sync for PositionNode {}
 
 static WIN_NODE: PositionNode = PositionNode::new(&[], Flag::TerminalWin);
@@ -101,21 +113,10 @@ impl PositionNode {
     }
 
     pub fn select_child_by_rewards(&self) -> &MoveEdge {
-        let children = self.hots();
-
-        let mut best = &children[0];
-        let mut best_reward = best.average_reward().unwrap_or(-SCALE);
-
-        for child in children.iter().skip(1) {
-            let reward = child.average_reward().unwrap_or(-SCALE);
-
-            if reward > best_reward {
-                best = child;
-                best_reward = reward;
-            }
-        }
-
-        best
+        self.hots()
+            .iter()
+            .max_by_key(|x| x.reward().average)
+            .unwrap()
     }
 }
 
@@ -138,18 +139,22 @@ impl MoveEdge {
         self.visits.load(Ordering::Relaxed)
     }
 
-    pub fn sum_rewards(&self) -> i64 {
-        self.sum_evaluations.load(Ordering::Relaxed)
-    }
-
     pub fn policy(&self) -> u16 {
         self.policy
     }
 
-    pub fn average_reward(&self) -> Option<f32> {
-        match self.visits() {
-            0 => None,
-            x => Some(self.sum_rewards() as f32 / x as f32),
+    pub fn reward(&self) -> Reward {
+        let visits = self.visits.load(Ordering::Relaxed);
+
+        if visits == 0 {
+            return Reward::ZERO;
+        }
+
+        let sum = self.sum_evaluations.load(Ordering::Relaxed);
+
+        Reward {
+            average: (sum / i64::from(visits)) as i32,
+            visits,
         }
     }
 
@@ -324,9 +329,7 @@ impl SearchTree {
                 break;
             }
 
-            let fpu = path
-                .last()
-                .map_or(0, |x| -x.sum_rewards() / i64::from(x.visits()));
+            let fpu = path.last().map_or(0, |x| -x.reward().average);
 
             let choice = tree_policy::choose_child(node.hots(), self.cpuct, self.cpuct_tau, fpu);
             choice.down();
@@ -503,7 +506,7 @@ impl SearchTree {
                 out
             });
 
-            let eval = eval_in_cp(edge.average_reward().unwrap_or(-SCALE) / SCALE);
+            let eval = eval_in_cp(edge.reward().average as f32 / SCALE);
 
             let info_str = format!(
                 "info depth {} seldepth {} nodes {} nps {} tbhits {} score {} time {} multipv {} pv {}",
@@ -539,19 +542,17 @@ fn principal_variation(from: &PositionNode, num_moves: usize) -> Vec<&MoveEdge> 
     result
 }
 
-fn sort_moves(children: &[MoveEdge]) -> Vec<&MoveEdge> {
+pub fn sort_moves(children: &[MoveEdge]) -> Vec<&MoveEdge> {
     let k = get_cvisits_selection();
 
     let reward = |child: &MoveEdge| {
-        let visits = child.visits();
+        let reward = child.reward();
 
-        if visits == 0 {
+        if reward.visits == 0 {
             return -(2. * SCALE) + f32::from(child.policy());
         }
 
-        let sum_rewards = child.sum_rewards();
-
-        sum_rewards as f32 / visits as f32 - (k * 2. * SCALE) / (visits as f32).sqrt()
+        reward.average as f32 - (k * 2. * SCALE) / (reward.visits as f32).sqrt()
     };
 
     let mut result = Vec::with_capacity(children.len());
