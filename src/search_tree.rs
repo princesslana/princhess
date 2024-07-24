@@ -21,8 +21,6 @@ use crate::tree_policy;
 
 const MAX_PLAYOUT_LENGTH: usize = 256;
 
-const VIRTUAL_LOSS: i64 = SCALE as i64;
-
 pub struct SearchTree {
     root_node: PositionNode,
     root_state: State,
@@ -159,14 +157,11 @@ impl MoveEdge {
     }
 
     pub fn down(&self) {
-        self.sum_evaluations
-            .fetch_sub(VIRTUAL_LOSS, Ordering::Relaxed);
         self.visits.fetch_add(1, Ordering::Relaxed);
     }
 
     pub fn up(&self, evaln: i64) {
-        let delta = evaln + VIRTUAL_LOSS;
-        self.sum_evaluations.fetch_add(delta, Ordering::Relaxed);
+        self.sum_evaluations.fetch_add(evaln, Ordering::Relaxed);
     }
 
     pub fn replace(&self, other: &MoveEdge) {
