@@ -1,9 +1,9 @@
 use once_cell::sync::Lazy;
 use std::cmp::max;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering};
 use std::sync::RwLock;
 
-static NUM_THREADS: AtomicUsize = AtomicUsize::new(1);
+static NUM_THREADS: AtomicU32 = AtomicU32::new(1);
 static HASH_SIZE_MB: AtomicUsize = AtomicUsize::new(16);
 static MULTI_PV: AtomicUsize = AtomicUsize::new(1);
 
@@ -16,11 +16,11 @@ static POLICY_TEMPERATURE_ROOT: Lazy<RwLock<f32>> = Lazy::new(|| RwLock::new(14.
 static CHESS960: AtomicBool = AtomicBool::new(false);
 static POLICY_ONLY: AtomicBool = AtomicBool::new(false);
 
-pub fn set_num_threads(threads: usize) {
+pub fn set_num_threads(threads: u32) {
     NUM_THREADS.store(threads, Ordering::Relaxed);
 }
 
-pub fn get_num_threads() -> usize {
+pub fn get_num_threads() -> u32 {
     max(1, NUM_THREADS.load(Ordering::Relaxed))
 }
 

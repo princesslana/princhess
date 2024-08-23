@@ -102,6 +102,10 @@ impl PositionNode {
         unsafe { &*(self.hots) }
     }
 
+    pub fn visits(&self) -> u64 {
+        self.hots().iter().map(|x| u64::from(x.visits())).sum()
+    }
+
     pub fn clear_children_links(&self) {
         let hots = unsafe { &*(self.hots.cast_mut()) };
 

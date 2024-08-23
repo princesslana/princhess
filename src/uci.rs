@@ -1,9 +1,11 @@
+use scoped_threadpool::Pool;
 use std::io::stdin;
 use std::str::{FromStr, SplitWhitespace};
 
 use crate::options::{
-    set_chess960, set_cpuct, set_cpuct_tau, set_cvisits_selection, set_hash_size_mb, set_multi_pv,
-    set_num_threads, set_policy_only, set_policy_temperature, set_policy_temperature_root,
+    get_num_threads, set_chess960, set_cpuct, set_cpuct_tau, set_cvisits_selection,
+    set_hash_size_mb, set_multi_pv, set_num_threads, set_policy_only, set_policy_temperature,
+    set_policy_temperature_root,
 };
 use crate::search::Search;
 use crate::search_tree::print_size_list;
@@ -19,6 +21,7 @@ const VERSION: Option<&'static str> = option_env!("CARGO_PKG_VERSION");
 
 pub fn main() {
     let mut search = Search::new(State::default(), LRTable::empty());
+    let mut search_threads = Pool::new(1);
 
     let mut next_line: Option<String> = None;
 
@@ -53,7 +56,12 @@ pub fn main() {
                     }
                 }
                 "quit" => return,
-                "go" => search.go(tokens, &mut next_line),
+                "go" => {
+                    if search_threads.thread_count() != get_num_threads() {
+                        search_threads = Pool::new(get_num_threads());
+                    }
+                    search.go(&mut search_threads, tokens, &mut next_line);
+                }
                 "movelist" => search.print_move_list(),
                 "sizelist" => print_size_list(),
                 "eval" => search.print_eval(),
