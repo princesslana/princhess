@@ -1,9 +1,10 @@
+use scoped_threadpool::Pool;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 use crate::chess::{Color, Move};
 use crate::evaluation;
-use crate::options::{get_num_threads, get_policy_temperature, is_policy_only};
+use crate::options::{get_policy_temperature, is_policy_only};
 use crate::search_tree::{MoveEdge, PositionNode, SearchTree};
 use crate::state::State;
 use crate::tablebase;
@@ -128,7 +129,7 @@ impl Search {
             .map(Duration::from_millis)
     }
 
-    pub fn go(&self, mut tokens: Tokens, next_line: &mut Option<String>) {
+    pub fn go(&self, threads: &mut Pool, mut tokens: Tokens, next_line: &mut Option<String>) {
         let state = self.search_tree.root_state();
         let stm = state.side_to_move();
 
@@ -227,32 +228,33 @@ impl Search {
 
         think_time.set_node_limit(node_limit);
 
-        self.playout_parallel(get_num_threads(), think_time, next_line);
+        self.playout_parallel(threads, think_time, next_line);
     }
 
     fn playout_parallel(
         &self,
-        num_threads: usize,
+        threads: &mut Pool,
         time_management: TimeManagement,
         next_line: &mut Option<String>,
     ) {
         let stop_signal = AtomicBool::new(false);
+        let thread_count = threads.thread_count();
 
         let run_search_thread = |tm: &TimeManagement| {
             let mut tld = ThreadData::create(&self.search_tree);
             while self.search_tree.playout(&mut tld, tm, &stop_signal) {}
         };
 
-        std::thread::scope(|s| {
-            s.spawn(|| {
+        threads.scoped(|s| {
+            s.execute(|| {
                 run_search_thread(&time_management);
                 self.search_tree.print_info(&time_management);
                 stop_signal.store(true, Ordering::Relaxed);
                 println!("bestmove {}", self.best_move().to_uci());
             });
 
-            for _ in 0..(num_threads - 1) {
-                s.spawn(|| {
+            for _ in 0..(thread_count - 1) {
+                s.execute(|| {
                     run_search_thread(&TimeManagement::infinite());
                 });
             }
@@ -307,13 +309,14 @@ impl Search {
             let reward = mov.reward();
 
             println!(
-                "info string {:7} M: {:5} P: {:>6} V: {:7} E: {:>6} ({:>8})",
-                format!("{}", mov.get_move().to_uci()),
-                format!("{:3.2}", e * 100.),
-                format!("{:3.2}", f32::from(mov.policy()) / SCALE * 100.),
+                "info string {:7} M: {:>5.2} P: {:>5.2} V: {:7} ({:>5.2}%) E: {:>7.2} ({:>8})",
+                mov.get_move().to_uci(),
+                e * 100.,
+                f32::from(mov.policy()) / SCALE * 100.,
                 mov.visits(),
-                format!("{:3.2}", reward.average as f32 / (SCALE / 100.)),
-                format!("{:3.2}", eval_in_cp(reward.average as f32 / SCALE))
+                mov.visits() as f32 / root_node.visits() as f32 * 100.,
+                reward.average as f32 / (SCALE / 100.),
+                eval_in_cp(reward.average as f32 / SCALE)
             );
         }
     }
