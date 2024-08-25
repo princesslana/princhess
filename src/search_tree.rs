@@ -10,7 +10,7 @@ use crate::arena::Error as ArenaError;
 use crate::chess;
 use crate::evaluation::{self, Flag};
 use crate::options::{
-    get_cpuct, get_cpuct_tau, get_cvisits_selection, get_multi_pv, get_policy_temperature,
+    get_cpuct_tau, get_cvisits_selection, get_multi_pv, get_policy_temperature,
     get_policy_temperature_root,
 };
 use crate::search::{eval_in_cp, ThreadData};
@@ -25,7 +25,6 @@ pub struct SearchTree {
     root_node: PositionNode,
     root_state: State,
 
-    cpuct: f32,
     cpuct_tau: f32,
     policy_t: f32,
 
@@ -247,7 +246,6 @@ impl SearchTree {
         Self {
             root_state: state,
             root_node,
-            cpuct: get_cpuct(),
             cpuct_tau: get_cpuct_tau(),
             policy_t: get_policy_temperature(),
             root_table,
@@ -304,6 +302,7 @@ impl SearchTree {
     pub fn playout<'a: 'b, 'b>(
         &'a self,
         tld: &'b mut ThreadData<'a>,
+        cpuct: f32,
         time_management: &'a TimeManagement,
         stop_signal: &'a AtomicBool,
     ) -> bool {
@@ -311,6 +310,7 @@ impl SearchTree {
         let mut node = &self.root_node;
         let mut path: ArrayVec<&MoveEdge, MAX_PLAYOUT_LENGTH> = ArrayVec::new();
         let mut evaln = 0;
+
         loop {
             {
                 let _lock = self.ttable.flip_lock().lock().unwrap();
@@ -330,7 +330,7 @@ impl SearchTree {
 
             let fpu = path.last().map_or(0, |x| -x.reward().average);
 
-            let choice = tree_policy::choose_child(node.hots(), self.cpuct, self.cpuct_tau, fpu);
+            let choice = tree_policy::choose_child(node.hots(), cpuct, self.cpuct_tau, fpu);
             choice.down();
             path.push(choice);
             state.make_move(choice.mov);

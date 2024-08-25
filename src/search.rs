@@ -4,7 +4,8 @@ use std::time::{Duration, Instant};
 
 use crate::chess::{Color, Move};
 use crate::evaluation;
-use crate::options::{get_policy_temperature, is_policy_only};
+use crate::math::Rng;
+use crate::options::{get_cpuct, get_policy_temperature, is_policy_only};
 use crate::search_tree::{MoveEdge, PositionNode, SearchTree};
 use crate::state::State;
 use crate::tablebase;
@@ -237,25 +238,30 @@ impl Search {
         time_management: TimeManagement,
         next_line: &mut Option<String>,
     ) {
+        let cpuct = get_cpuct();
         let stop_signal = AtomicBool::new(false);
         let thread_count = threads.thread_count();
 
-        let run_search_thread = |tm: &TimeManagement| {
+        let mut rng = Rng::default();
+
+        let run_search_thread = |cpuct: f32, tm: &TimeManagement| {
             let mut tld = ThreadData::create(&self.search_tree);
-            while self.search_tree.playout(&mut tld, tm, &stop_signal) {}
+            while self.search_tree.playout(&mut tld, cpuct, tm, &stop_signal) {}
         };
 
         threads.scoped(|s| {
             s.execute(|| {
-                run_search_thread(&time_management);
+                run_search_thread(cpuct, &time_management);
                 self.search_tree.print_info(&time_management);
                 stop_signal.store(true, Ordering::Relaxed);
                 println!("bestmove {}", self.best_move().to_uci());
             });
 
             for _ in 0..(thread_count - 1) {
-                s.execute(|| {
-                    run_search_thread(&TimeManagement::infinite());
+                let jitter = 1. + rng.next_f32_range(-0.03, 0.03);
+
+                s.execute(move || {
+                    run_search_thread(cpuct * jitter, &TimeManagement::infinite());
                 });
             }
 
@@ -283,11 +289,12 @@ impl Search {
 
     pub fn playout_sync(&self, playouts: usize) {
         let mut tld = ThreadData::create(&self.search_tree);
+        let cpuct = get_cpuct();
         let tm = TimeManagement::infinite();
         let stop_signal = AtomicBool::new(false);
 
         for _ in 0..playouts {
-            if !self.search_tree.playout(&mut tld, &tm, &stop_signal) {
+            if !self.search_tree.playout(&mut tld, cpuct, &tm, &stop_signal) {
                 break;
             }
         }
