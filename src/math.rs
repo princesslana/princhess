@@ -23,6 +23,7 @@ fn max(arr: &[f32]) -> f32 {
     max
 }
 
+#[must_use]
 pub struct Rng {
     seed: u64,
 }
