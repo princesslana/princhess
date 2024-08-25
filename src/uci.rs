@@ -81,7 +81,7 @@ pub fn read_stdin() -> String {
 pub fn uci() {
     println!("id name {} {}", ENGINE_NAME, VERSION.unwrap_or("unknown"));
     println!("id author {ENGINE_AUTHOR}");
-    println!("option name Hash type spin min 8 max 65536 default 16");
+    println!("option name Hash type spin min 8 max 16777216 default 16");
     println!("option name Threads type spin min 1 max 255 default 1");
     println!("option name MultiPV type spin min 1 max 255 default 1");
     println!("option name SyzygyPath type string default <empty>");
