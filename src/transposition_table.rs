@@ -88,6 +88,7 @@ pub struct LRTable {
     left: TranspositionTable,
     right: TranspositionTable,
     is_left_current: Arc<AtomicBool>,
+    is_flipping: AtomicBool,
     flip_lock: Mutex<()>,
 }
 
@@ -98,6 +99,7 @@ impl LRTable {
             left,
             right,
             is_left_current: Arc::new(AtomicBool::new(true)),
+            is_flipping: AtomicBool::new(false),
             flip_lock: Mutex::new(()),
         }
     }
@@ -105,10 +107,6 @@ impl LRTable {
     #[must_use]
     pub fn empty() -> Self {
         Self::new(TranspositionTable::empty(), TranspositionTable::empty())
-    }
-
-    pub fn is_arena_full(&self) -> bool {
-        self.current_table().arena().full()
     }
 
     pub fn insert<'a>(&'a self, key: &State, value: &'a PositionNode) -> &'a PositionNode {
@@ -157,8 +155,28 @@ impl LRTable {
         );
     }
 
-    pub fn flip_lock(&self) -> &Mutex<()> {
-        &self.flip_lock
+    pub fn wait_if_flipping(&self) {
+        if self.is_flipping.load(Ordering::Relaxed) {
+            let _lock = self.flip_lock.lock().unwrap();
+        }
+    }
+
+    pub fn flip_if_full<F>(&self, f: F)
+    where
+        F: FnOnce(),
+    {
+        self.is_flipping.store(true, Ordering::Relaxed);
+
+        {
+            let _lock = self.flip_lock.lock().unwrap();
+
+            if self.current_table().arena().full() {
+                self.flip_tables();
+                f();
+            }
+        }
+
+        self.is_flipping.store(false, Ordering::Relaxed);
     }
 
     pub fn allocator(&self) -> LRAllocator {

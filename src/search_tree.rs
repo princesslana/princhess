@@ -263,10 +263,6 @@ impl SearchTree {
         self.root_node.clear_children_links();
     }
 
-    fn flip_tables(&self) {
-        self.ttable.flip_tables();
-    }
-
     pub fn table(self) -> LRTable {
         self.ttable
     }
@@ -312,9 +308,8 @@ impl SearchTree {
         let mut evaln = 0;
 
         loop {
-            {
-                let _lock = self.ttable.flip_lock().lock().unwrap();
-            }
+            self.ttable.wait_if_flipping();
+
             if node.is_terminal() {
                 break;
             }
@@ -365,11 +360,7 @@ impl SearchTree {
             let new_node = match self.descend(&state, choice, tld) {
                 Ok(r) => r,
                 Err(ArenaError::Full) => {
-                    let _lock = self.ttable.flip_lock().lock().unwrap();
-                    if self.ttable.is_arena_full() {
-                        self.flip_tables();
-                        self.root_node.clear_children_links();
-                    }
+                    self.ttable.flip_if_full(|| self.root_node.clear_children_links());
                     return true;
                 }
             };
