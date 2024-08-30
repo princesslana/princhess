@@ -360,7 +360,8 @@ impl SearchTree {
             let new_node = match self.descend(&state, choice, tld) {
                 Ok(r) => r,
                 Err(ArenaError::Full) => {
-                    self.ttable.flip_if_full(|| self.root_node.clear_children_links());
+                    self.ttable
+                        .flip_if_full(|| self.root_node.clear_children_links());
                     return true;
                 }
             };
@@ -499,12 +500,13 @@ impl SearchTree {
             let eval = eval_in_cp(edge.reward().average as f32 / SCALE);
 
             let info_str = format!(
-                "info depth {} seldepth {} nodes {} nps {} tbhits {} score {} time {} multipv {} pv {}",
+                "info depth {} seldepth {} nodes {} nps {} tbhits {} hashful {} score {} time {} multipv {} pv {}",
                 depth.max(1),
                 sel_depth.max(1),
                 nodes,
                 nps,
                 self.tb_hits(),
+                self.ttable.full(),
                 eval,
                 search_time_ms,
                 idx + 1,
