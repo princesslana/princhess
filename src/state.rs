@@ -28,7 +28,7 @@ impl State {
     }
 
     #[must_use]
-    pub fn from_tokens(mut tokens: Tokens) -> Option<Self> {
+    pub fn from_tokens(mut tokens: Tokens, is_chess960: bool) -> Option<Self> {
         let mut result = match tokens.next()? {
             "startpos" => Self::default(),
             "fen" => {
@@ -49,7 +49,7 @@ impl State {
         };
         for mov_str in tokens {
             for mov in result.available_moves() {
-                if mov.to_uci() == mov_str {
+                if mov.to_uci(is_chess960) == mov_str {
                     result.make_move(mov);
                     break;
                 }

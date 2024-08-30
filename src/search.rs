@@ -5,7 +5,7 @@ use std::time::{Duration, Instant};
 use crate::chess::{Color, Move};
 use crate::evaluation;
 use crate::math::Rng;
-use crate::options::{get_cpuct, get_policy_temperature, is_policy_only};
+use crate::options::SearchOptions;
 use crate::search_tree::{MoveEdge, PositionNode, SearchTree};
 use crate::state::State;
 use crate::tablebase;
@@ -95,14 +95,24 @@ impl<'a> ThreadData<'a> {
     }
 }
 
+#[must_use]
 pub struct Search {
     search_tree: SearchTree,
+    search_options: SearchOptions,
 }
 
 impl Search {
-    pub fn new(state: State, table: LRTable) -> Self {
-        let search_tree = SearchTree::new(state, table);
-        Self { search_tree }
+    pub fn new(state: State, table: LRTable, search_options: SearchOptions) -> Self {
+        let search_tree = SearchTree::new(state, table, search_options);
+        Self {
+            search_tree,
+            search_options,
+        }
+    }
+
+    pub fn with_empty_table(state: State, search_options: SearchOptions) -> Self {
+        let table = LRTable::empty(search_options.hash_size_mb);
+        Self::new(state, table, search_options)
     }
 
     pub fn reset_table(&mut self) {
@@ -115,6 +125,10 @@ impl Search {
 
     pub fn root_node(&self) -> &PositionNode {
         self.search_tree.root_node()
+    }
+
+    pub fn root_state(&self) -> &State {
+        self.search_tree.root_state()
     }
 
     pub fn tree(&self) -> &SearchTree {
@@ -137,14 +151,14 @@ impl Search {
         let mvs = state.available_moves();
 
         if mvs.len() == 1 {
-            let uci_mv = mvs[0].to_uci();
+            let uci_mv = self.to_uci(mvs[0]);
             println!(
                 "info depth 1 seldepth 1 nodes 1 nps 1 tbhits 0 score cp 0 time 1 pv {uci_mv}"
             );
             println!("bestmove {uci_mv}");
             return;
         } else if let Some((mv, wdl)) = tablebase::probe_best_move(state.board()) {
-            let uci_mv = mv.to_uci();
+            let uci_mv = self.to_uci(mv);
 
             let score = match wdl {
                 tablebase::Wdl::Win => 1000,
@@ -223,7 +237,7 @@ impl Search {
             think_time = TimeManagement::from_duration(ideal_think_time.min(max_think_time));
         }
 
-        if is_policy_only() {
+        if self.search_options.is_policy_only {
             node_limit = 1;
         }
 
@@ -238,7 +252,7 @@ impl Search {
         time_management: TimeManagement,
         next_line: &mut Option<String>,
     ) {
-        let cpuct = get_cpuct();
+        let cpuct = self.search_options.mcts_options.cpuct;
         let stop_signal = AtomicBool::new(false);
         let thread_count = threads.thread_count();
 
@@ -254,7 +268,7 @@ impl Search {
                 run_search_thread(cpuct, &time_management);
                 self.search_tree.print_info(&time_management);
                 stop_signal.store(true, Ordering::Relaxed);
-                println!("bestmove {}", self.best_move().to_uci());
+                println!("bestmove {}", self.to_uci(self.best_move()),);
             });
 
             for _ in 0..(thread_count - 1) {
@@ -289,7 +303,7 @@ impl Search {
 
     pub fn playout_sync(&self, playouts: usize) {
         let mut tld = ThreadData::create(&self.search_tree);
-        let cpuct = get_cpuct();
+        let cpuct = self.search_options.mcts_options.cpuct;
         let tm = TimeManagement::infinite();
         let stop_signal = AtomicBool::new(false);
 
@@ -307,8 +321,11 @@ impl Search {
         let root_moves = root_node.hots();
 
         let state_moves = root_state.available_moves();
-        let state_moves_eval =
-            evaluation::policy(root_state, &state_moves, get_policy_temperature());
+        let state_moves_eval = evaluation::policy(
+            root_state,
+            &state_moves,
+            self.search_options.mcts_options.policy_temperature,
+        );
 
         let mut moves: Vec<(&MoveEdge, f32)> = root_moves.iter().zip(state_moves_eval).collect();
         moves.sort_by_key(|(h, e)| (h.reward().average, (e * SCALE) as i64));
@@ -317,7 +334,7 @@ impl Search {
 
             println!(
                 "info string {:7} M: {:>5.2} P: {:>5.2} V: {:7} ({:>5.2}%) E: {:>7.2} ({:>8})",
-                mov.get_move().to_uci(),
+                self.to_uci(*mov.get_move()),
                 e * 100.,
                 f32::from(mov.policy()) / SCALE * 100.,
                 mov.visits(),
@@ -341,6 +358,10 @@ impl Search {
 
     pub fn best_move(&self) -> Move {
         self.search_tree.best_move()
+    }
+
+    fn to_uci(&self, mov: Move) -> String {
+        mov.to_uci(self.search_options.is_chess960)
     }
 }
 

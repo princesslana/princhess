@@ -9,10 +9,7 @@ use std::sync::atomic::{
 use crate::arena::Error as ArenaError;
 use crate::chess;
 use crate::evaluation::{self, Flag};
-use crate::options::{
-    get_cpuct_tau, get_cvisits_selection, get_multi_pv, get_policy_temperature,
-    get_policy_temperature_root,
-};
+use crate::options::{MctsOptions, SearchOptions};
 use crate::search::{eval_in_cp, ThreadData};
 use crate::search::{TimeManagement, SCALE};
 use crate::state::State;
@@ -25,8 +22,7 @@ pub struct SearchTree {
     root_node: PositionNode,
     root_state: State,
 
-    cpuct_tau: f32,
-    policy_t: f32,
+    search_options: SearchOptions,
 
     #[allow(dead_code)]
     root_table: TranspositionTable,
@@ -228,7 +224,7 @@ where
 }
 
 impl SearchTree {
-    pub fn new(state: State, table: LRTable) -> Self {
+    pub fn new(state: State, table: LRTable, search_options: SearchOptions) -> Self {
         let tb_hits = 0.into();
 
         let root_table = TranspositionTable::for_root();
@@ -237,7 +233,7 @@ impl SearchTree {
             &state,
             &tb_hits,
             |sz| root_table.arena().allocator().alloc_slice(sz),
-            get_policy_temperature_root(),
+            search_options.mcts_options.policy_temperature_root,
         )
         .expect("Unable to create root node");
 
@@ -246,8 +242,7 @@ impl SearchTree {
         Self {
             root_state: state,
             root_node,
-            cpuct_tau: get_cpuct_tau(),
-            policy_t: get_policy_temperature(),
+            search_options,
             root_table,
             ttable: table,
             num_nodes: 1.into(),
@@ -259,7 +254,7 @@ impl SearchTree {
     }
 
     pub fn reset_table(&mut self) {
-        self.ttable = LRTable::empty();
+        self.ttable = LRTable::empty(self.search_options.hash_size_mb);
         self.root_node.clear_children_links();
     }
 
@@ -325,7 +320,12 @@ impl SearchTree {
 
             let fpu = path.last().map_or(0, |x| -x.reward().average);
 
-            let choice = tree_policy::choose_child(node.hots(), cpuct, self.cpuct_tau, fpu);
+            let mcts_options = MctsOptions {
+                cpuct,
+                ..self.search_options.mcts_options
+            };
+
+            let choice = tree_policy::choose_child(node.hots(), fpu, &mcts_options);
             choice.down();
             path.push(choice);
             state.make_move(choice.mov);
@@ -429,7 +429,7 @@ impl SearchTree {
             state,
             &self.tb_hits,
             |sz| tld.allocator.alloc_move_info(sz),
-            self.policy_t,
+            self.search_options.mcts_options.policy_temperature,
         )?;
 
         self.ttable.lookup_into(state, &mut created_here);
@@ -469,7 +469,10 @@ impl SearchTree {
     }
 
     pub fn best_edge(&self) -> &MoveEdge {
-        sort_moves(self.root_node.hots())[0]
+        sort_moves(
+            self.root_node.hots(),
+            self.search_options.c_visits_selection,
+        )[0]
     }
 
     pub fn print_info(&self, time_management: &TimeManagement) {
@@ -484,18 +487,25 @@ impl SearchTree {
             nodes * 1000 / search_time_ms as usize
         };
 
-        let moves = sort_moves(self.root_node.hots());
+        let moves = sort_moves(
+            self.root_node.hots(),
+            self.search_options.c_visits_selection,
+        );
 
-        for (idx, edge) in moves.iter().enumerate().take(get_multi_pv()) {
+        let is_chess960 = self.search_options.is_chess960;
+
+        for (idx, edge) in moves.iter().enumerate().take(self.search_options.multi_pv) {
             let pv = match edge.child() {
                 Some(child) => principal_variation(child, depth.max(1) - 1),
                 None => vec![],
             };
 
-            let pv_string: String = pv.into_iter().fold(edge.get_move().to_uci(), |mut out, x| {
-                write!(out, " {}", x.get_move().to_uci()).unwrap();
-                out
-            });
+            let pv_string: String =
+                pv.into_iter()
+                    .fold(edge.get_move().to_uci(is_chess960), |mut out, x| {
+                        write!(out, " {}", x.get_move().to_uci(is_chess960)).unwrap();
+                        out
+                    });
 
             let eval = eval_in_cp(edge.reward().average as f32 / SCALE);
 
@@ -534,9 +544,7 @@ fn principal_variation(from: &PositionNode, num_moves: usize) -> Vec<&MoveEdge> 
     result
 }
 
-pub fn sort_moves(children: &[MoveEdge]) -> Vec<&MoveEdge> {
-    let k = get_cvisits_selection();
-
+pub fn sort_moves(children: &[MoveEdge], k: f32) -> Vec<&MoveEdge> {
     let reward = |child: &MoveEdge| {
         let reward = child.reward();
 
