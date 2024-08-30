@@ -33,7 +33,11 @@ impl Arena {
         }
     }
 
-    pub fn full(&self) -> bool {
+    pub fn full(&self) -> usize {
+        self.owned_mappings.lock().unwrap().len() * 1000 / self.max_chunks
+    }
+
+    pub fn is_full(&self) -> bool {
         let owned_mappings = self.owned_mappings.lock().unwrap();
         owned_mappings.len() > self.max_chunks
     }

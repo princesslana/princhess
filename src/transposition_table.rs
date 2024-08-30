@@ -36,6 +36,11 @@ impl TranspositionTable {
     }
 
     #[must_use]
+    pub fn full(&self) -> usize {
+        self.arena.full()
+    }
+
+    #[must_use]
     pub fn arena(&self) -> &Arena {
         &self.arena
     }
@@ -109,6 +114,10 @@ impl LRTable {
         Self::new(TranspositionTable::empty(), TranspositionTable::empty())
     }
 
+    pub fn full(&self) -> usize {
+        (self.left.arena().full() + self.right.arena().full()) / 2
+    }
+
     pub fn insert<'a>(&'a self, key: &State, value: &'a PositionNode) -> &'a PositionNode {
         self.current_table().insert(key, value)
     }
@@ -170,7 +179,7 @@ impl LRTable {
         {
             let _lock = self.flip_lock.lock().unwrap();
 
-            if self.current_table().arena().full() {
+            if self.current_table().arena().is_full() {
                 self.flip_tables();
                 f();
             }
