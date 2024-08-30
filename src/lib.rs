@@ -8,7 +8,6 @@ extern crate dashmap;
 extern crate fastapprox;
 extern crate memmap;
 extern crate nohash_hasher;
-extern crate once_cell;
 
 mod arena;
 mod mem;

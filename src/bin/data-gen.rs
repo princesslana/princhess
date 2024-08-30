@@ -1,6 +1,6 @@
 use princhess::chess::{Board, Move};
 use princhess::math::Rng;
-use princhess::options::set_hash_size_mb;
+use princhess::options::SearchOptions;
 use princhess::search::Search;
 use princhess::state::State;
 use princhess::tablebase::{self, Wdl};
@@ -14,6 +14,8 @@ use std::sync::atomic::{AtomicU64, AtomicUsize};
 use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+
+const HASH_SIZE_MB: usize = 128;
 
 const THREADS: usize = 6;
 const DATA_WRITE_RATE: usize = 16384;
@@ -152,7 +154,9 @@ fn run_game(stats: &Stats, positions: &mut Vec<TrainingPosition>, rng: &mut Rng)
     };
 
     let mut state = State::from_board(startpos);
-    let mut table = LRTable::empty();
+    let mut table = LRTable::empty(HASH_SIZE_MB);
+
+    let search_options = SearchOptions::default();
 
     let mut game_positions = Vec::with_capacity(256);
 
@@ -176,7 +180,7 @@ fn run_game(stats: &Stats, positions: &mut Vec<TrainingPosition>, rng: &mut Rng)
     }
 
     let result = loop {
-        let search = Search::new(state.clone(), table);
+        let search = Search::new(state.clone(), table, search_options);
         let legal_moves = search.root_node().hots().len();
 
         let mut max_visits = search
@@ -288,8 +292,6 @@ fn run_game(stats: &Stats, positions: &mut Vec<TrainingPosition>, rng: &mut Rng)
 }
 
 fn main() {
-    set_hash_size_mb(128);
-
     tablebase::set_tablebase_directory("syzygy");
 
     let stats = Arc::new(Stats::zero());

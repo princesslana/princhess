@@ -324,7 +324,6 @@ dependencies = [
  "goober",
  "memmap",
  "nohash-hasher",
- "once_cell",
  "scoped_threadpool",
 ]
 

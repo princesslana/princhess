@@ -5,7 +5,6 @@ use std::sync::atomic::{AtomicBool, AtomicPtr, Ordering};
 use std::sync::{Arc, Mutex};
 
 use crate::arena::{Allocator, Arena, Error as ArenaError};
-use crate::options::get_hash_size_mb;
 use crate::search_tree::{MoveEdge, PositionNode};
 use crate::state::State;
 
@@ -19,9 +18,9 @@ pub struct TranspositionTable {
 
 impl TranspositionTable {
     #[must_use]
-    pub fn empty() -> Self {
+    pub fn empty(hash_size_mb: usize) -> Self {
         let table = Table::default();
-        let arena = Box::new(Arena::new(get_hash_size_mb() / 2));
+        let arena = Box::new(Arena::new(hash_size_mb));
 
         Self::new(table, arena)
     }
@@ -110,8 +109,12 @@ impl LRTable {
     }
 
     #[must_use]
-    pub fn empty() -> Self {
-        Self::new(TranspositionTable::empty(), TranspositionTable::empty())
+    pub fn empty(hash_size_mb: usize) -> Self {
+        let each_size = hash_size_mb / 2;
+        Self::new(
+            TranspositionTable::empty(each_size),
+            TranspositionTable::empty(each_size),
+        )
     }
 
     pub fn full(&self) -> usize {

@@ -1,7 +1,6 @@
 use arrayvec::ArrayVec;
 
 use crate::chess::{Piece, Square};
-use crate::options::is_chess960;
 
 #[must_use]
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
@@ -73,9 +72,9 @@ impl Move {
     }
 
     #[must_use]
-    pub fn to_uci(self) -> String {
+    pub fn to_uci(self, is_chess960: bool) -> String {
         let from = self.from();
-        let to = if self.is_castle() && !is_chess960() {
+        let to = if self.is_castle() && !is_chess960 {
             match self.to() {
                 Square::H1 => Square::G1,
                 Square::A1 => Square::C1,

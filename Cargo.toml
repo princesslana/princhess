@@ -16,7 +16,6 @@ fastapprox = "=0.3.1"
 goober = { git = "https://github.com/jw1912/goober/", rev = "32b9b52" }
 nohash-hasher = "=0.2.0"
 memmap = "=0.7.0"
-once_cell = "=1.19.0"
 scoped_threadpool = "=0.1.9"
 
 [features]
