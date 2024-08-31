@@ -90,7 +90,7 @@ impl Arena {
     }
 
     pub fn allocator(&self) -> Allocator {
-        let id = IDS.fetch_add(1, Ordering::SeqCst);
+        let id = IDS.fetch_add(1, Ordering::Relaxed);
 
         Allocator {
             id,

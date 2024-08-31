@@ -1,5 +1,5 @@
-use dashmap::DashMap;
 use nohash_hasher::BuildNoHashHasher;
+use scc::hash_map::HashMap;
 use std::ptr;
 use std::sync::atomic::{AtomicBool, AtomicPtr, Ordering};
 use std::sync::{Arc, Mutex};
@@ -8,7 +8,7 @@ use crate::arena::{Allocator, Arena, Error as ArenaError};
 use crate::search_tree::{MoveEdge, PositionNode};
 use crate::state::State;
 
-type Table = DashMap<u64, AtomicPtr<PositionNode>, BuildNoHashHasher<u64>>;
+type Table = HashMap<u64, AtomicPtr<PositionNode>, BuildNoHashHasher<u64>>;
 
 pub struct TranspositionTable {
     table: Table,
@@ -53,12 +53,15 @@ impl TranspositionTable {
     pub fn insert<'a>(&'a self, key: &State, value: &'a PositionNode) -> &'a PositionNode {
         let hash = key.hash();
 
-        if let Some(value_here) = self.table.get(&hash) {
-            unsafe { &*value_here.load(Ordering::Relaxed) }
-        } else {
-            self.table
-                .insert(hash, AtomicPtr::new(ptr::from_ref(value).cast_mut()));
-            value
+        match self
+            .table
+            .insert(hash, AtomicPtr::new(ptr::from_ref(value).cast_mut()))
+        {
+            Ok(()) => value,
+            Err(_) => self
+                .table
+                .read(&hash, |_, v| unsafe { &*v.load(Ordering::Relaxed) })
+                .unwrap(),
         }
     }
 
@@ -67,8 +70,7 @@ impl TranspositionTable {
         let hash = key.hash();
 
         self.table
-            .get(&hash)
-            .map(|v| unsafe { &*v.load(Ordering::Relaxed) })
+            .read(&hash, |_, v| unsafe { &*v.load(Ordering::Relaxed) })
     }
 
     pub fn lookup_into(&self, state: &State, dest: &mut PositionNode) -> bool {
@@ -162,8 +164,8 @@ impl LRTable {
     pub fn flip_tables(&self) {
         self.previous_table().clear();
         self.is_left_current.store(
-            !self.is_left_current.load(Ordering::SeqCst),
-            Ordering::SeqCst,
+            !self.is_left_current.load(Ordering::Relaxed),
+            Ordering::Relaxed,
         );
     }
 
