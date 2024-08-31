@@ -105,7 +105,7 @@ impl PositionNode {
         let hots = unsafe { &*(self.hots.cast_mut()) };
 
         for h in hots {
-            h.child.store(null_mut(), Ordering::SeqCst);
+            h.child.store(null_mut(), Ordering::Relaxed);
         }
     }
 
@@ -432,16 +432,14 @@ impl SearchTree {
             self.search_options.mcts_options.policy_temperature,
         )?;
 
+        // Copy any history
         self.ttable.lookup_into(state, &mut created_here);
 
+        // Copy node to arena memory
         let created = tld.allocator.alloc_node()?;
-
         *created = created_here;
 
-        if let Some(node) = choice.set_or_get_child(created) {
-            return Ok(node);
-        }
-
+        // Insert the child into the ttable
         let inserted = self.ttable.insert(state, created);
         let inserted_ptr = ptr::from_ref(inserted).cast_mut();
         choice.child.store(inserted_ptr, Ordering::Relaxed);

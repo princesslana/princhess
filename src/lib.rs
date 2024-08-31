@@ -4,10 +4,10 @@
 
 extern crate arc_swap;
 extern crate arrayvec;
-extern crate dashmap;
 extern crate fastapprox;
 extern crate memmap;
 extern crate nohash_hasher;
+extern crate scc;
 
 mod arena;
 mod mem;
