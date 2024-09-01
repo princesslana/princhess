@@ -197,7 +197,6 @@ impl MoveEdge {
 
 fn create_node<'a, F>(
     state: &State,
-    tb_hits: &AtomicUsize,
     alloc_slice: F,
     policy_t: f32,
 ) -> Result<PositionNode, ArenaError>
@@ -208,10 +207,6 @@ where
 
     let state_flag = evaluation::evaluate_state_flag(state, !moves.is_empty());
     let move_eval = evaluation::policy(state, &moves, policy_t);
-
-    if state_flag.is_tablebase() {
-        tb_hits.fetch_add(1, Ordering::Relaxed);
-    }
 
     let hots = alloc_slice(move_eval.len())?;
 
@@ -225,13 +220,10 @@ where
 
 impl SearchTree {
     pub fn new(state: State, table: LRTable, search_options: SearchOptions) -> Self {
-        let tb_hits = 0.into();
-
         let root_table = TranspositionTable::for_root();
 
         let mut root_node = create_node(
             &state,
-            &tb_hits,
             |sz| root_table.arena().allocator().alloc_slice(sz),
             search_options.mcts_options.policy_temperature_root,
         )
@@ -248,7 +240,7 @@ impl SearchTree {
             num_nodes: 1.into(),
             playouts: 0.into(),
             max_depth: 0.into(),
-            tb_hits,
+            tb_hits: 0.into(),
             next_info: 0.into(),
         }
     }
@@ -385,6 +377,10 @@ impl SearchTree {
         self.max_depth.fetch_max(depth, Ordering::Relaxed);
         let playouts = self.playouts.fetch_add(1, Ordering::Relaxed) + 1;
 
+        if node.is_tablebase() {
+            self.tb_hits.fetch_add(1, Ordering::Relaxed);
+        }
+
         if num_nodes >= time_management.node_limit() {
             return false;
         }
@@ -427,7 +423,6 @@ impl SearchTree {
         // Create the child
         let mut created_here = create_node(
             state,
-            &self.tb_hits,
             |sz| tld.allocator.alloc_move_info(sz),
             self.search_options.mcts_options.policy_temperature,
         )?;
