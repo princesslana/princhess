@@ -1,14 +1,15 @@
+use bytemuck::{self, Pod, Zeroable};
 use std::fs;
 use std::io::Write;
-use std::mem;
 use std::path::Path;
-use std::slice;
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Zeroable)]
 #[repr(C)]
 pub struct Accumulator<const H: usize> {
     pub vals: [i16; H],
 }
+
+unsafe impl<const H: usize> Pod for Accumulator<H> {}
 
 impl<const H: usize> Accumulator<H> {
     pub fn set(&mut self, weights: &Accumulator<H>) {
@@ -44,15 +45,10 @@ pub fn q_i32(x: f32, q: i32) -> i32 {
     quantized as i32
 }
 
-pub fn save_to_bin<T>(dir: &Path, file_name: &str, data: &T) {
+pub fn save_to_bin<T: Pod>(dir: &Path, file_name: &str, data: &T) {
     let mut file = fs::File::create(dir.join(file_name)).expect("Failed to create file");
 
-    let size_of = mem::size_of::<T>();
+    let slice = bytemuck::bytes_of(data);
 
-    unsafe {
-        let ptr: *const T = data;
-        let slice_ptr: *const u8 = ptr.cast::<u8>();
-        let slice = slice::from_raw_parts(slice_ptr, size_of);
-        file.write_all(slice).unwrap();
-    }
+    file.write_all(slice).unwrap();
 }

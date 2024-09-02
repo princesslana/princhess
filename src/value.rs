@@ -1,3 +1,4 @@
+use bytemuck::{allocation, Pod, Zeroable};
 use goober::activation::{ReLU, Tanh};
 use goober::layer::{DenseConnected, SparseConnected};
 use goober::{FeedForwardNetwork, OutputLayer, SparseVector, Vector};
@@ -7,7 +8,7 @@ use std::ops::AddAssign;
 use std::path::Path;
 
 use crate::math::{randomize_dense, randomize_sparse, Rng};
-use crate::mem::{boxed_and_zeroed, Align64};
+use crate::mem::Align64;
 use crate::nets::{q_i16, q_i32, relu, save_to_bin, Accumulator};
 use crate::state::{self, State};
 
@@ -37,6 +38,9 @@ pub struct ValueNetwork {
     output: Output,
 }
 
+unsafe impl Zeroable for ValueNetwork {}
+
+#[derive(Copy, Clone, Pod, Zeroable)]
 #[repr(C)]
 pub struct QuantizedValueNetwork {
     stm_weights: QuantizedFeatureWeights,
@@ -45,6 +49,7 @@ pub struct QuantizedValueNetwork {
     nstm_bias: QuantizedFeatureBias,
     output_weights: QuantizedOutputWeights,
     output_bias: i32,
+    _padding: [u8; 60],
 }
 
 impl Display for ValueNetwork {
@@ -64,7 +69,7 @@ impl AddAssign<&Self> for ValueNetwork {
 impl ValueNetwork {
     #[must_use]
     pub fn zeroed() -> Box<Self> {
-        boxed_and_zeroed()
+        allocation::zeroed_box()
     }
 
     #[must_use]
@@ -110,11 +115,11 @@ impl ValueNetwork {
 
     #[must_use]
     pub fn to_boxed_and_quantized(&self) -> Box<QuantizedValueNetwork> {
-        let mut stm_weights: Box<RawFeatureWeights> = boxed_and_zeroed();
+        let mut stm_weights: Box<RawFeatureWeights> = allocation::zeroed_box();
         let mut stm_bias = [0; HIDDEN_SIZE];
-        let mut nstm_weights: Box<RawFeatureWeights> = boxed_and_zeroed();
+        let mut nstm_weights: Box<RawFeatureWeights> = allocation::zeroed_box();
         let mut nstm_bias = [0; HIDDEN_SIZE];
-        let mut output_weights: Box<RawOutputWeights> = boxed_and_zeroed();
+        let mut output_weights: Box<RawOutputWeights> = allocation::zeroed_box();
 
         for (row_idx, weights) in stm_weights.iter_mut().enumerate() {
             let row = self.stm.weights_row(row_idx);
@@ -230,7 +235,7 @@ impl FeedForwardNetwork for ValueNetwork {
 impl QuantizedValueNetwork {
     #[must_use]
     pub fn zeroed() -> Box<Self> {
-        boxed_and_zeroed()
+        allocation::zeroed_box()
     }
 
     #[must_use]

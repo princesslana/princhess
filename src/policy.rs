@@ -1,3 +1,4 @@
+use bytemuck::{allocation, Pod, Zeroable};
 use goober::activation::ReLU;
 use goober::layer::SparseConnected;
 use goober::{FeedForwardNetwork, OutputLayer, SparseVector};
@@ -8,7 +9,7 @@ use std::path::Path;
 
 use crate::chess::{MoveIndex, Square};
 use crate::math::{randomize_sparse, Rng};
-use crate::mem::{boxed_and_zeroed, Align16};
+use crate::mem::Align16;
 use crate::nets::{q_i16, save_to_bin, Accumulator};
 use crate::state;
 
@@ -32,6 +33,8 @@ pub struct FromNetwork {
     output: Output,
 }
 
+unsafe impl Zeroable for FromNetwork {}
+
 impl FromNetwork {
     pub fn randomize(&mut self) {
         let mut rng = Rng::default();
@@ -46,6 +49,8 @@ pub struct ToNetwork {
     output: Output,
 }
 
+unsafe impl Zeroable for ToNetwork {}
+
 impl ToNetwork {
     pub fn randomize(&mut self) {
         let mut rng = Rng::default();
@@ -55,12 +60,14 @@ impl ToNetwork {
 }
 
 #[allow(clippy::module_name_repetitions)]
+#[derive(Zeroable)]
 pub struct PolicyNetwork {
     from: [FromNetwork; MoveIndex::FROM_COUNT],
     to: [ToNetwork; MoveIndex::TO_COUNT],
 }
 
 #[repr(C)]
+#[derive(Copy, Clone, Pod, Zeroable)]
 pub struct QuantizedPolicyNetwork {
     from_weights: [QuantizedOutputWeights; MoveIndex::FROM_COUNT],
     from_bias: [QuantizedOutputBias; MoveIndex::FROM_COUNT],
@@ -97,7 +104,7 @@ impl AddAssign<&Self> for PolicyNetwork {
 impl PolicyNetwork {
     #[must_use]
     pub fn zeroed() -> Box<Self> {
-        boxed_and_zeroed()
+        allocation::zeroed_box()
     }
 
     #[must_use]
@@ -189,10 +196,11 @@ impl PolicyNetwork {
 
     #[must_use]
     pub fn to_boxed_and_quantized(&self) -> Box<QuantizedPolicyNetwork> {
-        let mut from_weights: Box<[RawOutputWeights; MoveIndex::FROM_COUNT]> = boxed_and_zeroed();
-        let mut from_bias: Box<[RawOutputBias; MoveIndex::FROM_COUNT]> = boxed_and_zeroed();
-        let mut to_weights: Box<[RawOutputWeights; MoveIndex::TO_COUNT]> = boxed_and_zeroed();
-        let mut to_bias: Box<[RawOutputBias; MoveIndex::TO_COUNT]> = boxed_and_zeroed();
+        let mut from_weights: Box<[RawOutputWeights; MoveIndex::FROM_COUNT]> =
+            allocation::zeroed_box();
+        let mut from_bias: Box<[RawOutputBias; MoveIndex::FROM_COUNT]> = allocation::zeroed_box();
+        let mut to_weights: Box<[RawOutputWeights; MoveIndex::TO_COUNT]> = allocation::zeroed_box();
+        let mut to_bias: Box<[RawOutputBias; MoveIndex::TO_COUNT]> = allocation::zeroed_box();
 
         for (subnet, raw) in self.from.iter().zip(from_weights.iter_mut()) {
             for (row_idx, weights) in raw.iter_mut().enumerate() {
@@ -231,7 +239,7 @@ impl PolicyNetwork {
 impl QuantizedPolicyNetwork {
     #[must_use]
     pub fn zeroed() -> Box<Self> {
-        boxed_and_zeroed()
+        allocation::zeroed_box()
     }
 
     #[must_use]
