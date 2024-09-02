@@ -1,21 +1,11 @@
-use std::alloc::{self, Layout};
-use std::boxed::Box;
+use bytemuck::{Pod, Zeroable};
 use std::ops::{Deref, DerefMut};
 
-pub fn boxed_and_zeroed<T>() -> Box<T> {
-    unsafe {
-        let layout = Layout::new::<T>();
-        let ptr = alloc::alloc_zeroed(layout);
-        if ptr.is_null() {
-            alloc::handle_alloc_error(layout);
-        }
-        Box::from_raw(ptr.cast())
-    }
-}
-
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Zeroable)]
 #[repr(C, align(64))]
 pub struct Align64<T>(pub T);
+
+unsafe impl<T: Pod> Pod for Align64<T> {}
 
 impl<T> Deref for Align64<T> {
     type Target = T;
@@ -31,9 +21,11 @@ impl<T> DerefMut for Align64<T> {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Zeroable)]
 #[repr(C, align(16))]
 pub struct Align16<T>(pub T);
+
+unsafe impl<T: Pod> Pod for Align16<T> {}
 
 impl<T> Deref for Align16<T> {
     type Target = T;

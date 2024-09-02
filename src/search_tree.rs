@@ -102,9 +102,7 @@ impl PositionNode {
     }
 
     pub fn clear_children_links(&self) {
-        let hots = unsafe { &*(self.hots.cast_mut()) };
-
-        for h in hots {
+        for h in self.hots() {
             h.child.store(null_mut(), Ordering::Relaxed);
         }
     }
