@@ -301,7 +301,7 @@ impl SearchTree {
             if node.hots().is_empty() {
                 break;
             }
-            if node.is_tablebase() && state.halfmove_counter() == 0 {
+            if node.is_tablebase() && state.halfmove_clock() == 0 {
                 break;
             }
             if path.len() >= MAX_PLAYOUT_LENGTH {

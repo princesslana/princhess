@@ -297,7 +297,10 @@ impl QuantizedValueNetwork {
             result += relu(x) * i32::from(w);
         }
 
-        result -= result * (state.fifty_move_counter() - 36).max(0) as i32 / 128;
+        // Fifty move rule dampening
+        // Constants are chosen to make the max effect more significant at higher levels and max 50%
+        let hmc = state.halfmove_clock();
+        result = result * (256 - i32::from(hmc.saturating_sub(20) + hmc.saturating_sub(52))) / 256;
 
         (result as f32 / QAB as f32).tanh()
     }

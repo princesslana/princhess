@@ -22,10 +22,7 @@ RUN mkdir /books
 RUN mkdir /engines
 RUN mkdir /data
 
-COPY bin/gm2001.bin /books/gm2001.bin
-COPY bin/first_moves.epd /books/first_moves.epd
-
-RUN curl -ssL https://raw.githubusercontent.com/AndyGrant/OpenBench/master/Books/4moves_noob.epd.zip -o /books/4moves_noob.epd.zip
-RUN unzip /books/4moves_noob.epd.zip -d /books
+RUN curl -ssL https://github.com/official-stockfish/books/raw/master/UHO_Lichess_4852_v1.epd.zip -o /books/UHO_Lichess_4852_v1.epd.zip
+RUN unzip /books/UHO_Lichess_4852_v1.epd.zip -d /books
 
 CMD ["tune", "local", "--verbose", "-c", "/config/tuning_config.json", "-d", "/data/data.npz", "--logfile", "/data/log.txt", "--model-path", "/data/model.pkl"]

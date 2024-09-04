@@ -22,14 +22,14 @@
     "CPuctTau": "Real(0.5, 1.0)",
     "PolicyTemperatureRoot": "Real(1.0, 20.0)"
   },
-  "rounds": 12,
+  "rounds": 15,
   "engine1_npm": "25000",
   "engine2_npm": "25000",
-  "opening_file": "/books/4moves_noob.epd",
+  "opening_file": "/books/UHO_Lichess_4852_v1.epd",
   "adjudicate_draws": false,
   "adjudicate_resign": false,
   "adjudicate_tb": false,
-  "concurrency": 6,
+  "concurrency": 5,
   "plot_every": 50,
   "result_every": 10,
   "acq_function": "ts"
