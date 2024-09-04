@@ -10,9 +10,9 @@ RUN git clone https://github.com/Disservin/fastchess.git \
 RUN mkdir /books
 RUN mkdir /engines
 
-RUN curl -ssL https://github.com/AndyGrant/openbench-books/raw/master/4moves_noob.epd.zip -o /books/4moves_noob.epd.zip
+RUN curl -ssL https://github.com/official-stockfish/books/raw/master/UHO_Lichess_4852_v1.epd.zip -o /books/UHO_Lichess_4852_v1.epd.zip
 RUN curl -ssL https://github.com/AndyGrant/openbench-books/raw/master/8moves_v3.epd.zip -o /books/8moves_v3.epd.zip
-RUN unzip /books/4moves_noob.epd.zip -d /books
+RUN unzip /books/UHO_Lichess_4852_v1.epd.zip -d /books
 RUN unzip /books/8moves_v3.epd.zip -d /books
 
 ENTRYPOINT ["fastchess/fastchess"]

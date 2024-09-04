@@ -15,6 +15,10 @@ pub struct Board {
     stm: Color,
     ep: Square,
     castling: Castling,
+
+    halfmove_clock: u8,
+    fullmove_counter: u16,
+
     hash: u64,
 }
 
@@ -26,6 +30,8 @@ impl Board {
             stm: Color::WHITE,
             ep: Square::NONE,
             castling: Castling::default(),
+            halfmove_clock: 0,
+            fullmove_counter: 1,
             hash: 0,
         }
     }
@@ -106,7 +112,8 @@ impl Board {
 
         let parts = fen.split_whitespace().collect::<Vec<_>>();
 
-        let [fen_pos, fen_color, fen_castling, fen_ep] = parts[0..4] else {
+        let [fen_pos, fen_color, fen_castling, fen_ep, fen_halfmove, fen_fullmove] = parts[0..6]
+        else {
             println!("info string invalid fen");
             return board;
         };
@@ -147,6 +154,9 @@ impl Board {
             "-" => Square::NONE,
             s => Square::from_uci(s),
         };
+
+        board.halfmove_clock = fen_halfmove.parse().unwrap();
+        board.fullmove_counter = fen_fullmove.parse().unwrap();
 
         board.hash = board.generate_zobrist_hash();
 
@@ -191,6 +201,16 @@ impl Board {
 
     pub fn by_piece(&self, piece: Piece) -> Bitboard {
         self.pieces[piece.index()]
+    }
+
+    #[must_use]
+    pub fn halfmove_clock(&self) -> u8 {
+        self.halfmove_clock
+    }
+
+    #[must_use]
+    pub fn fullmove_counter(&self) -> u16 {
+        self.fullmove_counter
     }
 
     pub fn attackers(&self, sq: Square, attacker: Color, occ: Bitboard) -> Bitboard {
@@ -313,9 +333,18 @@ impl Board {
     }
 
     pub fn make_move(&mut self, mov: Move) {
+        self.halfmove_clock += 1;
+        self.fullmove_counter += u16::from(self.stm == Color::BLACK);
+
         let color = self.stm;
         let piece = self.piece_at(mov.from());
         let capture = self.piece_at(mov.to());
+
+        let is_zeroing_move = piece == Piece::PAWN || capture != Piece::NONE;
+
+        if is_zeroing_move {
+            self.halfmove_clock = 0;
+        }
 
         self.flip_side_to_move();
 

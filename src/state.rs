@@ -96,34 +96,23 @@ impl State {
     }
 
     pub fn make_move(&mut self, mov: Move) {
-        let b = &self.board;
-        let piece = b.piece_at(mov.from());
-
-        let is_pawn_move = piece == Piece::PAWN;
-        let capture = b.piece_at(mov.to());
-
-        if is_pawn_move || capture != Piece::NONE {
-            self.prev_state_hashes.clear();
-        } else {
-            self.prev_state_hashes.push(self.hash());
-        }
+        self.prev_state_hashes.push(self.hash());
 
         self.board.make_move(mov);
+
+        if self.board.halfmove_clock() == 0 {
+            self.prev_state_hashes.clear();
+        }
     }
 
     #[must_use]
-    pub fn halfmove_counter(&self) -> usize {
-        self.prev_state_hashes.len()
-    }
-
-    #[must_use]
-    pub fn fifty_move_counter(&self) -> usize {
-        self.prev_state_hashes.len()
+    pub fn halfmove_clock(&self) -> u8 {
+        self.board.halfmove_clock()
     }
 
     #[must_use]
     pub fn drawn_by_fifty_move_rule(&self) -> bool {
-        self.prev_state_hashes.len() >= 100
+        self.halfmove_clock() >= 100
     }
 
     #[must_use]
