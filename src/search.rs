@@ -13,7 +13,6 @@ use crate::transposition_table::{LRAllocator, LRTable};
 use crate::uci::{read_stdin, Tokens};
 
 const DEFAULT_MOVE_TIME_SECS: u64 = 10;
-const DEFAULT_MOVE_TIME_FRACTION: u32 = 20;
 
 const MOVE_OVERHEAD: Duration = Duration::from_millis(50);
 
@@ -225,13 +224,14 @@ impl Search {
         } else if let Some(mt) = move_time {
             think_time = TimeManagement::from_duration(mt);
         } else if let Some(r) = remaining {
-            let move_time_fraction = match movestogo {
-                // plus 2 because we want / 3 to be the max_think_time
-                Some(m) => (m + 2).min(DEFAULT_MOVE_TIME_FRACTION),
-                None => DEFAULT_MOVE_TIME_FRACTION,
-            };
+            let mut move_time_fraction = u32::from(state.moves_left()) * 20 / 27;
 
-            let ideal_think_time = (r + 20 * increment - MOVE_OVERHEAD) / move_time_fraction;
+            if let Some(m) = movestogo {
+                move_time_fraction = (m + 2).min(move_time_fraction);
+            }
+
+            let ideal_think_time =
+                (r + move_time_fraction * increment - MOVE_OVERHEAD) / move_time_fraction;
             let max_think_time = r / 3;
 
             think_time = TimeManagement::from_duration(ideal_think_time.min(max_think_time));

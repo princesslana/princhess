@@ -106,6 +106,16 @@ impl State {
     }
 
     #[must_use]
+    #[allow(clippy::cast_sign_loss)]
+    pub fn moves_left(&self) -> u16 {
+        let p = f32::from(
+            (self.board.fullmove_counter() - 1) * 2
+                + u16::from(self.side_to_move() == Color::BLACK),
+        );
+        (59.3 + (72830.0 - p * 2330.0) / (p * p + p * 10.0 + 2644.0)) as u16 / 2
+    }
+
+    #[must_use]
     pub fn halfmove_clock(&self) -> u8 {
         self.board.halfmove_clock()
     }

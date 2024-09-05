@@ -501,13 +501,14 @@ impl SearchTree {
             let eval = eval_in_cp(edge.reward().average as f32 / SCALE);
 
             let info_str = format!(
-                "info depth {} seldepth {} nodes {} nps {} tbhits {} hashful {} score {} time {} multipv {} pv {}",
+                "info depth {} seldepth {} nodes {} nps {} tbhits {} hashfull {} movesleft {}, score {} time {} multipv {} pv {}",
                 depth.max(1),
                 sel_depth.max(1),
                 nodes,
                 nps,
                 self.tb_hits(),
                 self.ttable.full(),
+                self.root_state.moves_left(),
                 eval,
                 search_time_ms,
                 idx + 1,
