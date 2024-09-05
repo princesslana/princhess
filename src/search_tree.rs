@@ -467,6 +467,8 @@ impl SearchTree {
     }
 
     pub fn print_info(&self, time_management: &TimeManagement) {
+        let mut info_str = String::with_capacity(256);
+
         let search_time_ms = time_management.elapsed().as_millis();
 
         let nodes = self.num_nodes();
@@ -486,33 +488,38 @@ impl SearchTree {
         let is_chess960 = self.search_options.is_chess960;
 
         for (idx, edge) in moves.iter().enumerate().take(self.search_options.multi_pv) {
+            info_str.push_str("info ");
+            write!(info_str, "depth {} ", depth.max(1)).unwrap();
+            write!(info_str, "seldepth {} ", sel_depth.max(1)).unwrap();
+            write!(info_str, "nodes {nodes} ").unwrap();
+            write!(info_str, "nps {nps} ").unwrap();
+            write!(info_str, "tbhits {} ", self.tb_hits()).unwrap();
+            write!(info_str, "hashfull {} ", self.ttable.full()).unwrap();
+
+            if self.search_options.show_movesleft {
+                write!(info_str, "movesleft {} ", self.root_state.moves_left()).unwrap();
+            }
+
+            write!(
+                info_str,
+                "score {} ",
+                eval_in_cp(self.best_edge().reward().average as f32 / SCALE)
+            )
+            .unwrap();
+            write!(info_str, "time {search_time_ms} ").unwrap();
+            write!(info_str, "multipv {} ", idx + 1).unwrap();
+
             let pv = match edge.child() {
                 Some(child) => principal_variation(child, depth.max(1) - 1),
                 None => vec![],
             };
 
-            let pv_string: String =
-                pv.into_iter()
-                    .fold(edge.get_move().to_uci(is_chess960), |mut out, x| {
-                        write!(out, " {}", x.get_move().to_uci(is_chess960)).unwrap();
-                        out
-                    });
+            write!(info_str, "pv {}", edge.get_move().to_uci(is_chess960)).unwrap();
 
-            let eval = eval_in_cp(edge.reward().average as f32 / SCALE);
+            for m in &pv {
+                write!(info_str, " {}", m.get_move().to_uci(is_chess960)).unwrap();
+            }
 
-            let info_str = format!(
-                "info depth {} seldepth {} nodes {} nps {} tbhits {} hashful {} score {} time {} multipv {} pv {}",
-                depth.max(1),
-                sel_depth.max(1),
-                nodes,
-                nps,
-                self.tb_hits(),
-                self.ttable.full(),
-                eval,
-                search_time_ms,
-                idx + 1,
-                pv_string,
-            );
             println!("{info_str}");
         }
     }
