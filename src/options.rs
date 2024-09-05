@@ -96,6 +96,7 @@ static POLICY_TEMPERATURE_ROOT: UciOption =
     UciOption::spin("PolicyTemperatureRoot", 1450, 0, 2 << 16);
 static CHESS960: UciOption = UciOption::check("UCI_Chess960", false);
 static POLICY_ONLY: UciOption = UciOption::check("PolicyOnly", false);
+static SHOW_MOVESLEFT: UciOption = UciOption::check("UCI_ShowMovesLeft", false);
 
 static ALL_OPTIONS: &[UciOption] = &[
     HASH,
@@ -109,6 +110,7 @@ static ALL_OPTIONS: &[UciOption] = &[
     POLICY_TEMPERATURE_ROOT,
     CHESS960,
     POLICY_ONLY,
+    SHOW_MOVESLEFT,
 ];
 
 pub struct UciOptionMap {
@@ -183,6 +185,7 @@ pub struct SearchOptions {
     pub multi_pv: usize,
     pub is_chess960: bool,
     pub is_policy_only: bool,
+    pub show_movesleft: bool,
     pub mcts_options: MctsOptions,
 }
 
@@ -212,6 +215,7 @@ impl From<&UciOptionMap> for SearchOptions {
             multi_pv: map.get_and(&MULTI_PV, |s| s.parse().ok()),
             is_chess960: map.get_and(&CHESS960, |s| s.parse().ok()),
             is_policy_only: map.get_and(&POLICY_ONLY, |s| s.parse().ok()),
+            show_movesleft: map.get_and(&SHOW_MOVESLEFT, |s| s.parse().ok()),
             mcts_options: MctsOptions::from(map),
         }
     }
