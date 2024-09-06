@@ -224,15 +224,15 @@ pub fn for_piece(piece: Piece, color: Color, square: Square, occupied: Bitboard)
 }
 
 pub fn pawn(color: Color, square: Square) -> Bitboard {
-    PAWN_ATTACKS[color.index()][square.index()]
+    PAWN_ATTACKS[color][square]
 }
 
 pub fn knight(square: Square) -> Bitboard {
-    KNIGHT_ATTACKS[square.index()]
+    KNIGHT_ATTACKS[square]
 }
 
 pub fn bishop(square: Square, occupied: Bitboard) -> Bitboard {
-    let magic = unsafe { BISHOP_MAGICS.get_unchecked(square.index()) };
+    let magic = BISHOP_MAGICS[square];
 
     let idx =
         (magic.factor.wrapping_mul(occupied.0 & magic.mask) >> (64 - 9)) as usize + magic.offset;
@@ -241,7 +241,7 @@ pub fn bishop(square: Square, occupied: Bitboard) -> Bitboard {
 }
 
 pub fn rook(square: Square, occupied: Bitboard) -> Bitboard {
-    let magic = unsafe { ROOK_MAGICS.get_unchecked(square.index()) };
+    let magic = ROOK_MAGICS[square];
 
     let idx =
         (magic.factor.wrapping_mul(occupied.0 & magic.mask) >> (64 - 12)) as usize + magic.offset;
@@ -264,13 +264,13 @@ pub fn queen(square: Square, occupied: Bitboard) -> Bitboard {
 }
 
 pub fn king(square: Square) -> Bitboard {
-    KING_ATTACKS[square.index()]
+    KING_ATTACKS[square]
 }
 
 pub fn between(from: Square, to: Square) -> Bitboard {
-    IN_BETWEEN[from.index()][to.index()]
+    IN_BETWEEN[from][to]
 }
 
 pub fn through(from: Square, to: Square) -> Bitboard {
-    LINE_THROUGH[from.index()][to.index()]
+    LINE_THROUGH[from][to]
 }

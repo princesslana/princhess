@@ -1,5 +1,5 @@
 use std::fmt::{self, Display, Formatter};
-use std::ops::{Add, Sub};
+use std::ops::{Add, Index, IndexMut, Sub};
 
 use crate::chess::Bitboard;
 
@@ -166,6 +166,32 @@ impl Sub<u8> for Square {
 
     fn sub(self, rhs: u8) -> Self::Output {
         Square(self.0 - rhs)
+    }
+}
+
+impl<T> Index<Square> for [T; Square::COUNT] {
+    type Output = T;
+
+    fn index(&self, square: Square) -> &Self::Output {
+        let idx = square.index();
+
+        if idx >= Square::COUNT {
+            unsafe { std::hint::unreachable_unchecked() }
+        }
+
+        &self[idx]
+    }
+}
+
+impl<T> IndexMut<Square> for [T; Square::COUNT] {
+    fn index_mut(&mut self, square: Square) -> &mut Self::Output {
+        let idx = square.index();
+
+        if idx >= Square::COUNT {
+            unsafe { std::hint::unreachable_unchecked() }
+        }
+
+        &mut self[idx]
     }
 }
 
