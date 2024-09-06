@@ -39,18 +39,18 @@ impl Flag {
     }
 }
 
-#[cfg(not(feature = "no-net"))]
+#[cfg(feature = "value-net")]
 static VALUE_NETWORK: QuantizedValueNetwork =
     unsafe { std::mem::transmute(*include_bytes!("nets/value.bin")) };
 
 #[must_use]
-#[cfg(not(feature = "no-net"))]
+#[cfg(feature = "value-net")]
 pub fn value(state: &State) -> i64 {
     (VALUE_NETWORK.get(state) * SCALE) as i64
 }
 
 #[must_use]
-#[cfg(feature = "no-net")]
+#[cfg(not(feature = "value-net"))]
 pub fn value(_state: &State) -> i64 {
     0
 }
@@ -79,11 +79,11 @@ pub fn evaluate_state_flag(state: &State, is_legal_moves: bool) -> Flag {
     }
 }
 
-#[cfg(not(feature = "no-policy-net"))]
+#[cfg(feature = "policy-net")]
 static POLICY_NETWORK: QuantizedPolicyNetwork =
     unsafe { std::mem::transmute(*include_bytes!("nets/policy.bin")) };
 
-#[cfg(feature = "no-policy-net")]
+#[cfg(not(feature = "policy-net"))]
 fn run_policy_net(_state: &State, moves: &MoveList, _t: f32) -> Vec<f32> {
     let mut evalns = Vec::with_capacity(moves.len());
 
@@ -94,7 +94,7 @@ fn run_policy_net(_state: &State, moves: &MoveList, _t: f32) -> Vec<f32> {
     evalns
 }
 
-#[cfg(not(feature = "no-policy-net"))]
+#[cfg(feature = "policy-net")]
 fn run_policy_net(state: &State, moves: &MoveList, t: f32) -> Vec<f32> {
     let mut evalns = Vec::with_capacity(moves.len());
 
