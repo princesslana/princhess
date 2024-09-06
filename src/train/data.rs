@@ -194,8 +194,8 @@ impl From<&TrainingPosition> for State {
             let color = Color::from((packed_piece >> 3) & 1);
             let piece = Piece::from(packed_piece & 7);
 
-            colors[color.index()].toggle(sq);
-            pieces[piece.index()].toggle(sq);
+            colors[color].toggle(sq);
+            pieces[piece].toggle(sq);
         }
 
         let board =

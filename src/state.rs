@@ -158,8 +158,8 @@ impl State {
             (false, false) => sq,
         };
 
-        let stm_king_bucket = KING_BUCKETS[flip_stm(stm_ksq).index()];
-        let nstm_king_bucket = KING_BUCKETS[flip_nstm(nstm_ksq).index()];
+        let stm_king_bucket = KING_BUCKETS[flip_stm(stm_ksq)];
+        let nstm_king_bucket = KING_BUCKETS[flip_nstm(nstm_ksq)];
 
         for sq in b.occupied() {
             let piece = b.piece_at(sq);

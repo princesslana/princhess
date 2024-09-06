@@ -1,3 +1,5 @@
+use std::ops::{BitXorAssign, Index, IndexMut};
+
 #[must_use]
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct Piece(u8);
@@ -85,5 +87,40 @@ impl From<u8> for Piece {
 impl From<usize> for Piece {
     fn from(index: usize) -> Self {
         Piece(index as u8)
+    }
+}
+
+impl BitXorAssign for Piece {
+    fn bitxor_assign(&mut self, other: Self) {
+        *self = match *self {
+            Piece::NONE => other,
+            _ => Piece::NONE,
+        };
+    }
+}
+
+impl<T> Index<Piece> for [T; Piece::COUNT] {
+    type Output = T;
+
+    fn index(&self, piece: Piece) -> &Self::Output {
+        let idx = piece.index();
+
+        if idx >= Piece::COUNT {
+            unsafe { std::hint::unreachable_unchecked() }
+        }
+
+        &self[idx]
+    }
+}
+
+impl<T> IndexMut<Piece> for [T; Piece::COUNT] {
+    fn index_mut(&mut self, piece: Piece) -> &mut Self::Output {
+        let idx = piece.index();
+
+        if idx >= Piece::COUNT {
+            unsafe { std::hint::unreachable_unchecked() }
+        }
+
+        &mut self[idx]
     }
 }

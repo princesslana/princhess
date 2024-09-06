@@ -12,6 +12,7 @@ const STARTPOS_SCHARNAGL: usize = 518;
 pub struct Board {
     colors: [Bitboard; Color::COUNT],
     pieces: [Bitboard; Piece::COUNT],
+    piece_at: [Piece; Square::COUNT],
     stm: Color,
     ep: Square,
     castling: Castling,
@@ -27,6 +28,7 @@ impl Board {
         Self {
             colors: [Bitboard::EMPTY; Color::COUNT],
             pieces: [Bitboard::EMPTY; Piece::COUNT],
+            piece_at: [Piece::NONE; Square::COUNT],
             stm: Color::WHITE,
             ep: Square::NONE,
             castling: Castling::default(),
@@ -104,6 +106,12 @@ impl Board {
 
         board.hash = board.generate_zobrist_hash();
 
+        for (idx, pc) in pieces.iter().enumerate() {
+            for sq in *pc {
+                board.piece_at[sq] = Piece::from(idx);
+            }
+        }
+
         board
     }
 
@@ -138,8 +146,7 @@ impl Board {
                     let piece = Piece::from(idx % 6);
                     let color = Color::from(idx > 5);
 
-                    board.colors[color.index()].toggle(sq);
-                    board.pieces[piece.index()].toggle(sq);
+                    board.toggle(color, piece, sq);
 
                     file += 1;
                 }
@@ -164,39 +171,39 @@ impl Board {
     }
 
     pub fn white(&self) -> Bitboard {
-        self.colors[Color::WHITE.index()]
+        self.colors[Color::WHITE]
     }
 
     pub fn black(&self) -> Bitboard {
-        self.colors[Color::BLACK.index()]
+        self.colors[Color::BLACK]
     }
 
     fn by_color(&self, color: Color) -> Bitboard {
-        self.colors[color.index()]
+        self.colors[color]
     }
 
     pub fn kings(&self) -> Bitboard {
-        self.pieces[Piece::KING.index()]
+        self.pieces[Piece::KING]
     }
 
     pub fn queens(&self) -> Bitboard {
-        self.pieces[Piece::QUEEN.index()]
+        self.pieces[Piece::QUEEN]
     }
 
     pub fn rooks(&self) -> Bitboard {
-        self.pieces[Piece::ROOK.index()]
+        self.pieces[Piece::ROOK]
     }
 
     pub fn bishops(&self) -> Bitboard {
-        self.pieces[Piece::BISHOP.index()]
+        self.pieces[Piece::BISHOP]
     }
 
     pub fn knights(&self) -> Bitboard {
-        self.pieces[Piece::KNIGHT.index()]
+        self.pieces[Piece::KNIGHT]
     }
 
     pub fn pawns(&self) -> Bitboard {
-        self.pieces[Piece::PAWN.index()]
+        self.pieces[Piece::PAWN]
     }
 
     pub fn by_piece(&self, piece: Piece) -> Bitboard {
@@ -228,7 +235,7 @@ impl Board {
     pub fn threats_by(&self, attacker: Color, occ: Bitboard) -> Bitboard {
         let mut threats = Bitboard::EMPTY;
 
-        let color = self.colors[attacker.index()];
+        let color = self.colors[attacker];
 
         for sq in self.kings() & color {
             threats |= attacks::king(sq);
@@ -277,7 +284,7 @@ impl Board {
     }
 
     pub fn king_of(&self, color: Color) -> Square {
-        Square::from(self.kings() & self.colors[color.index()])
+        Square::from(self.kings() & self.colors[color])
     }
 
     #[must_use]
@@ -363,36 +370,31 @@ impl Board {
             };
 
             self.toggle(color, Piece::KING, mov.from());
-            self.toggle(color, Piece::KING, mov.from().with_file(king_to));
-
             self.toggle(color, Piece::ROOK, mov.to());
+
+            self.toggle(color, Piece::KING, mov.from().with_file(king_to));
             self.toggle(color, Piece::ROOK, mov.to().with_file(rook_to));
         } else if mov.is_promotion() {
             let promotion = mov.promotion();
 
+            if capture != Piece::NONE {
+                self.toggle(!color, capture, mov.to());
+            }
+
             self.toggle(color, piece, mov.from());
             self.toggle(color, promotion, mov.to());
-
+        } else {
             if capture != Piece::NONE {
                 self.toggle(!color, capture, mov.to());
             }
-        } else {
+
             self.toggle(color, piece, mov.from());
             self.toggle(color, piece, mov.to());
-
-            if capture != Piece::NONE {
-                self.toggle(!color, capture, mov.to());
-            }
         }
     }
 
     pub fn piece_at(&self, sq: Square) -> Piece {
-        for idx in 0..self.pieces.len() {
-            if self.pieces[idx].contains(sq) {
-                return Piece::from(idx);
-            }
-        }
-        Piece::NONE
+        self.piece_at[sq]
     }
 
     pub fn side_to_move(&self) -> Color {
@@ -456,8 +458,10 @@ impl Board {
     }
 
     fn toggle(&mut self, color: Color, piece: Piece, square: Square) {
-        self.colors[color.index()].toggle(square);
-        self.pieces[piece.index()].toggle(square);
+        self.colors[color].toggle(square);
+        self.pieces[piece].toggle(square);
+
+        self.piece_at[square] ^= piece;
 
         self.hash ^= zobrist::piece(color, piece, square);
     }
