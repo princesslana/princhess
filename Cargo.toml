@@ -1,8 +1,13 @@
 [package]
 authors = ["Princess Lana <ianagbip1oti@gmail.com>"]
 name = "princhess"
+description = "A UCI compatible chess engine using MCTS search aimed at running on the CPU"
 version = "0.0.0-dev"
 edition = "2021"
+license = "GPL-3.0"
+repository = "https://github.com/princesslana/princhess"
+keywords = ["chess", "uci", "mcts"]
+categories = ["games"]
 
 [[bin]]
 name = "princhess"
@@ -20,9 +25,9 @@ scc = "=2.1.16"
 scoped_threadpool = "=0.1.9"
 
 [features]
-no-policy-net = []
-no-value-net = []
-no-net = ["no-policy-net", "no-value-net"]
+default = ["policy-net", "value-net"]
+policy-net = []
+value-net = []
 
 [build-dependencies]
 bindgen = "=0.69.1"
