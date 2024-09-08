@@ -2,13 +2,6 @@
 #![allow(clippy::cast_precision_loss, clippy::cast_possible_truncation)]
 #![allow(clippy::missing_errors_doc, clippy::missing_panics_doc)]
 
-extern crate arc_swap;
-extern crate arrayvec;
-extern crate fastapprox;
-extern crate memmap;
-extern crate nohash_hasher;
-extern crate scc;
-
 mod arena;
 mod mem;
 mod nets;

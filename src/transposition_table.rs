@@ -12,7 +12,6 @@ type Table = HashMap<u64, AtomicPtr<PositionNode>, BuildNoHashHasher<u64>>;
 
 pub struct TranspositionTable {
     table: Table,
-    #[allow(dead_code)]
     arena: Box<Arena>,
 }
 
