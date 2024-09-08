@@ -14,7 +14,6 @@ name = "princhess"
 path = "src/main.rs"
 
 [dependencies]
-arc-swap = "=1.6.0"
 arrayvec = "=0.7.4"
 bytemuck = { version = "=1.17.1", features = ["derive", "extern_crate_alloc", "min_const_generics"] }
 fastapprox = "=0.3.1"

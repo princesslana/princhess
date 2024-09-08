@@ -1,7 +1,6 @@
-use arc_swap::ArcSwap;
 use memmap::MmapMut;
+use scc::HashSet;
 use std::cell::UnsafeCell;
-use std::collections::{HashSet, VecDeque};
 use std::mem;
 use std::ptr;
 use std::slice;
@@ -18,52 +17,47 @@ const CHUNK_SIZE: usize = 1 << 21; // 2MB
 static IDS: AtomicU64 = AtomicU64::new(0);
 
 pub struct Arena {
-    owned_mappings: Mutex<VecDeque<MmapMut>>,
+    owned: Mutex<Vec<MmapMut>>,
     max_chunks: usize,
-    allocators: ArcSwap<HashSet<u64>>,
+    allocators: HashSet<u64>,
 }
 
 impl Arena {
     pub fn new(max_size_mb: usize) -> Self {
         let max_chunks = (max_size_mb << 20) / CHUNK_SIZE;
         Self {
-            owned_mappings: Mutex::default(),
+            owned: Mutex::default(),
             max_chunks,
-            allocators: ArcSwap::default(),
+            allocators: HashSet::default(),
         }
+    }
+
+    fn owned_len(&self) -> usize {
+        self.owned.lock().unwrap().len()
     }
 
     pub fn full(&self) -> usize {
-        self.owned_mappings.lock().unwrap().len() * 1000 / self.max_chunks
+        self.owned_len() * 1000 / self.max_chunks
     }
 
     pub fn is_full(&self) -> bool {
-        let owned_mappings = self.owned_mappings.lock().unwrap();
-        owned_mappings.len() > self.max_chunks
+        self.owned_len() > self.max_chunks
     }
 
     fn give_mmap(&self, mut map: MmapMut) -> Result<&mut [u8], Error> {
-        let result = ptr::addr_of_mut!(*map);
-        let mut owned_mappings = self.owned_mappings.lock().unwrap();
-        if owned_mappings.len() > self.max_chunks {
-            Err(Error::Full)
-        } else {
-            owned_mappings.push_back(map);
-            unsafe { Ok(&mut *result) }
+        if self.owned_len() > self.max_chunks {
+            return Err(Error::Full);
         }
+
+        let result = ptr::addr_of_mut!(*map);
+        self.owned.lock().unwrap().push(map);
+        unsafe { Ok(&mut *result) }
     }
 
     fn alloc_chunk(&self, id: u64) -> Result<&mut [u8], Error> {
-        let allocators = self.allocators.load();
-        if !allocators.contains(&id) {
-            self.allocators.rcu(|als| {
-                let mut als = HashSet::clone(als);
-                als.insert(id);
-                als
-            });
-        }
-
-        self.give_mmap(MmapMut::map_anon(CHUNK_SIZE).unwrap())
+        let mmap = self.give_mmap(MmapMut::map_anon(CHUNK_SIZE).unwrap());
+        let _ = self.allocators.insert(id);
+        mmap
     }
 
     // This is a combination of give_mmap and alloc_chunk that always succeeds.
@@ -71,21 +65,14 @@ impl Arena {
     // This is because we always want creating of an allocator to succeed, even if already full.
     #[allow(clippy::mut_from_ref)]
     fn allocator_chunk(&self, id: u64) -> &mut [u8] {
-        let allocators = self.allocators.load();
-        if !allocators.contains(&id) {
-            self.allocators.rcu(|als| {
-                let mut als = HashSet::clone(als);
-                als.insert(id);
-                als
-            });
-        }
-
         let mut mmap = MmapMut::map_anon(CHUNK_SIZE).unwrap();
 
         let result = ptr::addr_of_mut!(*mmap);
-        let mut owned_mappings = self.owned_mappings.lock().unwrap();
 
-        owned_mappings.push_back(mmap);
+        self.owned.lock().unwrap().push(mmap);
+
+        let _ = self.allocators.insert(id);
+
         unsafe { &mut *result }
     }
 
@@ -100,14 +87,12 @@ impl Arena {
     }
 
     pub fn is_allocator_valid(&self, id: u64) -> bool {
-        self.allocators.load().contains(&id)
+        self.allocators.contains(&id)
     }
 
     pub fn clear(&self) {
-        let mut owned_mappings = self.owned_mappings.lock().unwrap();
-        owned_mappings.clear();
-
-        self.allocators.store(HashSet::new().into());
+        self.allocators.clear();
+        self.owned.lock().unwrap().clear();
     }
 }
 
