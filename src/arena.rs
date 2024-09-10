@@ -16,64 +16,80 @@ const CHUNK_SIZE: usize = 1 << 21; // 2MB
 
 static IDS: AtomicU64 = AtomicU64::new(0);
 
+struct Chunks {
+    pub chunks: Vec<MmapMut>,
+    pub used: usize,
+}
+
+impl Default for Chunks {
+    fn default() -> Self {
+        Self {
+            chunks: Vec::with_capacity(256),
+            used: 0,
+        }
+    }
+}
+
 pub struct Arena {
-    owned: Mutex<Vec<MmapMut>>,
-    max_chunks: usize,
+    chunks: Mutex<Chunks>,
+    max: usize,
     allocators: HashSet<u64>,
 }
 
 impl Arena {
     pub fn new(max_size_mb: usize) -> Self {
-        let max_chunks = (max_size_mb << 20) / CHUNK_SIZE;
+        let max = (max_size_mb << 20) / CHUNK_SIZE;
+
         Self {
-            owned: Mutex::default(),
-            max_chunks,
+            chunks: Mutex::default(),
+            max,
             allocators: HashSet::default(),
         }
     }
 
-    fn owned_len(&self) -> usize {
-        self.owned.lock().unwrap().len()
+    fn used(&self) -> usize {
+        self.chunks.lock().unwrap().used
     }
 
     pub fn full(&self) -> usize {
-        self.owned_len() * 1000 / self.max_chunks
+        self.used() * 1000 / self.max
     }
 
     pub fn is_full(&self) -> bool {
-        self.owned_len() > self.max_chunks
+        self.used() >= self.max
     }
 
-    fn give_mmap(&self, mut map: MmapMut) -> Result<&mut [u8], Error> {
-        if self.owned_len() > self.max_chunks {
+    fn try_alloc_chunk(&self, id: u64) -> Result<&mut [u8], Error> {
+        if self.is_full() {
             return Err(Error::Full);
         }
 
-        let result = ptr::addr_of_mut!(*map);
-        self.owned.lock().unwrap().push(map);
-        unsafe { Ok(&mut *result) }
+        Ok(self.alloc_chunk(id))
     }
 
-    fn alloc_chunk(&self, id: u64) -> Result<&mut [u8], Error> {
-        let mmap = self.give_mmap(MmapMut::map_anon(CHUNK_SIZE).unwrap());
-        let _ = self.allocators.insert(id);
-        mmap
-    }
-
-    // This is a combination of give_mmap and alloc_chunk that always succeeds.
+    // This is n alloc_chunk that always succeeds
     // This means not checking if we exceed the max chunks.
     // This is because we always want creating of an allocator to succeed, even if already full.
     #[allow(clippy::mut_from_ref)]
-    fn allocator_chunk(&self, id: u64) -> &mut [u8] {
-        let mut mmap = MmapMut::map_anon(CHUNK_SIZE).unwrap();
+    fn alloc_chunk(&self, id: u64) -> &mut [u8] {
+        let mmap = {
+            let mut chunks = self.chunks.lock().unwrap();
 
-        let result = ptr::addr_of_mut!(*mmap);
+            let idx = chunks.used;
 
-        self.owned.lock().unwrap().push(mmap);
+            chunks.used += 1;
+
+            if chunks.chunks.len() <= idx {
+                chunks.chunks.push(MmapMut::map_anon(CHUNK_SIZE).unwrap());
+            }
+
+            let result = ptr::addr_of_mut!(*chunks.chunks[idx]);
+            unsafe { &mut *result }
+        };
 
         let _ = self.allocators.insert(id);
 
-        unsafe { &mut *result }
+        mmap
     }
 
     pub fn allocator(&self) -> Allocator {
@@ -82,7 +98,7 @@ impl Arena {
         Allocator {
             id,
             arena: self,
-            memory: UnsafeCell::new(self.allocator_chunk(id)),
+            memory: UnsafeCell::new(self.alloc_chunk(id)),
         }
     }
 
@@ -92,7 +108,7 @@ impl Arena {
 
     pub fn clear(&self) {
         self.allocators.clear();
-        self.owned.lock().unwrap().clear();
+        self.chunks.lock().unwrap().used = 0;
     }
 }
 
@@ -109,7 +125,7 @@ impl<'a> Allocator<'a> {
         let memory = unsafe { &mut *self.memory.get() };
 
         if !self.arena.is_allocator_valid(self.id) {
-            *memory = self.arena.alloc_chunk(self.id)?;
+            *memory = self.arena.try_alloc_chunk(self.id)?;
             self.get_memory(sz)
         } else if sz <= memory.len() {
             let (left, right) = memory.split_at_mut(sz);
@@ -118,7 +134,7 @@ impl<'a> Allocator<'a> {
         } else if sz > CHUNK_SIZE {
             Err(Error::Full)
         } else {
-            *memory = self.arena.alloc_chunk(self.id)?;
+            *memory = self.arena.try_alloc_chunk(self.id)?;
             self.get_memory(sz)
         }
     }
