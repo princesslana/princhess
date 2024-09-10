@@ -114,10 +114,6 @@ impl Search {
         Self::new(state, table, search_options)
     }
 
-    pub fn reset_table(&mut self) {
-        self.search_tree.reset_table();
-    }
-
     pub fn table(self) -> LRTable {
         self.search_tree.table()
     }

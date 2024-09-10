@@ -243,11 +243,6 @@ impl SearchTree {
         }
     }
 
-    pub fn reset_table(&mut self) {
-        self.ttable = LRTable::empty(self.search_options.hash_size_mb);
-        self.root_node.clear_children_links();
-    }
-
     pub fn table(self) -> LRTable {
         self.ttable
     }
