@@ -1,5 +1,5 @@
 use bytemuck::{allocation, Pod, Zeroable};
-use goober::activation::{ReLU, Tanh};
+use goober::activation::Tanh;
 use goober::layer::{DenseConnected, SparseConnected};
 use goober::{FeedForwardNetwork, OutputLayer, SparseVector, Vector};
 use std::boxed::Box;
@@ -9,7 +9,7 @@ use std::path::Path;
 
 use crate::math::{randomize_dense, randomize_sparse, Rng};
 use crate::mem::Align64;
-use crate::nets::{q_i16, q_i32, relu, save_to_bin, Accumulator};
+use crate::nets::{q_i16, q_i32, save_to_bin, screlu, Accumulator, SCReLU};
 use crate::state::{self, State};
 
 const INPUT_SIZE: usize = state::VALUE_NUMBER_FEATURES;
@@ -20,7 +20,7 @@ const QA: i32 = 256;
 const QB: i32 = 256;
 const QAB: i32 = QA * QB;
 
-type Feature = SparseConnected<ReLU, INPUT_SIZE, HIDDEN_SIZE>;
+type Feature = SparseConnected<SCReLU, INPUT_SIZE, HIDDEN_SIZE>;
 type Output = DenseConnected<Tanh, { HIDDEN_SIZE * 2 }, OUTPUT_SIZE>;
 
 type QuantizedFeatureWeights = [Align64<Accumulator<HIDDEN_SIZE>>; INPUT_SIZE];
@@ -287,15 +287,17 @@ impl QuantizedValueNetwork {
             }
         });
 
-        let mut result: i32 = self.output_bias;
+        let mut result: i32 = 0;
 
         for (&x, w) in stm.vals.iter().zip(self.output_weights[0].vals) {
-            result += relu(x) * i32::from(w);
+            result += screlu(x, QA) * i32::from(w);
         }
 
         for (&x, w) in nstm.vals.iter().zip(self.output_weights[1].vals) {
-            result += relu(x) * i32::from(w);
+            result += screlu(x, QA) * i32::from(w);
         }
+
+        result = result / QA + self.output_bias;
 
         // Fifty move rule dampening
         // Constants are chosen to make the max effect more significant at higher levels and max 50%

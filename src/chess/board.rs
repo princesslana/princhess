@@ -104,13 +104,13 @@ impl Board {
         board.ep = ep;
         board.castling = castling;
 
-        board.hash = board.generate_zobrist_hash();
-
         for (idx, pc) in pieces.iter().enumerate() {
             for sq in *pc {
                 board.piece_at[sq] = Piece::from(idx);
             }
         }
+
+        board.hash = board.generate_zobrist_hash();
 
         board
     }
