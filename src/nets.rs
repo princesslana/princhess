@@ -1,7 +1,27 @@
 use bytemuck::{self, Pod, Zeroable};
+use goober::activation::Activation;
 use std::fs;
 use std::io::Write;
 use std::path::Path;
+
+// Workaround for error in how goober handles an activation such as SCReLU
+#[derive(Clone, Copy)]
+pub struct SCReLU;
+
+impl Activation for SCReLU {
+    fn activate(x: f32) -> f32 {
+        let clamped = x.clamp(0.0, 1.0);
+        clamped * clamped
+    }
+
+    fn derivative(x: f32) -> f32 {
+        if 0.0 < x && x < 1.0 {
+            2.0 * x.sqrt()
+        } else {
+            0.0
+        }
+    }
+}
 
 #[derive(Clone, Copy, Debug, Zeroable)]
 #[repr(C)]
@@ -31,6 +51,11 @@ impl<const H: usize> Accumulator<H> {
 
 pub fn relu(x: i16) -> i32 {
     i32::from(x).max(0)
+}
+
+pub fn screlu(x: i16, q: i32) -> i32 {
+    let clamped = i32::from(x).clamp(0, q);
+    clamped * clamped
 }
 
 pub fn q_i16(x: f32, q: i32) -> i16 {
