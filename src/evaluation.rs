@@ -37,6 +37,18 @@ impl Flag {
             Flag::TablebaseWin | Flag::TablebaseDraw | Flag::TablebaseLoss
         )
     }
+
+    #[must_use]
+    pub fn adjust_eval(self, eval: i64) -> i64 {
+        match self {
+            Flag::TerminalWin => 2 * SCALE as i64,
+            Flag::TerminalLoss => -2 * SCALE as i64,
+            Flag::TablebaseWin => SCALE as i64,
+            Flag::TablebaseLoss => -SCALE as i64,
+            Flag::TerminalDraw | Flag::TablebaseDraw => 0,
+            Flag::Standard => eval,
+        }
+    }
 }
 
 #[cfg(feature = "value-net")]

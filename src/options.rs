@@ -88,12 +88,19 @@ static HASH: UciOption = UciOption::spin("Hash", 16, 1, 2 << 24);
 static THREADS: UciOption = UciOption::spin("Threads", 1, 1, 255);
 static MULTI_PV: UciOption = UciOption::spin("MultiPV", 1, 1, 255);
 static SYZYGY_PATH: UciOption = UciOption::string("SyzygyPath", "<empty>");
+
 static CPUCT: UciOption = UciOption::spin("CPuct", 16, 1, 2 << 16);
 static CPUCT_TAU: UciOption = UciOption::spin("CPuctTau", 84, 0, 100);
 static CVISITS_SELECTION: UciOption = UciOption::spin("CVisitsSelection", 1, 0, 100);
 static POLICY_TEMPERATURE: UciOption = UciOption::spin("PolicyTemperature", 100, 0, 2 << 16);
 static POLICY_TEMPERATURE_ROOT: UciOption =
     UciOption::spin("PolicyTemperatureRoot", 1450, 0, 2 << 16);
+
+static TM_MIN_M: UciOption = UciOption::spin("TMMinM", 10, 0, 2 << 16);
+static TM_MAX_M: UciOption = UciOption::spin("TMMaxM", 500, 0, 2 << 16);
+static TM_VISITS_BASE: UciOption = UciOption::spin("TMVisitsBase", 140, 0, 2 << 16);
+static TM_VISITS_M: UciOption = UciOption::spin("TMVisitsM", 139, 0, 2 << 16);
+
 static CHESS960: UciOption = UciOption::check("UCI_Chess960", false);
 static POLICY_ONLY: UciOption = UciOption::check("PolicyOnly", false);
 static SHOW_MOVESLEFT: UciOption = UciOption::check("UCI_ShowMovesLeft", false);
@@ -108,6 +115,10 @@ static ALL_OPTIONS: &[UciOption] = &[
     CVISITS_SELECTION,
     POLICY_TEMPERATURE,
     POLICY_TEMPERATURE_ROOT,
+    TM_MIN_M,
+    TM_MAX_M,
+    TM_VISITS_BASE,
+    TM_VISITS_M,
     CHESS960,
     POLICY_ONLY,
     SHOW_MOVESLEFT,
@@ -187,6 +198,16 @@ pub struct SearchOptions {
     pub is_policy_only: bool,
     pub show_movesleft: bool,
     pub mcts_options: MctsOptions,
+    pub time_management_options: TimeManagementOptions,
+}
+
+#[allow(clippy::module_name_repetitions)]
+#[derive(Debug, Clone, Copy)]
+pub struct TimeManagementOptions {
+    pub min_m: f32,
+    pub max_m: f32,
+    pub visits_base: f32,
+    pub visits_m: f32,
 }
 
 impl From<&UciOptionMap> for MctsOptions {
@@ -196,6 +217,17 @@ impl From<&UciOptionMap> for MctsOptions {
             cpuct_tau: map.get_f32(&CPUCT_TAU),
             policy_temperature: map.get_f32(&POLICY_TEMPERATURE),
             policy_temperature_root: map.get_f32(&POLICY_TEMPERATURE_ROOT),
+        }
+    }
+}
+
+impl From<&UciOptionMap> for TimeManagementOptions {
+    fn from(map: &UciOptionMap) -> Self {
+        Self {
+            min_m: map.get_f32(&TM_MIN_M),
+            max_m: map.get_f32(&TM_MAX_M),
+            visits_base: map.get_f32(&TM_VISITS_BASE),
+            visits_m: map.get_f32(&TM_VISITS_M),
         }
     }
 }
@@ -217,6 +249,7 @@ impl From<&UciOptionMap> for SearchOptions {
             is_policy_only: map.get_and(&POLICY_ONLY, |s| s.parse().ok()),
             show_movesleft: map.get_and(&SHOW_MOVESLEFT, |s| s.parse().ok()),
             mcts_options: MctsOptions::from(map),
+            time_management_options: TimeManagementOptions::from(map),
         }
     }
 }
