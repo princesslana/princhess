@@ -4,7 +4,7 @@ services:
       context: .
       dockerfile: bin/Dockerfile.fastchess
     command:
-      -engine cmd=/engines/princhess-main name=princhess-main
+      -engine cmd=/engines/princhess-0.19.0 name=princhess-0.19.0
       -engine cmd=/engines/princhess-0.18.0 name=princhess-0.18.0
 
       -each proto=uci tc=8+0.08
@@ -15,8 +15,8 @@ services:
     volumes:
       - ./target/release/princhess:/engines/princhess
       - ./builds/princhess-main:/engines/princhess-main
+      - ./builds/princhess-0.19.0:/engines/princhess-0.19.0
       - ./builds/princhess-0.18.0:/engines/princhess-0.18.0
-      - ./builds/princhess-0.17.0:/engines/princhess-0.17.0
       - ./syzygy:/syzygy:ro
 
   policy_elo_check:
