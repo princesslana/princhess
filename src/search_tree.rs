@@ -9,7 +9,7 @@ use std::sync::atomic::{
 use crate::arena::Error as ArenaError;
 use crate::chess;
 use crate::evaluation::{self, Flag};
-use crate::options::{MctsOptions, SearchOptions};
+use crate::options::{MctsOptions, SearchOptions, TimeManagementOptions};
 use crate::search::{eval_in_cp, ThreadData};
 use crate::search::{TimeManagement, SCALE};
 use crate::state::State;
@@ -290,10 +290,7 @@ impl SearchTree {
         loop {
             self.ttable.wait_if_flipping();
 
-            if node.is_terminal() {
-                break;
-            }
-            if node.hots().is_empty() {
+            if node.is_terminal() || node.hots().is_empty() {
                 break;
             }
             if node.is_tablebase() && state.halfmove_clock() == 0 {
@@ -337,7 +334,6 @@ impl SearchTree {
                 || state.drawn_by_fifty_move_rule()
                 || state.board().is_insufficient_material()
             {
-                evaln = 0;
                 node = &DRAW_NODE;
                 break;
             }
@@ -354,21 +350,15 @@ impl SearchTree {
             node = new_node;
         }
 
-        evaln = match node.flag {
-            Flag::TerminalWin => 2 * SCALE as i64,
-            Flag::TerminalLoss => -2 * SCALE as i64,
-            Flag::TablebaseWin => SCALE as i64,
-            Flag::TablebaseLoss => -SCALE as i64,
-            Flag::TerminalDraw | Flag::TablebaseDraw => 0,
-            Flag::Standard => evaln,
-        };
+        evaln = node.flag.adjust_eval(evaln);
 
         Self::finish_playout(&path, evaln);
 
         let depth = path.len();
         let num_nodes = self.num_nodes.fetch_add(depth, Ordering::Relaxed) + depth;
         self.max_depth.fetch_max(depth, Ordering::Relaxed);
-        let playouts = self.playouts.fetch_add(1, Ordering::Relaxed) + 1;
+        self.playouts.fetch_add(1, Ordering::Relaxed);
+        tld.playouts += 1;
 
         if node.is_tablebase() {
             self.tb_hits.fetch_add(1, Ordering::Relaxed);
@@ -378,13 +368,29 @@ impl SearchTree {
             return false;
         }
 
-        if playouts % 128 == 0
-            && (time_management.is_after_end() || stop_signal.load(Ordering::Relaxed))
-        {
+        if tld.playouts % 128 == 0 && stop_signal.load(Ordering::Relaxed) {
             return false;
         }
 
-        if playouts % 65536 == 0 {
+        let elapsed = time_management.elapsed();
+
+        if tld.playouts % 128 == 0 {
+            if let Some(hard_limit) = time_management.hard_limit() {
+                if elapsed >= hard_limit {
+                    return false;
+                }
+            }
+
+            if let Some(soft_limit) = time_management.soft_limit() {
+                let opts = &self.search_options.time_management_options;
+
+                if elapsed >= soft_limit.mul_f32(self.soft_time_multiplier(opts)) {
+                    return false;
+                }
+            }
+        }
+
+        if tld.playouts % 65536 == 0 {
             let elapsed = time_management.elapsed().as_secs();
 
             let next_info = self.next_info.fetch_max(elapsed, Ordering::Relaxed);
@@ -459,6 +465,19 @@ impl SearchTree {
             self.root_node.hots(),
             self.search_options.c_visits_selection,
         )[0]
+    }
+
+    fn soft_time_multiplier(&self, opts: &TimeManagementOptions) -> f32 {
+        let mut m = 1.0;
+
+        let bm_frac = self.root_node().select_child_by_rewards().visits() as f32
+            / self.root_node().visits() as f32;
+
+        m *= (opts.visits_base - bm_frac) * opts.visits_m;
+
+        m = m.clamp(opts.min_m, opts.max_m);
+
+        m
     }
 
     pub fn print_info(&self, time_management: &TimeManagement) {

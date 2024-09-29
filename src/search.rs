@@ -18,10 +18,12 @@ const MOVE_OVERHEAD: Duration = Duration::from_millis(50);
 
 pub const SCALE: f32 = 256. * 256.;
 
+#[must_use]
 #[derive(Copy, Clone, Debug)]
 pub struct TimeManagement {
     start: Instant,
-    end: Option<Instant>,
+    soft_limit: Option<Duration>,
+    hard_limit: Option<Duration>,
     node_limit: usize,
 }
 
@@ -32,39 +34,41 @@ impl Default for TimeManagement {
 }
 
 impl TimeManagement {
-    #[must_use]
     pub fn from_duration(d: Duration) -> Self {
-        let start = Instant::now();
-        let end = Some(start + d);
-        let node_limit = usize::MAX;
-
         Self {
-            start,
-            end,
-            node_limit,
+            start: Instant::now(),
+            soft_limit: None,
+            hard_limit: Some(d),
+            node_limit: usize::MAX,
         }
     }
 
-    #[must_use]
+    pub fn from_limits(soft: Duration, hard: Duration) -> Self {
+        Self {
+            start: Instant::now(),
+            soft_limit: Some(soft),
+            hard_limit: Some(hard),
+            node_limit: usize::MAX,
+        }
+    }
+
     pub fn infinite() -> Self {
-        let start = Instant::now();
-        let end = None;
-        let node_limit = usize::MAX;
-
         Self {
-            start,
-            end,
-            node_limit,
+            start: Instant::now(),
+            soft_limit: None,
+            hard_limit: None,
+            node_limit: usize::MAX,
         }
     }
 
     #[must_use]
-    pub fn is_after_end(&self) -> bool {
-        if let Some(end) = self.end {
-            Instant::now() > end
-        } else {
-            false
-        }
+    pub fn soft_limit(&self) -> Option<Duration> {
+        self.soft_limit
+    }
+
+    #[must_use]
+    pub fn hard_limit(&self) -> Option<Duration> {
+        self.hard_limit
     }
 
     #[must_use]
@@ -84,12 +88,14 @@ impl TimeManagement {
 
 pub struct ThreadData<'a> {
     pub allocator: LRAllocator<'a>,
+    pub playouts: usize,
 }
 
 impl<'a> ThreadData<'a> {
     fn create(tree: &'a SearchTree) -> Self {
         Self {
             allocator: tree.allocator(),
+            playouts: 0,
         }
     }
 }
@@ -226,11 +232,12 @@ impl Search {
                 move_time_fraction = (m + 2).min(move_time_fraction);
             }
 
-            let ideal_think_time =
-                (r + move_time_fraction * increment - MOVE_OVERHEAD) / move_time_fraction;
-            let max_think_time = r / 3;
+            let r = r - MOVE_OVERHEAD;
 
-            think_time = TimeManagement::from_duration(ideal_think_time.min(max_think_time));
+            let soft_limit = (r + move_time_fraction * increment) / move_time_fraction;
+            let hard_limit = r / 3;
+
+            think_time = TimeManagement::from_limits(soft_limit.min(hard_limit), hard_limit);
         }
 
         if self.search_options.is_policy_only {
