@@ -6,6 +6,7 @@ mod arena;
 mod mem;
 mod nets;
 mod search_tree;
+mod simd;
 mod tree_policy;
 
 pub mod chess;

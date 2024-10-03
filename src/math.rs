@@ -1,23 +1,47 @@
 use goober::activation::Activation;
 use goober::layer::{DenseConnected, SparseConnected};
 use std::time::{SystemTime, UNIX_EPOCH};
+use wide::f32x8;
+
+use crate::simd;
 
 pub fn softmax(arr: &mut [f32], t: f32) {
     let max = max(arr);
-    let mut s = 0.;
 
-    for x in &mut *arr {
-        *x = fastapprox::faster::exp((*x - max) / t);
-        s += *x;
+    let mut sum_x8 = f32x8::splat(0.);
+    let max_x8 = f32x8::splat(max);
+    let t_x8 = f32x8::splat(t);
+
+    for c in arr.chunks_mut(8) {
+        let c_x8 = simd::f32x8_from_slice_with_padding(c, f32::NEG_INFINITY);
+        let c_x8 = ((c_x8 - max_x8) / t_x8).exp();
+
+        sum_x8 += c_x8;
+
+        c.copy_from_slice(&c_x8.as_array_ref()[..c.len()]);
     }
-    for x in &mut *arr {
-        *x /= s;
+
+    let sum = sum_x8.reduce_add();
+    let sum_x8 = f32x8::splat(sum);
+
+    for c in arr.chunks_mut(8) {
+        let c_x8 = simd::f32x8_from_slice_with_padding(c, 0.);
+        let c_x8 = c_x8 / sum_x8;
+
+        c.copy_from_slice(&c_x8.as_array_ref()[..c.len()]);
     }
 }
 
 fn max(arr: &[f32]) -> f32 {
+    let mut max_x8 = f32x8::splat(f32::NEG_INFINITY);
+
+    for chunk in arr.chunks(8) {
+        let chunk = simd::f32x8_from_slice_with_padding(chunk, f32::NEG_INFINITY);
+        max_x8 = max_x8.max(chunk);
+    }
+
     let mut max = f32::NEG_INFINITY;
-    for x in arr {
+    for x in max_x8.as_array_ref() {
         max = max.max(*x);
     }
     max
