@@ -502,6 +502,7 @@ impl SearchTree {
         let is_chess960 = self.search_options.is_chess960;
 
         for (idx, edge) in moves.iter().enumerate().take(self.search_options.multi_pv) {
+            info_str.clear();
             info_str.push_str("info ");
             write!(info_str, "depth {} ", depth.max(1)).unwrap();
             write!(info_str, "seldepth {} ", sel_depth.max(1)).unwrap();
