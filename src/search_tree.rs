@@ -518,7 +518,7 @@ impl SearchTree {
             write!(
                 info_str,
                 "score {} ",
-                eval_in_cp(self.best_edge().reward().average as f32 / SCALE)
+                eval_in_cp(edge.reward().average as f32 / SCALE)
             )
             .unwrap();
             write!(info_str, "time {search_time_ms} ").unwrap();
