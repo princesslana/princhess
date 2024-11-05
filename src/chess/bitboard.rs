@@ -1,10 +1,12 @@
+use bytemuck::{Pod, Zeroable};
 use std::iter::FusedIterator;
 use std::ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, Not};
 
 use crate::chess::Square;
 
 #[must_use]
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Pod, Zeroable)]
+#[repr(transparent)]
 pub struct Bitboard(pub u64);
 
 impl Bitboard {

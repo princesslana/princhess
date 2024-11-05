@@ -1,55 +1,50 @@
+use arrayvec::ArrayVec;
+use bytemuck::{self, Pod, Zeroable};
+use goober::SparseVector;
+use std::fs::File;
+use std::io::{BufWriter, Write};
+use std::mem;
+
 use crate::chess::{Bitboard, Board, Castling, Color, Move, Piece, Square};
 use crate::search::SCALE;
 use crate::search_tree::SearchTree;
 use crate::state::State;
 
-use arrayvec::ArrayVec;
-use goober::SparseVector;
-use std::fs::File;
-use std::io::{BufWriter, Write};
-use std::{io, mem, slice};
-
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Pod, Zeroable)]
+#[repr(C)]
 pub struct TrainingPosition {
     occupied: Bitboard,
     pieces: [u8; 16],
-    stm: Color,
 
-    result: i8,
     evaluation: i32,
-
-    previous_moves: [Move; 4],
-
-    #[allow(dead_code)]
-    best_move: Move,
+    result: i8,
+    stm: u8,
 
     legal_moves: [Move; TrainingPosition::MAX_MOVES],
     visits: [u8; TrainingPosition::MAX_MOVES],
 }
 
-const _SIZE_CHECK: () = assert!(mem::size_of::<TrainingPosition>() == 256);
+const _SIZE_CHECK: () = assert!(mem::size_of::<TrainingPosition>() == 192);
 
 impl TrainingPosition {
-    pub const MAX_MOVES: usize = 72;
-    pub const MAX_VISITS: u32 = 1024;
-    pub const SIZE: usize = mem::size_of::<Self>();
+    pub const MAX_MOVES: usize = 54;
 
-    pub fn write_batch(out: &mut BufWriter<File>, data: &[TrainingPosition]) -> io::Result<()> {
-        let src_size = mem::size_of_val(data);
-        let data_slice = unsafe { slice::from_raw_parts(data.as_ptr().cast(), src_size) };
-        out.write_all(data_slice)?;
-        Ok(())
+    pub const SIZE: usize = mem::size_of::<Self>();
+    pub const BATCH_SIZE: usize = 16384;
+    pub const BUFFER_COUNT: usize = 1 << 16;
+    pub const BUFFER_SIZE: usize = Self::BUFFER_COUNT * Self::SIZE;
+
+    pub fn write_buffer(out: &mut BufWriter<File>, data: &[TrainingPosition; Self::BUFFER_COUNT]) {
+        out.write_all(bytemuck::bytes_of(data)).unwrap();
     }
 
     #[must_use]
-    pub fn read_batch(buffer: &[u8]) -> &[TrainingPosition] {
-        let len = buffer.len() / TrainingPosition::SIZE;
-        unsafe { slice::from_raw_parts(buffer.as_ptr().cast(), len) }
+    pub fn read_buffer(buffer: &[u8]) -> &[TrainingPosition; Self::BUFFER_COUNT] {
+        bytemuck::from_bytes(buffer)
     }
 
-    pub fn read_batch_mut(buffer: &mut [u8]) -> &mut [TrainingPosition] {
-        let len = buffer.len() / TrainingPosition::SIZE;
-        unsafe { slice::from_raw_parts_mut(buffer.as_mut_ptr().cast(), len) }
+    pub fn read_buffer_mut(buffer: &mut [u8]) -> &mut [TrainingPosition; Self::BUFFER_COUNT] {
+        bytemuck::from_bytes_mut(buffer)
     }
 
     #[must_use]
@@ -57,15 +52,19 @@ impl TrainingPosition {
         self.evaluation as f32 / SCALE
     }
 
+    pub fn stm(&self) -> Color {
+        Color::from(self.stm)
+    }
+
     #[must_use]
     pub fn stm_relative_evaluation(&self) -> f32 {
         let e = self.evaluation();
-        self.stm.fold(e, -e)
+        self.stm().fold(e, -e)
     }
 
     #[must_use]
     pub fn stm_relative_result(&self) -> i8 {
-        self.stm.fold(self.result, -self.result)
+        self.stm().fold(self.result, -self.result)
     }
 
     #[must_use]
@@ -76,10 +75,6 @@ impl TrainingPosition {
             .take_while(|(m, _)| **m != Move::NONE)
             .map(|(m, v)| (*m, *v))
             .collect()
-    }
-
-    pub fn set_previous_moves(&mut self, moves: [Move; 4]) {
-        self.previous_moves = moves;
     }
 
     pub fn set_result(&mut self, result: i8) {
@@ -126,40 +121,27 @@ impl From<&SearchTree> for TrainingPosition {
         }
 
         let mut nodes = [(Move::NONE, 0); Self::MAX_MOVES];
+        let mut max_visits = 0;
 
         for (node, hot) in nodes.iter_mut().zip(tree.root_node().hots().iter()) {
-            *node = (*hot.get_move(), hot.visits());
+            let vs = hot.visits();
+            max_visits = max_visits.max(vs);
+            *node = (*hot.get_move(), vs);
         }
 
         let mut legal_moves = [Move::NONE; Self::MAX_MOVES];
         let mut visits = [0; Self::MAX_MOVES];
 
-        let mut max_visits = 0;
-
-        for (idx, (mv, vs)) in nodes
-            .iter()
-            .take_while(|(m, _)| *m != Move::NONE)
-            .enumerate()
-        {
-            let vs = vs.min(&Self::MAX_VISITS);
-
-            assert!(*vs <= Self::MAX_VISITS);
-            assert!(u8::try_from(vs * u32::from(u8::MAX) / Self::MAX_VISITS).is_ok());
-
-            if *vs > max_visits {
-                max_visits = *vs;
-            }
-
+        for (idx, (mv, vs)) in nodes.iter().enumerate() {
             legal_moves[idx] = *mv;
-            visits[idx] = (*vs * u32::from(u8::MAX) / Self::MAX_VISITS) as u8;
-        }
 
-        assert!(max_visits == Self::MAX_VISITS);
+            let scaled_visits = (*vs * u32::from(u8::MAX)).div_ceil(max_visits);
+            assert!(u8::try_from(scaled_visits).is_ok());
+            visits[idx] = scaled_visits as u8;
+        }
 
         let pv = tree.best_edge();
         let mut evaluation = pv.reward().average;
-
-        let best_move = *pv.get_move();
 
         // white relative evaluation
         evaluation = stm
@@ -168,18 +150,15 @@ impl From<&SearchTree> for TrainingPosition {
 
         // zero'd to be filled in later
         let result = 0;
-        let previous_moves = [Move::NONE; 4];
 
         TrainingPosition {
             occupied,
             pieces,
-            stm,
-            result,
-            evaluation,
-            previous_moves,
-            best_move,
             legal_moves,
             visits,
+            evaluation,
+            result,
+            stm: u8::from(stm),
         }
     }
 }
@@ -198,8 +177,13 @@ impl From<&TrainingPosition> for State {
             pieces[piece].toggle(sq);
         }
 
-        let board =
-            Board::from_bitboards(colors, pieces, position.stm, Square::NONE, Castling::none());
+        let board = Board::from_bitboards(
+            colors,
+            pieces,
+            position.stm(),
+            Square::NONE,
+            Castling::none(),
+        );
 
         State::from_board(board)
     }

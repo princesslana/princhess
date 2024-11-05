@@ -1,39 +1,65 @@
 use princhess::chess::{Board, Move};
+use princhess::evaluation;
 use princhess::math::Rng;
-use princhess::options::SearchOptions;
+use princhess::options::{MctsOptions, SearchOptions};
 use princhess::search::Search;
 use princhess::state::State;
 use princhess::tablebase::{self, Wdl};
 use princhess::train::TrainingPosition;
 use princhess::transposition_table::LRTable;
 
+use bytemuck::allocation;
+use std::collections::HashSet;
 use std::fmt::{Display, Formatter};
 use std::fs::File;
 use std::io::{self, BufWriter, Write};
-use std::sync::atomic::{AtomicU64, AtomicUsize};
+use std::ops::Neg;
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 const HASH_SIZE_MB: usize = 128;
 
-const THREADS: usize = 6;
-const DATA_WRITE_RATE: usize = 16384;
+const VISITS_PER_POSITION: u64 = 3000;
+const THREADS: u64 = 5;
 const DFRC_PCT: u64 = 10;
+
+const MAX_POSITIONS_PER_FILE: u64 = 20_000_000;
+const MAX_POSITIONS_TOTAL: u64 = MAX_POSITIONS_PER_FILE * THREADS;
+
+const CPUCT: f32 = 2.82;
+const CPUCT_TAU: f32 = 0.5;
+const POLICY_TEMPERATURE: f32 = 1.0;
+const POLICY_TEMPERATURE_ROOT: f32 = 1.1;
+const MAX_VARIATIONS: usize = 16;
 
 struct Stats {
     start: Instant,
     games: AtomicU64,
     positions: AtomicU64,
     skipped: AtomicU64,
+    aborted: AtomicU64,
     white_wins: AtomicU64,
     black_wins: AtomicU64,
     draws: AtomicU64,
     blunders: AtomicU64,
+    variations: AtomicUsize,
     nodes: AtomicUsize,
     playouts: AtomicUsize,
     depth: AtomicUsize,
     seldepth: AtomicUsize,
+}
+
+struct GameStats {
+    pub positions: u64,
+    pub skipped: u64,
+    pub blunders: u64,
+    pub variations: usize,
+    pub nodes: usize,
+    pub playouts: usize,
+    pub depth: usize,
+    pub seldepth: usize,
 }
 
 impl Stats {
@@ -43,10 +69,12 @@ impl Stats {
             games: AtomicU64::new(0),
             positions: AtomicU64::new(0),
             skipped: AtomicU64::new(0),
+            aborted: AtomicU64::new(0),
             white_wins: AtomicU64::new(0),
             black_wins: AtomicU64::new(0),
             draws: AtomicU64::new(0),
             blunders: AtomicU64::new(0),
+            variations: AtomicUsize::new(0),
             nodes: AtomicUsize::new(0),
             playouts: AtomicUsize::new(0),
             depth: AtomicUsize::new(0),
@@ -54,99 +82,275 @@ impl Stats {
         }
     }
 
-    pub fn inc_games(&self) {
-        self.games
-            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    fn add_game(&self, game: &GameStats) {
+        self.games.fetch_add(1, Ordering::Relaxed);
+        self.positions.fetch_add(game.positions, Ordering::Relaxed);
+        self.skipped.fetch_add(game.skipped, Ordering::Relaxed);
+        self.blunders.fetch_add(game.blunders, Ordering::Relaxed);
+        self.variations
+            .fetch_add(game.variations, Ordering::Relaxed);
+        self.nodes.fetch_add(game.nodes, Ordering::Relaxed);
+        self.playouts.fetch_add(game.playouts, Ordering::Relaxed);
+        self.depth.fetch_add(game.depth, Ordering::Relaxed);
+        self.seldepth.fetch_add(game.seldepth, Ordering::Relaxed);
     }
 
-    pub fn inc_positions(&self) {
-        self.positions
-            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    pub fn add_white_win(&self, game: &GameStats) {
+        self.add_game(game);
+        self.white_wins.fetch_add(1, Ordering::Relaxed);
     }
 
-    pub fn inc_skipped(&self) {
-        self.skipped
-            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    pub fn add_black_win(&self, game: &GameStats) {
+        self.add_game(game);
+        self.black_wins.fetch_add(1, Ordering::Relaxed);
     }
 
-    pub fn inc_white_wins(&self) {
-        self.white_wins
-            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    pub fn add_draw(&self, game: &GameStats) {
+        self.add_game(game);
+        self.draws.fetch_add(1, Ordering::Relaxed);
     }
 
-    pub fn inc_black_wins(&self) {
-        self.black_wins
-            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    }
-
-    pub fn inc_draws(&self) {
-        self.draws
-            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    }
-
-    pub fn inc_blunders(&self) {
-        self.blunders
-            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    }
-
-    pub fn plus_nodes(&self, nodes: usize) {
-        self.nodes
-            .fetch_add(nodes, std::sync::atomic::Ordering::Relaxed);
-    }
-
-    pub fn plus_playouts(&self, playouts: usize) {
-        self.playouts
-            .fetch_add(playouts, std::sync::atomic::Ordering::Relaxed);
-    }
-
-    pub fn plus_depth(&self, depth: usize) {
-        self.depth
-            .fetch_add(depth, std::sync::atomic::Ordering::Relaxed);
-    }
-
-    pub fn plus_seldepth(&self, seldepth: usize) {
-        self.seldepth
-            .fetch_add(seldepth, std::sync::atomic::Ordering::Relaxed);
+    pub fn add_aborted(&self) {
+        self.aborted.fetch_add(1, Ordering::Relaxed);
     }
 }
 
 impl Display for Stats {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        let games = self.games.load(std::sync::atomic::Ordering::Relaxed);
-        let white_wins = self.white_wins.load(std::sync::atomic::Ordering::Relaxed);
-        let draws = self.draws.load(std::sync::atomic::Ordering::Relaxed);
-        let black_wins = self.black_wins.load(std::sync::atomic::Ordering::Relaxed);
-        let positions = self.positions.load(std::sync::atomic::Ordering::Relaxed);
-        let skipped = self.skipped.load(std::sync::atomic::Ordering::Relaxed);
-        let blunders = self.blunders.load(std::sync::atomic::Ordering::Relaxed);
-        let nodes = self.nodes.load(std::sync::atomic::Ordering::Relaxed);
-        let playouts = self.playouts.load(std::sync::atomic::Ordering::Relaxed);
-        let depth = self.depth.load(std::sync::atomic::Ordering::Relaxed);
-        let seldepth = self.seldepth.load(std::sync::atomic::Ordering::Relaxed);
+        let games = self.games.load(Ordering::Relaxed);
+        let white_wins = self.white_wins.load(Ordering::Relaxed);
+        let draws = self.draws.load(Ordering::Relaxed);
+        let black_wins = self.black_wins.load(Ordering::Relaxed);
+        let positions = self.positions.load(Ordering::Relaxed);
+        let skipped = self.skipped.load(Ordering::Relaxed);
+        let aborted = self.aborted.load(Ordering::Relaxed);
+        let blunders = self.blunders.load(Ordering::Relaxed);
+        let variations = self.variations.load(Ordering::Relaxed);
+        let nodes = self.nodes.load(Ordering::Relaxed);
+        let playouts = self.playouts.load(Ordering::Relaxed);
+        let depth = self.depth.load(Ordering::Relaxed);
+        let seldepth = self.seldepth.load(Ordering::Relaxed);
         let seconds = self.start.elapsed().as_secs().max(1);
 
         write!(
             f,
-            "G {:>7} | +{:>2} ={:>2} -{:>2} % | B {:>3.1}% | S {:>3.1}% | N {:>5} P {:>5} | D {:>2}/{:>2} | P {:>5.1}m ({:>3}/g, {:>4}/s, {:>3.1}m/h)",
+            "G {:>7} | +{:>2}={:>2}-{:>2} | B {:>4.1} V {:>4.1} S {:>3.1} X {:>4.1} | N {:>4} P {:>4} | D {:>2}/{:>2} | P {:>5.1}m ({:>2}/g, {:>3.1}m/h)",
             games,
             white_wins * 100 / games,
             draws * 100 / games,
             black_wins * 100 / games,
             blunders  as f32 * 100. / games as f32,
+            variations as f32 * 100. / positions as f32,
             skipped as f32 * 100. / positions as f32,
+            aborted as f32 * 100. / games as f32,
             nodes / positions as usize,
             playouts / positions as usize,
             depth / positions as usize,
             seldepth / positions as usize,
             positions as f32 / 1000000.0,
             positions / games,
-            positions / seconds,
             (positions * 3600 / seconds) as f32 / 1000000.0
         )
     }
 }
 
+impl GameStats {
+    pub fn zero() -> Self {
+        Self {
+            positions: 0,
+            skipped: 0,
+            blunders: 0,
+            variations: 0,
+            nodes: 0,
+            playouts: 0,
+            depth: 0,
+            seldepth: 0,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+enum GameResult {
+    WhiteWin,
+    Draw,
+    BlackWin,
+    Aborted,
+}
+
+impl From<GameResult> for i8 {
+    fn from(result: GameResult) -> Self {
+        match result {
+            GameResult::WhiteWin => 1,
+            GameResult::Draw => 0,
+            GameResult::BlackWin => -1,
+            GameResult::Aborted => unreachable!(),
+        }
+    }
+}
+
+impl Neg for GameResult {
+    type Output = Self;
+
+    fn neg(self) -> Self::Output {
+        match self {
+            GameResult::WhiteWin => GameResult::BlackWin,
+            GameResult::BlackWin => GameResult::WhiteWin,
+            GameResult::Draw => GameResult::Draw,
+            GameResult::Aborted => GameResult::Aborted,
+        }
+    }
+}
+
 fn run_game(stats: &Stats, positions: &mut Vec<TrainingPosition>, rng: &mut Rng) {
+    let mut variations = Vec::with_capacity(MAX_VARIATIONS + 1);
+    let mut variations_count = 0;
+    let mut seen_positions = HashSet::new();
+
+    variations.push(random_start(rng));
+
+    let mcts_options = MctsOptions {
+        cpuct: CPUCT,
+        cpuct_tau: CPUCT_TAU,
+        policy_temperature: POLICY_TEMPERATURE,
+        policy_temperature_root: POLICY_TEMPERATURE_ROOT,
+    };
+
+    let search_options = SearchOptions {
+        mcts_options,
+        ..SearchOptions::default()
+    };
+
+    while let Some(mut state) = variations.pop() {
+        let mut game_stats = GameStats::zero();
+        let mut table = LRTable::empty(HASH_SIZE_MB);
+
+        if !state.is_available_move() {
+            continue;
+        }
+
+        if state.drawn_by_fifty_move_rule()
+            || state.is_repetition()
+            || state.board().is_insufficient_material()
+        {
+            continue;
+        }
+
+        if tablebase::probe_wdl(state.board()).is_some() {
+            continue;
+        }
+
+        let mut game_positions = Vec::with_capacity(256);
+
+        let result = loop {
+            let search = Search::new(state.clone(), table, search_options);
+            let legal_moves = search.root_node().hots().len();
+
+            if legal_moves > 1 {
+                let visits = search.root_node().visits();
+                search.playout_sync(VISITS_PER_POSITION.saturating_sub(visits));
+            }
+
+            let best_move = search.best_move();
+
+            if variations_count < MAX_VARIATIONS {
+                let varation = search.most_visited_move();
+
+                if varation != best_move && state.phase() > 18 {
+                    game_stats.variations += 1;
+                    let mut state = state.clone();
+                    state.make_move(varation);
+                    variations.push(state);
+                    variations_count += 1;
+                }
+            }
+
+            if legal_moves == 1 || legal_moves > TrainingPosition::MAX_MOVES {
+                game_stats.skipped += 1;
+            } else {
+                let position = TrainingPosition::from(search.tree());
+
+                if position.evaluation() > 0.95 {
+                    break GameResult::WhiteWin;
+                } else if position.evaluation() < -0.95 {
+                    break GameResult::BlackWin;
+                }
+
+                game_positions.push(position);
+
+                game_stats.positions += 1;
+                game_stats.nodes += search.tree().num_nodes();
+                game_stats.playouts += search.tree().playouts();
+                game_stats.depth += search.tree().depth();
+                game_stats.seldepth += search.tree().max_depth();
+            }
+
+            state.make_move(best_move);
+
+            if !state.is_available_move() {
+                break if state.is_check() {
+                    // The stm has been checkmated. Convert to white relative result
+                    state
+                        .side_to_move()
+                        .fold(GameResult::BlackWin, GameResult::WhiteWin)
+                } else {
+                    GameResult::Draw
+                };
+            }
+
+            if state.drawn_by_fifty_move_rule()
+                || state.is_repetition()
+                || state.board().is_insufficient_material()
+            {
+                break GameResult::Draw;
+            }
+
+            if let Some(wdl) = tablebase::probe_wdl(state.board()) {
+                let result = match wdl {
+                    Wdl::Win => GameResult::WhiteWin,
+                    Wdl::Draw => GameResult::Draw,
+                    Wdl::Loss => GameResult::BlackWin,
+                };
+
+                break state.side_to_move().fold(result, -result);
+            }
+
+            if !seen_positions.insert(state.hash()) {
+                game_positions.clear();
+                break GameResult::Aborted;
+            }
+
+            table = search.table();
+        };
+
+        let mut blunder = false;
+
+        for position in game_positions.iter_mut() {
+            position.set_result(i8::from(result));
+
+            blunder |= match result {
+                GameResult::WhiteWin => position.evaluation() < -0.5,
+                GameResult::BlackWin => position.evaluation() > 0.5,
+                GameResult::Draw => position.evaluation().abs() > 0.75,
+                GameResult::Aborted => false,
+            }
+        }
+
+        positions.append(&mut game_positions);
+
+        if blunder {
+            game_stats.blunders += 1;
+        }
+
+        match result {
+            GameResult::WhiteWin => stats.add_white_win(&game_stats),
+            GameResult::Draw => stats.add_draw(&game_stats),
+            GameResult::BlackWin => stats.add_black_win(&game_stats),
+            GameResult::Aborted => stats.add_aborted(),
+        }
+    }
+}
+
+fn random_start(rng: &mut Rng) -> State {
     let startpos = if rng.next_u64() % 100 < DFRC_PCT {
         Board::dfrc(rng.next_usize() % 960, rng.next_usize() % 960)
     } else {
@@ -154,141 +358,32 @@ fn run_game(stats: &Stats, positions: &mut Vec<TrainingPosition>, rng: &mut Rng)
     };
 
     let mut state = State::from_board(startpos);
-    let mut table = LRTable::empty(HASH_SIZE_MB);
 
-    let search_options = SearchOptions::default();
+    for p in 0..16 {
+        let t = 1. + ((p as f32) / 8.).powi(2);
 
-    let mut game_positions = Vec::with_capacity(256);
+        let best_move = select_weighted_random_move(&state, t, rng);
 
-    let mut prev_moves = [Move::NONE; 4];
-
-    for _ in 0..(8 + rng.next_u64() % 2) {
-        let moves = state.available_moves();
-
-        if moves.is_empty() {
-            return;
-        }
-
-        let index = rng.next_usize() % moves.len();
-        let best_move = moves[index];
-
-        state.make_move(best_move);
-    }
-
-    if !state.is_available_move() {
-        return;
-    }
-
-    let result = loop {
-        let search = Search::new(state.clone(), table, search_options);
-        let legal_moves = search.root_node().hots().len();
-
-        let mut max_visits = search
-            .root_node()
-            .hots()
-            .iter()
-            .map(|hot| hot.visits())
-            .max()
-            .unwrap_or(0);
-
-        if legal_moves > 1 {
-            while max_visits < TrainingPosition::MAX_VISITS {
-                search.playout_sync((TrainingPosition::MAX_VISITS - max_visits) as usize);
-
-                max_visits = search
-                    .root_node()
-                    .hots()
-                    .iter()
-                    .map(|hot| hot.visits())
-                    .max()
-                    .unwrap_or(0);
-            }
-        }
-
-        let best_move = search.best_move();
-
-        if legal_moves <= 1 || legal_moves > TrainingPosition::MAX_MOVES {
-            stats.inc_skipped();
-        } else {
-            let mut position = TrainingPosition::from(search.tree());
-
-            if position.evaluation() > 0.95 {
-                break 1;
-            } else if position.evaluation() < -0.95 {
-                break -1;
-            }
-
-            position.set_previous_moves(prev_moves);
-            game_positions.push(position);
-            stats.inc_positions();
-            stats.plus_nodes(search.tree().num_nodes());
-            stats.plus_playouts(search.tree().playouts());
-            stats.plus_depth(search.tree().depth());
-            stats.plus_seldepth(search.tree().max_depth());
+        if best_move == Move::NONE {
+            return state;
         }
 
         state.make_move(best_move);
-
-        prev_moves.rotate_right(1);
-        prev_moves[0] = best_move;
-
-        if !state.is_available_move() {
-            break if state.is_check() {
-                // The stm has been checkmated. Convert to white relative result
-                state.side_to_move().fold(-1, 1)
-            } else {
-                0
-            };
-        }
-
-        if state.drawn_by_fifty_move_rule()
-            || state.is_repetition()
-            || state.board().is_insufficient_material()
-        {
-            break 0;
-        }
-
-        if let Some(wdl) = tablebase::probe_wdl(state.board()) {
-            let result = match wdl {
-                Wdl::Win => 1,
-                Wdl::Draw => 0,
-                Wdl::Loss => -1,
-            };
-
-            break state.side_to_move().fold(result, -result);
-        }
-
-        table = search.table();
-    };
-
-    let mut blunder = false;
-
-    for position in game_positions.iter_mut() {
-        position.set_result(result);
-
-        blunder |= match result {
-            1 => position.evaluation() < -0.5,
-            -1 => position.evaluation() > 0.5,
-            0 => position.evaluation().abs() > 0.75,
-            _ => unreachable!(),
-        }
     }
 
-    positions.append(&mut game_positions);
+    state
+}
 
-    if blunder {
-        stats.inc_blunders();
+fn select_weighted_random_move(state: &State, t: f32, rng: &mut Rng) -> Move {
+    let moves = state.available_moves();
+
+    if moves.is_empty() {
+        return Move::NONE;
     }
 
-    stats.inc_games();
+    let policy = evaluation::policy(state, &moves, t);
 
-    if result == 1 {
-        stats.inc_white_wins();
-    } else if result == -1 {
-        stats.inc_black_wins();
-    } else {
-        stats.inc_draws();
-    }
+    moves[rng.weighted(&policy)]
 }
 
 fn main() {
@@ -303,31 +398,48 @@ fn main() {
 
     thread::scope(|s| {
         for t in 0..THREADS {
-            thread::sleep(Duration::from_millis(10 * t as u64));
+            thread::sleep(Duration::from_millis(10 * t));
 
             let mut writer = BufWriter::new(
                 File::create(format!("data/princhess-{timestamp}-{t}.data")).unwrap(),
             );
 
-            let stats = stats.clone();
-            let mut rng = Rng::default();
+            {
+                let stats = stats.clone();
+                let mut rng = Rng::default();
 
-            s.spawn(move || loop {
-                let mut positions = Vec::new();
+                s.spawn(move || {
+                    let mut positions = Vec::new();
 
-                while positions.len() < DATA_WRITE_RATE {
-                    run_game(&stats, &mut positions, &mut rng);
-                }
+                    let mut buffer: Box<[TrainingPosition; TrainingPosition::BUFFER_COUNT]> =
+                        allocation::zeroed_box();
 
-                TrainingPosition::write_batch(&mut writer, &positions).unwrap();
+                    while stats.positions.load(Ordering::Relaxed) < MAX_POSITIONS_TOTAL {
+                        while positions.len() < TrainingPosition::BUFFER_COUNT {
+                            run_game(&stats, &mut positions, &mut rng);
+                        }
 
-                if t == 0 {
-                    print!("{}\r", stats);
-                    io::stdout().flush().unwrap();
-                }
-            });
+                        buffer.copy_from_slice(
+                            positions.drain(..TrainingPosition::BUFFER_COUNT).as_slice(),
+                        );
+
+                        TrainingPosition::write_buffer(&mut writer, &buffer);
+                    }
+                });
+            }
         }
+
+        let stats = stats.clone();
+
+        s.spawn(move || {
+            while stats.positions.load(Ordering::Relaxed) < MAX_POSITIONS_TOTAL {
+                thread::sleep(Duration::from_secs(1));
+                print!("{}\r", stats);
+                io::stdout().flush().unwrap();
+            }
+            println!("\nStopping...");
+        });
     });
 
-    println!();
+    println!("{}", stats);
 }

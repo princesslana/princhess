@@ -9,20 +9,19 @@ use std::path::Path;
 use std::thread;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
-const EPOCHS: usize = 20;
+const TARGET_BATCH_COUNT: usize = 250_000;
 const BATCH_SIZE: usize = 16384;
 const THREADS: usize = 6;
-const BUFFER_SIZE: usize = 1 << 24;
 
 const LR: f32 = 0.001;
-const LR_DROP_AT: usize = EPOCHS * 2 / 3;
+const LR_DROP_AT: f32 = 0.7;
 const LR_DROP_FACTOR: f32 = 0.1;
 
 const WEIGHT_DECAY: f32 = 0.01;
 
-const WDL_WEIGHT: f32 = 0.5;
+const WDL_WEIGHT: f32 = 0.3;
 
-const _BUFFER_SIZE_CHECK: () = assert!(BUFFER_SIZE % BATCH_SIZE == 0);
+const _BUFFER_SIZE_CHECK: () = assert!(TrainingPosition::BUFFER_SIZE % BATCH_SIZE == 0);
 
 fn main() {
     println!("Running...");
@@ -50,8 +49,11 @@ fn main() {
     println!("Positions: {}", count);
     println!("File: {}", input);
 
-    for epoch in 1..=EPOCHS {
-        println!("\nEpoch {}/{} (LR: {})...", epoch, EPOCHS, lr);
+    let epochs = TARGET_BATCH_COUNT.div_ceil(count / BATCH_SIZE);
+    let lr_drop_at = (epochs as f32 * LR_DROP_AT) as usize;
+
+    for epoch in 1..=epochs {
+        println!("\nEpoch {}/{} (LR: {})...", epoch, epochs, lr);
         let start = Instant::now();
 
         train(
@@ -81,7 +83,7 @@ fn main() {
 
         println!("Saved to {}", dir_name);
 
-        if epoch % LR_DROP_AT == 0 {
+        if epoch % lr_drop_at == 0 {
             lr *= LR_DROP_FACTOR;
         }
     }
@@ -97,8 +99,7 @@ fn train(
     let file = File::open(input).unwrap();
     let positions = file.metadata().unwrap().len() as usize / TrainingPosition::SIZE;
 
-    let buffer_size = BUFFER_SIZE * TrainingPosition::SIZE;
-    let mut buffer = BufReader::with_capacity(buffer_size, file);
+    let mut buffer = BufReader::with_capacity(TrainingPosition::BUFFER_SIZE, file);
 
     let mut running_loss = 0.0;
     let mut batch_n = 0;
@@ -109,7 +110,7 @@ fn train(
             break;
         }
 
-        let data = TrainingPosition::read_batch(bytes);
+        let data = TrainingPosition::read_buffer(bytes);
 
         for batch in data.chunks(BATCH_SIZE) {
             let mut gradients = ValueNetwork::zeroed();
