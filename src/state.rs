@@ -1,6 +1,7 @@
 use arrayvec::ArrayVec;
 
-use crate::chess::{Board, Color, File, Move, MoveIndex, MoveList, Piece, Square};
+use crate::chess::{Board, Color, File, Move, MoveList, Piece, Rank, Square};
+use crate::policy::MoveIndex;
 use crate::uci::Tokens;
 
 const NUMBER_KING_BUCKETS: usize = 3;
@@ -88,6 +89,14 @@ impl State {
     #[must_use]
     pub fn is_available_move(&self) -> bool {
         self.board.is_legal_move()
+    }
+
+    #[must_use]
+    pub fn phase(&self) -> usize {
+        let b = self.board;
+
+        (4 * b.queens().count() + 2 * b.rooks().count() + b.bishops().count() + b.knights().count())
+            .clamp(0, 24)
     }
 
     #[must_use]
@@ -253,7 +262,13 @@ impl State {
             let flip_from = flip_square(from_sq);
             let flip_to = flip_square(to_sq);
 
-            let mut mi = MoveIndex::new(piece, flip_from, flip_to);
+            let adj_to = match mv.promotion() {
+                Piece::KNIGHT => flip_to.with_rank(Rank::_1),
+                Piece::BISHOP | Piece::ROOK => flip_to.with_rank(Rank::_2),
+                _ => flip_to,
+            };
+
+            let mut mi = MoveIndex::new(piece, flip_from, adj_to);
 
             mi.set_from_threat(threats.contains(from_sq));
             mi.set_from_defend(defends.contains(from_sq));

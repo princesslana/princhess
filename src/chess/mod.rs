@@ -16,7 +16,6 @@ pub use crate::chess::board::Board;
 pub use crate::chess::castling::Castling;
 pub use crate::chess::color::Color;
 pub use crate::chess::mv::Move;
-pub use crate::chess::mv::MoveIndex;
 pub use crate::chess::mv::MoveList;
 pub use crate::chess::piece::Piece;
 pub use crate::chess::square::File;

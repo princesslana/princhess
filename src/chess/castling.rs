@@ -87,15 +87,12 @@ impl Castling {
     }
 
     pub fn discard_color(&mut self, color: Color) {
-        match color {
-            Color::WHITE => {
-                self.white_king = Square::NONE;
-                self.white_queen = Square::NONE;
-            }
-            Color::BLACK => {
-                self.black_king = Square::NONE;
-                self.black_queen = Square::NONE;
-            }
+        if color == Color::WHITE {
+            self.white_king = Square::NONE;
+            self.white_queen = Square::NONE;
+        } else {
+            self.black_king = Square::NONE;
+            self.black_queen = Square::NONE;
         }
     }
 

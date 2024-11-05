@@ -210,6 +210,12 @@ pub struct TimeManagementOptions {
     pub visits_m: f32,
 }
 
+impl Default for MctsOptions {
+    fn default() -> Self {
+        MctsOptions::from(&UciOptionMap::default())
+    }
+}
+
 impl From<&UciOptionMap> for MctsOptions {
     fn from(map: &UciOptionMap) -> Self {
         Self {

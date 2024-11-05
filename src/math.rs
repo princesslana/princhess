@@ -60,6 +60,21 @@ impl Rng {
     pub fn next_f32_range(&mut self, min: f32, max: f32) -> f32 {
         min + self.next_f32() * (max - min)
     }
+
+    pub fn weighted(&mut self, weights: &[f32]) -> usize {
+        let r = self.next_f32();
+
+        let mut cumulative = 0.;
+
+        for (i, &w) in weights.iter().enumerate() {
+            cumulative += w;
+            if r < cumulative {
+                return i;
+            }
+        }
+
+        weights.len() - 1
+    }
 }
 
 impl Default for Rng {

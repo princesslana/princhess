@@ -304,7 +304,7 @@ impl Search {
         });
     }
 
-    pub fn playout_sync(&self, playouts: usize) {
+    pub fn playout_sync(&self, playouts: u64) {
         let mut tld = ThreadData::create(&self.search_tree);
         let cpuct = self.search_options.mcts_options.cpuct;
         let tm = TimeManagement::infinite();
@@ -361,6 +361,14 @@ impl Search {
 
     pub fn best_move(&self) -> Move {
         self.search_tree.best_move()
+    }
+
+    pub fn most_visited_move(&self) -> Move {
+        *self
+            .search_tree
+            .root_node()
+            .select_child_by_visits()
+            .get_move()
     }
 
     fn to_uci(&self, mov: Move) -> String {

@@ -5,8 +5,6 @@ use std::fs::File;
 use std::io::{self, BufRead, BufReader, BufWriter, Write};
 use std::time::Instant;
 
-const BUFFER_COUNT: usize = 1 << 16;
-
 fn main() {
     let mut args = env::args();
     args.next();
@@ -18,8 +16,7 @@ fn main() {
         let file = File::open(input.clone()).unwrap();
         let positions = file.metadata().unwrap().len() as usize / TrainingPosition::SIZE;
 
-        let buffer_size = BUFFER_COUNT * TrainingPosition::SIZE;
-        let mut buffer = BufReader::with_capacity(buffer_size, file);
+        let mut buffer = BufReader::with_capacity(TrainingPosition::BUFFER_SIZE, file);
 
         let out_file = format!("{}.{}m.truncated", input, truncate_to);
         let mut writer = BufWriter::new(File::create(out_file).unwrap());
@@ -37,8 +34,8 @@ fn main() {
                 break;
             }
 
-            let data = TrainingPosition::read_batch(bytes);
-            TrainingPosition::write_batch(&mut writer, data).unwrap();
+            let data = TrainingPosition::read_buffer(bytes);
+            TrainingPosition::write_buffer(&mut writer, data);
 
             processed += data.len();
 

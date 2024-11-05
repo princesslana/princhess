@@ -6,20 +6,19 @@ use std::thread;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use princhess::math;
-use princhess::policy::PolicyNetwork;
+use princhess::policy::{PolicyCount, PolicyNetwork};
 use princhess::state::State;
 use princhess::train::TrainingPosition;
 
-const EPOCHS: usize = 10;
+const TARGET_BATCH_COUNT: usize = 150_000;
 const BATCH_SIZE: usize = 16384;
 const THREADS: usize = 6;
-const BUFFER_SIZE: usize = 1 << 16;
 
 const LR: f32 = 0.001;
-const LR_DROP_AT: usize = EPOCHS * 2 / 3;
+const LR_DROP_AT: f32 = 0.7;
 const LR_DROP_FACTOR: f32 = 0.5;
 
-const _BUFFER_SIZE_CHECK: () = assert!(BUFFER_SIZE % BATCH_SIZE == 0);
+const _BUFFER_SIZE_CHECK: () = assert!(TrainingPosition::BUFFER_SIZE % BATCH_SIZE == 0);
 
 fn main() {
     println!("Running...");
@@ -47,8 +46,12 @@ fn main() {
     println!("Positions: {}", count);
     println!("File: {}", input);
 
-    for epoch in 1..=EPOCHS {
-        println!("\nEpoch {}/{} (LR: {})...", epoch, EPOCHS, lr);
+    let epochs = TARGET_BATCH_COUNT.div_ceil(count / BATCH_SIZE);
+    let lr_drop_at = (epochs as f32 * LR_DROP_AT) as usize;
+    let net_save_period = epochs.div_ceil(10);
+
+    for epoch in 1..=epochs {
+        println!("\nEpoch {}/{} (LR: {})...", epoch, epochs, lr);
         let start = Instant::now();
 
         train(
@@ -68,17 +71,19 @@ fn main() {
             (seconds % 60)
         );
 
-        let dir_name = format!("nets/policy-{}-e{:03}", timestamp, epoch);
+        if epoch % net_save_period == 0 || epoch == epochs {
+            let dir_name = format!("nets/policy-{}-e{:03}", timestamp, epoch);
 
-        fs::create_dir(&dir_name).unwrap();
+            fs::create_dir(&dir_name).unwrap();
 
-        let dir = Path::new(&dir_name);
+            let dir = Path::new(&dir_name);
 
-        network.to_boxed_and_quantized().save_to_bin(dir);
+            network.to_boxed_and_quantized().save_to_bin(dir);
 
-        println!("Saved to {}", dir_name);
+            println!("Saved to {}", dir_name);
+        }
 
-        if epoch % LR_DROP_AT == 0 {
+        if epoch % lr_drop_at == 0 {
             lr *= LR_DROP_FACTOR;
         }
     }
@@ -94,8 +99,7 @@ fn train(
     let file = File::open(input).unwrap();
     let positions = file.metadata().unwrap().len() as usize / TrainingPosition::SIZE;
 
-    let buffer_size = BUFFER_SIZE * TrainingPosition::SIZE;
-    let mut buffer = BufReader::with_capacity(buffer_size, file);
+    let mut buffer = BufReader::with_capacity(TrainingPosition::BUFFER_SIZE, file);
 
     let mut running_loss = 0.0;
     let mut running_acc = 0.;
@@ -107,18 +111,17 @@ fn train(
             break;
         }
 
-        let data = TrainingPosition::read_batch(bytes);
+        let data = TrainingPosition::read_buffer(bytes);
 
         for batch in data.chunks(BATCH_SIZE) {
             let mut gradients = PolicyNetwork::zeroed();
+            let mut count = PolicyCount::zeroed();
 
-            let (loss, acc) = gradients_batch(network, &mut gradients, batch);
+            let (loss, acc) = gradients_batch(network, &mut gradients, &mut count, batch);
             running_loss += loss;
             running_acc += acc;
 
-            let adj = 2.0 / batch.len() as f32;
-
-            network.adam(&gradients, momentum, velocity, adj, lr);
+            network.adam(&gradients, momentum, velocity, &count, lr);
 
             batch_n += 1;
             print!("Batch {}/{}\r", batch_n, batches,);
@@ -136,6 +139,7 @@ fn train(
 fn gradients_batch(
     network: &PolicyNetwork,
     gradients: &mut PolicyNetwork,
+    count: &mut PolicyCount,
     batch: &[TrainingPosition],
 ) -> (f32, f32) {
     let size = (batch.len() / THREADS) + 1;
@@ -149,16 +153,28 @@ fn gradients_batch(
             .map(|(chunk, (loss, acc))| {
                 s.spawn(move || {
                     let mut inner_gradients = PolicyNetwork::zeroed();
+                    let mut inner_count = PolicyCount::zeroed();
+
                     for position in chunk {
-                        update_gradient(position, network, &mut inner_gradients, loss, acc);
+                        update_gradient(
+                            position,
+                            network,
+                            &mut inner_gradients,
+                            &mut inner_count,
+                            loss,
+                            acc,
+                        );
                     }
-                    inner_gradients
+                    (inner_gradients, inner_count)
                 })
             })
             .collect::<Vec<_>>()
             .into_iter()
             .map(|handle| handle.join().unwrap())
-            .for_each(|inner_gradients| *gradients += &inner_gradients);
+            .for_each(|(inner_gradients, inner_count)| {
+                *gradients += &inner_gradients;
+                *count += &inner_count;
+            });
     });
 
     (loss.iter().sum::<f32>(), acc.iter().sum::<f32>())
@@ -168,6 +184,7 @@ fn update_gradient(
     position: &TrainingPosition,
     network: &PolicyNetwork,
     gradients: &mut PolicyNetwork,
+    count: &mut PolicyCount,
     loss: &mut f32,
     acc: &mut f32,
 ) {
@@ -201,6 +218,7 @@ fn update_gradient(
         *loss -= expected * actual.ln();
 
         network.backprop(&features, gradients, move_idx, error);
+        count.increment(move_idx);
     }
 
     if argmax(&expected) == argmax(&actual) {

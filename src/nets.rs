@@ -2,7 +2,10 @@ use bytemuck::{self, Pod, Zeroable};
 use goober::activation::Activation;
 use std::fs;
 use std::io::Write;
+use std::ops::AddAssign;
 use std::path::Path;
+
+use crate::subnets::{QAA, QB};
 
 // Workaround for error in how goober handles an activation such as SCReLU
 #[derive(Clone, Copy)]
@@ -25,31 +28,39 @@ impl Activation for SCReLU {
 
 #[derive(Clone, Copy, Debug, Zeroable)]
 #[repr(C)]
-pub struct Accumulator<const H: usize> {
-    pub vals: [i16; H],
+pub struct Accumulator<T, const H: usize> {
+    pub vals: [T; H],
 }
 
-unsafe impl<const H: usize> Pod for Accumulator<H> {}
+unsafe impl<T: Copy + Zeroable + 'static, const H: usize> Pod for Accumulator<T, H> {}
 
-impl<const H: usize> Accumulator<H> {
-    pub fn set(&mut self, weights: &Accumulator<H>) {
+impl<T: AddAssign, const H: usize> Accumulator<T, H> {
+    pub fn set<U: Copy>(&mut self, weights: &Accumulator<U, H>)
+    where
+        T: From<U>,
+    {
         for (i, d) in self.vals.iter_mut().zip(&weights.vals) {
-            *i += *d;
+            *i += T::from(*d);
         }
     }
+}
 
-    pub fn dot_relu(&self, rhs: &Accumulator<H>) -> i32 {
-        let mut result = 0;
+impl<const H: usize> Accumulator<i16, H> {
+    pub fn dot_relu(&self, rhs: &Accumulator<i32, H>) -> f32 {
+        let mut result: i32 = 0;
 
         for (a, b) in self.vals.iter().zip(&rhs.vals) {
-            result += relu(*a) * relu(*b);
+            result += relu(*a) * relu(*b / QB);
         }
 
-        result
+        result as f32 / QAA as f32
     }
 }
 
-pub fn relu(x: i16) -> i32 {
+pub fn relu<F>(x: F) -> i32
+where
+    i32: From<F>,
+{
     i32::from(x).max(0)
 }
 

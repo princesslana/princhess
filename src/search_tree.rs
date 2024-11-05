@@ -113,6 +113,10 @@ impl PositionNode {
             .max_by_key(|x| x.reward().average)
             .unwrap()
     }
+
+    pub fn select_child_by_visits(&self) -> &MoveEdge {
+        self.hots().iter().max_by_key(|x| x.visits()).unwrap()
+    }
 }
 
 impl MoveEdge {

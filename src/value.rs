@@ -23,13 +23,13 @@ const QAB: i32 = QA * QB;
 type Feature = SparseConnected<SCReLU, INPUT_SIZE, HIDDEN_SIZE>;
 type Output = DenseConnected<Tanh, { HIDDEN_SIZE * 2 }, OUTPUT_SIZE>;
 
-type QuantizedFeatureWeights = [Align64<Accumulator<HIDDEN_SIZE>>; INPUT_SIZE];
-type QuantizedFeatureBias = Align64<Accumulator<HIDDEN_SIZE>>;
-type QuantizedOutputWeights = [Align64<Accumulator<HIDDEN_SIZE>>; 2];
+type QuantizedFeatureWeights = [Align64<Accumulator<i16, HIDDEN_SIZE>>; INPUT_SIZE];
+type QuantizedFeatureBias = Align64<Accumulator<i16, HIDDEN_SIZE>>;
+type QuantizedOutputWeights = [Align64<Accumulator<i16, HIDDEN_SIZE>>; 2];
 
-type RawFeatureWeights = [[i16; HIDDEN_SIZE]; INPUT_SIZE];
-type RawFeatureBias = [i16; HIDDEN_SIZE];
-type RawOutputWeights = [i16; HIDDEN_SIZE * 2];
+type RawFeatureWeights = Align64<[[i16; HIDDEN_SIZE]; INPUT_SIZE]>;
+type RawFeatureBias = Align64<[i16; HIDDEN_SIZE]>;
+type RawOutputWeights = Align64<[i16; HIDDEN_SIZE * 2]>;
 
 #[allow(clippy::module_name_repetitions)]
 pub struct ValueNetwork {
@@ -116,9 +116,11 @@ impl ValueNetwork {
     #[must_use]
     pub fn to_boxed_and_quantized(&self) -> Box<QuantizedValueNetwork> {
         let mut stm_weights: Box<RawFeatureWeights> = allocation::zeroed_box();
-        let mut stm_bias = [0; HIDDEN_SIZE];
+        let mut stm_bias: Box<RawFeatureBias> = allocation::zeroed_box();
+
         let mut nstm_weights: Box<RawFeatureWeights> = allocation::zeroed_box();
-        let mut nstm_bias = [0; HIDDEN_SIZE];
+        let mut nstm_bias: Box<RawFeatureBias> = allocation::zeroed_box();
+
         let mut output_weights: Box<RawOutputWeights> = allocation::zeroed_box();
 
         for (row_idx, weights) in stm_weights.iter_mut().enumerate() {
@@ -249,21 +251,13 @@ impl QuantizedValueNetwork {
     ) -> Box<Self> {
         let mut network = Self::zeroed();
 
-        network.stm_weights = unsafe {
-            std::mem::transmute::<RawFeatureWeights, QuantizedFeatureWeights>(*stm_weights)
-        };
-        network.stm_bias =
-            unsafe { std::mem::transmute::<RawFeatureBias, QuantizedFeatureBias>(*stm_bias) };
+        network.stm_weights = *bytemuck::must_cast_ref(stm_weights);
+        network.stm_bias = *bytemuck::must_cast_ref(stm_bias);
 
-        network.nstm_weights = unsafe {
-            std::mem::transmute::<RawFeatureWeights, QuantizedFeatureWeights>(*nstm_weights)
-        };
-        network.nstm_bias =
-            unsafe { std::mem::transmute::<RawFeatureBias, QuantizedFeatureBias>(*nstm_bias) };
+        network.nstm_weights = *bytemuck::must_cast_ref(nstm_weights);
+        network.nstm_bias = *bytemuck::must_cast_ref(nstm_bias);
 
-        network.output_weights = unsafe {
-            std::mem::transmute::<RawOutputWeights, QuantizedOutputWeights>(*output_weights)
-        };
+        network.output_weights = *bytemuck::must_cast_ref(output_weights);
         network.output_bias = output_bias;
 
         network
