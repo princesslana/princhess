@@ -1,3 +1,4 @@
+use bytemuck::Zeroable;
 use std::env;
 use std::fs::{self, File};
 use std::io::{self, BufRead, BufReader, Write};
@@ -10,12 +11,12 @@ use princhess::policy::{PolicyCount, PolicyNetwork};
 use princhess::state::State;
 use princhess::train::TrainingPosition;
 
-const TARGET_BATCH_COUNT: usize = 150_000;
+const TARGET_BATCH_COUNT: usize = 200_000;
 const BATCH_SIZE: usize = 16384;
 const THREADS: usize = 6;
 
 const LR: f32 = 0.001;
-const LR_DROP_AT: f32 = 0.7;
+const LR_DROP_AT: f32 = 0.4;
 const LR_DROP_FACTOR: f32 = 0.5;
 
 const _BUFFER_SIZE_CHECK: () = assert!(TrainingPosition::BUFFER_SIZE % BATCH_SIZE == 0);

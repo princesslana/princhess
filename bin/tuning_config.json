@@ -5,7 +5,6 @@
       "fixed_parameters": {
         "Threads": 1,
         "Hash": 128,
-        "PolicyTemperatureRoot": 100,
         "SyzygyPath": "/syzygy"
       }
     },
@@ -20,7 +19,8 @@
   ],
   "parameter_ranges": {
     "CPuct": "Integer(1, 100)",
-    "CPuctTau": "Integer(50, 100)"
+    "CPuctTau": "Integer(50, 100)",
+    "PolicyTemperatureRoot": "Integer(100, 2000)"
   },
   "rounds": 15,
   "engine1_npm": "25000",

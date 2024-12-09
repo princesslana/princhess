@@ -5,7 +5,7 @@ use std::io::Write;
 use std::ops::AddAssign;
 use std::path::Path;
 
-use crate::subnets::{QAA, QB};
+use crate::subnets::QAA;
 
 // Workaround for error in how goober handles an activation such as SCReLU
 #[derive(Clone, Copy)]
@@ -46,11 +46,11 @@ impl<T: AddAssign, const H: usize> Accumulator<T, H> {
 }
 
 impl<const H: usize> Accumulator<i16, H> {
-    pub fn dot_relu(&self, rhs: &Accumulator<i32, H>) -> f32 {
+    pub fn dot_relu(&self, rhs: &Accumulator<i16, H>) -> f32 {
         let mut result: i32 = 0;
 
         for (a, b) in self.vals.iter().zip(&rhs.vals) {
-            result += relu(*a) * relu(*b / QB);
+            result += relu(*a) * relu(*b);
         }
 
         result as f32 / QAA as f32

@@ -1,4 +1,4 @@
-use std::ops::{BitXorAssign, Index, IndexMut};
+use std::ops::{BitOr, BitXorAssign, Index, IndexMut};
 
 #[must_use]
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -87,6 +87,17 @@ impl From<u8> for Piece {
 impl From<usize> for Piece {
     fn from(index: usize) -> Self {
         Piece(index as u8)
+    }
+}
+
+impl BitOr for Piece {
+    type Output = Self;
+
+    fn bitor(self, other: Self) -> Self {
+        match self {
+            Piece::NONE => other,
+            _ => self,
+        }
     }
 }
 
