@@ -23,8 +23,12 @@ fn main() {
 
     let mut policy_inputs: [u64; state::POLICY_NUMBER_FEATURES] =
         [0; state::POLICY_NUMBER_FEATURES];
-    let mut policy_outputs_from: [u64; MoveIndex::FROM_COUNT] = [0; MoveIndex::FROM_COUNT];
-    let mut policy_outputs_to: [u64; MoveIndex::TO_COUNT] = [0; MoveIndex::TO_COUNT];
+
+    let mut policy_outputs_sq: [u64; MoveIndex::SQ_COUNT] = [0; MoveIndex::SQ_COUNT];
+    let mut policy_outputs_from_piece_sq: [u64; MoveIndex::FROM_PIECE_SQ_COUNT] =
+        [0; MoveIndex::FROM_PIECE_SQ_COUNT];
+    let mut policy_outputs_to_piece_sq: [u64; MoveIndex::TO_PIECE_SQ_COUNT] =
+        [0; MoveIndex::TO_PIECE_SQ_COUNT];
 
     let mut count = 0;
 
@@ -59,8 +63,10 @@ fn main() {
             }
 
             for move_idx in state.moves_to_indexes(&moves) {
-                policy_outputs_from[move_idx.from_index()] += 1;
-                policy_outputs_to[move_idx.to_index()] += 1;
+                policy_outputs_sq[move_idx.from_sq()] += 1;
+                policy_outputs_sq[move_idx.to_sq()] += 1;
+                policy_outputs_from_piece_sq[move_idx.from_piece_sq_index()] += 1;
+                policy_outputs_to_piece_sq[move_idx.to_piece_sq_index()] += 1;
             }
         }
 
@@ -112,8 +118,8 @@ fn main() {
         }
     }
 
-    println!("policy outputs (from):");
-    for (idx, output) in policy_outputs_from.iter().enumerate() {
+    println!("policy outputs (sq):");
+    for (idx, output) in policy_outputs_sq.iter().enumerate() {
         print!(
             "{:>9}/{:>5.2}%  ",
             output,
@@ -128,8 +134,24 @@ fn main() {
         }
     }
 
-    println!("policy outputs (to):");
-    for (idx, output) in policy_outputs_to.iter().enumerate() {
+    println!("policy outputs (from piece sq):");
+    for (idx, output) in policy_outputs_from_piece_sq.iter().enumerate() {
+        print!(
+            "{:>9}/{:>5.2}%  ",
+            output,
+            *output as f32 / records as f32 * 100.0
+        );
+
+        if idx % 8 == 7 {
+            println!();
+        }
+        if idx % 64 == 63 {
+            println!();
+        }
+    }
+
+    println!("policy outputs (to piece sq):");
+    for (idx, output) in policy_outputs_to_piece_sq.iter().enumerate() {
         print!(
             "{:>9}/{:>5.2}%  ",
             output,
