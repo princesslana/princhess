@@ -105,7 +105,7 @@ fn train(
     let mut running_loss = 0.0;
     let mut running_acc = 0.;
     let mut batch_n = 0;
-    let batches = (positions + BATCH_SIZE - 1) / BATCH_SIZE;
+    let batches = positions.div_ceil(BATCH_SIZE);
 
     while let Ok(bytes) = buffer.fill_buf() {
         if bytes.is_empty() {

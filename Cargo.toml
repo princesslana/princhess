@@ -14,13 +14,14 @@ name = "princhess"
 path = "src/main.rs"
 
 [dependencies]
-arrayvec = "=0.7.4"
-bytemuck = { version = "=1.17.1", features = ["derive", "extern_crate_alloc", "min_const_generics", "must_cast"] }
+arrayvec = "=0.7.6"
+bytemuck = { version = "=1.21.0", features = ["derive", "extern_crate_alloc", "min_const_generics", "must_cast"] }
+bytemuck_derive = "=1.8.1"
 fastapprox = "=0.3.1"
 goober = { git = "https://github.com/jw1912/goober/", rev = "32b9b52" }
 nohash-hasher = "=0.2.0"
 memmap = "=0.7.0"
-scc = "=2.1.16"
+scc = "=2.3.0"
 scoped_threadpool = "=0.1.9"
 
 [features]
