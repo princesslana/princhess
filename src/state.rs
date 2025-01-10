@@ -238,7 +238,7 @@ impl State {
     pub fn moves_to_indexes<'a>(
         &'a self,
         mvs: &'a MoveList,
-    ) -> impl Iterator<Item = MoveIndex> + '_ {
+    ) -> impl Iterator<Item = MoveIndex> + 'a {
         let b = self.board;
         let color = self.side_to_move();
 
