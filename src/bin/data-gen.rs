@@ -21,7 +21,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 const HASH_SIZE_MB: usize = 128;
 
-const VISITS_PER_POSITION: u64 = 3000;
+const VISITS_PER_POSITION: u64 = 5000;
 const THREADS: u64 = 5;
 const DFRC_PCT: u64 = 10;
 
