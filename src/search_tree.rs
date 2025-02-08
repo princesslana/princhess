@@ -465,19 +465,66 @@ impl SearchTree {
     }
 
     pub fn best_edge(&self) -> &MoveEdge {
-        sort_moves(
-            self.root_node.hots(),
-            self.search_options.c_visits_selection,
-        )[0]
+        self.sort_moves(self.root_node.hots())[0]
+    }
+
+    fn pv_eval(&self, mv: &MoveEdge) -> i32 {
+        let pv_depth = (self.depth() / 2).max(4);
+        match mv.child() {
+            Some(child) => {
+                let pv = principal_variation(child, pv_depth);
+                let eval = pv
+                    .last()
+                    .map_or(mv.reward().average, |x| x.reward().average);
+
+                eval * [1, -1][pv.len() % 2]
+            }
+            None => -SCALE as i32,
+        }
+    }
+
+    fn sort_moves<'a>(&self, children: &'a [MoveEdge]) -> Vec<&'a MoveEdge> {
+        let reward = |child: &MoveEdge| {
+            let reward = child.reward();
+
+            if reward.visits == 0 {
+                return -(2. * SCALE) + f32::from(child.policy());
+            }
+
+            let visits_adj = (self.search_options.c_visits_selection * 2. * SCALE)
+                / (reward.visits as f32).sqrt();
+
+            reward.average as f32 - visits_adj
+        };
+
+        let mut result = Vec::with_capacity(children.len());
+
+        for child in children {
+            result.push((child, reward(child)));
+        }
+
+        result.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
+        result.reverse();
+
+        result.into_iter().map(|x| x.0).collect()
     }
 
     fn soft_time_multiplier(&self, opts: &TimeManagementOptions) -> f32 {
         let mut m = 1.0;
 
-        let bm_frac = self.root_node().select_child_by_rewards().visits() as f32
-            / self.root_node().visits() as f32;
+        let bm = self.root_node().select_child_by_rewards();
+        let bm_reward = bm.reward();
+
+        let bm_frac = bm_reward.visits as f32 / self.root_node().visits() as f32;
+
+        let bm_eval = bm_reward.average;
+        let bm_pv_eval = self.pv_eval(bm);
 
         m *= (opts.visits_base - bm_frac) * opts.visits_m;
+
+        if (bm_eval - bm_pv_eval).abs() > (opts.pv_diff_c * SCALE) as i32 {
+            m *= opts.pv_diff_m;
+        }
 
         m = m.clamp(opts.min_m, opts.max_m);
 
@@ -498,10 +545,7 @@ impl SearchTree {
             nodes * 1000 / search_time_ms as usize
         };
 
-        let moves = sort_moves(
-            self.root_node.hots(),
-            self.search_options.c_visits_selection,
-        );
+        let moves = self.sort_moves(self.root_node.hots());
 
         let is_chess960 = self.search_options.is_chess960;
 
@@ -559,29 +603,6 @@ fn principal_variation(from: &PositionNode, num_moves: usize) -> Vec<&MoveEdge> 
     }
 
     result
-}
-
-pub fn sort_moves(children: &[MoveEdge], k: f32) -> Vec<&MoveEdge> {
-    let reward = |child: &MoveEdge| {
-        let reward = child.reward();
-
-        if reward.visits == 0 {
-            return -(2. * SCALE) + f32::from(child.policy());
-        }
-
-        reward.average as f32 - (k * 2. * SCALE) / (reward.visits as f32).sqrt()
-    };
-
-    let mut result = Vec::with_capacity(children.len());
-
-    for child in children {
-        result.push((child, reward(child)));
-    }
-
-    result.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
-    result.reverse();
-
-    result.into_iter().map(|x| x.0).collect()
 }
 
 pub fn print_size_list() {
