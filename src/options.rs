@@ -100,6 +100,8 @@ static TM_MIN_M: UciOption = UciOption::spin("TMMinM", 10, 0, 2 << 16);
 static TM_MAX_M: UciOption = UciOption::spin("TMMaxM", 500, 0, 2 << 16);
 static TM_VISITS_BASE: UciOption = UciOption::spin("TMVisitsBase", 140, 0, 2 << 16);
 static TM_VISITS_M: UciOption = UciOption::spin("TMVisitsM", 139, 0, 2 << 16);
+static TM_PV_DIFF_C: UciOption = UciOption::spin("TMPvDiffC", 20, 0, 100);
+static TM_PV_DIFF_M: UciOption = UciOption::spin("TMPvDiffM", 461, 0, 2 << 16);
 
 static CHESS960: UciOption = UciOption::check("UCI_Chess960", false);
 static POLICY_ONLY: UciOption = UciOption::check("PolicyOnly", false);
@@ -119,6 +121,8 @@ static ALL_OPTIONS: &[UciOption] = &[
     TM_MAX_M,
     TM_VISITS_BASE,
     TM_VISITS_M,
+    TM_PV_DIFF_C,
+    TM_PV_DIFF_M,
     CHESS960,
     POLICY_ONLY,
     SHOW_MOVESLEFT,
@@ -208,6 +212,8 @@ pub struct TimeManagementOptions {
     pub max_m: f32,
     pub visits_base: f32,
     pub visits_m: f32,
+    pub pv_diff_c: f32,
+    pub pv_diff_m: f32,
 }
 
 impl Default for MctsOptions {
@@ -234,6 +240,8 @@ impl From<&UciOptionMap> for TimeManagementOptions {
             max_m: map.get_f32(&TM_MAX_M),
             visits_base: map.get_f32(&TM_VISITS_BASE),
             visits_m: map.get_f32(&TM_VISITS_M),
+            pv_diff_c: map.get_f32(&TM_PV_DIFF_C),
+            pv_diff_m: map.get_f32(&TM_PV_DIFF_M),
         }
     }
 }
