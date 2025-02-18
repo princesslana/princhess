@@ -31,6 +31,7 @@ const fn sliding_attacks(square: i32, occupied: u64, deltas: &[i32]) -> u64 {
     attack
 }
 
+#[allow(clippy::large_stack_arrays)]
 const fn init_in_between() -> [[Bitboard; 64]; 64] {
     let mut arr = [[Bitboard::EMPTY; 64]; 64];
     let mut from = 0;
@@ -61,6 +62,7 @@ const fn in_between(sq1: usize, sq2: usize) -> Bitboard {
     Bitboard::new(line & btwn)
 }
 
+#[allow(clippy::large_stack_arrays)]
 const fn init_line_through() -> [[Bitboard; 64]; 64] {
     let mut arr = [[Bitboard::EMPTY; 64]; 64];
     let mut from = 0;
@@ -190,8 +192,8 @@ const KING_ATTACKS: [Bitboard; 64] = init_king_attacks();
 
 static SLIDING_ATTACKS: [Bitboard; 88772] = init_sliding_attacks();
 
-const IN_BETWEEN: [[Bitboard; 64]; 64] = init_in_between();
-const LINE_THROUGH: [[Bitboard; 64]; 64] = init_line_through();
+static IN_BETWEEN: [[Bitboard; 64]; 64] = init_in_between();
+static LINE_THROUGH: [[Bitboard; 64]; 64] = init_line_through();
 
 const DIAGS: [u64; 15] = [
     0x0100_0000_0000_0000,
