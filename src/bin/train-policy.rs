@@ -11,7 +11,7 @@ use princhess::policy::{PolicyCount, PolicyNetwork};
 use princhess::state::State;
 use princhess::train::TrainingPosition;
 
-const TARGET_BATCH_COUNT: usize = 200_000;
+const TARGET_BATCH_COUNT: usize = 300_000;
 const BATCH_SIZE: usize = 16384;
 const THREADS: usize = 6;
 
