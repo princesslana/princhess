@@ -27,11 +27,6 @@ const DFRC_PCT: u64 = 10;
 
 const MAX_POSITIONS_PER_FILE: u64 = 20_000_000;
 const MAX_POSITIONS_TOTAL: u64 = MAX_POSITIONS_PER_FILE * THREADS;
-
-const CPUCT: f32 = 2.82;
-const CPUCT_TAU: f32 = 0.5;
-const POLICY_TEMPERATURE: f32 = 1.0;
-const POLICY_TEMPERATURE_ROOT: f32 = 1.1;
 const MAX_VARIATIONS: usize = 16;
 
 struct Stats {
@@ -208,12 +203,7 @@ fn run_game(stats: &Stats, positions: &mut Vec<TrainingPosition>, rng: &mut Rng)
 
     variations.push(random_start(rng));
 
-    let mcts_options = MctsOptions {
-        cpuct: CPUCT,
-        cpuct_tau: CPUCT_TAU,
-        policy_temperature: POLICY_TEMPERATURE,
-        policy_temperature_root: POLICY_TEMPERATURE_ROOT,
-    };
+    let mcts_options = MctsOptions::default();
 
     let search_options = SearchOptions {
         mcts_options,
