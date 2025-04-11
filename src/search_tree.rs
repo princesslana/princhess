@@ -18,6 +18,8 @@ use crate::tree_policy;
 
 const MAX_PLAYOUT_LENGTH: usize = 256;
 
+const PV_EVAL_MIN_DEPTH: usize = 4;
+
 pub struct SearchTree {
     root_node: PositionNode,
     root_state: State,
@@ -468,21 +470,6 @@ impl SearchTree {
         self.sort_moves(self.root_node.hots())[0]
     }
 
-    fn pv_eval(&self, mv: &MoveEdge) -> i32 {
-        let pv_depth = (self.depth() / 2).max(4);
-        match mv.child() {
-            Some(child) => {
-                let pv = principal_variation(child, pv_depth);
-                let eval = pv
-                    .last()
-                    .map_or(mv.reward().average, |x| x.reward().average);
-
-                eval * [1, -1][pv.len() % 2]
-            }
-            None => -SCALE as i32,
-        }
-    }
-
     fn sort_moves<'a>(&self, children: &'a [MoveEdge]) -> Vec<&'a MoveEdge> {
         let reward = |child: &MoveEdge| {
             let reward = child.reward();
@@ -517,13 +504,16 @@ impl SearchTree {
 
         let bm_frac = bm_reward.visits as f32 / self.root_node().visits() as f32;
 
-        let bm_eval = bm_reward.average;
-        let bm_pv_eval = self.pv_eval(bm);
-
         m *= (opts.visits_base - bm_frac) * opts.visits_m;
 
-        if (bm_eval - bm_pv_eval).abs() > (opts.pv_diff_c * SCALE) as i32 {
-            m *= opts.pv_diff_m;
+        let pv_eval_depth = self.depth() / 2;
+        if pv_eval_depth >= PV_EVAL_MIN_DEPTH {
+            let bm_eval = bm_reward.average;
+            let bm_pv_eval = pv_eval(bm, pv_eval_depth);
+
+            if (bm_eval - bm_pv_eval).abs() > (opts.pv_diff_c * SCALE) as i32 {
+                m *= opts.pv_diff_m;
+            }
         }
 
         m = m.clamp(opts.min_m, opts.max_m);
@@ -603,6 +593,20 @@ fn principal_variation(from: &PositionNode, num_moves: usize) -> Vec<&MoveEdge> 
     }
 
     result
+}
+
+fn pv_eval(mv: &MoveEdge, pv_depth: usize) -> i32 {
+    match mv.child() {
+        Some(child) => {
+            let pv = principal_variation(child, pv_depth);
+            let eval = pv
+                .last()
+                .map_or(mv.reward().average, |x| x.reward().average);
+
+            eval * [1, -1][pv.len() % 2]
+        }
+        None => -SCALE as i32,
+    }
 }
 
 pub fn print_size_list() {
