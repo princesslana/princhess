@@ -1,5 +1,5 @@
 use arrayvec::ArrayVec;
-use std::fmt::Write;
+use std::fmt::{Display, Write};
 use std::mem;
 use std::ptr::{self, null_mut};
 use std::sync::atomic::{
@@ -423,7 +423,7 @@ impl SearchTree {
         // Lookup to see if we already have this position in the ttable
         if let Some(node) = self.ttable.lookup(state) {
             return Ok(choice.set_or_get_child(node).unwrap_or(node));
-        };
+        }
 
         // Create the child
         let mut created_here = create_node(
@@ -553,6 +553,11 @@ impl SearchTree {
                 write!(info_str, "movesleft {} ", self.root_state.moves_left()).unwrap();
             }
 
+            if self.search_options.show_wdl {
+                let wdl = UciWdl::from_eval(edge.reward().average as f32 / SCALE, &self.root_state);
+                write!(info_str, "wdl {wdl} ").unwrap();
+            }
+
             write!(
                 info_str,
                 "score {} ",
@@ -615,4 +620,57 @@ pub fn print_size_list() {
         mem::size_of::<PositionNode>(),
         mem::size_of::<MoveEdge>(),
     );
+}
+
+struct UciWdl {
+    white: u16,
+    draw: u16,
+    black: u16,
+}
+
+impl Display for UciWdl {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} {} {}", self.white, self.draw, self.black)
+    }
+}
+
+impl UciWdl {
+    // eval here is white relative [-1.0, 1.0]
+    #[allow(clippy::cast_possible_wrap, clippy::cast_sign_loss)]
+    pub fn from_eval(eval: f32, state: &State) -> Self {
+        let phase = state.phase() as i16;
+
+        let mut win = ((1000. * eval.abs()) as u16).clamp(0, 1000);
+        let mut draw = (-33 * phase + 1000).clamp(0, 1000) as u16;
+        let mut loss = 0;
+
+        if win + draw > 1000 {
+            draw = 1000 - win;
+        } else {
+            let adj = (1000 - win - draw) / 3;
+            win += adj;
+            loss = adj;
+            draw = 1000 - win - loss;
+        }
+
+        let result = Self {
+            white: win,
+            draw,
+            black: loss,
+        };
+
+        if eval.is_sign_positive() {
+            result
+        } else {
+            result.flip()
+        }
+    }
+
+    fn flip(&self) -> Self {
+        Self {
+            white: self.black,
+            draw: self.draw,
+            black: self.white,
+        }
+    }
 }

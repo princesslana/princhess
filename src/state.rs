@@ -47,7 +47,7 @@ impl State {
         match tokens.next() {
             Some("moves") | None => (),
             Some(_) => return None,
-        };
+        }
         for mov_str in tokens {
             for mov in result.available_moves() {
                 if mov.to_uci(is_chess960) == mov_str {
