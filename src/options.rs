@@ -106,6 +106,7 @@ static TM_PV_DIFF_M: UciOption = UciOption::spin("TMPvDiffM", 461, 0, 2 << 16);
 static CHESS960: UciOption = UciOption::check("UCI_Chess960", false);
 static POLICY_ONLY: UciOption = UciOption::check("PolicyOnly", false);
 static SHOW_MOVESLEFT: UciOption = UciOption::check("UCI_ShowMovesLeft", false);
+static SHOW_WDL: UciOption = UciOption::check("UCI_ShowWDL", false);
 
 static ALL_OPTIONS: &[UciOption] = &[
     HASH,
@@ -126,6 +127,7 @@ static ALL_OPTIONS: &[UciOption] = &[
     CHESS960,
     POLICY_ONLY,
     SHOW_MOVESLEFT,
+    SHOW_WDL,
 ];
 
 pub struct UciOptionMap {
@@ -191,7 +193,7 @@ pub struct MctsOptions {
     pub policy_temperature_root: f32,
 }
 
-#[allow(clippy::module_name_repetitions)]
+#[allow(clippy::module_name_repetitions, clippy::struct_excessive_bools)]
 #[derive(Debug, Clone, Copy)]
 pub struct SearchOptions {
     pub hash_size_mb: usize,
@@ -201,6 +203,7 @@ pub struct SearchOptions {
     pub is_chess960: bool,
     pub is_policy_only: bool,
     pub show_movesleft: bool,
+    pub show_wdl: bool,
     pub mcts_options: MctsOptions,
     pub time_management_options: TimeManagementOptions,
 }
@@ -262,6 +265,7 @@ impl From<&UciOptionMap> for SearchOptions {
             is_chess960: map.get_and(&CHESS960, |s| s.parse().ok()),
             is_policy_only: map.get_and(&POLICY_ONLY, |s| s.parse().ok()),
             show_movesleft: map.get_and(&SHOW_MOVESLEFT, |s| s.parse().ok()),
+            show_wdl: map.get_and(&SHOW_WDL, |s| s.parse().ok()),
             mcts_options: MctsOptions::from(map),
             time_management_options: TimeManagementOptions::from(map),
         }

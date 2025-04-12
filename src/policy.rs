@@ -157,7 +157,7 @@ impl PolicyNetwork {
     pub fn adam(&mut self, g: &Self, m: &mut Self, v: &mut Self, count: &PolicyCount, lr: f32) {
         for subnet_idx in 0..self.sq.len() {
             match count.sq[subnet_idx] {
-                0 => continue,
+                0 => (),
                 n => self.sq[subnet_idx].adam(
                     &g.sq[subnet_idx],
                     &mut m.sq[subnet_idx],
@@ -170,7 +170,7 @@ impl PolicyNetwork {
 
         for subnet_idx in 0..self.piece_sq.len() {
             match count.piece_sq[subnet_idx] {
-                0 => continue,
+                0 => (),
                 n => self.piece_sq[subnet_idx].adam(
                     &g.piece_sq[subnet_idx],
                     &mut m.piece_sq[subnet_idx],
