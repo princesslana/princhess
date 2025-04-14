@@ -122,6 +122,10 @@ impl LRTable {
         (self.left.arena().full() + self.right.arena().full()) / 2
     }
 
+    pub fn capacity_remaining(&self) -> usize {
+        self.current_table().arena().capacity_remaining()
+    }
+
     pub fn insert<'a>(&'a self, key: &State, value: &'a PositionNode) -> &'a PositionNode {
         self.current_table().insert(key, value)
     }

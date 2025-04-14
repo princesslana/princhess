@@ -266,6 +266,11 @@ impl Search {
             while self.search_tree.playout(&mut tld, cpuct, tm, &stop_signal) {}
         };
 
+        if self.search_tree.table_capacity_remaining() < threads.thread_count() as usize {
+            self.search_tree.flip_tables();
+            self.search_tree.root_node().clear_children_links();
+        }
+
         threads.scoped(|s| {
             s.execute(|| {
                 run_search_thread(cpuct, &time_management);

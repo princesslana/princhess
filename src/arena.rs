@@ -59,6 +59,10 @@ impl Arena {
         self.used() >= self.max
     }
 
+    pub fn capacity_remaining(&self) -> usize {
+        self.max - self.used()
+    }
+
     fn try_alloc_chunk(&self, id: u64) -> Result<&mut [u8], Error> {
         if self.is_full() {
             return Err(Error::Full);
