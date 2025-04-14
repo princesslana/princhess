@@ -253,6 +253,14 @@ impl SearchTree {
         self.ttable
     }
 
+    pub fn table_capacity_remaining(&self) -> usize {
+        self.ttable.capacity_remaining()
+    }
+
+    pub fn flip_tables(&self) {
+        self.ttable.flip_tables();
+    }
+
     pub fn num_nodes(&self) -> usize {
         self.num_nodes.load(Ordering::Relaxed)
     }
