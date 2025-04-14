@@ -85,7 +85,7 @@ impl UciOption {
 }
 
 static HASH: UciOption = UciOption::spin("Hash", 16, 1, 2 << 24);
-static THREADS: UciOption = UciOption::spin("Threads", 1, 1, 255);
+static THREADS: UciOption = UciOption::spin("Threads", 1, 1, 1 << 16);
 static MULTI_PV: UciOption = UciOption::spin("MultiPV", 1, 1, 255);
 static SYZYGY_PATH: UciOption = UciOption::string("SyzygyPath", "<empty>");
 
