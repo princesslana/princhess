@@ -63,37 +63,37 @@ impl Arena {
         self.max - self.used()
     }
 
-    fn try_alloc_chunk(&self, id: u64) -> Result<&mut [u8], Error> {
-        if self.is_full() {
+    #[allow(clippy::mut_from_ref)]
+    fn alloc_chunk(&self, id: u64) -> Result<&mut [u8], Error> {
+        let mut chunks = self.chunks.lock().unwrap();
+
+        let idx = chunks.used;
+
+        if idx >= self.max {
             return Err(Error::Full);
         }
 
-        Ok(self.alloc_chunk(id))
-    }
+        chunks.used += 1;
 
-    // This is n alloc_chunk that always succeeds
-    // This means not checking if we exceed the max chunks.
-    // This is because we always want creating of an allocator to succeed, even if already full.
-    #[allow(clippy::mut_from_ref)]
-    fn alloc_chunk(&self, id: u64) -> &mut [u8] {
-        let mmap = {
-            let mut chunks = self.chunks.lock().unwrap();
-
-            let idx = chunks.used;
-
-            chunks.used += 1;
-
-            if chunks.chunks.len() <= idx {
-                chunks.chunks.push(MmapMut::map_anon(CHUNK_SIZE).unwrap());
-            }
-
-            let result = ptr::addr_of_mut!(*chunks.chunks[idx]);
-            unsafe { &mut *result }
-        };
+        if chunks.chunks.len() <= idx {
+            chunks.chunks.push(MmapMut::map_anon(CHUNK_SIZE).unwrap());
+        }
 
         let _ = self.allocators.insert(id);
 
-        mmap
+        let result = ptr::addr_of_mut!(*chunks.chunks[idx]);
+        Ok(unsafe { &mut *result })
+    }
+
+    #[allow(clippy::mut_from_ref)]
+    fn last_chunk(&self, id: u64) -> &mut [u8] {
+        if self.used() == 0 {
+            self.alloc_chunk(id).unwrap()
+        } else {
+            let mut chunks = self.chunks.lock().unwrap();
+            let idx = chunks.used - 1;
+            unsafe { &mut *ptr::addr_of_mut!(*chunks.chunks[idx]) }
+        }
     }
 
     pub fn allocator(&self) -> Allocator {
@@ -102,7 +102,17 @@ impl Arena {
         Allocator {
             id,
             arena: self,
-            memory: UnsafeCell::new(self.alloc_chunk(id)),
+            memory: UnsafeCell::new(self.alloc_chunk(id).unwrap()),
+        }
+    }
+
+    pub fn invalid_allocator(&self) -> Allocator {
+        let id = IDS.fetch_add(1, Ordering::Relaxed);
+
+        Allocator {
+            id,
+            arena: self,
+            memory: UnsafeCell::new(self.last_chunk(id)),
         }
     }
 
@@ -129,7 +139,7 @@ impl<'a> Allocator<'a> {
         let memory = unsafe { &mut *self.memory.get() };
 
         if !self.arena.is_allocator_valid(self.id) {
-            *memory = self.arena.try_alloc_chunk(self.id)?;
+            *memory = self.arena.alloc_chunk(self.id)?;
             self.get_memory(sz)
         } else if sz <= memory.len() {
             let (left, right) = memory.split_at_mut(sz);
@@ -138,7 +148,7 @@ impl<'a> Allocator<'a> {
         } else if sz > CHUNK_SIZE {
             Err(Error::Full)
         } else {
-            *memory = self.arena.try_alloc_chunk(self.id)?;
+            *memory = self.arena.alloc_chunk(self.id)?;
             self.get_memory(sz)
         }
     }
