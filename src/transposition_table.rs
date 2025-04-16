@@ -219,8 +219,8 @@ impl<'a> LRAllocator<'a> {
     ) -> Self {
         Self {
             is_left_current,
-            left: left.allocator(),
-            right: right.allocator(),
+            left: left.invalid_allocator(),
+            right: right.invalid_allocator(),
         }
     }
 
