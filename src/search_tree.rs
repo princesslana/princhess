@@ -257,8 +257,8 @@ impl SearchTree {
         self.ttable.capacity_remaining()
     }
 
-    pub fn flip_tables(&self) {
-        self.ttable.flip_tables();
+    pub fn flip_table(&self) {
+        self.ttable.flip(|| self.root_node.clear_children_links());
     }
 
     pub fn num_nodes(&self) -> usize {

@@ -35,4 +35,4 @@ cc = "=1.0.83"
 
 [profile.release]
 lto = true
-strip = "debuginfo"
+debug = true

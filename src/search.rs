@@ -1,4 +1,5 @@
 use scoped_threadpool::Pool;
+use std::panic;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
@@ -259,17 +260,25 @@ impl Search {
         let stop_signal = AtomicBool::new(false);
         let thread_count = threads.thread_count();
 
+        if self.search_tree.table_capacity_remaining() < threads.thread_count() as usize {
+            println!(
+                "info string not enough table capacity for {} threads, flipping table",
+                threads.thread_count()
+            );
+            self.search_tree.flip_table();
+        }
+
         let mut rng = Rng::default();
 
         let run_search_thread = |cpuct: f32, tm: &TimeManagement| {
-            let mut tld = ThreadData::create(&self.search_tree);
-            while self.search_tree.playout(&mut tld, cpuct, tm, &stop_signal) {}
+            panic::catch_unwind(|| {
+                let mut tld = ThreadData::create(&self.search_tree);
+                while self.search_tree.playout(&mut tld, cpuct, tm, &stop_signal) {}
+            })
+            .unwrap_or_else(|err| {
+                println!("info string panic in search thread: {err:?}");
+            });
         };
-
-        if self.search_tree.table_capacity_remaining() < threads.thread_count() as usize {
-            self.search_tree.flip_tables();
-            self.search_tree.root_node().clear_children_links();
-        }
 
         threads.scoped(|s| {
             s.execute(|| {

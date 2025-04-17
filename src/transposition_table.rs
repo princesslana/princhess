@@ -164,7 +164,7 @@ impl LRTable {
         }
     }
 
-    pub fn flip_tables(&self) {
+    fn flip_tables(&self) {
         self.previous_table().clear();
         self.is_left_current.store(
             !self.is_left_current.load(Ordering::Relaxed),
@@ -176,6 +176,21 @@ impl LRTable {
         if self.is_flipping.load(Ordering::Relaxed) {
             let _lock = self.flip_lock.lock().unwrap();
         }
+    }
+
+    pub fn flip<F>(&self, f: F)
+    where
+        F: FnOnce(),
+    {
+        self.is_flipping.store(true, Ordering::Relaxed);
+
+        {
+            let _lock = self.flip_lock.lock().unwrap();
+            self.flip_tables();
+            f();
+        }
+
+        self.is_flipping.store(false, Ordering::Relaxed);
     }
 
     pub fn flip_if_full<F>(&self, f: F)
