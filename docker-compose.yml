@@ -146,9 +146,9 @@ services:
 
       -each proto=uci tc=8+0.08
             option.SyzygyPath=/syzygy option.Hash=128 option.Threads=1
-      -openings file=/books/8moves_v3.epd format=epd order=random
+      -openings file=/books/UHO_Lichess_4852_v1.epd format=epd order=random
       -rounds 1
-      -log file=pgn/debug.log
+      -log file=pgn/debug.log engine=true
       -pgnout /pgn/debug.pgn
     volumes:
       - ./target/release/princhess:/engines/princhess
