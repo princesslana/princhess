@@ -243,19 +243,19 @@ impl<'a> LRAllocator<'a> {
         self.is_left_current.load(Ordering::Relaxed)
     }
 
-    pub fn alloc_node(&self) -> Result<&'a mut PositionNode, ArenaError> {
-        if self.is_left_current() {
-            self.left.alloc_one()
+    pub fn alloc_node(
+        &self,
+        edges: usize,
+    ) -> Result<(&'a mut PositionNode, &'a mut [MoveEdge]), ArenaError> {
+        let alloc = if self.is_left_current() {
+            &self.left
         } else {
-            self.right.alloc_one()
-        }
-    }
+            &self.right
+        };
 
-    pub fn alloc_move_info(&self, sz: usize) -> Result<&'a mut [MoveEdge], ArenaError> {
-        if self.is_left_current() {
-            self.left.alloc_slice(sz)
-        } else {
-            self.right.alloc_slice(sz)
-        }
+        let edges = alloc.alloc_slice(edges)?;
+        let node = alloc.alloc_one()?;
+
+        Ok((node, edges))
     }
 }
