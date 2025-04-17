@@ -45,6 +45,7 @@ pub struct MoveEdge {
     child: AtomicPtr<PositionNode>,
 }
 
+#[derive(Clone)]
 pub struct PositionNode {
     hots: *const [MoveEdge],
     flag: Flag,
@@ -201,43 +202,50 @@ impl MoveEdge {
 
 fn create_node<'a, F>(
     state: &State,
-    alloc_slice: F,
+    alloc: F,
     policy_t: f32,
-) -> Result<PositionNode, ArenaError>
+) -> Result<&'a mut PositionNode, ArenaError>
 where
-    F: FnOnce(usize) -> Result<&'a mut [MoveEdge], ArenaError>,
+    F: FnOnce(usize) -> Result<(&'a mut PositionNode, &'a mut [MoveEdge]), ArenaError>,
 {
     let moves = state.available_moves();
 
     let state_flag = evaluation::evaluate_state_flag(state, !moves.is_empty());
     let move_eval = evaluation::policy(state, &moves, policy_t);
 
-    let hots = alloc_slice(move_eval.len())?;
+    let (node, hots) = alloc(move_eval.len())?;
 
     #[allow(clippy::cast_sign_loss)]
     for (i, x) in hots.iter_mut().enumerate() {
         *x = MoveEdge::new((move_eval[i] * SCALE) as u16, moves[i]);
     }
 
-    Ok(PositionNode::new(hots, state_flag))
+    *node = PositionNode::new(hots, state_flag);
+
+    Ok(node)
 }
 
 impl SearchTree {
     pub fn new(state: State, table: LRTable, search_options: SearchOptions) -> Self {
         let root_table = TranspositionTable::for_root();
 
-        let mut root_node = create_node(
+        let root_allocator = |sz| {
+            let allocator = root_table.arena().allocator();
+            Ok((allocator.alloc_one()?, allocator.alloc_slice(sz)?))
+        };
+
+        let root_node = create_node(
             &state,
-            |sz| root_table.arena().allocator().alloc_slice(sz),
+            root_allocator,
             search_options.mcts_options.policy_temperature_root,
         )
         .expect("Unable to create root node");
 
-        table.lookup_into_from_all(&state, &mut root_node);
+        table.lookup_into_from_all(&state, root_node);
 
         Self {
             root_state: state,
-            root_node,
+            root_node: root_node.clone(),
             search_options,
             root_table,
             ttable: table,
@@ -434,18 +442,14 @@ impl SearchTree {
         }
 
         // Create the child
-        let mut created_here = create_node(
+        let created = create_node(
             state,
-            |sz| tld.allocator.alloc_move_info(sz),
+            |sz| tld.allocator.alloc_node(sz),
             self.search_options.mcts_options.policy_temperature,
         )?;
 
         // Copy any history
-        self.ttable.lookup_into(state, &mut created_here);
-
-        // Copy node to arena memory
-        let created = tld.allocator.alloc_node()?;
-        *created = created_here;
+        self.ttable.lookup_into(state, created);
 
         // Insert the child into the ttable
         let inserted = self.ttable.insert(state, created);
