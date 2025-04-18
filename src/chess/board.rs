@@ -120,11 +120,15 @@ impl Board {
 
         let parts = fen.split_whitespace().collect::<Vec<_>>();
 
-        let [fen_pos, fen_color, fen_castling, fen_ep, fen_halfmove, fen_fullmove] = parts[0..6]
-        else {
-            println!("info string invalid fen");
-            return board;
-        };
+        let (fen_pos, fen_color, fen_castling, fen_ep, fen_halfmove, fen_fullmove) =
+            match parts.as_slice() {
+                [a, b, c, d, e, f] => (*a, *b, *c, *d, *e, *f),
+                [a, b, c, d] => (*a, *b, *c, *d, "0", "0"),
+                _ =>  {
+                    println!("info string invalid fen");
+                    return board;
+                }
+            };
 
         let pos = fen_pos.chars().collect::<Vec<_>>();
 
@@ -730,7 +734,6 @@ mod test {
     }
 
     fn assert_see_mv(expected: bool, fen: &str, mv: Move) {
-        let board = Board::from_fen(fen);
         let result = Board::from_fen(fen).see(mv, -108);
 
         assert_eq!(result, expected);

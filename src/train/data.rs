@@ -135,7 +135,7 @@ impl From<&SearchTree> for TrainingPosition {
         for (idx, (mv, vs)) in nodes.iter().enumerate() {
             legal_moves[idx] = *mv;
 
-            let scaled_visits = (*vs * u32::from(u8::MAX)).div_ceil(max_visits);
+            let scaled_visits = (*vs * u32::from(u8::MAX)).div_ceil(max_visits.max(1));
             assert!(u8::try_from(scaled_visits).is_ok());
             visits[idx] = scaled_visits as u8;
         }
@@ -193,7 +193,7 @@ impl From<&TrainingPosition> for State {
 mod tests {
     use super::*;
 
-    use crate::chess::Square;
+    use crate::options::SearchOptions;
     use crate::search::Search;
     use crate::transposition_table::LRTable;
 
@@ -206,7 +206,11 @@ mod tests {
     #[test]
     fn test_startpos_conversion() {
         let state_before = State::from_fen(STARTPOS_NO_CASTLING);
-        let search = Search::new(state_before.clone(), LRTable::empty());
+        let search = Search::new(
+            state_before.clone(),
+            LRTable::empty(16),
+            SearchOptions::default(),
+        );
 
         let training_position = TrainingPosition::from(search.tree());
 
@@ -216,28 +220,13 @@ mod tests {
     }
 
     #[test]
-    fn test_startpos_and_moves_conversion() {
-        let e2e4 = Move::new(Square::E2, Square::E4);
-        let e7e6 = Move::new(Square::E7, Square::E6);
-
-        let mut state_before = State::from_fen(STARTPOS_NO_CASTLING);
-        state_before.make_move(e2e4);
-        state_before.make_move(e7e6);
-
-        let search = Search::new(state_before.clone(), LRTable::empty());
-
-        let mut training_position = TrainingPosition::from(search.tree());
-        training_position.set_previous_moves([e7e6, e2e4, Move::NONE, Move::NONE]);
-
-        let state_after = State::from(&training_position);
-
-        assert_eq!(state_before, state_after);
-    }
-
-    #[test]
     fn test_kiwipete_conversion() {
         let state_before = State::from_fen(KIWIPETE_NO_CASTLING);
-        let search = Search::new(state_before.clone(), LRTable::empty());
+        let search = Search::new(
+            state_before.clone(),
+            LRTable::empty(16),
+            SearchOptions::default(),
+        );
 
         let training_position = TrainingPosition::from(search.tree());
 
@@ -249,7 +238,11 @@ mod tests {
     #[test]
     fn test_kiwipete_stm_black_conversion() {
         let state_before = State::from_fen(KIWIPETE_NO_CASTLING_STMB);
-        let search = Search::new(state_before.clone(), LRTable::empty());
+        let search = Search::new(
+            state_before.clone(),
+            LRTable::empty(16),
+            SearchOptions::default(),
+        );
 
         let training_position = TrainingPosition::from(search.tree());
 

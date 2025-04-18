@@ -566,7 +566,10 @@ impl SearchTree {
             }
 
             if self.search_options.show_wdl {
-                let wdl = UciWdl::from_eval(edge.reward().average as f32 / SCALE, &self.root_state);
+                let wdl = UciWdl::from_eval(
+                    edge.reward().average as f32 / SCALE,
+                    self.root_state.phase(),
+                );
                 write!(info_str, "wdl {wdl} ").unwrap();
             }
 
@@ -634,6 +637,7 @@ pub fn print_size_list() {
     );
 }
 
+#[derive(Debug, PartialEq, Eq)]
 struct UciWdl {
     white: u16,
     draw: u16,
@@ -649,8 +653,8 @@ impl Display for UciWdl {
 impl UciWdl {
     // eval here is white relative [-1.0, 1.0]
     #[allow(clippy::cast_possible_wrap, clippy::cast_sign_loss)]
-    pub fn from_eval(eval: f32, state: &State) -> Self {
-        let phase = state.phase() as i16;
+    pub fn from_eval(eval: f32, phase: usize) -> Self {
+        let phase = phase as i16;
 
         let mut win = ((1000. * eval.abs()) as u16).clamp(0, 1000);
         let mut draw = (-33 * phase + 1000).clamp(0, 1000) as u16;
@@ -683,6 +687,41 @@ impl UciWdl {
             white: self.black,
             draw: self.draw,
             black: self.white,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_uciwdl_from_eval() {
+        let wdl = UciWdl::from_eval(0.5, 12);
+        assert_eq!(wdl.white, 500);
+        assert_eq!(wdl.draw, 500);
+        assert_eq!(wdl.black, 0);
+
+        let wdl = UciWdl::from_eval(-0.5, 12);
+        assert_eq!(wdl.white, 0);
+        assert_eq!(wdl.draw, 500);
+        assert_eq!(wdl.black, 500);
+
+        let wdl = UciWdl::from_eval(0.0, 12);
+        assert_eq!(wdl.white, 132);
+        assert_eq!(wdl.draw, 736);
+        assert_eq!(wdl.black, 132);
+    }
+
+    #[test]
+    fn test_uciwdl_from_eval_symmetry() {
+        let test_cases = [(0.3, 7), (0.6, 12), (0.9, 3), (0.1, 22)];
+
+        for &(eval, phase) in &test_cases {
+            let white = UciWdl::from_eval(eval, phase);
+            let black = UciWdl::from_eval(-eval, phase);
+
+            assert_eq!(white, black.flip());
         }
     }
 }
