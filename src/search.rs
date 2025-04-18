@@ -1,5 +1,4 @@
 use scoped_threadpool::Pool;
-use std::panic;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
@@ -271,13 +270,8 @@ impl Search {
         let mut rng = Rng::default();
 
         let run_search_thread = |cpuct: f32, tm: &TimeManagement| {
-            panic::catch_unwind(|| {
-                let mut tld = ThreadData::create(&self.search_tree);
-                while self.search_tree.playout(&mut tld, cpuct, tm, &stop_signal) {}
-            })
-            .unwrap_or_else(|err| {
-                println!("info string panic in search thread: {err:?}");
-            });
+            let mut tld = ThreadData::create(&self.search_tree);
+            while self.search_tree.playout(&mut tld, cpuct, tm, &stop_signal) {}
         };
 
         threads.scoped(|s| {
