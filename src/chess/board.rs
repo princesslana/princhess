@@ -115,6 +115,7 @@ impl Board {
         board
     }
 
+    #[allow(clippy::many_single_char_names)]
     pub fn from_fen(fen: &str) -> Self {
         let mut board = Self::empty();
 
@@ -124,7 +125,7 @@ impl Board {
             match parts.as_slice() {
                 [a, b, c, d, e, f] => (*a, *b, *c, *d, *e, *f),
                 [a, b, c, d] => (*a, *b, *c, *d, "0", "0"),
-                _ =>  {
+                _ => {
                     println!("info string invalid fen");
                     return board;
                 }
