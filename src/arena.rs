@@ -1,5 +1,5 @@
-use memmap::MmapMut;
 use scc::HashSet;
+use std::alloc::{self, Layout};
 use std::cell::UnsafeCell;
 use std::mem;
 use std::ptr;
@@ -12,24 +12,38 @@ pub enum Error {
     Full,
 }
 
-const CHUNK_SIZE: usize = 1 << 21; // 2MB
+const BYTES_PER_MB: usize = 1 << 20;
+const CHUNK_SIZE_MB: usize = 2;
+const CHUNK_SIZE: usize = BYTES_PER_MB * CHUNK_SIZE_MB;
+
+type Chunk = [u8; CHUNK_SIZE];
+
+static DUMMY_CHUNK: Chunk = [0; CHUNK_SIZE];
 
 static IDS: AtomicU64 = AtomicU64::new(0);
 
 struct Chunks {
-    pub chunks: Vec<MmapMut>,
+    pub chunks: Box<[Chunk]>,
     pub used: usize,
 }
 
-impl Default for Chunks {
-    fn default() -> Self {
-        Self {
-            chunks: Vec::with_capacity(256),
-            used: 0,
-        }
+impl Chunks {
+    fn with_capacity(capacity: usize) -> Self {
+        let layout = Layout::array::<Chunk>(capacity).unwrap();
+        let chunks = unsafe {
+            let raw = alloc::alloc(layout);
+            if raw.is_null() {
+                alloc::handle_alloc_error(layout);
+            }
+
+            let slice = slice::from_raw_parts_mut(raw.cast(), capacity);
+
+            Box::from_raw(slice)
+        };
+
+        Self { chunks, used: 0 }
     }
 }
-
 pub struct Arena {
     chunks: Mutex<Chunks>,
     max: usize,
@@ -38,10 +52,10 @@ pub struct Arena {
 
 impl Arena {
     pub fn new(max_size_mb: usize) -> Self {
-        let max = (max_size_mb << 20) / CHUNK_SIZE;
+        let max = max_size_mb / CHUNK_SIZE_MB;
 
         Self {
-            chunks: Mutex::default(),
+            chunks: Mutex::new(Chunks::with_capacity(max)),
             max,
             allocators: HashSet::default(),
         }
@@ -64,7 +78,7 @@ impl Arena {
     }
 
     #[allow(clippy::mut_from_ref)]
-    fn alloc_chunk(&self, id: u64) -> Result<&mut [u8], Error> {
+    fn alloc_chunk(&self, id: u64) -> Result<&mut Chunk, Error> {
         let mut chunks = self.chunks.lock().unwrap();
 
         let idx = chunks.used;
@@ -75,25 +89,10 @@ impl Arena {
 
         chunks.used += 1;
 
-        if chunks.chunks.len() <= idx {
-            chunks.chunks.push(MmapMut::map_anon(CHUNK_SIZE).unwrap());
-        }
-
         let _ = self.allocators.insert(id);
 
-        let result = ptr::addr_of_mut!(*chunks.chunks[idx]);
+        let result = ptr::addr_of_mut!(chunks.chunks[idx]);
         Ok(unsafe { &mut *result })
-    }
-
-    #[allow(clippy::mut_from_ref)]
-    fn last_chunk(&self, id: u64) -> &mut [u8] {
-        if self.used() == 0 {
-            self.alloc_chunk(id).unwrap()
-        } else {
-            let mut chunks = self.chunks.lock().unwrap();
-            let idx = chunks.used - 1;
-            unsafe { &mut *ptr::addr_of_mut!(*chunks.chunks[idx]) }
-        }
     }
 
     pub fn allocator(&self) -> Allocator {
@@ -109,10 +108,12 @@ impl Arena {
     pub fn invalid_allocator(&self) -> Allocator {
         let id = IDS.fetch_add(1, Ordering::Relaxed);
 
+        let dummy = DUMMY_CHUNK.as_ptr() as *mut Chunk;
+
         Allocator {
             id,
             arena: self,
-            memory: UnsafeCell::new(self.last_chunk(id)),
+            memory: UnsafeCell::new(unsafe { &mut *dummy }),
         }
     }
 
@@ -156,7 +157,7 @@ impl<'a> Allocator<'a> {
     pub fn alloc_one<T>(&self) -> Result<&'a mut T, Error> {
         assert!(ALIGN % mem::align_of::<T>() == 0);
         let x = mem::size_of::<T>();
-        let x = x + ((!x + 1) % ALIGN); // TODO fix panic when x=0
+        let x = x + ((!x + 1) % ALIGN);
         let x = self.get_memory(x)?;
         Ok(unsafe { &mut *(x.as_mut_ptr().cast::<T>()) })
     }
@@ -164,7 +165,7 @@ impl<'a> Allocator<'a> {
     pub fn alloc_slice<T>(&self, sz: usize) -> Result<&'a mut [T], Error> {
         assert!(ALIGN % mem::align_of::<T>() == 0);
         let x = mem::size_of::<T>();
-        let x = x + ((!x + 1) % ALIGN); // TODO fix panic when x=0
+        let x = x + ((!x + 1) % ALIGN);
         let x = self.get_memory(x * sz)?;
         Ok(unsafe { slice::from_raw_parts_mut(x.as_mut_ptr().cast::<T>(), sz) })
     }
