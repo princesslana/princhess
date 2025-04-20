@@ -308,9 +308,14 @@ impl SearchTree {
         let mut node = &self.root_node;
         let mut path: ArrayVec<&MoveEdge, MAX_PLAYOUT_LENGTH> = ArrayVec::new();
         let mut evaln = 0;
+        let generation = self.ttable.generation();
 
         loop {
             self.ttable.wait_if_flipping();
+
+            if self.ttable.generation() != generation {
+                return true;
+            }
 
             if node.is_terminal() || node.hots().is_empty() {
                 break;
