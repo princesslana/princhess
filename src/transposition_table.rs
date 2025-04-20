@@ -1,7 +1,7 @@
 use nohash_hasher::BuildNoHashHasher;
 use scc::hash_map::HashMap;
 use std::ptr;
-use std::sync::atomic::{AtomicBool, AtomicPtr, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicPtr, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 use crate::arena::{Allocator, Arena, Error as ArenaError};
@@ -95,6 +95,7 @@ pub struct LRTable {
     is_left_current: Arc<AtomicBool>,
     is_flipping: AtomicBool,
     flip_lock: Mutex<()>,
+    generation: AtomicU64,
 }
 
 impl LRTable {
@@ -106,6 +107,7 @@ impl LRTable {
             is_left_current: Arc::new(AtomicBool::new(true)),
             is_flipping: AtomicBool::new(false),
             flip_lock: Mutex::new(()),
+            generation: AtomicU64::new(0),
         }
     }
 
@@ -148,6 +150,10 @@ impl LRTable {
         self.is_left_current.load(Ordering::Relaxed)
     }
 
+    pub fn generation(&self) -> u64 {
+        self.generation.load(Ordering::Relaxed)
+    }
+
     fn current_table(&self) -> &TranspositionTable {
         if self.is_left_current() {
             &self.left
@@ -170,6 +176,7 @@ impl LRTable {
             !self.is_left_current.load(Ordering::Relaxed),
             Ordering::Relaxed,
         );
+        self.generation.fetch_add(1, Ordering::Relaxed);
     }
 
     pub fn wait_if_flipping(&self) {
