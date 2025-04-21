@@ -92,10 +92,4 @@ impl Move {
 
         format!("{from}{to}{promotion}")
     }
-
-    #[must_use]
-    pub fn is_same_squares(self, rhs: Self) -> bool {
-        (self.from() == rhs.from() && self.to() == rhs.to())
-            || (self.from() == rhs.to() && self.to() == rhs.from())
-    }
 }
