@@ -174,7 +174,8 @@ impl LRTable {
             !self.is_left_current.load(Ordering::Relaxed),
             Ordering::Relaxed,
         );
-        self.generation.fetch_add(1, Ordering::Relaxed);
+        let new_generation = self.generation.fetch_add(1, Ordering::Relaxed) + 1;
+        println!("info string tables flipped to generation {}", new_generation);
     }
 
     pub fn flip<F>(&self, f: F)
