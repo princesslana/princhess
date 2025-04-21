@@ -604,11 +604,16 @@ impl SearchTree {
 }
 
 fn principal_variation(from: &PositionNode, num_moves: usize) -> Vec<&MoveEdge> {
-    let mut result = Vec::with_capacity(num_moves);
+    let mut result: Vec<&MoveEdge> = Vec::with_capacity(num_moves);
     let mut crnt = from;
 
     while !crnt.hots().is_empty() && result.len() < num_moves {
         let choice = crnt.select_child_by_rewards();
+
+        if result.iter().any(|x| x.get_move() == choice.get_move()) {
+            break;
+        }
+
         result.push(choice);
 
         match choice.child() {
