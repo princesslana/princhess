@@ -311,6 +311,8 @@ impl SearchTree {
         let generation = self.ttable.generation();
 
         loop {
+            self.ttable.wait_if_flipping();
+
             if self.ttable.generation() != generation {
                 return true;
             }
