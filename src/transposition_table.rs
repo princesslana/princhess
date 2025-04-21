@@ -93,7 +93,6 @@ pub struct LRTable {
     left: TranspositionTable,
     right: TranspositionTable,
     is_left_current: Arc<AtomicBool>,
-    is_flipping: AtomicBool,
     flip_lock: Mutex<()>,
     generation: AtomicU64,
 }
@@ -105,7 +104,6 @@ impl LRTable {
             left,
             right,
             is_left_current: Arc::new(AtomicBool::new(true)),
-            is_flipping: AtomicBool::new(false),
             flip_lock: Mutex::new(()),
             generation: AtomicU64::new(0),
         }
@@ -176,46 +174,29 @@ impl LRTable {
             !self.is_left_current.load(Ordering::Relaxed),
             Ordering::Relaxed,
         );
-        self.generation.fetch_add(1, Ordering::Relaxed);
-    }
-
-    pub fn wait_if_flipping(&self) {
-        if self.is_flipping.load(Ordering::Relaxed) {
-            let _lock = self.flip_lock.lock().unwrap();
-        }
+        let new_generation = self.generation.fetch_add(1, Ordering::Relaxed) + 1;
+        println!("info string tables flipped to generation {}", new_generation);
     }
 
     pub fn flip<F>(&self, f: F)
     where
         F: FnOnce(),
     {
-        self.is_flipping.store(true, Ordering::Relaxed);
-
-        {
-            let _lock = self.flip_lock.lock().unwrap();
-            self.flip_tables();
-            f();
-        }
-
-        self.is_flipping.store(false, Ordering::Relaxed);
+        let _lock = self.flip_lock.lock().unwrap();
+        self.flip_tables();
+        f();
     }
 
     pub fn flip_if_full<F>(&self, f: F)
     where
         F: FnOnce(),
     {
-        self.is_flipping.store(true, Ordering::Relaxed);
+        let _lock = self.flip_lock.lock().unwrap();
 
-        {
-            let _lock = self.flip_lock.lock().unwrap();
-
-            if self.current_table().arena().is_full() {
-                self.flip_tables();
-                f();
-            }
+        if self.current_table().arena().is_full() {
+            self.flip_tables();
+            f();
         }
-
-        self.is_flipping.store(false, Ordering::Relaxed);
     }
 
     pub fn allocator(&self) -> LRAllocator {
