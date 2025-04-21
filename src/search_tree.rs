@@ -526,7 +526,7 @@ impl SearchTree {
         let pv_eval_depth = self.depth() / 2;
         if pv_eval_depth >= PV_EVAL_MIN_DEPTH {
             let bm_eval = bm_reward.average;
-            let bm_pv_eval = pv_eval(bm, pv_eval_depth);
+            let bm_pv_eval = pv_eval(self.root_state.clone(), bm, pv_eval_depth);
 
             if (bm_eval - bm_pv_eval).abs() > (opts.pv_diff_c * SCALE) as i32 {
                 m *= opts.pv_diff_m;
@@ -588,7 +588,11 @@ impl SearchTree {
             write!(info_str, "multipv {} ", idx + 1).unwrap();
 
             let pv = match edge.child() {
-                Some(child) => principal_variation(child, depth.max(1) - 1),
+                Some(child) => {
+                    let mut state = self.root_state.clone();
+                    state.make_move(*edge.get_move());
+                    principal_variation(state, child, depth.max(1) - 1)
+                }
                 None => vec![],
             };
 
@@ -603,18 +607,21 @@ impl SearchTree {
     }
 }
 
-fn principal_variation(from: &PositionNode, num_moves: usize) -> Vec<&MoveEdge> {
+fn principal_variation(mut state: State, from: &PositionNode, num_moves: usize) -> Vec<&MoveEdge> {
     let mut result: Vec<&MoveEdge> = Vec::with_capacity(num_moves);
     let mut crnt = from;
 
     while !crnt.hots().is_empty() && result.len() < num_moves {
         let choice = crnt.select_child_by_rewards();
+        result.push(choice);
 
-        if result.iter().any(|x| x.get_move() == choice.get_move()) {
+        state.make_move(*choice.get_move());
+        if state.is_repetition()
+            || state.drawn_by_fifty_move_rule()
+            || state.board().is_insufficient_material()
+        {
             break;
         }
-
-        result.push(choice);
 
         match choice.child() {
             Some(child) => crnt = child,
@@ -625,10 +632,11 @@ fn principal_variation(from: &PositionNode, num_moves: usize) -> Vec<&MoveEdge> 
     result
 }
 
-fn pv_eval(mv: &MoveEdge, pv_depth: usize) -> i32 {
+fn pv_eval(mut state: State, mv: &MoveEdge, pv_depth: usize) -> i32 {
     match mv.child() {
         Some(child) => {
-            let pv = principal_variation(child, pv_depth);
+            state.make_move(*mv.get_move());
+            let pv = principal_variation(state, child, pv_depth);
             let eval = pv
                 .last()
                 .map_or(mv.reward().average, |x| x.reward().average);
