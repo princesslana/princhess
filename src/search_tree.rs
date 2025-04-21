@@ -297,6 +297,7 @@ impl SearchTree {
     }
 
     #[inline(never)]
+    #[allow(clippy::too_many_lines)]
     pub fn playout<'a: 'b, 'b>(
         &'a self,
         tld: &'b mut ThreadData<'a>,
@@ -311,9 +312,7 @@ impl SearchTree {
         let generation = self.ttable.generation();
 
         loop {
-            self.ttable.wait_if_flipping();
-
-            if self.ttable.generation() != generation {
+            if self.ttable.wait_if_flipping() {
                 return true;
             }
 
@@ -363,6 +362,10 @@ impl SearchTree {
             {
                 node = &DRAW_NODE;
                 break;
+            }
+
+            if self.ttable.generation() != generation {
+                return true;
             }
 
             let new_node = match self.descend(&state, choice, tld) {
