@@ -613,6 +613,11 @@ fn principal_variation(mut state: State, from: &PositionNode, num_moves: usize) 
 
     while !crnt.hots().is_empty() && result.len() < num_moves {
         let choice = crnt.select_child_by_rewards();
+
+        if result.iter().any(|x| x.get_move() == choice.get_move()) {
+            break;
+        }
+
         result.push(choice);
 
         state.make_move(*choice.get_move());
