@@ -2,10 +2,8 @@ use scc::HashSet;
 use std::alloc::{self, Layout};
 use std::cell::UnsafeCell;
 use std::mem;
-use std::ptr;
 use std::slice;
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Mutex;
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 
 #[derive(Debug)]
 pub enum Error {
@@ -22,31 +20,9 @@ static DUMMY_CHUNK: Chunk = [0; CHUNK_SIZE];
 
 static IDS: AtomicU64 = AtomicU64::new(0);
 
-struct Chunks {
-    pub chunks: Box<[Chunk]>,
-    pub used: usize,
-}
-
-impl Chunks {
-    fn with_capacity(capacity: usize) -> Self {
-        let layout = Layout::array::<Chunk>(capacity).unwrap();
-        let chunks = unsafe {
-            let raw = alloc::alloc(layout);
-            if raw.is_null() {
-                alloc::handle_alloc_error(layout);
-            }
-
-            let slice = slice::from_raw_parts_mut(raw.cast(), capacity);
-
-            Box::from_raw(slice)
-        };
-
-        Self { chunks, used: 0 }
-    }
-}
 pub struct Arena {
-    chunks: Mutex<Chunks>,
-    max: usize,
+    chunks: Box<[Chunk]>,
+    used: AtomicUsize,
     allocators: HashSet<u64>,
 }
 
@@ -54,45 +30,56 @@ impl Arena {
     pub fn new(max_size_mb: usize) -> Self {
         let max = max_size_mb / CHUNK_SIZE_MB;
 
+        let layout = Layout::array::<Chunk>(max).unwrap();
+        let chunks = unsafe {
+            let raw = alloc::alloc(layout);
+            if raw.is_null() {
+                alloc::handle_alloc_error(layout);
+            }
+
+            let slice = slice::from_raw_parts_mut(raw.cast(), max);
+
+            Box::from_raw(slice)
+        };
+
         Self {
-            chunks: Mutex::new(Chunks::with_capacity(max)),
-            max,
+            chunks,
+            used: AtomicUsize::new(0),
             allocators: HashSet::default(),
         }
     }
 
+    fn max(&self) -> usize {
+        self.chunks.len()
+    }
+
     fn used(&self) -> usize {
-        self.chunks.lock().unwrap().used
+        self.used.load(Ordering::Relaxed)
     }
 
     pub fn full(&self) -> usize {
-        self.used() * 1000 / self.max
+        self.used() * 1000 / self.max()
     }
 
     pub fn is_full(&self) -> bool {
-        self.used() >= self.max
+        self.used() >= self.max()
     }
 
     pub fn capacity_remaining(&self) -> usize {
-        self.max - self.used()
+        self.max() - self.used()
     }
 
     #[allow(clippy::mut_from_ref)]
     fn alloc_chunk(&self, id: u64) -> Result<&mut Chunk, Error> {
-        let mut chunks = self.chunks.lock().unwrap();
+        let idx = self.used.fetch_add(1, Ordering::Relaxed);
 
-        let idx = chunks.used;
-
-        if idx >= self.max {
+        if idx >= self.max() {
             return Err(Error::Full);
         }
 
-        chunks.used += 1;
-
         let _ = self.allocators.insert(id);
 
-        let result = ptr::addr_of_mut!(chunks.chunks[idx]);
-        Ok(unsafe { &mut *result })
+        Ok(unsafe { &mut *(self.chunks.get_unchecked(idx).as_ptr() as *mut Chunk) })
     }
 
     pub fn allocator(&self) -> Allocator {
@@ -123,7 +110,7 @@ impl Arena {
 
     pub fn clear(&self) {
         self.allocators.clear();
-        self.chunks.lock().unwrap().used = 0;
+        self.used.store(0, Ordering::Relaxed);
     }
 }
 
