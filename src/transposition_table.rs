@@ -176,16 +176,12 @@ impl LRTable {
             !self.is_left_current.load(Ordering::Relaxed),
             Ordering::Relaxed,
         );
-        let generation = self.generation.fetch_add(1, Ordering::Relaxed) + 1;
-        println!("info string flip_tables generation {generation}");
+        self.generation.fetch_add(1, Ordering::Relaxed);
     }
 
-    pub fn wait_if_flipping(&self) -> bool {
+    pub fn wait_if_flipping(&self) {
         if self.is_flipping.load(Ordering::Relaxed) {
             let _lock = self.flip_lock.lock().unwrap();
-            true
-        } else {
-            false
         }
     }
 
