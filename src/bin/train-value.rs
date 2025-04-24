@@ -9,7 +9,7 @@ use std::path::Path;
 use std::thread;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
-const TARGET_BATCH_COUNT: usize = 250_000;
+const TARGET_BATCH_COUNT: usize = 400_000;
 const BATCH_SIZE: usize = 16384;
 const THREADS: usize = 6;
 
