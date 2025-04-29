@@ -21,6 +21,10 @@ fn main() {
     let mut phase_draw: [u64; 25] = [0; 25];
     let mut phase_loss: [u64; 25] = [0; 25];
 
+    let mut material_white: [u64; 25] = [0; 25];
+    let mut material_draw: [u64; 25] = [0; 25];
+    let mut material_black: [u64; 25] = [0; 25];
+
     let mut policy_inputs: [u64; state::POLICY_NUMBER_FEATURES] =
         [0; state::POLICY_NUMBER_FEATURES];
 
@@ -51,10 +55,19 @@ fn main() {
             let moves = position.moves().iter().map(|(mv, _)| *mv).collect();
             let state = State::from(position);
 
+            let material_balance_idx = (state.material_balance() + 12).clamp(0, 24) as usize;
+
             match position.stm_relative_result() {
                 1 => phase_win[state.phase()] += 1,
                 0 => phase_draw[state.phase()] += 1,
                 -1 => phase_loss[state.phase()] += 1,
+                _ => (),
+            }
+
+            match position.white_relative_result() {
+                1 => material_white[material_balance_idx] += 1,
+                0 => material_draw[material_balance_idx] += 1,
+                -1 => material_black[material_balance_idx] += 1,
                 _ => (),
             }
 
@@ -94,6 +107,22 @@ fn main() {
         println!(
             "{:>2}: {:>15}/{:>5.2}%  +{:>2} ={:>2} -{:>2} %",
             idx,
+            total,
+            total as f32 / records as f32 * 100.0,
+            w * 100 / total,
+            d * 100 / total,
+            l * 100 / total
+        );
+    }
+
+    println!("material:");
+    for idx in 0..25 {
+        let (w, d, l) = (material_white[idx], material_draw[idx], material_black[idx]);
+        let total = w + d + l;
+
+        println!(
+            "{:>2}: {:>15}/{:>5.2}%  +{:>2} ={:>2} -{:>2} %",
+            (idx as i64) - 12,
             total,
             total as f32 / records as f32 * 100.0,
             w * 100 / total,

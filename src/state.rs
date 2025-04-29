@@ -1,6 +1,6 @@
 use arrayvec::ArrayVec;
 
-use crate::chess::{Board, Color, File, Move, MoveList, Square};
+use crate::chess::{Board, Color, File, Move, MoveList, Piece, Square};
 use crate::policy::MoveIndex;
 use crate::uci::Tokens;
 
@@ -97,6 +97,29 @@ impl State {
 
         (4 * b.queens().count() + 2 * b.rooks().count() + b.bishops().count() + b.knights().count())
             .clamp(0, 24)
+    }
+
+    #[must_use]
+    pub fn material_balance(&self) -> i16 {
+        let b = self.board;
+
+        let mut balance = 0;
+
+        for sq in b.occupied() {
+            let color = b.color_at(sq);
+            let value = match b.piece_at(sq) {
+                Piece::PAWN => 1,
+                Piece::KNIGHT | Piece::BISHOP => 3,
+                Piece::ROOK => 5,
+                Piece::QUEEN => 9,
+                Piece::KING => 0,
+                _ => unreachable!(),
+            };
+
+            balance += color.fold(value, -value);
+        }
+
+        balance
     }
 
     #[must_use]
