@@ -68,6 +68,11 @@ impl TrainingPosition {
     }
 
     #[must_use]
+    pub fn white_relative_result(&self) -> i8 {
+        self.result
+    }
+
+    #[must_use]
     pub fn moves(&self) -> ArrayVec<(Move, u8), { Self::MAX_MOVES }> {
         self.legal_moves
             .iter()
