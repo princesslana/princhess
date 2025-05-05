@@ -187,15 +187,15 @@ impl MoveEdge {
     }
 
     // Returns None if the child was set, or Some(child) if it was already set.
-    pub fn set_or_get_child<'a>(&'a self, new_child: &'a PositionNode) -> Option<&'a PositionNode> {
+    pub fn set_or_get_child<'a>(&'a self, new_child: &'a PositionNode) -> &'a PositionNode {
         match self.child.compare_exchange(
             null_mut(),
             ptr::from_ref(new_child).cast_mut(),
             Ordering::Release,
             Ordering::Acquire,
         ) {
-            Ok(_) => None,
-            Err(existing) => unsafe { Some(&*existing) },
+            Ok(_) => new_child,
+            Err(existing) => unsafe { &*existing },
         }
     }
 }
@@ -443,7 +443,7 @@ impl SearchTree {
 
         // Lookup to see if we already have this position in the ttable
         if let Some(node) = self.ttable.lookup(state) {
-            return Ok(choice.set_or_get_child(node).unwrap_or(node));
+            return Ok(choice.set_or_get_child(node));
         }
 
         // Create the child

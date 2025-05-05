@@ -172,10 +172,7 @@ impl LRTable {
 
     fn flip_tables(&self) {
         self.previous_table().clear();
-        self.is_left_current.store(
-            !self.is_left_current.load(Ordering::Acquire),
-            Ordering::Release,
-        );
+        self.is_left_current.fetch_not(Ordering::Release);
         self.generation.fetch_add(1, Ordering::Release);
     }
 
