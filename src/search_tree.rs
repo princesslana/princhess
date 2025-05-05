@@ -106,7 +106,7 @@ impl PositionNode {
 
     pub fn clear_children_links(&self) {
         for h in self.hots() {
-            h.child.store(null_mut(), Ordering::Relaxed);
+            h.child.store(null_mut(), Ordering::Release);
         }
     }
 
@@ -178,7 +178,7 @@ impl MoveEdge {
     }
 
     pub fn child(&self) -> Option<&PositionNode> {
-        let child = self.child.load(Ordering::Relaxed).cast_const();
+        let child = self.child.load(Ordering::Acquire).cast_const();
         if child.is_null() {
             None
         } else {
@@ -191,8 +191,8 @@ impl MoveEdge {
         match self.child.compare_exchange(
             null_mut(),
             ptr::from_ref(new_child).cast_mut(),
-            Ordering::Relaxed,
-            Ordering::Relaxed,
+            Ordering::Release,
+            Ordering::Acquire,
         ) {
             Ok(_) => None,
             Err(existing) => unsafe { Some(&*existing) },
@@ -459,7 +459,7 @@ impl SearchTree {
         // Insert the child into the ttable
         let inserted = self.ttable.insert(state, created);
         let inserted_ptr = ptr::from_ref(inserted).cast_mut();
-        choice.child.store(inserted_ptr, Ordering::Relaxed);
+        choice.child.store(inserted_ptr, Ordering::Release);
         Ok(inserted)
     }
 

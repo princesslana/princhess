@@ -59,7 +59,7 @@ impl TranspositionTable {
             Ok(()) => value,
             Err(_) => self
                 .table
-                .read(&hash, |_, v| unsafe { &*v.load(Ordering::Relaxed) })
+                .read(&hash, |_, v| unsafe { &*v.load(Ordering::Acquire) })
                 .unwrap(),
         }
     }
@@ -69,7 +69,7 @@ impl TranspositionTable {
         let hash = key.hash();
 
         self.table
-            .read(&hash, |_, v| unsafe { &*v.load(Ordering::Relaxed) })
+            .read(&hash, |_, v| unsafe { &*v.load(Ordering::Acquire) })
     }
 
     pub fn lookup_into(&self, state: &State, dest: &mut PositionNode) -> bool {
@@ -147,11 +147,11 @@ impl LRTable {
     }
 
     pub fn is_left_current(&self) -> bool {
-        self.is_left_current.load(Ordering::Relaxed)
+        self.is_left_current.load(Ordering::Acquire)
     }
 
     pub fn generation(&self) -> u64 {
-        self.generation.load(Ordering::Relaxed)
+        self.generation.load(Ordering::Acquire)
     }
 
     fn current_table(&self) -> &TranspositionTable {
@@ -173,14 +173,14 @@ impl LRTable {
     fn flip_tables(&self) {
         self.previous_table().clear();
         self.is_left_current.store(
-            !self.is_left_current.load(Ordering::Relaxed),
-            Ordering::Relaxed,
+            !self.is_left_current.load(Ordering::Acquire),
+            Ordering::Release,
         );
-        self.generation.fetch_add(1, Ordering::Relaxed);
+        self.generation.fetch_add(1, Ordering::Release);
     }
 
     pub fn wait_if_flipping(&self) {
-        if self.is_flipping.load(Ordering::Relaxed) {
+        if self.is_flipping.load(Ordering::Acquire) {
             let _lock = self.flip_lock.lock().unwrap();
         }
     }
@@ -189,7 +189,7 @@ impl LRTable {
     where
         F: FnOnce(),
     {
-        self.is_flipping.store(true, Ordering::Relaxed);
+        self.is_flipping.store(true, Ordering::Release);
 
         {
             let _lock = self.flip_lock.lock().unwrap();
@@ -197,14 +197,14 @@ impl LRTable {
             f();
         }
 
-        self.is_flipping.store(false, Ordering::Relaxed);
+        self.is_flipping.store(false, Ordering::Release);
     }
 
     pub fn flip_if_full<F>(&self, f: F)
     where
         F: FnOnce(),
     {
-        self.is_flipping.store(true, Ordering::Relaxed);
+        self.is_flipping.store(true, Ordering::Release);
 
         {
             let _lock = self.flip_lock.lock().unwrap();
@@ -215,7 +215,7 @@ impl LRTable {
             }
         }
 
-        self.is_flipping.store(false, Ordering::Relaxed);
+        self.is_flipping.store(false, Ordering::Release);
     }
 
     pub fn allocator(&self) -> LRAllocator {
