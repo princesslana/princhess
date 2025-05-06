@@ -106,7 +106,7 @@ impl PositionNode {
 
     pub fn clear_children_links(&self) {
         for h in self.hots() {
-            h.child.store(null_mut(), Ordering::Relaxed);
+            h.child.store(null_mut(), Ordering::Release);
         }
     }
 
@@ -178,7 +178,7 @@ impl MoveEdge {
     }
 
     pub fn child(&self) -> Option<&PositionNode> {
-        let child = self.child.load(Ordering::Relaxed).cast_const();
+        let child = self.child.load(Ordering::Acquire).cast_const();
         if child.is_null() {
             None
         } else {
@@ -186,16 +186,15 @@ impl MoveEdge {
         }
     }
 
-    // Returns None if the child was set, or Some(child) if it was already set.
-    pub fn set_or_get_child<'a>(&'a self, new_child: &'a PositionNode) -> Option<&'a PositionNode> {
+    pub fn set_or_get_child<'a>(&'a self, new_child: &'a PositionNode) -> &'a PositionNode {
         match self.child.compare_exchange(
             null_mut(),
             ptr::from_ref(new_child).cast_mut(),
-            Ordering::Relaxed,
-            Ordering::Relaxed,
+            Ordering::Release,
+            Ordering::Acquire,
         ) {
-            Ok(_) => None,
-            Err(existing) => unsafe { Some(&*existing) },
+            Ok(_) => new_child,
+            Err(existing) => unsafe { &*existing },
         }
     }
 }
@@ -443,7 +442,7 @@ impl SearchTree {
 
         // Lookup to see if we already have this position in the ttable
         if let Some(node) = self.ttable.lookup(state) {
-            return Ok(choice.set_or_get_child(node).unwrap_or(node));
+            return Ok(choice.set_or_get_child(node));
         }
 
         // Create the child
@@ -456,11 +455,15 @@ impl SearchTree {
         // Copy any history
         self.ttable.lookup_into(state, created);
 
-        // Insert the child into the ttable
-        let inserted = self.ttable.insert(state, created);
-        let inserted_ptr = ptr::from_ref(inserted).cast_mut();
-        choice.child.store(inserted_ptr, Ordering::Relaxed);
-        Ok(inserted)
+        match choice.child.compare_exchange(
+            null_mut(),
+            ptr::from_ref(created).cast_mut(),
+            Ordering::Release,
+            Ordering::Relaxed,
+        ) {
+            Ok(_) => Ok(self.ttable.insert(state, created)),
+            Err(existing) => unsafe { Ok(&*existing) },
+        }
     }
 
     fn finish_playout(path: &[&MoveEdge], evaln: i64) {
