@@ -147,7 +147,7 @@ impl LRTable {
     }
 
     pub fn is_left_current(&self) -> bool {
-        self.is_left_current.load(Ordering::Relaxed)
+        self.is_left_current.load(Ordering::Acquire)
     }
 
     pub fn generation(&self) -> u64 {
@@ -172,10 +172,7 @@ impl LRTable {
 
     fn flip_tables(&self) {
         self.previous_table().clear();
-        self.is_left_current.store(
-            !self.is_left_current.load(Ordering::Relaxed),
-            Ordering::Relaxed,
-        );
+        self.is_left_current.fetch_not(Ordering::Release);
         self.generation.fetch_add(1, Ordering::Relaxed);
     }
 
@@ -247,7 +244,7 @@ impl<'a> LRAllocator<'a> {
     }
 
     fn is_left_current(&self) -> bool {
-        self.is_left_current.load(Ordering::Relaxed)
+        self.is_left_current.load(Ordering::Acquire)
     }
 
     pub fn alloc_node(
