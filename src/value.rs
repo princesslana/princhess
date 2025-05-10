@@ -13,7 +13,7 @@ use crate::nets::{q_i16, q_i32, save_to_bin, screlu, Accumulator, SCReLU};
 use crate::state::{self, State};
 
 const INPUT_SIZE: usize = state::VALUE_NUMBER_FEATURES;
-const HIDDEN_SIZE: usize = 256;
+const HIDDEN_SIZE: usize = 320;
 const OUTPUT_SIZE: usize = 1;
 
 const QA: i32 = 256;
