@@ -56,7 +56,7 @@ services:
       - ./builds/princhess-main:/engines/princhess-main
       - ./syzygy:/syzygy:ro
 
-  sprt_gain_5k:
+  sprt_gain_25k:
     build:
       context: .
       dockerfile: bin/Dockerfile.fastchess
@@ -64,7 +64,7 @@ services:
       -engine cmd=/engines/princhess name=princhess
       -engine cmd=/engines/princhess-main name=princhess-main
 
-      -each proto=uci tc=inf nodes=5000
+      -each proto=uci tc=inf nodes=25000
             option.SyzygyPath=/syzygy option.Hash=128 option.Threads=1
       -sprt elo0=0 elo1=10 alpha=0.05 beta=0.1 model=normalized
       -openings file=/books/UHO_Lichess_4852_v1.epd format=epd order=random
