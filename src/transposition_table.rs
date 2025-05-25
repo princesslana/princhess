@@ -1,7 +1,7 @@
 use nohash_hasher::BuildNoHashHasher;
 use scc::hash_map::HashMap;
 use std::ptr;
-use std::sync::atomic::{AtomicBool, AtomicPtr, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicPtr, Ordering};
 use std::sync::{Arc, Mutex};
 
 use crate::arena::{Allocator, Arena, Error as ArenaError};
@@ -59,7 +59,7 @@ impl TranspositionTable {
             Ok(()) => value,
             Err(_) => self
                 .table
-                .read(&hash, |_, v| unsafe { &*v.load(Ordering::Relaxed) })
+                .read(&hash, |_, v| unsafe { &*v.load(Ordering::Acquire) })
                 .unwrap(),
         }
     }
@@ -69,7 +69,7 @@ impl TranspositionTable {
         let hash = key.hash();
 
         self.table
-            .read(&hash, |_, v| unsafe { &*v.load(Ordering::Relaxed) })
+            .read(&hash, |_, v| unsafe { &*v.load(Ordering::Acquire) })
     }
 
     pub fn lookup_into(&self, state: &State, dest: &mut PositionNode) -> bool {
@@ -93,9 +93,7 @@ pub struct LRTable {
     left: TranspositionTable,
     right: TranspositionTable,
     is_left_current: Arc<AtomicBool>,
-    is_flipping: AtomicBool,
     flip_lock: Mutex<()>,
-    generation: AtomicU64,
 }
 
 impl LRTable {
@@ -105,9 +103,7 @@ impl LRTable {
             left,
             right,
             is_left_current: Arc::new(AtomicBool::new(true)),
-            is_flipping: AtomicBool::new(false),
             flip_lock: Mutex::new(()),
-            generation: AtomicU64::new(0),
         }
     }
 
@@ -147,11 +143,7 @@ impl LRTable {
     }
 
     pub fn is_left_current(&self) -> bool {
-        self.is_left_current.load(Ordering::Relaxed)
-    }
-
-    pub fn generation(&self) -> u64 {
-        self.generation.load(Ordering::Relaxed)
+        self.is_left_current.load(Ordering::Acquire)
     }
 
     fn current_table(&self) -> &TranspositionTable {
@@ -172,50 +164,28 @@ impl LRTable {
 
     fn flip_tables(&self) {
         self.previous_table().clear();
-        self.is_left_current.store(
-            !self.is_left_current.load(Ordering::Relaxed),
-            Ordering::Relaxed,
-        );
-        self.generation.fetch_add(1, Ordering::Relaxed);
-    }
-
-    pub fn wait_if_flipping(&self) {
-        if self.is_flipping.load(Ordering::Relaxed) {
-            let _lock = self.flip_lock.lock().unwrap();
-        }
+        self.is_left_current.fetch_not(Ordering::Release);
     }
 
     pub fn flip<F>(&self, f: F)
     where
         F: FnOnce(),
     {
-        self.is_flipping.store(true, Ordering::Relaxed);
-
-        {
-            let _lock = self.flip_lock.lock().unwrap();
-            self.flip_tables();
-            f();
-        }
-
-        self.is_flipping.store(false, Ordering::Relaxed);
+        let _lock = self.flip_lock.lock().unwrap();
+        self.flip_tables();
+        f();
     }
 
     pub fn flip_if_full<F>(&self, f: F)
     where
         F: FnOnce(),
     {
-        self.is_flipping.store(true, Ordering::Relaxed);
+        let _lock = self.flip_lock.lock().unwrap();
 
-        {
-            let _lock = self.flip_lock.lock().unwrap();
-
-            if self.current_table().arena().is_full() {
-                self.flip_tables();
-                f();
-            }
+        if self.current_table().arena().is_full() {
+            self.flip_tables();
+            f();
         }
-
-        self.is_flipping.store(false, Ordering::Relaxed);
     }
 
     pub fn allocator(&self) -> LRAllocator {
@@ -247,7 +217,7 @@ impl<'a> LRAllocator<'a> {
     }
 
     fn is_left_current(&self) -> bool {
-        self.is_left_current.load(Ordering::Relaxed)
+        self.is_left_current.load(Ordering::Acquire)
     }
 
     pub fn alloc_node(
