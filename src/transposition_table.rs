@@ -97,9 +97,8 @@ impl TranspositionTable {
 }
 
 pub struct LRTable {
-    left: TranspositionTable,
-    right: TranspositionTable,
-    is_left_current: Arc<AtomicBool>,
+    tables: [TranspositionTable; 2],
+    current: Arc<AtomicBool>,
     flip_lock: Mutex<()>,
 }
 
@@ -107,9 +106,8 @@ impl LRTable {
     #[must_use]
     pub fn new(left: TranspositionTable, right: TranspositionTable) -> Self {
         Self {
-            left,
-            right,
-            is_left_current: Arc::new(AtomicBool::new(true)),
+            tables: [left, right],
+            current: Arc::new(AtomicBool::new(false)),
             flip_lock: Mutex::new(()),
         }
     }
@@ -124,7 +122,7 @@ impl LRTable {
     }
 
     pub fn full(&self) -> usize {
-        usize::midpoint(self.left.arena().full(), self.right.arena().full())
+        self.tables.iter().map(TranspositionTable::full).sum::<usize>() / self.tables.len()
     }
 
     pub fn capacity_remaining(&self) -> usize {
@@ -149,29 +147,17 @@ impl LRTable {
         }
     }
 
-    pub fn is_left_current(&self) -> bool {
-        self.is_left_current.load(Ordering::Acquire)
-    }
-
     fn current_table(&self) -> &TranspositionTable {
-        if self.is_left_current() {
-            &self.left
-        } else {
-            &self.right
-        }
+        &self.tables[usize::from(self.current.load(Ordering::Acquire))]
     }
 
     fn previous_table(&self) -> &TranspositionTable {
-        if self.is_left_current() {
-            &self.right
-        } else {
-            &self.left
-        }
+        &self.tables[usize::from(!self.current.load(Ordering::Acquire))]
     }
 
     fn flip_tables(&self) {
         self.previous_table().clear();
-        self.is_left_current.fetch_not(Ordering::Release);
+        self.current.fetch_not(Ordering::Release);
     }
 
     pub fn flip<F>(&self, f: F)
@@ -197,45 +183,35 @@ impl LRTable {
 
     pub fn allocator(&self) -> LRAllocator {
         LRAllocator::from_arenas(
-            self.is_left_current.clone(),
-            self.left.arena(),
-            self.right.arena(),
+            self.current.clone(),
+            self.tables[0].arena(),
+            self.tables[1].arena(),
         )
     }
 }
 
 pub struct LRAllocator<'a> {
-    is_left_current: Arc<AtomicBool>,
-    left: Allocator<'a>,
-    right: Allocator<'a>,
+    allocators: [Allocator<'a>; 2],
+    current: Arc<AtomicBool>,
 }
 
 impl<'a> LRAllocator<'a> {
     pub fn from_arenas(
-        is_left_current: Arc<AtomicBool>,
+        current: Arc<AtomicBool>,
         left: &'a Arena,
         right: &'a Arena,
     ) -> Self {
         Self {
-            is_left_current,
-            left: left.invalid_allocator(),
-            right: right.invalid_allocator(),
+            allocators: [left.invalid_allocator(), right.invalid_allocator()],
+            current,
         }
     }
-
-    fn is_left_current(&self) -> bool {
-        self.is_left_current.load(Ordering::Acquire)
-    }
-
     pub fn alloc_node(
+
         &self,
         edges: usize,
     ) -> Result<(&'a mut PositionNode, &'a mut [MoveEdge]), ArenaError> {
-        let alloc = if self.is_left_current() {
-            &self.left
-        } else {
-            &self.right
-        };
+        let alloc = &self.allocators[usize::from(self.current.load(Ordering::Acquire))];
 
         let edges = alloc.alloc_slice(edges)?;
         let node = alloc.alloc_one()?;
