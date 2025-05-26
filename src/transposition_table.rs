@@ -1,14 +1,25 @@
 use nohash_hasher::BuildNoHashHasher;
 use scc::hash_map::HashMap;
-use std::ptr;
-use std::sync::atomic::{AtomicBool, AtomicPtr, Ordering};
+use std::ptr::NonNull;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use crate::arena::{Allocator, Arena, Error as ArenaError};
 use crate::search_tree::{MoveEdge, PositionNode};
 use crate::state::State;
 
-type Table = HashMap<u64, AtomicPtr<PositionNode>, BuildNoHashHasher<u64>>;
+struct Entry(NonNull<PositionNode>);
+
+unsafe impl Send for Entry {}
+unsafe impl Sync for Entry {}
+
+impl Entry {
+    fn new(node: &PositionNode) -> Self {
+        Self(NonNull::from(node))
+    }
+}
+
+type Table = HashMap<u64, Entry, BuildNoHashHasher<u64>>;
 
 pub struct TranspositionTable {
     table: Table,
@@ -52,14 +63,11 @@ impl TranspositionTable {
     pub fn insert<'a>(&'a self, key: &State, value: &'a PositionNode) -> &'a PositionNode {
         let hash = key.hash();
 
-        match self
-            .table
-            .insert(hash, AtomicPtr::new(ptr::from_ref(value).cast_mut()))
-        {
+        match self.table.insert(hash, Entry::new(value)) {
             Ok(()) => value,
             Err(_) => self
                 .table
-                .read(&hash, |_, v| unsafe { &*v.load(Ordering::Acquire) })
+                .read(&hash, |_, v| unsafe { v.0.as_ref() })
                 .unwrap(),
         }
     }
@@ -68,8 +76,7 @@ impl TranspositionTable {
     pub fn lookup<'a>(&'a self, key: &State) -> Option<&'a PositionNode> {
         let hash = key.hash();
 
-        self.table
-            .read(&hash, |_, v| unsafe { &*v.load(Ordering::Acquire) })
+        self.table.read(&hash, |_, v| unsafe { v.0.as_ref() })
     }
 
     pub fn lookup_into(&self, state: &State, dest: &mut PositionNode) -> bool {
@@ -117,7 +124,7 @@ impl LRTable {
     }
 
     pub fn full(&self) -> usize {
-        (self.left.arena().full() + self.right.arena().full()) / 2
+        usize::midpoint(self.left.arena().full(), self.right.arena().full())
     }
 
     pub fn capacity_remaining(&self) -> usize {
