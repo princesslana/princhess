@@ -212,7 +212,7 @@ fn run_game(stats: &Stats, positions: &mut Vec<TrainingPosition>, rng: &mut Rng)
 
     while let Some(mut state) = variations.pop() {
         let mut game_stats = GameStats::zero();
-        let mut table = LRTable::empty(HASH_SIZE_MB);
+        let table = LRTable::empty(HASH_SIZE_MB);
 
         if !state.is_available_move() {
             continue;
@@ -232,7 +232,7 @@ fn run_game(stats: &Stats, positions: &mut Vec<TrainingPosition>, rng: &mut Rng)
         let mut game_positions = Vec::with_capacity(256);
 
         let result = loop {
-            let search = Search::new(state.clone(), table, search_options);
+            let search = Search::new(state.clone(), &table, search_options);
             let legal_moves = search.root_node().hots().len();
 
             if legal_moves > 1 {
@@ -308,8 +308,6 @@ fn run_game(stats: &Stats, positions: &mut Vec<TrainingPosition>, rng: &mut Rng)
                 game_positions.clear();
                 break GameResult::Aborted;
             }
-
-            table = search.table();
         };
 
         let mut blunder = false;

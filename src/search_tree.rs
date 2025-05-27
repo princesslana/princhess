@@ -20,7 +20,7 @@ const MAX_PLAYOUT_LENGTH: usize = 256;
 
 const PV_EVAL_MIN_DEPTH: usize = 4;
 
-pub struct SearchTree {
+pub struct SearchTree<'a> {
     root_node: PositionNode,
     root_state: State,
 
@@ -28,7 +28,7 @@ pub struct SearchTree {
 
     #[allow(dead_code)]
     root_table: TranspositionTable,
-    ttable: LRTable,
+    ttable: &'a LRTable,
 
     num_nodes: AtomicUsize,
     playouts: AtomicUsize,
@@ -225,8 +225,8 @@ where
     Ok(node)
 }
 
-impl SearchTree {
-    pub fn new(state: State, table: LRTable, search_options: SearchOptions) -> Self {
+impl<'a> SearchTree<'a> {
+    pub fn new(state: State, table: &'a LRTable, search_options: SearchOptions) -> Self {
         let root_table = TranspositionTable::for_root();
 
         let root_allocator = |sz| {
@@ -255,10 +255,6 @@ impl SearchTree {
             tb_hits: 0.into(),
             next_info: 0.into(),
         }
-    }
-
-    pub fn table(self) -> LRTable {
-        self.ttable
     }
 
     pub fn table_capacity_remaining(&self) -> usize {
@@ -297,7 +293,7 @@ impl SearchTree {
     }
 
     #[inline(never)]
-    pub fn playout<'a: 'b, 'b>(
+    pub fn playout<'b>(
         &'a self,
         tld: &'b mut ThreadData<'a>,
         cpuct: f32,
@@ -423,7 +419,7 @@ impl SearchTree {
         true
     }
 
-    fn descend<'a>(
+    fn descend(
         &'a self,
         state: &State,
         choice: &'a MoveEdge,
@@ -480,7 +476,7 @@ impl SearchTree {
         self.sort_moves(self.root_node.hots())[0]
     }
 
-    fn sort_moves<'a>(&self, children: &'a [MoveEdge]) -> Vec<&'a MoveEdge> {
+    fn sort_moves(&self, children: &'a [MoveEdge]) -> Vec<&'a MoveEdge> {
         let reward = |child: &MoveEdge| {
             let reward = child.reward();
 

@@ -122,7 +122,11 @@ impl LRTable {
     }
 
     pub fn full(&self) -> usize {
-        self.tables.iter().map(TranspositionTable::full).sum::<usize>() / self.tables.len()
+        self.tables
+            .iter()
+            .map(TranspositionTable::full)
+            .sum::<usize>()
+            / self.tables.len()
     }
 
     pub fn capacity_remaining(&self) -> usize {
@@ -196,18 +200,13 @@ pub struct LRAllocator<'a> {
 }
 
 impl<'a> LRAllocator<'a> {
-    pub fn from_arenas(
-        current: Arc<AtomicBool>,
-        left: &'a Arena,
-        right: &'a Arena,
-    ) -> Self {
+    pub fn from_arenas(current: Arc<AtomicBool>, left: &'a Arena, right: &'a Arena) -> Self {
         Self {
             allocators: [left.invalid_allocator(), right.invalid_allocator()],
             current,
         }
     }
     pub fn alloc_node(
-
         &self,
         edges: usize,
     ) -> Result<(&'a mut PositionNode, &'a mut [MoveEdge]), ArenaError> {

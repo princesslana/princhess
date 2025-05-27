@@ -92,7 +92,7 @@ pub struct ThreadData<'a> {
 }
 
 impl<'a> ThreadData<'a> {
-    fn create(tree: &'a SearchTree) -> Self {
+    fn create(tree: &'a SearchTree<'a>) -> Self {
         Self {
             allocator: tree.allocator(),
             playouts: 0,
@@ -101,27 +101,18 @@ impl<'a> ThreadData<'a> {
 }
 
 #[must_use]
-pub struct Search {
-    search_tree: SearchTree,
+pub struct Search<'a> {
+    search_tree: SearchTree<'a>,
     search_options: SearchOptions,
 }
 
-impl Search {
-    pub fn new(state: State, table: LRTable, search_options: SearchOptions) -> Self {
+impl<'a> Search<'a> {
+    pub fn new(state: State, table: &'a LRTable, search_options: SearchOptions) -> Self {
         let search_tree = SearchTree::new(state, table, search_options);
         Self {
             search_tree,
             search_options,
         }
-    }
-
-    pub fn with_empty_table(state: State, search_options: SearchOptions) -> Self {
-        let table = LRTable::empty(search_options.hash_size_mb);
-        Self::new(state, table, search_options)
-    }
-
-    pub fn table(self) -> LRTable {
-        self.search_tree.table()
     }
 
     pub fn root_node(&self) -> &PositionNode {

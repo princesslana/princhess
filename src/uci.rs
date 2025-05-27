@@ -1,3 +1,4 @@
+use crate::transposition_table::LRTable;
 use scoped_threadpool::Pool;
 use std::io::stdin;
 use std::str::SplitWhitespace;
@@ -17,7 +18,8 @@ const VERSION: Option<&'static str> = option_env!("CARGO_PKG_VERSION");
 pub fn main() {
     let mut uci_options = UciOptionMap::default();
     let mut search_options = SearchOptions::from(&uci_options);
-    let mut search = Search::with_empty_table(State::default(), search_options);
+    let mut table = LRTable::empty(search_options.hash_size_mb);
+    let mut search = Search::new(State::default(), &table, search_options);
     let mut search_threads = Pool::new(1);
 
     let mut next_line: Option<String> = None;
@@ -36,34 +38,40 @@ pub fn main() {
                 "isready" => println!("readyok"),
                 "setoption" => {
                     if let Some((name, value)) = parse_set_option(tokens) {
+                        let root_state = search.root_state().clone();
+
                         uci_options.set(&name, &value);
-
-                        if name.to_lowercase().as_str() == "syzygypath" {
-                            set_tablebase_directory(&value);
-                        }
-
                         search_options = SearchOptions::from(&uci_options);
 
-                        search =
-                            Search::with_empty_table(search.root_state().clone(), search_options);
+                        match name.to_lowercase().as_str() {
+                            "threads" => {
+                                search_threads = Pool::new(search_options.threads);
+                            }
+                            "hash" => {
+                                table = LRTable::empty(search_options.hash_size_mb);
+                            }
+                            "syzygypath" => {
+                                set_tablebase_directory(&value);
+                            }
+                            _ => (),
+                        }
+
+                        search = Search::new(root_state, &table, search_options);
                     }
                 }
                 "ucinewgame" => {
-                    search = Search::with_empty_table(State::default(), search_options);
+                    table = LRTable::empty(search_options.hash_size_mb);
+                    search = Search::new(State::default(), &table, search_options);
                 }
                 "position" => {
                     if let Some(state) = State::from_tokens(tokens, search_options.is_chess960) {
-                        let prev_table = search.table();
-                        search = Search::new(state, prev_table, search_options);
+                        search = Search::new(state, &table, search_options);
                     } else {
                         println!("info string Couldn't parse '{line}' as position");
                     }
                 }
                 "quit" => return,
                 "go" => {
-                    if search_threads.thread_count() != search_options.threads {
-                        search_threads = Pool::new(search_options.threads);
-                    }
                     search.go(&mut search_threads, tokens, &mut next_line);
                 }
                 "movelist" => search.print_move_list(),
