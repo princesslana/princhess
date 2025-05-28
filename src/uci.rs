@@ -108,9 +108,7 @@ impl Uci {
                 "movelist" => self.search.print_move_list(),
                 "sizelist" => print_size_list(),
                 "eval" => self.search.print_eval(),
-                "bench" => {
-                    self.run_bench();
-                }
+                "bench" => self.run_bench(),
                 _ => (),
             }
         }
