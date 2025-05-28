@@ -137,6 +137,10 @@ impl Search {
         &self.search_tree
     }
 
+    pub fn table_full(&self) -> usize {
+        self.ttable.full()
+    }
+
     pub fn table_capacity_remaining(&self) -> usize {
         self.ttable.capacity_remaining()
     }
