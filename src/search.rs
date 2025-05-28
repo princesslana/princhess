@@ -107,7 +107,7 @@ impl<'a> ThreadData<'a> {
 pub struct Search {
     search_tree: SearchTree,
     search_options: SearchOptions,
-    ttable: LRTable,
+    pub ttable: LRTable, // Made public
 }
 
 impl Search {

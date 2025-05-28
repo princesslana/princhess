@@ -3,7 +3,7 @@ use std::io::stdin;
 use std::str::SplitWhitespace;
 
 use crate::options::{SearchOptions, UciOption, UciOptionMap};
-use crate::search::Search;
+use crate::search::{Search, TimeManagement};
 use crate::search_tree::print_size_list;
 use crate::state::State;
 use crate::tablebase::set_tablebase_directory;
@@ -13,6 +13,9 @@ pub type Tokens<'a> = SplitWhitespace<'a>;
 const ENGINE_NAME: &str = "Princhess";
 const ENGINE_AUTHOR: &str = "Princess Lana";
 const VERSION: Option<&'static str> = option_env!("CARGO_PKG_VERSION");
+
+const BENCH_FENS: &str = include_str!("../resources/fens.txt");
+const BENCH_PLAYOUTS_PER_POSITION: u64 = 5000;
 
 pub struct Uci {
     options: UciOptionMap,
@@ -105,10 +108,42 @@ impl Uci {
                 "movelist" => self.search.print_move_list(),
                 "sizelist" => print_size_list(),
                 "eval" => self.search.print_eval(),
+                "bench" => {
+                    self.run_bench();
+                }
                 _ => (),
             }
         }
         (should_quit, next_line_from_go)
+    }
+
+    fn run_bench(&mut self) {
+        let mut total_nodes = 0;
+        let mut total_elapsed_time_ms = 0;
+
+        for fen_line in BENCH_FENS.lines().filter(|line| !line.is_empty()) {
+            println!("info string {fen_line}");
+
+            let state = State::from_fen(fen_line);
+            let local_search = Search::new(state, self.search_options);
+            let time_management = TimeManagement::infinite();
+
+            local_search.playout_sync(BENCH_PLAYOUTS_PER_POSITION);
+            total_nodes += local_search.tree().num_nodes() as u64;
+            total_elapsed_time_ms += time_management.elapsed().as_millis() as u64;
+
+            local_search
+                .tree()
+                .print_info(&time_management, local_search.ttable.full());
+        }
+
+        let nps = if total_elapsed_time_ms > 0 {
+            (total_nodes * 1000) / total_elapsed_time_ms
+        } else {
+            0
+        };
+
+        println!("Bench: {total_nodes} nodes {nps} nps");
     }
 
     pub fn uci_info() {
