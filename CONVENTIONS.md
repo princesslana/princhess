@@ -1,4 +1,14 @@
 
+## Code Style
+
+  * Always run cargo fmt after any code changes
+  * Use `cargo clippy` to check for common mistakes and code quality issues
+  * Follow the principles of KISS (Keep It Simple, Stupid), YAGNI (You Aren't Gonna Need It),
+    and DRY (Don't Repeat Yourself) 
+  * Code Comments are:
+    * Ideally avoided, in preference of self-documenting code
+    * Used to explain why something is done, not what is done
+
 ## Commit Messages
 
   * Princhess uses emoji log for commit messages. This means commit messages should be prefixed by:
