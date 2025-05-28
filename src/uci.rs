@@ -14,36 +14,67 @@ const ENGINE_NAME: &str = "Princhess";
 const ENGINE_AUTHOR: &str = "Princess Lana";
 const VERSION: Option<&'static str> = option_env!("CARGO_PKG_VERSION");
 
-pub fn main() {
-    let mut uci_options = UciOptionMap::default();
-    let mut search_options = SearchOptions::from(&uci_options);
-    let mut search = Search::new(State::default(), search_options);
-    let mut search_threads = Pool::new(1);
+pub struct Uci {
+    options: UciOptionMap,
+    search_options: SearchOptions,
+    search: Search,
+    search_threads: Pool,
+}
 
-    let mut next_line: Option<String> = None;
+impl Uci {
+    #[must_use]
+    pub fn new() -> Self {
+        let options = UciOptionMap::default();
+        let search_options = SearchOptions::from(&options);
+        let search_threads = Pool::new(1);
+        let search = Search::new(State::default(), search_options);
 
-    loop {
-        let line = if let Some(line) = next_line.take() {
-            line
-        } else {
-            read_stdin()
-        };
+        Self {
+            options,
+            search_options,
+            search,
+            search_threads,
+        }
+    }
 
+    pub fn main_loop(&mut self) {
+        let mut next_line: Option<String> = None;
+
+        loop {
+            let line = if let Some(line) = next_line.take() {
+                line
+            } else {
+                read_stdin()
+            };
+
+            let (quit, returned_next_line) = self.handle_command(&line, true);
+            next_line = returned_next_line;
+
+            if quit {
+                return;
+            }
+        }
+    }
+
+    pub fn handle_command(&mut self, line: &str, is_interactive: bool) -> (bool, Option<String>) {
         let mut tokens = line.split_whitespace();
+        let mut next_line_from_go = None;
+        let mut should_quit = false;
+
         if let Some(first_word) = tokens.next() {
             match first_word {
-                "uci" => uci(),
+                "uci" => Self::uci_info(),
                 "isready" => println!("readyok"),
                 "setoption" => {
                     if let Some((name, value)) = parse_set_option(tokens) {
-                        let root_state = search.root_state().clone();
+                        let root_state = self.search.root_state().clone();
 
-                        uci_options.set(&name, &value);
-                        search_options = SearchOptions::from(&uci_options);
+                        self.options.set(&name, &value);
+                        self.search_options = SearchOptions::from(&self.options);
 
                         match name.to_lowercase().as_str() {
                             "threads" => {
-                                search_threads = Pool::new(search_options.threads);
+                                self.search_threads = Pool::new(self.search_options.threads);
                             }
                             "syzygypath" => {
                                 set_tablebase_directory(&value);
@@ -51,29 +82,48 @@ pub fn main() {
                             _ => (),
                         }
 
-                        search = Search::new(root_state, search_options);
+                        self.search = Search::new(root_state, self.search_options);
                     }
                 }
                 "ucinewgame" => {
-                    search = Search::new(State::default(), search_options);
+                    self.search = Search::new(State::default(), self.search_options);
                 }
                 "position" => {
-                    if let Some(state) = State::from_tokens(tokens, search_options.is_chess960) {
-                        search.set_root_state(state);
+                    if let Some(state) = State::from_tokens(tokens, self.search_options.is_chess960)
+                    {
+                        self.search.set_root_state(state);
                     } else {
                         println!("info string Couldn't parse '{line}' as position");
                     }
                 }
-                "quit" => return,
+                "quit" => should_quit = true,
                 "go" => {
-                    search.go(&mut search_threads, tokens, &mut next_line);
+                    next_line_from_go =
+                        self.search
+                            .go(&mut self.search_threads, tokens, is_interactive);
                 }
-                "movelist" => search.print_move_list(),
+                "movelist" => self.search.print_move_list(),
                 "sizelist" => print_size_list(),
-                "eval" => search.print_eval(),
+                "eval" => self.search.print_eval(),
                 _ => (),
             }
         }
+        (should_quit, next_line_from_go)
+    }
+
+    pub fn uci_info() {
+        println!("id name {} {}", ENGINE_NAME, VERSION.unwrap_or("unknown"));
+        println!("id author {ENGINE_AUTHOR}");
+
+        UciOption::print_all();
+
+        println!("uciok");
+    }
+}
+
+impl Default for Uci {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -82,15 +132,6 @@ pub fn read_stdin() -> String {
     let mut input = String::new();
     stdin().read_line(&mut input).unwrap();
     input
-}
-
-pub fn uci() {
-    println!("id name {} {}", ENGINE_NAME, VERSION.unwrap_or("unknown"));
-    println!("id author {ENGINE_AUTHOR}");
-
-    UciOption::print_all();
-
-    println!("uciok");
 }
 
 #[must_use]
