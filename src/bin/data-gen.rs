@@ -6,7 +6,6 @@ use princhess::search::Search;
 use princhess::state::State;
 use princhess::tablebase::{self, Wdl};
 use princhess::train::TrainingPosition;
-use princhess::transposition_table::LRTable;
 
 use bytemuck::allocation;
 use std::collections::HashSet;
@@ -207,12 +206,13 @@ fn run_game(stats: &Stats, positions: &mut Vec<TrainingPosition>, rng: &mut Rng)
 
     let search_options = SearchOptions {
         mcts_options,
+        hash_size_mb: HASH_SIZE_MB,
         ..SearchOptions::default()
     };
 
     while let Some(mut state) = variations.pop() {
         let mut game_stats = GameStats::zero();
-        let mut table = LRTable::empty(HASH_SIZE_MB);
+        let mut search = Search::new(state.clone(), search_options);
 
         if !state.is_available_move() {
             continue;
@@ -232,7 +232,7 @@ fn run_game(stats: &Stats, positions: &mut Vec<TrainingPosition>, rng: &mut Rng)
         let mut game_positions = Vec::with_capacity(256);
 
         let result = loop {
-            let search = Search::new(state.clone(), table, search_options);
+            search.set_root_state(state.clone());
             let legal_moves = search.root_node().hots().len();
 
             if legal_moves > 1 {
@@ -308,8 +308,6 @@ fn run_game(stats: &Stats, positions: &mut Vec<TrainingPosition>, rng: &mut Rng)
                 game_positions.clear();
                 break GameResult::Aborted;
             }
-
-            table = search.table();
         };
 
         let mut blunder = false;
