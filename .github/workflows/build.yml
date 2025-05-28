@@ -26,3 +26,4 @@ jobs:
       - run: cargo rustc --release --bin princhess -- -C target-feature=+crt-static -C target-cpu=$TARGET_CPU
         env:
           TARGET_CPU: ${{ matrix.cpu }}
+      - run: cargo test
