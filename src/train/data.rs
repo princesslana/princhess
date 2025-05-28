@@ -107,7 +107,7 @@ impl TrainingPosition {
     }
 }
 
-impl From<&SearchTree<'_>> for TrainingPosition {
+impl From<&SearchTree> for TrainingPosition {
     fn from(tree: &SearchTree) -> Self {
         let board = tree.root_state().board();
 

@@ -87,32 +87,42 @@ impl TimeManagement {
 }
 
 pub struct ThreadData<'a> {
+    pub ttable: &'a LRTable,
     pub allocator: LRAllocator<'a>,
     pub playouts: usize,
 }
 
 impl<'a> ThreadData<'a> {
-    fn create(tree: &'a SearchTree<'a>) -> Self {
+    fn create(ttable: &'a LRTable) -> Self {
         Self {
-            allocator: tree.allocator(),
+            ttable,
+            allocator: ttable.allocator(),
             playouts: 0,
         }
     }
 }
 
+#[allow(clippy::struct_field_names)]
 #[must_use]
-pub struct Search<'a> {
-    search_tree: SearchTree<'a>,
+pub struct Search {
+    search_tree: SearchTree,
     search_options: SearchOptions,
+    ttable: LRTable,
 }
 
-impl<'a> Search<'a> {
-    pub fn new(state: State, table: &'a LRTable, search_options: SearchOptions) -> Self {
-        let search_tree = SearchTree::new(state, table, search_options);
+impl Search {
+    pub fn new(state: State, search_options: SearchOptions) -> Self {
+        let ttable = LRTable::empty(search_options.hash_size_mb);
+        let search_tree = SearchTree::new(state, &ttable, search_options);
         Self {
             search_tree,
             search_options,
+            ttable,
         }
+    }
+
+    pub fn set_root_state(&mut self, state: State) {
+        self.search_tree = SearchTree::new(state, &self.ttable, self.search_options);
     }
 
     pub fn root_node(&self) -> &PositionNode {
@@ -125,6 +135,14 @@ impl<'a> Search<'a> {
 
     pub fn tree(&self) -> &SearchTree {
         &self.search_tree
+    }
+
+    pub fn table_capacity_remaining(&self) -> usize {
+        self.ttable.capacity_remaining()
+    }
+
+    pub fn flip_table(&self) {
+        self.ttable.flip(|| self.root_node().clear_children_links());
     }
 
     fn parse_ms(tokens: &mut Tokens) -> Option<Duration> {
@@ -250,18 +268,18 @@ impl<'a> Search<'a> {
         let stop_signal = AtomicBool::new(false);
         let thread_count = threads.thread_count();
 
-        if self.search_tree.table_capacity_remaining() < threads.thread_count() as usize {
+        if self.table_capacity_remaining() < threads.thread_count() as usize {
             println!(
                 "info string not enough table capacity for {} threads, flipping table",
                 threads.thread_count()
             );
-            self.search_tree.flip_table();
+            self.flip_table();
         }
 
         let mut rng = Rng::default();
 
         let run_search_thread = |cpuct: f32, tm: &TimeManagement| {
-            let mut tld = ThreadData::create(&self.search_tree);
+            let mut tld = ThreadData::create(&self.ttable);
             while self.search_tree.playout(&mut tld, cpuct, tm, &stop_signal) {}
         };
 
@@ -304,7 +322,7 @@ impl<'a> Search<'a> {
     }
 
     pub fn playout_sync(&self, playouts: u64) {
-        let mut tld = ThreadData::create(&self.search_tree);
+        let mut tld = ThreadData::create(&self.ttable);
         let cpuct = self.search_options.mcts_options.cpuct;
         let tm = TimeManagement::infinite();
         let stop_signal = AtomicBool::new(false);

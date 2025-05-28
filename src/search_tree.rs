@@ -13,14 +13,14 @@ use crate::options::{MctsOptions, SearchOptions, TimeManagementOptions};
 use crate::search::{eval_in_cp, ThreadData};
 use crate::search::{TimeManagement, SCALE};
 use crate::state::State;
-use crate::transposition_table::{LRAllocator, LRTable, TranspositionTable};
+use crate::transposition_table::{LRTable, TranspositionTable};
 use crate::tree_policy;
 
 const MAX_PLAYOUT_LENGTH: usize = 256;
 
 const PV_EVAL_MIN_DEPTH: usize = 4;
 
-pub struct SearchTree<'a> {
+pub struct SearchTree {
     root_node: PositionNode,
     root_state: State,
 
@@ -28,7 +28,6 @@ pub struct SearchTree<'a> {
 
     #[allow(dead_code)]
     root_table: TranspositionTable,
-    ttable: &'a LRTable,
 
     num_nodes: AtomicUsize,
     playouts: AtomicUsize,
@@ -225,8 +224,8 @@ where
     Ok(node)
 }
 
-impl<'a> SearchTree<'a> {
-    pub fn new(state: State, table: &'a LRTable, search_options: SearchOptions) -> Self {
+impl SearchTree {
+    pub fn new(state: State, table: &LRTable, search_options: SearchOptions) -> Self {
         let root_table = TranspositionTable::for_root();
 
         let root_allocator = |sz| {
@@ -248,21 +247,12 @@ impl<'a> SearchTree<'a> {
             root_node: root_node.clone(),
             search_options,
             root_table,
-            ttable: table,
             num_nodes: 1.into(),
             playouts: 0.into(),
             max_depth: 0.into(),
             tb_hits: 0.into(),
             next_info: 0.into(),
         }
-    }
-
-    pub fn table_capacity_remaining(&self) -> usize {
-        self.ttable.capacity_remaining()
-    }
-
-    pub fn flip_table(&self) {
-        self.ttable.flip(|| self.root_node.clear_children_links());
     }
 
     pub fn num_nodes(&self) -> usize {
@@ -288,14 +278,10 @@ impl<'a> SearchTree<'a> {
         self.tb_hits.load(Ordering::Relaxed)
     }
 
-    pub fn allocator(&self) -> LRAllocator {
-        self.ttable.allocator()
-    }
-
     #[inline(never)]
-    pub fn playout<'b>(
+    pub fn playout<'a>(
         &'a self,
-        tld: &'b mut ThreadData<'a>,
+        tld: &mut ThreadData<'a>,
         cpuct: f32,
         time_management: &'a TimeManagement,
         stop_signal: &'a AtomicBool,
@@ -357,7 +343,7 @@ impl<'a> SearchTree<'a> {
             let new_node = match self.descend(&state, choice, tld) {
                 Ok(r) => r,
                 Err(ArenaError::Full) => {
-                    self.ttable
+                    tld.ttable
                         .flip_if_full(|| self.root_node.clear_children_links());
                     return true;
                 }
@@ -419,7 +405,7 @@ impl<'a> SearchTree<'a> {
         true
     }
 
-    fn descend(
+    fn descend<'a>(
         &'a self,
         state: &State,
         choice: &'a MoveEdge,
@@ -431,7 +417,7 @@ impl<'a> SearchTree<'a> {
         }
 
         // Lookup to see if we already have this position in the ttable
-        if let Some(node) = self.ttable.lookup(state) {
+        if let Some(node) = tld.ttable.lookup(state) {
             return Ok(choice.set_or_get_child(node).unwrap_or(node));
         }
 
@@ -443,10 +429,10 @@ impl<'a> SearchTree<'a> {
         )?;
 
         // Copy any history
-        self.ttable.lookup_into(state, created);
+        tld.ttable.lookup_into(state, created);
 
         // Insert the child into the ttable
-        let inserted = self.ttable.insert(state, created);
+        let inserted = tld.ttable.insert(state, created);
         let inserted_ptr = ptr::from_ref(inserted).cast_mut();
         choice.child.store(inserted_ptr, Ordering::Relaxed);
         Ok(inserted)
@@ -476,7 +462,7 @@ impl<'a> SearchTree<'a> {
         self.sort_moves(self.root_node.hots())[0]
     }
 
-    fn sort_moves(&self, children: &'a [MoveEdge]) -> Vec<&'a MoveEdge> {
+    fn sort_moves<'a>(&self, children: &'a [MoveEdge]) -> Vec<&'a MoveEdge> {
         let reward = |child: &MoveEdge| {
             let reward = child.reward();
 
@@ -553,7 +539,7 @@ impl<'a> SearchTree<'a> {
             write!(info_str, "nodes {nodes} ").unwrap();
             write!(info_str, "nps {nps} ").unwrap();
             write!(info_str, "tbhits {} ", self.tb_hits()).unwrap();
-            write!(info_str, "hashfull {} ", self.ttable.full()).unwrap();
+            //write!(info_str, "hashfull {} ", self.ttable.full()).unwrap();
 
             if self.search_options.show_movesleft {
                 write!(info_str, "movesleft {} ", self.root_state.moves_left()).unwrap();

@@ -1,4 +1,3 @@
-use crate::transposition_table::LRTable;
 use scoped_threadpool::Pool;
 use std::io::stdin;
 use std::str::SplitWhitespace;
@@ -18,8 +17,7 @@ const VERSION: Option<&'static str> = option_env!("CARGO_PKG_VERSION");
 pub fn main() {
     let mut uci_options = UciOptionMap::default();
     let mut search_options = SearchOptions::from(&uci_options);
-    let mut table = LRTable::empty(search_options.hash_size_mb);
-    let mut search = Search::new(State::default(), &table, search_options);
+    let mut search = Search::new(State::default(), search_options);
     let mut search_threads = Pool::new(1);
 
     let mut next_line: Option<String> = None;
@@ -47,25 +45,21 @@ pub fn main() {
                             "threads" => {
                                 search_threads = Pool::new(search_options.threads);
                             }
-                            "hash" => {
-                                table = LRTable::empty(search_options.hash_size_mb);
-                            }
                             "syzygypath" => {
                                 set_tablebase_directory(&value);
                             }
                             _ => (),
                         }
 
-                        search = Search::new(root_state, &table, search_options);
+                        search = Search::new(root_state, search_options);
                     }
                 }
                 "ucinewgame" => {
-                    table = LRTable::empty(search_options.hash_size_mb);
-                    search = Search::new(State::default(), &table, search_options);
+                    search = Search::new(State::default(), search_options);
                 }
                 "position" => {
                     if let Some(state) = State::from_tokens(tokens, search_options.is_chess960) {
-                        search = Search::new(state, &table, search_options);
+                        search.set_root_state(state);
                     } else {
                         println!("info string Couldn't parse '{line}' as position");
                     }
