@@ -286,7 +286,8 @@ impl Search {
         threads.scoped(|s| {
             s.execute(|| {
                 run_search_thread(cpuct, &time_management);
-                self.search_tree.print_info(&time_management);
+                self.search_tree
+                    .print_info(&time_management, self.ttable.full());
                 stop_signal.store(true, Ordering::Relaxed);
                 println!("bestmove {}", self.to_uci(self.best_move()),);
             });

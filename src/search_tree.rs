@@ -398,7 +398,7 @@ impl SearchTree {
             let next_info = self.next_info.fetch_max(elapsed, Ordering::Relaxed);
 
             if next_info < elapsed && !stop_signal.load(Ordering::Relaxed) {
-                self.print_info(time_management);
+                self.print_info(time_management, tld.ttable.full());
             }
         }
 
@@ -513,7 +513,7 @@ impl SearchTree {
         m
     }
 
-    pub fn print_info(&self, time_management: &TimeManagement) {
+    pub fn print_info(&self, time_management: &TimeManagement, hash_full: usize) {
         let mut info_str = String::with_capacity(256);
 
         let search_time_ms = time_management.elapsed().as_millis();
@@ -539,7 +539,7 @@ impl SearchTree {
             write!(info_str, "nodes {nodes} ").unwrap();
             write!(info_str, "nps {nps} ").unwrap();
             write!(info_str, "tbhits {} ", self.tb_hits()).unwrap();
-            //write!(info_str, "hashfull {} ", self.ttable.full()).unwrap();
+            write!(info_str, "hashfull {hash_full} ").unwrap();
 
             if self.search_options.show_movesleft {
                 write!(info_str, "movesleft {} ", self.root_state.moves_left()).unwrap();
