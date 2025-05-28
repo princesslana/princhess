@@ -140,17 +140,23 @@ impl TimeManagement {
         } else if let Some(mt) = move_time {
             think_time = TimeManagement::from_duration(mt);
         } else if let Some(r) = remaining {
-            let mut move_time_fraction = u32::from(state.moves_left()) * 20 / 27;
+            // 20/27 is a heuristic to scale moves_left, aiming for an average of ~20 moves
+            let mut move_time_fraction = state.moves_left() as u32 * 20 / 27;
 
             if let Some(m) = movestogo {
+                // If 'movestogo' is explicitly set, use it rather than moves_left
                 move_time_fraction = (m + 2).min(move_time_fraction);
             }
 
-            let r = r - MOVE_OVERHEAD;
+            let r = r.saturating_sub(MOVE_OVERHEAD);
 
+            // Soft limit: ideal/target time per move.
             let soft_limit = (r + move_time_fraction * increment) / move_time_fraction;
+
+            // Hard limit: safety net or maximum time to spend on this move.
             let hard_limit = r / 3;
 
+            // Ensure the soft limit is never more than the hard limit.
             think_time = TimeManagement::from_limits(soft_limit.min(hard_limit), hard_limit);
         }
 
