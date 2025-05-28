@@ -3,10 +3,11 @@ use std::io::stdin;
 use std::str::SplitWhitespace;
 
 use crate::options::{SearchOptions, UciOption, UciOptionMap};
-use crate::search::{Search, TimeManagement};
+use crate::search::Search;
 use crate::search_tree::print_size_list;
 use crate::state::State;
 use crate::tablebase::set_tablebase_directory;
+use crate::time_management::TimeManagement;
 
 pub type Tokens<'a> = SplitWhitespace<'a>;
 

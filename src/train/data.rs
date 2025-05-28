@@ -200,7 +200,6 @@ mod tests {
 
     use crate::options::SearchOptions;
     use crate::search::Search;
-    use crate::transposition_table::LRTable;
 
     const STARTPOS_NO_CASTLING: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w - - 0 1";
     const KIWIPETE_NO_CASTLING: &str =
@@ -211,11 +210,7 @@ mod tests {
     #[test]
     fn test_startpos_conversion() {
         let state_before = State::from_fen(STARTPOS_NO_CASTLING);
-        let search = Search::new(
-            state_before.clone(),
-            LRTable::empty(16),
-            SearchOptions::default(),
-        );
+        let search = Search::new(state_before.clone(), SearchOptions::default());
 
         let training_position = TrainingPosition::from(search.tree());
 
@@ -227,11 +222,7 @@ mod tests {
     #[test]
     fn test_kiwipete_conversion() {
         let state_before = State::from_fen(KIWIPETE_NO_CASTLING);
-        let search = Search::new(
-            state_before.clone(),
-            LRTable::empty(16),
-            SearchOptions::default(),
-        );
+        let search = Search::new(state_before.clone(), SearchOptions::default());
 
         let training_position = TrainingPosition::from(search.tree());
 
@@ -243,11 +234,7 @@ mod tests {
     #[test]
     fn test_kiwipete_stm_black_conversion() {
         let state_before = State::from_fen(KIWIPETE_NO_CASTLING_STMB);
-        let search = Search::new(
-            state_before.clone(),
-            LRTable::empty(16),
-            SearchOptions::default(),
-        );
+        let search = Search::new(state_before.clone(), SearchOptions::default());
 
         let training_position = TrainingPosition::from(search.tree());
 

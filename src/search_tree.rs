@@ -10,9 +10,9 @@ use crate::arena::Error as ArenaError;
 use crate::chess;
 use crate::evaluation::{self, Flag};
 use crate::options::{MctsOptions, SearchOptions, TimeManagementOptions};
-use crate::search::{eval_in_cp, ThreadData};
-use crate::search::{TimeManagement, SCALE};
+use crate::search::{eval_in_cp, ThreadData, SCALE};
 use crate::state::State;
+use crate::time_management::TimeManagement;
 use crate::transposition_table::{LRTable, TranspositionTable};
 use crate::tree_policy;
 

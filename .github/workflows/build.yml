@@ -20,9 +20,19 @@ jobs:
 
     steps:
       - uses: actions/checkout@v2
-      - uses: actions-rs/toolchain@v1
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ${{ env.CARGO_HOME }}/registry
+            ${{ env.CARGO_HOME }}/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}-${{ matrix.cpu }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+      - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: stable
+      - run: cargo test
       - run: cargo rustc --release --bin princhess -- -C target-feature=+crt-static -C target-cpu=$TARGET_CPU
         env:
           TARGET_CPU: ${{ matrix.cpu }}

@@ -17,6 +17,7 @@ pub mod policy;
 pub mod search;
 pub mod state;
 pub mod tablebase;
+pub mod time_management;
 pub mod train;
 pub mod transposition_table;
 pub mod uci;
