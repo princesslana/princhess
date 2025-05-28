@@ -154,7 +154,12 @@ impl Search {
             .map(Duration::from_millis)
     }
 
-    pub fn go(&self, threads: &mut Pool, mut tokens: Tokens, next_line: &mut Option<String>) {
+    pub fn go(
+        &self,
+        threads: &mut Pool,
+        mut tokens: Tokens,
+        is_interactive: bool,
+    ) -> Option<String> {
         let state = self.search_tree.root_state();
         let stm = state.side_to_move();
 
@@ -166,7 +171,7 @@ impl Search {
                 "info depth 1 seldepth 1 nodes 1 nps 1 tbhits 0 score cp 0 time 1 pv {uci_mv}"
             );
             println!("bestmove {uci_mv}");
-            return;
+            return None;
         } else if let Some((mv, wdl)) = tablebase::probe_best_move(state.board()) {
             let uci_mv = self.to_uci(mv);
 
@@ -179,7 +184,7 @@ impl Search {
                 "info depth 1 seldepth 1 nodes 1 nps 1 tbhits 1 score cp {score} time 1 pv {uci_mv}"
             );
             println!("bestmove {uci_mv}");
-            return;
+            return None;
         }
 
         let mut infinite = false;
@@ -255,15 +260,15 @@ impl Search {
 
         think_time.set_node_limit(node_limit);
 
-        self.playout_parallel(threads, think_time, next_line);
+        self.playout_parallel(threads, think_time, is_interactive)
     }
 
     fn playout_parallel(
         &self,
         threads: &mut Pool,
         time_management: TimeManagement,
-        next_line: &mut Option<String>,
-    ) {
+        is_interactive: bool,
+    ) -> Option<String> {
         let cpuct = self.search_options.mcts_options.cpuct;
         let stop_signal = AtomicBool::new(false);
         let thread_count = threads.thread_count();
@@ -277,6 +282,7 @@ impl Search {
         }
 
         let mut rng = Rng::default();
+        let mut returned_line: Option<String> = None;
 
         let run_search_thread = |cpuct: f32, tm: &TimeManagement| {
             let mut tld = ThreadData::create(&self.ttable);
@@ -300,26 +306,33 @@ impl Search {
                 });
             }
 
-            while !stop_signal.load(Ordering::Relaxed) {
-                let line = read_stdin();
+            if is_interactive {
+                while !stop_signal.load(Ordering::Relaxed) {
+                    let line = read_stdin();
 
-                *next_line = match line.trim() {
-                    "stop" => {
-                        stop_signal.store(true, Ordering::Relaxed);
-                        None
+                    returned_line = match line.trim() {
+                        "stop" => {
+                            stop_signal.store(true, Ordering::Relaxed);
+                            None
+                        }
+                        "quit" => {
+                            stop_signal.store(true, Ordering::Relaxed);
+                            std::process::exit(0);
+                        }
+                        "isready" => {
+                            println!("readyok");
+                            None
+                        }
+                        _ => Some(line),
+                    };
+
+                    if returned_line.is_some() {
+                        break;
                     }
-                    "quit" => {
-                        stop_signal.store(true, Ordering::Relaxed);
-                        std::process::exit(0);
-                    }
-                    "isready" => {
-                        println!("readyok");
-                        None
-                    }
-                    _ => Some(line),
                 }
             }
         });
+        returned_line
     }
 
     pub fn playout_sync(&self, playouts: u64) {
