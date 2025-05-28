@@ -134,7 +134,7 @@ impl Uci {
 
             local_search
                 .tree()
-                .print_info(&time_management, local_search.ttable.full());
+                .print_info(&time_management, local_search.table_full());
         }
 
         let nps = if total_elapsed_time_ms > 0 {

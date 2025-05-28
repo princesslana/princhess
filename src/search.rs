@@ -107,7 +107,7 @@ impl<'a> ThreadData<'a> {
 pub struct Search {
     search_tree: SearchTree,
     search_options: SearchOptions,
-    pub ttable: LRTable, // Made public
+    ttable: LRTable,
 }
 
 impl Search {
@@ -135,6 +135,10 @@ impl Search {
 
     pub fn tree(&self) -> &SearchTree {
         &self.search_tree
+    }
+
+    pub fn table_full(&self) -> usize {
+        self.ttable.full()
     }
 
     pub fn table_capacity_remaining(&self) -> usize {
