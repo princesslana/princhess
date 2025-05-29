@@ -1,4 +1,3 @@
-use scc::HashSet;
 use std::alloc::{self, Layout};
 use std::cell::UnsafeCell;
 use std::mem;
@@ -19,8 +18,6 @@ const CHUNK_SIZE: usize = BYTES_PER_MB * CHUNK_SIZE_MB;
 type Chunk = [u8; CHUNK_SIZE];
 
 static DUMMY_CHUNK: Chunk = [0; CHUNK_SIZE];
-
-static IDS: AtomicU64 = AtomicU64::new(0);
 
 struct Chunks {
     pub chunks: Box<[Chunk]>,
@@ -47,7 +44,7 @@ impl Chunks {
 pub struct Arena {
     chunks: Mutex<Chunks>,
     max: usize,
-    allocators: HashSet<u64>,
+    generation: AtomicU64,
 }
 
 impl Arena {
@@ -57,7 +54,7 @@ impl Arena {
         Self {
             chunks: Mutex::new(Chunks::with_capacity(max)),
             max,
-            allocators: HashSet::default(),
+            generation: AtomicU64::new(1),
         }
     }
 
@@ -78,7 +75,7 @@ impl Arena {
     }
 
     #[allow(clippy::mut_from_ref)]
-    fn alloc_chunk(&self, id: u64) -> Result<&mut Chunk, Error> {
+    fn alloc_chunk(&self) -> Result<&mut Chunk, Error> {
         let mut chunks = self.chunks.lock().unwrap();
 
         let idx = chunks.used;
@@ -89,46 +86,37 @@ impl Arena {
 
         chunks.used += 1;
 
-        let _ = self.allocators.insert(id);
-
         let result = ptr::addr_of_mut!(chunks.chunks[idx]);
         Ok(unsafe { &mut *result })
     }
 
     pub fn allocator(&self) -> Allocator {
-        let id = IDS.fetch_add(1, Ordering::Relaxed);
-
+        let current_generation = self.generation.load(Ordering::Acquire);
         Allocator {
-            id,
+            generation: AtomicU64::new(current_generation),
             arena: self,
-            memory: UnsafeCell::new(self.alloc_chunk(id).unwrap()),
+            memory: UnsafeCell::new(self.alloc_chunk().unwrap()),
         }
     }
 
     pub fn invalid_allocator(&self) -> Allocator {
-        let id = IDS.fetch_add(1, Ordering::Relaxed);
-
         let dummy = DUMMY_CHUNK.as_ptr() as *mut Chunk;
 
         Allocator {
-            id,
+            generation: AtomicU64::new(0),
             arena: self,
             memory: UnsafeCell::new(unsafe { &mut *dummy }),
         }
     }
 
-    pub fn is_allocator_valid(&self, id: u64) -> bool {
-        self.allocators.contains(&id)
-    }
-
     pub fn clear(&self) {
-        self.allocators.clear();
         self.chunks.lock().unwrap().used = 0;
+        self.generation.fetch_add(1, Ordering::Release);
     }
 }
 
 pub struct Allocator<'a> {
-    id: u64,
+    generation: AtomicU64,
     arena: &'a Arena,
     memory: UnsafeCell<&'a mut [u8]>,
 }
@@ -139,8 +127,14 @@ impl<'a> Allocator<'a> {
     fn get_memory(&self, sz: usize) -> Result<&'a mut [u8], Error> {
         let memory = unsafe { &mut *self.memory.get() };
 
-        if !self.arena.is_allocator_valid(self.id) {
-            *memory = self.arena.alloc_chunk(self.id)?;
+        let current_arena_generation = self.arena.generation.load(Ordering::Acquire);
+        let allocator_generation = self.generation.load(Ordering::Acquire);
+
+        if allocator_generation != current_arena_generation {
+            // Arena was cleared, this allocator is stale. Get a new chunk and update generation.
+            unsafe { *self.memory.get() = self.arena.alloc_chunk()? };
+            self.generation
+                .store(current_arena_generation, Ordering::Release);
             self.get_memory(sz)
         } else if sz <= memory.len() {
             let (left, right) = memory.split_at_mut(sz);
@@ -149,7 +143,8 @@ impl<'a> Allocator<'a> {
         } else if sz > CHUNK_SIZE {
             Err(Error::Full)
         } else {
-            *memory = self.arena.alloc_chunk(self.id)?;
+            // Current chunk is full, get a new one.
+            unsafe { *self.memory.get() = self.arena.alloc_chunk()? };
             self.get_memory(sz)
         }
     }
