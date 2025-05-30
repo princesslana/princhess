@@ -212,16 +212,28 @@ where
     let state_flag = evaluation::evaluate_state_flag(state, !moves.is_empty());
     let move_eval = evaluation::policy(state, &moves, policy_t);
 
-    let (mut node_ref, mut hots_ref) = alloc(move_eval.len())?;
+    let (mut node_arena_ref, mut hots_arena_ref) = alloc(move_eval.len())?;
+
+    let node_ptr = node_arena_ref.as_mut_ptr();
+    let hots_ptr = hots_arena_ref.as_mut_ptr();
 
     #[allow(clippy::cast_sign_loss)]
-    for (i, x) in hots_ref.iter_mut().enumerate() {
-        *x = MoveEdge::new((move_eval[i] * SCALE) as u16, moves[i]);
+    for (i, &mov) in moves.iter().enumerate() {
+        let policy_val = (move_eval[i] * SCALE) as u16;
+        // SAFETY: `hots_ptr` points to valid, uninitialized memory for `move_eval.len()` MoveEdge elements.
+        // We are writing each element exactly once.
+        unsafe {
+            std::ptr::write(hots_ptr.add(i), MoveEdge::new(policy_val, mov));
+        }
     }
 
-    *node_ref = PositionNode::new(&hots_ref, state_flag);
+    // SAFETY: `node_ptr` points to valid, uninitialized memory for a single PositionNode.
+    // We are writing it exactly once.
+    unsafe {
+        std::ptr::write(node_ptr, PositionNode::new(&hots_arena_ref, state_flag));
+    }
 
-    Ok((node_ref, hots_ref))
+    Ok((node_arena_ref, hots_arena_ref))
 }
 
 impl SearchTree {

@@ -158,7 +158,7 @@ impl<'a> Allocator<'a> {
     pub fn alloc_one<T>(&self) -> Result<ArenaRef<T>, Error> {
         assert!(ALIGN % mem::align_of::<T>() == 0);
         let x = mem::size_of::<T>();
-        let x = x + ((!x + 1) % ALIGN);
+        let x = (x + ALIGN - 1) & !(ALIGN - 1);
         let x = self.get_memory(x)?;
         let current_generation = self.arena.generation.load(Ordering::Acquire);
         Ok(ArenaRef {
@@ -170,7 +170,7 @@ impl<'a> Allocator<'a> {
     pub fn alloc_slice<T>(&self, sz: usize) -> Result<ArenaRef<[T]>, Error> {
         assert!(ALIGN % mem::align_of::<T>() == 0);
         let x = mem::size_of::<T>();
-        let x = x + ((!x + 1) % ALIGN);
+        let x = (x + ALIGN - 1) & !(ALIGN - 1);
         let x = self.get_memory(x * sz)?;
         let current_generation = self.arena.generation.load(Ordering::Acquire);
         Ok(ArenaRef {
@@ -201,6 +201,16 @@ impl<T: ?Sized> ArenaRef<T> {
     #[must_use]
     pub fn generation(&self) -> u64 {
         self.generation
+    }
+
+    #[must_use]
+    pub fn as_ptr(&self) -> *const T {
+        self.ptr.as_ptr()
+    }
+
+    #[must_use]
+    pub fn as_mut_ptr(&mut self) -> *mut T {
+        self.ptr.as_ptr()
     }
 }
 
