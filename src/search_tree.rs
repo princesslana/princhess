@@ -215,15 +215,16 @@ where
     let (mut node_arena_ref, mut hots_arena_ref) = alloc(move_eval.len())?;
 
     let node_ptr = node_arena_ref.as_mut_ptr();
-    let hots_ptr = hots_arena_ref.as_mut_ptr();
+    // Get a raw pointer to the first element of the MoveEdge slice
+    let hots_base_ptr: *mut MoveEdge = hots_arena_ref.as_mut_ptr().cast::<MoveEdge>();
 
     #[allow(clippy::cast_sign_loss)]
     for (i, &mov) in moves.iter().enumerate() {
         let policy_val = (move_eval[i] * SCALE) as u16;
-        // SAFETY: `hots_ptr` points to valid, uninitialized memory for `move_eval.len()` MoveEdge elements.
+        // SAFETY: `hots_base_ptr.add(i)` points to valid, uninitialized memory for a single MoveEdge.
         // We are writing each element exactly once.
         unsafe {
-            std::ptr::write(hots_ptr.add(i), MoveEdge::new(policy_val, mov));
+            std::ptr::write(hots_base_ptr.add(i), MoveEdge::new(policy_val, mov));
         }
     }
 
