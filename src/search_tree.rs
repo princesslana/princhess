@@ -215,7 +215,6 @@ where
     let (mut node_arena_ref, mut hots_arena_ref) = alloc(move_eval.len())?;
 
     let node_ptr = node_arena_ref.as_mut_ptr();
-    // Get a raw pointer to the first element of the MoveEdge slice
     let hots_base_ptr: *mut MoveEdge = hots_arena_ref.as_mut_ptr().cast::<MoveEdge>();
 
     #[allow(clippy::cast_sign_loss)]
