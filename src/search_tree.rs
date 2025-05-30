@@ -6,7 +6,7 @@ use std::sync::atomic::{
     AtomicBool, AtomicI64, AtomicPtr, AtomicU32, AtomicU64, AtomicUsize, Ordering,
 };
 
-use crate::arena::Error as ArenaError;
+use crate::arena::{ArenaRef, Error as ArenaError};
 use crate::chess;
 use crate::evaluation::{self, Flag};
 use crate::options::{MctsOptions, SearchOptions, TimeManagementOptions};
@@ -21,7 +21,7 @@ const MAX_PLAYOUT_LENGTH: usize = 256;
 const PV_EVAL_MIN_DEPTH: usize = 4;
 
 pub struct SearchTree {
-    root_node: PositionNode,
+    root_node: ArenaRef<PositionNode>,
     root_state: State,
 
     search_options: SearchOptions,
@@ -186,7 +186,7 @@ impl MoveEdge {
     }
 
     // Returns None if the child was set, or Some(child) if it was already set.
-    pub fn set_or_get_child<'a>(&'a self, new_child: &'a PositionNode) -> Option<&'a PositionNode> {
+    pub fn set_or_get_child(&self, new_child: &PositionNode) -> Option<&PositionNode> {
         match self.child.compare_exchange(
             null_mut(),
             ptr::from_ref(new_child).cast_mut(),
@@ -199,29 +199,29 @@ impl MoveEdge {
     }
 }
 
-fn create_node<'a, F>(
+fn create_node<F>(
     state: &State,
     alloc: F,
     policy_t: f32,
-) -> Result<&'a mut PositionNode, ArenaError>
+) -> Result<(ArenaRef<PositionNode>, ArenaRef<[MoveEdge]>), ArenaError>
 where
-    F: FnOnce(usize) -> Result<(&'a mut PositionNode, &'a mut [MoveEdge]), ArenaError>,
+    F: FnOnce(usize) -> Result<(ArenaRef<PositionNode>, ArenaRef<[MoveEdge]>), ArenaError>,
 {
     let moves = state.available_moves();
 
     let state_flag = evaluation::evaluate_state_flag(state, !moves.is_empty());
     let move_eval = evaluation::policy(state, &moves, policy_t);
 
-    let (node, hots) = alloc(move_eval.len())?;
+    let (mut node_ref, mut hots_ref) = alloc(move_eval.len())?;
 
     #[allow(clippy::cast_sign_loss)]
-    for (i, x) in hots.iter_mut().enumerate() {
+    for (i, x) in hots_ref.iter_mut().enumerate() {
         *x = MoveEdge::new((move_eval[i] * SCALE) as u16, moves[i]);
     }
 
-    *node = PositionNode::new(hots, state_flag);
+    *node_ref = PositionNode::new(&hots_ref, state_flag);
 
-    Ok(node)
+    Ok((node_ref, hots_ref))
 }
 
 impl SearchTree {
@@ -233,18 +233,18 @@ impl SearchTree {
             Ok((allocator.alloc_one()?, allocator.alloc_slice(sz)?))
         };
 
-        let root_node = create_node(
+        let (mut root_node_arena_ref, _root_hots_arena_ref) = create_node(
             &state,
             root_allocator,
             search_options.mcts_options.policy_temperature_root,
         )
         .expect("Unable to create root node");
 
-        table.lookup_into_from_all(&state, root_node);
+        table.lookup_into_from_all(&state, &mut root_node_arena_ref);
 
         Self {
             root_state: state,
-            root_node: root_node.clone(),
+            root_node: root_node_arena_ref,
             search_options,
             root_table,
             num_nodes: 1.into(),
@@ -283,12 +283,12 @@ impl SearchTree {
         &'a self,
         tld: &mut ThreadData<'a>,
         cpuct: f32,
-        time_management: &'a TimeManagement,
-        stop_signal: &'a AtomicBool,
+        time_management: &TimeManagement,
+        stop_signal: &AtomicBool,
     ) -> bool {
         let mut state = self.root_state.clone();
-        let mut node = &self.root_node;
-        let mut path: ArrayVec<&MoveEdge, MAX_PLAYOUT_LENGTH> = ArrayVec::new();
+        let mut node: &'a PositionNode = &self.root_node;
+        let mut path: ArrayVec<&'a MoveEdge, MAX_PLAYOUT_LENGTH> = ArrayVec::new();
         let mut evaln = 0;
 
         loop {
@@ -406,7 +406,7 @@ impl SearchTree {
     }
 
     fn descend<'a>(
-        &'a self,
+        &self,
         state: &State,
         choice: &'a MoveEdge,
         tld: &mut ThreadData<'a>,
@@ -416,23 +416,23 @@ impl SearchTree {
             return Ok(child);
         }
 
-        // Lookup to see if we already have this position in the ttable
+        // Lookup to see if we already have this position in the ttable.
         if let Some(node) = tld.ttable.lookup(state) {
             return Ok(choice.set_or_get_child(node).unwrap_or(node));
         }
 
         // Create the child
-        let created = create_node(
+        let (mut created_node_arena_ref, _hots_arena_ref) = create_node(
             state,
             |sz| tld.allocator.alloc_node(sz),
             self.search_options.mcts_options.policy_temperature,
         )?;
 
         // Copy any history
-        tld.ttable.lookup_into(state, created);
+        tld.ttable.lookup_into(state, &mut created_node_arena_ref);
 
         // Insert the child into the ttable
-        let inserted = tld.ttable.insert(state, created);
+        let inserted = tld.ttable.insert(state, created_node_arena_ref);
         let inserted_ptr = ptr::from_ref(inserted).cast_mut();
         choice.child.store(inserted_ptr, Ordering::Relaxed);
         Ok(inserted)
@@ -462,7 +462,7 @@ impl SearchTree {
         self.sort_moves(self.root_node.hots())[0]
     }
 
-    fn sort_moves<'a>(&self, children: &'a [MoveEdge]) -> Vec<&'a MoveEdge> {
+    fn sort_moves<'b>(&self, children: &'b [MoveEdge]) -> Vec<&'b MoveEdge> {
         let reward = |child: &MoveEdge| {
             let reward = child.reward();
 
@@ -582,8 +582,12 @@ impl SearchTree {
     }
 }
 
-fn principal_variation(mut state: State, from: &PositionNode, num_moves: usize) -> Vec<&MoveEdge> {
-    let mut result: Vec<&MoveEdge> = Vec::with_capacity(num_moves);
+fn principal_variation<'a>(
+    mut state: State,
+    from: &'a PositionNode,
+    num_moves: usize,
+) -> Vec<&'a MoveEdge> {
+    let mut result: Vec<&'a MoveEdge> = Vec::with_capacity(num_moves);
     let mut crnt = from;
 
     while !crnt.hots().is_empty() && result.len() < num_moves {

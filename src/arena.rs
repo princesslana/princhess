@@ -1,7 +1,8 @@
 use std::alloc::{self, Layout};
 use std::cell::UnsafeCell;
 use std::mem;
-use std::ptr;
+use std::ops::{Deref, DerefMut};
+use std::ptr::{self, NonNull};
 use std::slice;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
@@ -113,6 +114,11 @@ impl Arena {
         self.chunks.lock().unwrap().used = 0;
         self.generation.fetch_add(1, Ordering::Release);
     }
+
+    #[must_use]
+    pub fn generation(&self) -> u64 {
+        self.generation.load(Ordering::Acquire)
+    }
 }
 
 pub struct Allocator<'a> {
@@ -149,19 +155,67 @@ impl<'a> Allocator<'a> {
         }
     }
 
-    pub fn alloc_one<T>(&self) -> Result<&'a mut T, Error> {
+    pub fn alloc_one<T>(&self) -> Result<ArenaRef<T>, Error> {
         assert!(ALIGN % mem::align_of::<T>() == 0);
         let x = mem::size_of::<T>();
         let x = x + ((!x + 1) % ALIGN);
         let x = self.get_memory(x)?;
-        Ok(unsafe { &mut *(x.as_mut_ptr().cast::<T>()) })
+        let current_generation = self.arena.generation.load(Ordering::Acquire);
+        Ok(ArenaRef {
+            ptr: unsafe { NonNull::new_unchecked(x.as_mut_ptr().cast::<T>()) },
+            generation: current_generation,
+        })
     }
 
-    pub fn alloc_slice<T>(&self, sz: usize) -> Result<&'a mut [T], Error> {
+    pub fn alloc_slice<T>(&self, sz: usize) -> Result<ArenaRef<[T]>, Error> {
         assert!(ALIGN % mem::align_of::<T>() == 0);
         let x = mem::size_of::<T>();
         let x = x + ((!x + 1) % ALIGN);
         let x = self.get_memory(x * sz)?;
-        Ok(unsafe { slice::from_raw_parts_mut(x.as_mut_ptr().cast::<T>(), sz) })
+        let current_generation = self.arena.generation.load(Ordering::Acquire);
+        Ok(ArenaRef {
+            ptr: unsafe {
+                NonNull::new_unchecked(slice::from_raw_parts_mut(x.as_mut_ptr().cast::<T>(), sz))
+            },
+            generation: current_generation,
+        })
     }
 }
+
+pub struct ArenaRef<T: ?Sized> {
+    ptr: NonNull<T>,
+    generation: u64,
+}
+
+impl<T: ?Sized> ArenaRef<T> {
+    #[must_use]
+    pub fn from_raw_parts(ptr: NonNull<T>, generation: u64) -> Self {
+        Self { ptr, generation }
+    }
+
+    #[must_use]
+    pub fn into_non_null(self) -> NonNull<T> {
+        self.ptr
+    }
+
+    #[must_use]
+    pub fn generation(&self) -> u64 {
+        self.generation
+    }
+}
+
+impl<T: ?Sized> Deref for ArenaRef<T> {
+    type Target = T;
+    fn deref(&self) -> &Self::Target {
+        unsafe { self.ptr.as_ref() }
+    }
+}
+
+impl<T: ?Sized> DerefMut for ArenaRef<T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        unsafe { self.ptr.as_mut() }
+    }
+}
+
+unsafe impl<T: ?Sized + Send> Send for ArenaRef<T> {}
+unsafe impl<T: ?Sized + Sync> Sync for ArenaRef<T> {}
