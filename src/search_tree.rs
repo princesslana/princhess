@@ -205,23 +205,23 @@ fn create_node<'a, F>(
     policy_t: f32,
 ) -> Result<&'a mut PositionNode, ArenaError>
 where
-    F: FnOnce(usize) -> Result<(&'a mut PositionNode, &'a mut [MoveEdge]), ArenaError>,
+    F: FnOnce(usize) -> Result<(&'a mut [MoveEdge], &'a mut PositionNode), ArenaError>,
 {
     let moves = state.available_moves();
 
     let state_flag = evaluation::evaluate_state_flag(state, !moves.is_empty());
     let move_eval = evaluation::policy(state, &moves, policy_t);
 
-    let (node, hots) = alloc(move_eval.len())?;
+    let (hots_slice, node_ref) = alloc(move_eval.len())?;
+
+    *node_ref = PositionNode::new(hots_slice, state_flag);
 
     #[allow(clippy::cast_sign_loss)]
-    for (i, x) in hots.iter_mut().enumerate() {
+    for (i, x) in hots_slice.iter_mut().enumerate() {
         *x = MoveEdge::new((move_eval[i] * SCALE) as u16, moves[i]);
     }
 
-    *node = PositionNode::new(hots, state_flag);
-
-    Ok(node)
+    Ok(node_ref)
 }
 
 impl SearchTree {
@@ -230,7 +230,7 @@ impl SearchTree {
 
         let root_allocator = |sz| {
             let allocator = root_table.arena().allocator();
-            Ok((allocator.alloc_one()?, allocator.alloc_slice(sz)?))
+            allocator.alloc_contiguous_pair::<MoveEdge, PositionNode>(sz)
         };
 
         let root_node = create_node(

@@ -209,12 +209,12 @@ impl<'a> LRAllocator<'a> {
     pub fn alloc_node(
         &self,
         edges: usize,
-    ) -> Result<(&'a mut PositionNode, &'a mut [MoveEdge]), ArenaError> {
+    ) -> Result<(&'a mut [MoveEdge], &'a mut PositionNode), ArenaError> {
         let alloc = &self.allocators[usize::from(self.current.load(Ordering::Acquire))];
 
-        let edges = alloc.alloc_slice(edges)?;
-        let node = alloc.alloc_one()?;
+        let (hots_slice, node_ref) =
+            alloc.alloc_contiguous_pair::<MoveEdge, PositionNode>(edges)?;
 
-        Ok((node, edges))
+        Ok((hots_slice, node_ref))
     }
 }

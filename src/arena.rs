@@ -149,19 +149,42 @@ impl<'a> Allocator<'a> {
         }
     }
 
-    pub fn alloc_one<T>(&self) -> Result<&'a mut T, Error> {
-        assert!(ALIGN % mem::align_of::<T>() == 0);
-        let x = mem::size_of::<T>();
-        let x = x + ((!x + 1) % ALIGN);
-        let x = self.get_memory(x)?;
-        Ok(unsafe { &mut *(x.as_mut_ptr().cast::<T>()) })
-    }
+    pub fn alloc_contiguous_pair<T, U>(
+        &self,
+        num_t_items: usize,
+    ) -> Result<(&'a mut [T], &'a mut U), Error>
+    where
+        T: Sized,
+        U: Sized,
+    {
+        let size_of_t = mem::size_of::<T>();
+        let align_of_t = mem::align_of::<T>();
+        let size_of_u = mem::size_of::<U>();
+        let align_of_u = mem::align_of::<U>();
 
-    pub fn alloc_slice<T>(&self, sz: usize) -> Result<&'a mut [T], Error> {
-        assert!(ALIGN % mem::align_of::<T>() == 0);
-        let x = mem::size_of::<T>();
-        let x = x + ((!x + 1) % ALIGN);
-        let x = self.get_memory(x * sz)?;
-        Ok(unsafe { slice::from_raw_parts_mut(x.as_mut_ptr().cast::<T>(), sz) })
+        assert!(
+            ALIGN % align_of_t == 0,
+            "Type T alignment not compatible with ALIGN"
+        );
+        assert!(
+            ALIGN % align_of_u == 0,
+            "Type U alignment not compatible with ALIGN"
+        );
+
+        let t_total_byte_size = num_t_items * size_of_t;
+
+        let u_offset = (t_total_byte_size + align_of_u - 1) & !(align_of_u - 1);
+
+        let total_allocation_size = u_offset + size_of_u;
+
+        let raw_memory = self.get_memory(total_allocation_size)?;
+
+        let t_ptr = raw_memory.as_mut_ptr().cast::<T>();
+        let t_slice_ref = unsafe { slice::from_raw_parts_mut(t_ptr, num_t_items) };
+
+        let u_ptr = unsafe { raw_memory.as_mut_ptr().add(u_offset).cast::<U>() };
+        let u_ref = unsafe { &mut *u_ptr };
+
+        Ok((t_slice_ref, u_ref))
     }
 }
