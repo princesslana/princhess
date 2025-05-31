@@ -1,5 +1,6 @@
 use nohash_hasher::BuildNoHashHasher;
 use scc::hash_map::HashMap;
+use std::mem::MaybeUninit;
 use std::ptr::NonNull;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -210,6 +211,15 @@ impl LRTable {
     }
 }
 
+// Type alias for the complex return type
+type AllocNodeResult = Result<
+    (
+        ArenaRef<MaybeUninit<PositionNode>>,
+        ArenaRef<[MaybeUninit<MoveEdge>]>,
+    ),
+    ArenaError,
+>;
+
 pub struct LRAllocator<'a> {
     allocators: [Allocator<'a>; 2],
     current: Arc<AtomicBool>,
@@ -222,10 +232,7 @@ impl<'a> LRAllocator<'a> {
             current,
         }
     }
-    pub fn alloc_node(
-        &self,
-        edges: usize,
-    ) -> Result<(ArenaRef<PositionNode>, ArenaRef<[MoveEdge]>), ArenaError> {
+    pub fn alloc_node(&self, edges: usize) -> AllocNodeResult {
         let alloc = &self.allocators[usize::from(self.current.load(Ordering::Acquire))];
 
         let edges_ref = alloc.alloc_slice(edges)?;

@@ -1,6 +1,6 @@
 use std::alloc::{self, Layout};
 use std::cell::UnsafeCell;
-use std::mem;
+use std::mem::{self, MaybeUninit};
 use std::ops::{Deref, DerefMut};
 use std::ptr::{self, NonNull};
 use std::slice;
@@ -155,19 +155,19 @@ impl<'a> Allocator<'a> {
         }
     }
 
-    pub fn alloc_one<T>(&self) -> Result<ArenaRef<T>, Error> {
+    pub fn alloc_one<T>(&self) -> Result<ArenaRef<MaybeUninit<T>>, Error> {
         assert!(ALIGN % mem::align_of::<T>() == 0);
         let x = mem::size_of::<T>();
         let x = (x + ALIGN - 1) & !(ALIGN - 1);
         let x = self.get_memory(x)?;
         let current_generation = self.arena.generation.load(Ordering::Acquire);
         Ok(ArenaRef {
-            ptr: unsafe { NonNull::new_unchecked(x.as_mut_ptr().cast::<T>()) },
+            ptr: unsafe { NonNull::new_unchecked(x.as_mut_ptr().cast::<MaybeUninit<T>>()) },
             generation: current_generation,
         })
     }
 
-    pub fn alloc_slice<T>(&self, sz: usize) -> Result<ArenaRef<[T]>, Error> {
+    pub fn alloc_slice<T>(&self, sz: usize) -> Result<ArenaRef<[MaybeUninit<T>]>, Error> {
         assert!(ALIGN % mem::align_of::<T>() == 0);
         let x = mem::size_of::<T>();
         let x = (x + ALIGN - 1) & !(ALIGN - 1);
@@ -175,7 +175,10 @@ impl<'a> Allocator<'a> {
         let current_generation = self.arena.generation.load(Ordering::Acquire);
         Ok(ArenaRef {
             ptr: unsafe {
-                NonNull::new_unchecked(slice::from_raw_parts_mut(x.as_mut_ptr().cast::<T>(), sz))
+                NonNull::new_unchecked(slice::from_raw_parts_mut(
+                    x.as_mut_ptr().cast::<MaybeUninit<T>>(),
+                    sz,
+                ))
             },
             generation: current_generation,
         })
@@ -211,6 +214,66 @@ impl<T: ?Sized> ArenaRef<T> {
     #[must_use]
     pub fn as_mut_ptr(&mut self) -> *mut T {
         self.ptr.as_ptr()
+    }
+}
+
+impl<T> ArenaRef<MaybeUninit<T>> {
+    /// Writes a value into the allocated memory and returns an `ArenaRef` to the initialized `T`.
+    ///
+    /// # Safety
+    ///
+    /// This function is safe because it takes `self` by value, ensuring that the `MaybeUninit`
+    /// wrapper is consumed and replaced by the initialized `T`. The memory is guaranteed to be
+    /// properly aligned and sized by the allocator.
+    #[must_use]
+    pub fn write(self, val: T) -> ArenaRef<T> {
+        let ptr = self.ptr.as_ptr();
+        unsafe {
+            ptr::write(ptr, MaybeUninit::new(val));
+            ArenaRef {
+                ptr: self.ptr.cast(),
+                generation: self.generation,
+            }
+        }
+    }
+}
+
+impl<T> ArenaRef<[MaybeUninit<T>]> {
+    /// Initializes each element of the slice in place using the provided closure.
+    ///
+    /// The closure `f` is called for each index, and must return the value to
+    /// initialize the element at that index.
+    ///
+    /// This function is safe because it guarantees that every element of the
+    /// slice will be initialized by consuming the return value of the closure.
+    ///
+    /// # Panics
+    /// This method will panic if the closure `f` panics.
+    #[must_use]
+    pub fn init_each<F>(self, mut f: F) -> ArenaRef<[T]>
+    where
+        F: FnMut(usize) -> T,
+    {
+        let len = self.len();
+        let ptr = self.ptr.as_ptr().cast::<MaybeUninit<T>>();
+
+        for i in 0..len {
+            // SAFETY: `ptr.add(i)` points to a valid, uninitialized `MaybeUninit<T>` element.
+            // We are calling the safe `write` method on it.
+            unsafe {
+                (*ptr.add(i)).write(f(i));
+            }
+        }
+
+        // SAFETY: All elements have been initialized in the loop above by calling `MaybeUninit::write`.
+        // The `ptr` is valid for `len` elements, and `NonNull::slice_from_raw_parts` correctly
+        // reinterprets the `MaybeUninit<T>` slice as a `T` slice because all elements are now initialized.
+        unsafe {
+            ArenaRef {
+                ptr: NonNull::slice_from_raw_parts(NonNull::new_unchecked(ptr.cast::<T>()), len),
+                generation: self.generation,
+            }
+        }
     }
 }
 
