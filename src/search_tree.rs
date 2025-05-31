@@ -1,6 +1,6 @@
 use arrayvec::ArrayVec;
 use std::fmt::{Display, Write};
-use std::mem::{self, MaybeUninit};
+use std::mem;
 use std::ptr::{self, null_mut};
 use std::sync::atomic::{
     AtomicBool, AtomicI64, AtomicPtr, AtomicU32, AtomicU64, AtomicUsize, Ordering,
@@ -13,7 +13,7 @@ use crate::options::{MctsOptions, SearchOptions, TimeManagementOptions};
 use crate::search::{eval_in_cp, ThreadData, SCALE};
 use crate::state::State;
 use crate::time_management::TimeManagement;
-use crate::transposition_table::{LRTable, TranspositionTable};
+use crate::transposition_table::{AllocNodeResult, LRTable, TranspositionTable};
 use crate::tree_policy;
 
 const MAX_PLAYOUT_LENGTH: usize = 256;
@@ -205,15 +205,7 @@ fn create_node<F>(
     policy_t: f32,
 ) -> Result<ArenaRef<PositionNode>, ArenaError>
 where
-    F: FnOnce(
-        usize,
-    ) -> Result<
-        (
-            ArenaRef<MaybeUninit<PositionNode>>,
-            ArenaRef<[MaybeUninit<MoveEdge>]>,
-        ),
-        ArenaError,
-    >,
+    F: FnOnce(usize) -> AllocNodeResult,
 {
     let moves = state.available_moves();
 
@@ -444,7 +436,7 @@ impl SearchTree {
 
         // Insert the child into the ttable
         let inserted = tld.ttable.insert(state, created_node_arena_ref);
-        let inserted_ptr = ptr::from_ref(inserted).cast_mut();
+        let inserted_ptr = ptr::from_ref::<PositionNode>(inserted).cast_mut();
         choice.child.store(inserted_ptr, Ordering::Relaxed);
         Ok(inserted)
     }

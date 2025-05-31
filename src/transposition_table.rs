@@ -212,7 +212,7 @@ impl LRTable {
 }
 
 // Type alias for the complex return type
-type AllocNodeResult = Result<
+pub type AllocNodeResult = Result<
     (
         ArenaRef<MaybeUninit<PositionNode>>,
         ArenaRef<[MaybeUninit<MoveEdge>]>,
