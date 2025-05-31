@@ -240,7 +240,8 @@ impl<T> ArenaRef<MaybeUninit<T>> {
     pub fn write(self, val: T) -> ArenaRef<T> {
         let ptr = self.ptr.as_ptr();
         unsafe {
-            ptr::write(ptr, MaybeUninit::new(val));
+            // Prefer writing the raw T for clarity
+            ptr::write(ptr.cast::<T>(), val);
             ArenaRef {
                 ptr: self.ptr.cast(),
                 generation: self.generation,
