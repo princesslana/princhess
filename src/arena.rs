@@ -7,6 +7,8 @@ use std::slice;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
 
+use crate::mem::Align64;
+
 #[derive(Debug)]
 pub enum Error {
     Full,
@@ -16,9 +18,14 @@ const BYTES_PER_MB: usize = 1 << 20;
 const CHUNK_SIZE_MB: usize = 2;
 const CHUNK_SIZE: usize = BYTES_PER_MB * CHUNK_SIZE_MB;
 
-type Chunk = [u8; CHUNK_SIZE];
+type Chunk = Align64<[u8; CHUNK_SIZE]>;
 
-static DUMMY_CHUNK: Chunk = [0; CHUNK_SIZE];
+// Declared as `static mut` to allow creating a `&mut` reference for `UnsafeCell::new`.
+// This is inherently unsafe and should only be done when strictly necessary,
+// as it allows mutable global state without synchronization.
+// In this context, it's used for an "invalid" allocator that immediately
+// re-allocates a valid chunk, so the dummy memory is never actually written to.
+static mut DUMMY_CHUNK: Chunk = Align64([0; CHUNK_SIZE]);
 
 struct Chunks {
     pub chunks: Box<[Chunk]>,
@@ -76,7 +83,7 @@ impl Arena {
     }
 
     #[allow(clippy::mut_from_ref)]
-    fn alloc_chunk(&self) -> Result<&mut Chunk, Error> {
+    fn alloc_chunk(&self) -> Result<&mut [u8], Error> {
         let mut chunks = self.chunks.lock().unwrap();
 
         let idx = chunks.used;
@@ -88,7 +95,7 @@ impl Arena {
         chunks.used += 1;
 
         let result = ptr::addr_of_mut!(chunks.chunks[idx]);
-        Ok(unsafe { &mut *result })
+        Ok(unsafe { slice::from_raw_parts_mut(result.cast(), CHUNK_SIZE) })
     }
 
     pub fn allocator(&self) -> Allocator {
@@ -101,12 +108,16 @@ impl Arena {
     }
 
     pub fn invalid_allocator(&self) -> Allocator {
-        let dummy = DUMMY_CHUNK.as_ptr() as *mut Chunk;
+        // SAFETY: DUMMY_CHUNK is `static mut`, allowing a mutable reference.
+        // This reference is immediately wrapped in `UnsafeCell` and is only
+        // used as a placeholder; `get_memory` will re-allocate a valid chunk
+        // before any actual writes occur if the generation is mismatched.
+        let dummy_ref: &mut [u8] = unsafe { &mut *DUMMY_CHUNK };
 
         Allocator {
-            generation: AtomicU64::new(0),
+            generation: AtomicU64::new(0), // Set to 0 to ensure re-allocation on first use
             arena: self,
-            memory: UnsafeCell::new(unsafe { &mut *dummy }),
+            memory: UnsafeCell::new(dummy_ref),
         }
     }
 
