@@ -4,18 +4,24 @@ use std::ptr::NonNull;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
-use crate::arena::{Allocator, Arena, Error as ArenaError};
+use crate::arena::{Allocator, Arena, ArenaRef, Error as ArenaError};
 use crate::search_tree::{MoveEdge, PositionNode};
 use crate::state::State;
 
-struct Entry(NonNull<PositionNode>);
+struct Entry {
+    node_ptr: NonNull<PositionNode>,
+    generation: u64,
+}
 
 unsafe impl Send for Entry {}
 unsafe impl Sync for Entry {}
 
 impl Entry {
-    fn new(node: &PositionNode) -> Self {
-        Self(NonNull::from(node))
+    fn new(node_ptr: NonNull<PositionNode>, generation: u64) -> Self {
+        Self {
+            node_ptr,
+            generation,
+        }
     }
 }
 
@@ -60,14 +66,16 @@ impl TranspositionTable {
     }
 
     #[must_use]
-    pub fn insert<'a>(&'a self, key: &State, value: &'a PositionNode) -> &'a PositionNode {
+    pub fn insert<'a>(&'a self, key: &State, value: ArenaRef<PositionNode>) -> &'a PositionNode {
         let hash = key.hash();
+        let generation = value.generation();
+        let node_ptr = value.into_non_null();
 
-        match self.table.insert(hash, Entry::new(value)) {
-            Ok(()) => value,
+        match self.table.insert(hash, Entry::new(node_ptr, generation)) {
+            Ok(()) => unsafe { node_ptr.as_ref() },
             Err(_) => self
                 .table
-                .read(&hash, |_, v| unsafe { v.0.as_ref() })
+                .read(&hash, |_, entry| unsafe { entry.node_ptr.as_ref() })
                 .unwrap(),
         }
     }
@@ -76,7 +84,15 @@ impl TranspositionTable {
     pub fn lookup<'a>(&'a self, key: &State) -> Option<&'a PositionNode> {
         let hash = key.hash();
 
-        self.table.read(&hash, |_, v| unsafe { v.0.as_ref() })
+        self.table.read(&hash, |_, entry| {
+            let current_arena_gen = self.arena.generation();
+
+            if entry.generation == current_arena_gen {
+                unsafe { Some(entry.node_ptr.as_ref()) }
+            } else {
+                None
+            }
+        })?
     }
 
     pub fn lookup_into(&self, state: &State, dest: &mut PositionNode) -> bool {
@@ -133,7 +149,7 @@ impl LRTable {
         self.current_table().arena().capacity_remaining()
     }
 
-    pub fn insert<'a>(&'a self, key: &State, value: &'a PositionNode) -> &'a PositionNode {
+    pub fn insert<'a>(&'a self, key: &State, value: ArenaRef<PositionNode>) -> &'a PositionNode {
         self.current_table().insert(key, value)
     }
 
@@ -209,12 +225,12 @@ impl<'a> LRAllocator<'a> {
     pub fn alloc_node(
         &self,
         edges: usize,
-    ) -> Result<(&'a mut PositionNode, &'a mut [MoveEdge]), ArenaError> {
+    ) -> Result<(ArenaRef<PositionNode>, ArenaRef<[MoveEdge]>), ArenaError> {
         let alloc = &self.allocators[usize::from(self.current.load(Ordering::Acquire))];
 
-        let edges = alloc.alloc_slice(edges)?;
-        let node = alloc.alloc_one()?;
+        let edges_ref = alloc.alloc_slice(edges)?;
+        let node_ref = alloc.alloc_one()?;
 
-        Ok((node, edges))
+        Ok((node_ref, edges_ref))
     }
 }
