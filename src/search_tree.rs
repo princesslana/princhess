@@ -222,7 +222,7 @@ where
 
     // SAFETY: `node_uninit_ref` points to valid, uninitialized memory for a single PositionNode.
     // We are writing it exactly once.
-    let node_arena_ref = node_uninit_ref.write(PositionNode::new(&*hots_arena_ref, state_flag));
+    let node_arena_ref = node_uninit_ref.write(PositionNode::new(&hots_arena_ref, state_flag));
 
     Ok(node_arena_ref)
 }
