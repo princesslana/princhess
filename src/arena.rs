@@ -4,8 +4,7 @@ use std::mem::{self, MaybeUninit};
 use std::ops::{Deref, DerefMut};
 use std::ptr::{self, NonNull};
 use std::slice;
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Mutex;
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 
 use crate::mem::Align64;
 
@@ -27,47 +26,37 @@ type Chunk = Align64<[u8; CHUNK_SIZE]>;
 // re-allocates a valid chunk, so the dummy memory is never actually written to.
 static mut DUMMY_CHUNK: Chunk = Align64([0; CHUNK_SIZE]);
 
-struct Chunks {
-    pub chunks: Box<[Chunk]>,
-    pub used: usize,
-}
-
-impl Chunks {
-    fn with_capacity(capacity: usize) -> Self {
-        let layout = Layout::array::<Chunk>(capacity).unwrap();
-        let chunks = unsafe {
-            let raw = alloc::alloc(layout);
-            if raw.is_null() {
-                alloc::handle_alloc_error(layout);
-            }
-
-            let slice = slice::from_raw_parts_mut(raw.cast(), capacity);
-
-            Box::from_raw(slice)
-        };
-
-        Self { chunks, used: 0 }
-    }
-}
 pub struct Arena {
-    chunks: Mutex<Chunks>,
+    chunks: UnsafeCell<Box<[Chunk]>>,
     max: usize,
     generation: AtomicU64,
+    current_chunk_idx: AtomicUsize,
 }
 
 impl Arena {
     pub fn new(max_size_mb: usize) -> Self {
         let max = max_size_mb / CHUNK_SIZE_MB;
 
+        let layout = Layout::array::<Chunk>(max).unwrap();
+        let chunks_box = unsafe {
+            let raw = alloc::alloc(layout);
+            if raw.is_null() {
+                alloc::handle_alloc_error(layout);
+            }
+            let slice = slice::from_raw_parts_mut(raw.cast(), max);
+            Box::from_raw(slice)
+        };
+
         Self {
-            chunks: Mutex::new(Chunks::with_capacity(max)),
+            chunks: UnsafeCell::new(chunks_box),
             max,
             generation: AtomicU64::new(1),
+            current_chunk_idx: AtomicUsize::new(0),
         }
     }
 
     fn used(&self) -> usize {
-        self.chunks.lock().unwrap().used
+        self.current_chunk_idx.load(Ordering::Acquire).min(self.max)
     }
 
     pub fn full(&self) -> usize {
@@ -84,18 +73,21 @@ impl Arena {
 
     #[allow(clippy::mut_from_ref)]
     fn alloc_chunk(&self) -> Result<&mut [u8], Error> {
-        let mut chunks = self.chunks.lock().unwrap();
-
-        let idx = chunks.used;
+        let idx = self.current_chunk_idx.fetch_add(1, Ordering::AcqRel);
 
         if idx >= self.max {
             return Err(Error::Full);
         }
 
-        chunks.used += 1;
-
-        let result = ptr::addr_of_mut!(chunks.chunks[idx]);
-        Ok(unsafe { slice::from_raw_parts_mut(result.cast(), CHUNK_SIZE) })
+        // SAFETY: We are accessing a specific chunk at `idx`.
+        // The `current_chunk_idx` ensures that each chunk is allocated only once.
+        // The `UnsafeCell` allows us to get a mutable pointer to the `Box<[Chunk]>`
+        // from an immutable `&self`. We then dereference this to get a mutable
+        // slice `&mut [Chunk]`, and then index into it to get `&mut Chunk`.
+        // The `Align64` wrapper implements `DerefMut` to `[u8; CHUNK_SIZE]`,
+        // which can then be converted to `&mut [u8]`.
+        let chunk_ref: &mut Chunk = unsafe { &mut (*self.chunks.get())[idx] };
+        Ok(&mut **chunk_ref)
     }
 
     pub fn allocator(&self) -> Allocator {
@@ -122,7 +114,7 @@ impl Arena {
     }
 
     pub fn clear(&self) {
-        self.chunks.lock().unwrap().used = 0;
+        self.current_chunk_idx.store(0, Ordering::Release);
         self.generation.fetch_add(1, Ordering::Release);
     }
 
@@ -131,6 +123,10 @@ impl Arena {
         self.generation.load(Ordering::Acquire)
     }
 }
+
+// This is safe because all mutations to `chunks` are synchronized via `current_chunk_idx`
+// and `generation` atomics, ensuring no data races on the underlying memory.
+unsafe impl Sync for Arena {}
 
 pub struct Allocator<'a> {
     generation: AtomicU64,
