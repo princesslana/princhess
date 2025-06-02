@@ -13,7 +13,7 @@ use crate::options::{MctsOptions, SearchOptions, TimeManagementOptions};
 use crate::search::{eval_in_cp, ThreadData, SCALE};
 use crate::state::State;
 use crate::time_management::TimeManagement;
-use crate::transposition_table::{LRTable, TranspositionTable};
+use crate::transposition_table::{AllocNodeResult, LRTable, TranspositionTable};
 use crate::tree_policy;
 
 const MAX_PLAYOUT_LENGTH: usize = 256;
@@ -203,37 +203,28 @@ fn create_node<F>(
     state: &State,
     alloc: F,
     policy_t: f32,
-) -> Result<(ArenaRef<PositionNode>, ArenaRef<[MoveEdge]>), ArenaError>
+) -> Result<ArenaRef<PositionNode>, ArenaError>
 where
-    F: FnOnce(usize) -> Result<(ArenaRef<PositionNode>, ArenaRef<[MoveEdge]>), ArenaError>,
+    F: FnOnce(usize) -> AllocNodeResult,
 {
     let moves = state.available_moves();
 
     let state_flag = evaluation::evaluate_state_flag(state, !moves.is_empty());
     let move_eval = evaluation::policy(state, &moves, policy_t);
 
-    let (mut node_arena_ref, mut hots_arena_ref) = alloc(move_eval.len())?;
-
-    let node_ptr = node_arena_ref.as_mut_ptr();
-    let hots_base_ptr: *mut MoveEdge = hots_arena_ref.as_mut_ptr().cast::<MoveEdge>();
+    let (node_uninit_ref, hots_uninit_ref) = alloc(move_eval.len())?;
 
     #[allow(clippy::cast_sign_loss)]
-    for (i, &mov) in moves.iter().enumerate() {
+    let hots_arena_ref = hots_uninit_ref.init_each(|i| {
         let policy_val = (move_eval[i] * SCALE) as u16;
-        // SAFETY: `hots_base_ptr.add(i)` points to valid, uninitialized memory for a single MoveEdge.
-        // We are writing each element exactly once.
-        unsafe {
-            std::ptr::write(hots_base_ptr.add(i), MoveEdge::new(policy_val, mov));
-        }
-    }
+        MoveEdge::new(policy_val, moves[i])
+    });
 
-    // SAFETY: `node_ptr` points to valid, uninitialized memory for a single PositionNode.
+    // SAFETY: `node_uninit_ref` points to valid, uninitialized memory for a single PositionNode.
     // We are writing it exactly once.
-    unsafe {
-        std::ptr::write(node_ptr, PositionNode::new(&hots_arena_ref, state_flag));
-    }
+    let node_arena_ref = node_uninit_ref.write(PositionNode::new(&*hots_arena_ref, state_flag));
 
-    Ok((node_arena_ref, hots_arena_ref))
+    Ok(node_arena_ref)
 }
 
 impl SearchTree {
@@ -245,7 +236,7 @@ impl SearchTree {
             Ok((allocator.alloc_one()?, allocator.alloc_slice(sz)?))
         };
 
-        let (mut root_node_arena_ref, _root_hots_arena_ref) = create_node(
+        let mut root_node_arena_ref = create_node(
             &state,
             root_allocator,
             search_options.mcts_options.policy_temperature_root,
@@ -434,7 +425,7 @@ impl SearchTree {
         }
 
         // Create the child
-        let (mut created_node_arena_ref, _hots_arena_ref) = create_node(
+        let mut created_node_arena_ref = create_node(
             state,
             |sz| tld.allocator.alloc_node(sz),
             self.search_options.mcts_options.policy_temperature,
@@ -445,7 +436,7 @@ impl SearchTree {
 
         // Insert the child into the ttable
         let inserted = tld.ttable.insert(state, created_node_arena_ref);
-        let inserted_ptr = ptr::from_ref(inserted).cast_mut();
+        let inserted_ptr = ptr::from_ref::<PositionNode>(inserted).cast_mut();
         choice.child.store(inserted_ptr, Ordering::Relaxed);
         Ok(inserted)
     }
