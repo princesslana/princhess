@@ -54,7 +54,6 @@ impl Arena {
         Self {
             chunks: UnsafeCell::new(chunks_box),
             max,
-            // Initialize arena's generation with a unique value from the global counter.
             generation: AtomicU32::new(GLOBAL_ARENA_GENERATION.fetch_add(1, Ordering::AcqRel)),
             current_chunk_idx: AtomicUsize::new(0),
         }

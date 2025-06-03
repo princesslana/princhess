@@ -469,7 +469,7 @@ impl SearchTree {
         // Insert the child into the ttable
         let inserted = tld.ttable.insert(state, created_node_arena_ref);
         let inserted_ptr = ptr::from_ref::<PositionNode>(inserted).cast_mut();
-        // Unconditionally store the new node, as `choice.child` is either `null_mut` or was just nulled.
+        // Unconditionally store the new node
         choice.child.store(inserted_ptr, Ordering::Relaxed);
         Ok(inserted)
     }
