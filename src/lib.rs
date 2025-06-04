@@ -3,6 +3,7 @@
 #![allow(clippy::missing_errors_doc, clippy::missing_panics_doc)]
 
 mod arena;
+mod graph;
 mod mem;
 mod nets;
 mod search_tree;

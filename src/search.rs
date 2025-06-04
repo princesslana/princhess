@@ -3,9 +3,10 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use crate::chess::Move;
 use crate::evaluation;
+use crate::graph::{MoveEdge, PositionNode};
 use crate::math::Rng;
 use crate::options::SearchOptions;
-use crate::search_tree::{MoveEdge, PositionNode, SearchTree};
+use crate::search_tree::SearchTree;
 use crate::state::State;
 use crate::tablebase;
 use crate::time_management::TimeManagement;
@@ -62,7 +63,7 @@ impl Search {
     }
 
     pub fn tree(&self) -> &SearchTree {
-        &self.search_tree
+        &self.search_tree // Fixed: Return reference to the field directly
     }
 
     pub fn table_full(&self) -> usize {
@@ -198,7 +199,7 @@ impl Search {
         let root_node = self.search_tree.root_node();
         let root_state = self.search_tree.root_state();
 
-        let root_moves = root_node.hots();
+        let root_moves = root_node.edges(); // Changed from hots()
 
         let state_moves = root_state.available_moves();
         let state_moves_eval = evaluation::policy(

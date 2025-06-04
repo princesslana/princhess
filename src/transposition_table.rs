@@ -6,7 +6,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use crate::arena::{Allocator, Arena, ArenaRef, Error as ArenaError};
-use crate::search_tree::{MoveEdge, PositionNode};
+use crate::graph::{MoveEdge, PositionNode};
 use crate::state::State;
 
 struct Entry {
@@ -105,8 +105,8 @@ impl TranspositionTable {
         if let Some(src) = self.lookup(state) {
             dest.set_flag(src.flag());
 
-            let lhs = dest.hots();
-            let rhs = src.hots();
+            let lhs = dest.edges();
+            let rhs = src.edges();
 
             for i in 0..lhs.len().min(rhs.len()) {
                 lhs[i].replace(&rhs[i]);

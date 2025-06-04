@@ -1,9 +1,9 @@
 use fastapprox::faster;
 use std::f32;
 
+use crate::graph::MoveEdge;
 use crate::options::MctsOptions;
 use crate::search::SCALE;
-use crate::search_tree::MoveEdge;
 
 pub fn choose_child<'a>(moves: &'a [MoveEdge], fpu: i32, options: &MctsOptions) -> &'a MoveEdge {
     let total_visits = moves.iter().map(|v| u64::from(v.visits())).sum::<u64>() + 1;

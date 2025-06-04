@@ -14,7 +14,7 @@ use crate::state::State;
 #[repr(C)]
 pub struct TrainingPosition {
     occupied: Bitboard,
-    pieces: [u8; 16],
+    pieces: [u8; 16], // Packed representation of pieces
 
     evaluation: i32,
     result: i8,
@@ -114,24 +114,24 @@ impl From<&SearchTree> for TrainingPosition {
         let occupied = board.occupied();
         let stm = board.side_to_move();
 
-        let mut pieces = [0; 16];
+        let mut pieces_for_tp = [0; 16]; // Packed representation of pieces
 
         for (idx, sq) in occupied.into_iter().enumerate() {
-            let color = u8::from(board.color_at(sq)) << 3;
-            let piece = board.piece_at(sq);
+            let color_val = u8::from(board.color_at(sq));
+            let piece_val = u8::from(board.piece_at(sq));
 
-            let pc = color | u8::from(piece);
+            let pc = (color_val << 3) | piece_val;
 
-            pieces[idx / 2] |= pc << (4 * (idx & 1));
+            pieces_for_tp[idx / 2] |= pc << (4 * (idx & 1));
         }
 
         let mut nodes = [(Move::NONE, 0); Self::MAX_MOVES];
         let mut max_visits = 0;
 
-        for (node, hot) in nodes.iter_mut().zip(tree.root_node().hots().iter()) {
-            let vs = hot.visits();
+        for (node, edge) in nodes.iter_mut().zip(tree.root_node().edges().iter()) {
+            let vs = edge.visits();
             max_visits = max_visits.max(vs);
-            *node = (*hot.get_move(), vs);
+            *node = (*edge.get_move(), vs);
         }
 
         let mut legal_moves = [Move::NONE; Self::MAX_MOVES];
@@ -158,7 +158,7 @@ impl From<&SearchTree> for TrainingPosition {
 
         TrainingPosition {
             occupied,
-            pieces,
+            pieces: pieces_for_tp,
             legal_moves,
             visits,
             evaluation,

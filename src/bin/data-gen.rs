@@ -233,7 +233,7 @@ fn run_game(stats: &Stats, positions: &mut Vec<TrainingPosition>, rng: &mut Rng)
 
         let result = loop {
             search.set_root_state(state.clone());
-            let legal_moves = search.root_node().hots().len();
+            let legal_moves = search.root_node().edges().len();
 
             if legal_moves > 1 {
                 let visits = search.root_node().visits();
@@ -243,12 +243,12 @@ fn run_game(stats: &Stats, positions: &mut Vec<TrainingPosition>, rng: &mut Rng)
             let best_move = search.best_move();
 
             if variations_count < MAX_VARIATIONS {
-                let varation = search.most_visited_move();
+                let variation = search.most_visited_move();
 
-                if varation != best_move && state.phase() > 18 {
+                if variation != best_move && state.phase() > 18 {
                     game_stats.variations += 1;
                     let mut state = state.clone();
-                    state.make_move(varation);
+                    state.make_move(variation);
                     variations.push(state);
                     variations_count += 1;
                 }

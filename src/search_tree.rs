@@ -1,24 +1,24 @@
 use arrayvec::ArrayVec;
 use std::fmt::{Display, Write};
-use std::mem;
-use std::ptr::{self, null_mut};
-use std::sync::atomic::{
-    AtomicBool, AtomicI64, AtomicPtr, AtomicU32, AtomicU64, AtomicUsize, Ordering,
-};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 
 use crate::arena::{ArenaRef, Error as ArenaError};
 use crate::chess;
-use crate::evaluation::{self, Flag};
+use crate::evaluation;
+use crate::graph::{
+    create_node, MoveEdge, PositionNode, DRAW_NODE, LOSS_NODE, TABLEBASE_DRAW_NODE,
+    TABLEBASE_LOSS_NODE, TABLEBASE_WIN_NODE, UNEXPANDED_NODE, WIN_NODE,
+};
 use crate::options::{MctsOptions, SearchOptions, TimeManagementOptions};
 use crate::search::{eval_in_cp, ThreadData, SCALE};
 use crate::state::State;
 use crate::time_management::TimeManagement;
-use crate::transposition_table::{AllocNodeResult, LRTable, TranspositionTable};
+use crate::transposition_table::{LRTable, TranspositionTable};
 use crate::tree_policy;
 
-const MAX_PLAYOUT_LENGTH: usize = 256;
+pub const MAX_PLAYOUT_LENGTH: usize = 256;
 
-const PV_EVAL_MIN_DEPTH: usize = 4;
+pub const PV_EVAL_MIN_DEPTH: usize = 4;
 
 pub struct SearchTree {
     root_node: ArenaRef<PositionNode>,
@@ -34,202 +34,6 @@ pub struct SearchTree {
     max_depth: AtomicUsize,
     tb_hits: AtomicUsize,
     next_info: AtomicU64,
-}
-
-pub struct MoveEdge {
-    sum_evaluations: AtomicI64,
-    visits: AtomicU32,
-    policy: u16,
-    mov: chess::Move,
-    child: AtomicPtr<PositionNode>,
-}
-
-#[derive(Clone)]
-pub struct PositionNode {
-    hots: *const [MoveEdge],
-    flag: Flag,
-    generation: u32,
-}
-
-pub struct Reward {
-    pub average: i32,
-    pub visits: u32,
-}
-
-impl Reward {
-    const ZERO: Self = Self {
-        average: -SCALE as i32,
-        visits: 0,
-    };
-}
-
-unsafe impl Sync for PositionNode {}
-
-// These static nodes are not allocated in an Arena, so their generation is 0 (invalid).
-// This is fine as they are never looked up in the TT or cleared.
-static WIN_NODE: PositionNode = PositionNode::new(&[], Flag::TerminalWin, 0);
-static DRAW_NODE: PositionNode = PositionNode::new(&[], Flag::TerminalDraw, 0);
-static LOSS_NODE: PositionNode = PositionNode::new(&[], Flag::TerminalLoss, 0);
-
-static TABLEBASE_WIN_NODE: PositionNode = PositionNode::new(&[], Flag::TablebaseWin, 0);
-static TABLEBASE_DRAW_NODE: PositionNode = PositionNode::new(&[], Flag::TablebaseDraw, 0);
-static TABLEBASE_LOSS_NODE: PositionNode = PositionNode::new(&[], Flag::TablebaseLoss, 0);
-
-static UNEXPANDED_NODE: PositionNode = PositionNode::new(&[], Flag::Standard, 0);
-
-impl PositionNode {
-    const fn new(hots: &[MoveEdge], flag: Flag, generation: u32) -> Self {
-        Self {
-            hots,
-            flag,
-            generation,
-        }
-    }
-
-    pub fn flag(&self) -> Flag {
-        self.flag
-    }
-
-    pub fn set_flag(&mut self, flag: Flag) {
-        self.flag = flag;
-    }
-
-    pub fn is_terminal(&self) -> bool {
-        self.flag.is_terminal()
-    }
-
-    pub fn is_tablebase(&self) -> bool {
-        self.flag.is_tablebase()
-    }
-
-    pub fn hots(&self) -> &[MoveEdge] {
-        unsafe { &*(self.hots) }
-    }
-
-    pub fn visits(&self) -> u64 {
-        self.hots().iter().map(|x| u64::from(x.visits())).sum()
-    }
-
-    pub fn clear_children_links(&self) {
-        for h in self.hots() {
-            h.child.store(null_mut(), Ordering::Relaxed);
-        }
-    }
-
-    pub fn select_child_by_rewards(&self) -> &MoveEdge {
-        self.hots()
-            .iter()
-            .max_by_key(|x| x.reward().average)
-            .unwrap()
-    }
-
-    pub fn select_child_by_visits(&self) -> &MoveEdge {
-        self.hots().iter().max_by_key(|x| x.visits()).unwrap()
-    }
-
-    pub fn generation(&self) -> u32 {
-        self.generation
-    }
-}
-
-impl MoveEdge {
-    fn new(policy: u16, mov: chess::Move) -> Self {
-        Self {
-            policy,
-            sum_evaluations: AtomicI64::default(),
-            visits: AtomicU32::default(),
-            mov,
-            child: AtomicPtr::default(),
-        }
-    }
-
-    pub fn get_move(&self) -> &chess::Move {
-        &self.mov
-    }
-
-    pub fn visits(&self) -> u32 {
-        self.visits.load(Ordering::Relaxed)
-    }
-
-    pub fn policy(&self) -> u16 {
-        self.policy
-    }
-
-    pub fn reward(&self) -> Reward {
-        let visits = self.visits.load(Ordering::Relaxed);
-
-        if visits == 0 {
-            return Reward::ZERO;
-        }
-
-        let sum = self.sum_evaluations.load(Ordering::Relaxed);
-
-        Reward {
-            average: (sum / i64::from(visits)) as i32,
-            visits,
-        }
-    }
-
-    pub fn down(&self) {
-        self.visits.fetch_add(1, Ordering::Relaxed);
-    }
-
-    pub fn up(&self, evaln: i64) {
-        self.sum_evaluations.fetch_add(evaln, Ordering::Relaxed);
-    }
-
-    pub fn replace(&self, other: &MoveEdge) {
-        self.visits
-            .store(other.visits.load(Ordering::Relaxed), Ordering::Relaxed);
-        self.sum_evaluations.store(
-            other.sum_evaluations.load(Ordering::Relaxed),
-            Ordering::Relaxed,
-        );
-    }
-
-    pub fn child(&self) -> Option<&PositionNode> {
-        let child = self.child.load(Ordering::Relaxed).cast_const();
-        if child.is_null() {
-            None
-        } else {
-            unsafe { Some(&*child) }
-        }
-    }
-}
-
-fn create_node<F>(
-    state: &State,
-    alloc: F,
-    policy_t: f32,
-) -> Result<ArenaRef<PositionNode>, ArenaError>
-where
-    F: FnOnce(usize) -> AllocNodeResult,
-{
-    let moves = state.available_moves();
-
-    let state_flag = evaluation::evaluate_state_flag(state, !moves.is_empty());
-    let move_eval = evaluation::policy(state, &moves, policy_t);
-
-    let (node_uninit_ref, hots_uninit_ref) = alloc(move_eval.len())?;
-
-    #[allow(clippy::cast_sign_loss)]
-    let hots_arena_ref = hots_uninit_ref.init_each(|i| {
-        let policy_val = (move_eval[i] * SCALE) as u16;
-        MoveEdge::new(policy_val, moves[i])
-    });
-
-    // Capture the generation before `node_uninit_ref` is moved by `write`.
-    let node_generation = node_uninit_ref.generation();
-
-    // SAFETY: `node_uninit_ref` points to valid, uninitialized memory for a single PositionNode.
-    // We are writing it exactly once.
-    let node_arena_ref = node_uninit_ref.write(PositionNode::new(
-        &hots_arena_ref,
-        state_flag,
-        node_generation,
-    ));
-
-    Ok(node_arena_ref)
 }
 
 impl SearchTree {
@@ -300,7 +104,7 @@ impl SearchTree {
         let mut evaln = 0;
 
         loop {
-            if node.is_terminal() || node.hots().is_empty() {
+            if node.is_terminal() || node.edges().is_empty() {
                 break;
             }
             if node.is_tablebase() && state.halfmove_clock() == 0 {
@@ -317,24 +121,24 @@ impl SearchTree {
                 ..self.search_options.mcts_options
             };
 
-            let choice = tree_policy::choose_child(node.hots(), fpu, &mcts_options);
+            let choice = tree_policy::choose_child(node.edges(), fpu, &mcts_options);
             choice.down();
             path.push(choice);
-            state.make_move(choice.mov);
+            state.make_move(*choice.get_move());
 
             if choice.visits() == 1 {
                 let flag = evaluation::evaluate_state_flag(&state, state.is_available_move());
 
                 node = match flag {
-                    Flag::TerminalWin => &WIN_NODE,
-                    Flag::TerminalLoss => &LOSS_NODE,
-                    Flag::TerminalDraw => &DRAW_NODE,
-                    Flag::TablebaseWin => &TABLEBASE_WIN_NODE,
-                    Flag::TablebaseLoss => &TABLEBASE_LOSS_NODE,
-                    Flag::TablebaseDraw => &TABLEBASE_DRAW_NODE,
-                    Flag::Standard => {
+                    evaluation::Flag::TerminalWin => &*WIN_NODE,
+                    evaluation::Flag::TerminalLoss => &*LOSS_NODE,
+                    evaluation::Flag::TerminalDraw => &*DRAW_NODE,
+                    evaluation::Flag::TablebaseWin => &*TABLEBASE_WIN_NODE,
+                    evaluation::Flag::TablebaseLoss => &*TABLEBASE_LOSS_NODE,
+                    evaluation::Flag::TablebaseDraw => &*TABLEBASE_DRAW_NODE,
+                    evaluation::Flag::Standard => {
                         evaln = evaluation::value(&state);
-                        &UNEXPANDED_NODE
+                        &*UNEXPANDED_NODE
                     }
                 };
                 break;
@@ -344,7 +148,7 @@ impl SearchTree {
                 || state.drawn_by_fifty_move_rule()
                 || state.board().is_insufficient_material()
             {
-                node = &DRAW_NODE;
+                node = &*DRAW_NODE;
                 break;
             }
 
@@ -360,7 +164,7 @@ impl SearchTree {
             node = new_node;
         }
 
-        evaln = node.flag.adjust_eval(evaln);
+        evaln = node.flag().adjust_eval(evaln);
 
         Self::finish_playout(&path, evaln);
 
@@ -434,9 +238,7 @@ impl SearchTree {
         if let Some(node) = tld.ttable.lookup(state) {
             // If found in TT, it's guaranteed to be current generation.
             // Set the child pointer to this node.
-            choice
-                .child
-                .store(ptr::from_ref(node).cast_mut(), Ordering::Relaxed);
+            choice.set_child_ptr(node);
             return Ok(node);
         }
 
@@ -452,9 +254,8 @@ impl SearchTree {
 
         // Insert the child into the ttable
         let inserted = tld.ttable.insert(state, created_node_arena_ref);
-        let inserted_ptr = ptr::from_ref::<PositionNode>(inserted).cast_mut();
         // Unconditionally store the new node
-        choice.child.store(inserted_ptr, Ordering::Relaxed);
+        choice.set_child_ptr(inserted);
         Ok(inserted)
     }
 
@@ -479,7 +280,7 @@ impl SearchTree {
     }
 
     pub fn best_edge(&self) -> &MoveEdge {
-        self.sort_moves(self.root_node.hots())[0]
+        self.sort_moves(self.root_node.edges())[0]
     }
 
     fn sort_moves<'b>(&self, children: &'b [MoveEdge]) -> Vec<&'b MoveEdge> {
@@ -547,7 +348,7 @@ impl SearchTree {
             nodes * 1000 / search_time_ms as usize
         };
 
-        let moves = self.sort_moves(self.root_node.hots());
+        let moves = self.sort_moves(self.root_node.edges());
 
         let is_chess960 = self.search_options.is_chess960;
 
@@ -600,63 +401,6 @@ impl SearchTree {
             println!("{info_str}");
         }
     }
-}
-
-fn principal_variation<'a>(
-    mut state: State,
-    from: &'a PositionNode,
-    num_moves: usize,
-) -> Vec<&'a MoveEdge> {
-    let mut result: Vec<&'a MoveEdge> = Vec::with_capacity(num_moves);
-    let mut crnt = from;
-
-    while !crnt.hots().is_empty() && result.len() < num_moves {
-        let choice = crnt.select_child_by_rewards();
-
-        if result.iter().any(|x| x.get_move() == choice.get_move()) {
-            break;
-        }
-
-        result.push(choice);
-
-        state.make_move(*choice.get_move());
-        if state.is_repetition()
-            || state.drawn_by_fifty_move_rule()
-            || state.board().is_insufficient_material()
-        {
-            break;
-        }
-
-        match choice.child() {
-            Some(child) => crnt = child,
-            None => break,
-        }
-    }
-
-    result
-}
-
-fn pv_eval(mut state: State, mv: &MoveEdge, pv_depth: usize) -> i32 {
-    match mv.child() {
-        Some(child) => {
-            state.make_move(*mv.get_move());
-            let pv = principal_variation(state, child, pv_depth);
-            let eval = pv
-                .last()
-                .map_or(mv.reward().average, |x| x.reward().average);
-
-            eval * [1, -1][pv.len() % 2]
-        }
-        None => -SCALE as i32,
-    }
-}
-
-pub fn print_size_list() {
-    println!(
-        "info string PositionNode {} MoveEdge {}",
-        mem::size_of::<PositionNode>(),
-        mem::size_of::<MoveEdge>(),
-    );
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -745,5 +489,54 @@ mod tests {
 
             assert_eq!(white, black.flip());
         }
+    }
+}
+
+pub fn principal_variation<'a>(
+    mut state: State,
+    from: &'a PositionNode,
+    num_moves: usize,
+) -> Vec<&'a MoveEdge> {
+    let mut result: Vec<&'a MoveEdge> = Vec::with_capacity(num_moves);
+    let mut crnt = from;
+
+    while !crnt.edges().is_empty() && result.len() < num_moves {
+        let choice = crnt.select_child_by_rewards();
+
+        if result.iter().any(|x| x.get_move() == choice.get_move()) {
+            break;
+        }
+
+        result.push(choice);
+
+        state.make_move(*choice.get_move());
+        if state.is_repetition()
+            || state.drawn_by_fifty_move_rule()
+            || state.board().is_insufficient_material()
+        {
+            break;
+        }
+
+        match choice.child() {
+            Some(child) => crnt = child,
+            None => break,
+        }
+    }
+
+    result
+}
+
+pub fn pv_eval(mut state: State, mv: &MoveEdge, pv_depth: usize) -> i32 {
+    match mv.child() {
+        Some(child) => {
+            state.make_move(*mv.get_move());
+            let pv = principal_variation(state, child, pv_depth);
+            let eval = pv
+                .last()
+                .map_or(mv.reward().average, |x| x.reward().average);
+
+            eval * [1, -1][pv.len() % 2]
+        }
+        None => -SCALE as i32,
     }
 }
