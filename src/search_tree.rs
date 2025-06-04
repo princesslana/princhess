@@ -195,19 +195,6 @@ impl MoveEdge {
             unsafe { Some(&*child) }
         }
     }
-
-    // Returns None if the child was set, or Some(child) if it was already set.
-    pub fn set_or_get_child(&self, new_child: &PositionNode) -> Option<&PositionNode> {
-        match self.child.compare_exchange(
-            null_mut(),
-            ptr::from_ref(new_child).cast_mut(),
-            Ordering::Relaxed,
-            Ordering::Relaxed,
-        ) {
-            Ok(_) => None,
-            Err(existing) => unsafe { Some(&*existing) },
-        }
-    }
 }
 
 fn create_node<F>(
@@ -440,20 +427,17 @@ impl SearchTree {
                 // Child is valid and current, return it.
                 return Ok(child);
             }
-            // Child exists but is from an old generation (stale).
-            // Clear the pointer so it can be correctly re-set later.
-            choice.child.store(null_mut(), Ordering::Relaxed);
         }
-
-        // At this point, `choice.child` is either `null_mut` (was never set, or just cleared because it was stale).
 
         // Lookup to see if we already have this position in the ttable.
         // The `lookup` method already ensures the node's generation matches the current table's generation.
         if let Some(node) = tld.ttable.lookup(state) {
             // If found in TT, it's guaranteed to be current generation.
-            // Try to set the child pointer to this node. If it was already set
-            // by another thread (which would have set it to a current node), use the existing one.
-            return Ok(choice.set_or_get_child(node).unwrap_or(node));
+            // Set the child pointer to this node.
+            choice
+                .child
+                .store(ptr::from_ref(node).cast_mut(), Ordering::Relaxed);
+            return Ok(node);
         }
 
         // Create the child
