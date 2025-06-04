@@ -48,6 +48,7 @@ pub struct MoveEdge {
 pub struct PositionNode {
     hots: *const [MoveEdge],
     flag: Flag,
+    generation: u32,
 }
 
 pub struct Reward {
@@ -64,19 +65,25 @@ impl Reward {
 
 unsafe impl Sync for PositionNode {}
 
-static WIN_NODE: PositionNode = PositionNode::new(&[], Flag::TerminalWin);
-static DRAW_NODE: PositionNode = PositionNode::new(&[], Flag::TerminalDraw);
-static LOSS_NODE: PositionNode = PositionNode::new(&[], Flag::TerminalLoss);
+// These static nodes are not allocated in an Arena, so their generation is 0 (invalid).
+// This is fine as they are never looked up in the TT or cleared.
+static WIN_NODE: PositionNode = PositionNode::new(&[], Flag::TerminalWin, 0);
+static DRAW_NODE: PositionNode = PositionNode::new(&[], Flag::TerminalDraw, 0);
+static LOSS_NODE: PositionNode = PositionNode::new(&[], Flag::TerminalLoss, 0);
 
-static TABLEBASE_WIN_NODE: PositionNode = PositionNode::new(&[], Flag::TablebaseWin);
-static TABLEBASE_DRAW_NODE: PositionNode = PositionNode::new(&[], Flag::TablebaseDraw);
-static TABLEBASE_LOSS_NODE: PositionNode = PositionNode::new(&[], Flag::TablebaseLoss);
+static TABLEBASE_WIN_NODE: PositionNode = PositionNode::new(&[], Flag::TablebaseWin, 0);
+static TABLEBASE_DRAW_NODE: PositionNode = PositionNode::new(&[], Flag::TablebaseDraw, 0);
+static TABLEBASE_LOSS_NODE: PositionNode = PositionNode::new(&[], Flag::TablebaseLoss, 0);
 
-static UNEXPANDED_NODE: PositionNode = PositionNode::new(&[], Flag::Standard);
+static UNEXPANDED_NODE: PositionNode = PositionNode::new(&[], Flag::Standard, 0);
 
 impl PositionNode {
-    const fn new(hots: &[MoveEdge], flag: Flag) -> Self {
-        Self { hots, flag }
+    const fn new(hots: &[MoveEdge], flag: Flag, generation: u32) -> Self {
+        Self {
+            hots,
+            flag,
+            generation,
+        }
     }
 
     pub fn flag(&self) -> Flag {
@@ -118,6 +125,10 @@ impl PositionNode {
 
     pub fn select_child_by_visits(&self) -> &MoveEdge {
         self.hots().iter().max_by_key(|x| x.visits()).unwrap()
+    }
+
+    pub fn generation(&self) -> u32 {
+        self.generation
     }
 }
 
@@ -184,19 +195,6 @@ impl MoveEdge {
             unsafe { Some(&*child) }
         }
     }
-
-    // Returns None if the child was set, or Some(child) if it was already set.
-    pub fn set_or_get_child(&self, new_child: &PositionNode) -> Option<&PositionNode> {
-        match self.child.compare_exchange(
-            null_mut(),
-            ptr::from_ref(new_child).cast_mut(),
-            Ordering::Relaxed,
-            Ordering::Relaxed,
-        ) {
-            Ok(_) => None,
-            Err(existing) => unsafe { Some(&*existing) },
-        }
-    }
 }
 
 fn create_node<F>(
@@ -220,9 +218,16 @@ where
         MoveEdge::new(policy_val, moves[i])
     });
 
+    // Capture the generation before `node_uninit_ref` is moved by `write`.
+    let node_generation = node_uninit_ref.generation();
+
     // SAFETY: `node_uninit_ref` points to valid, uninitialized memory for a single PositionNode.
     // We are writing it exactly once.
-    let node_arena_ref = node_uninit_ref.write(PositionNode::new(&hots_arena_ref, state_flag));
+    let node_arena_ref = node_uninit_ref.write(PositionNode::new(
+        &hots_arena_ref,
+        state_flag,
+        node_generation,
+    ));
 
     Ok(node_arena_ref)
 }
@@ -414,14 +419,25 @@ impl SearchTree {
         choice: &'a MoveEdge,
         tld: &mut ThreadData<'a>,
     ) -> Result<&'a PositionNode, ArenaError> {
-        // If the child is already there, return it.
+        let current_arena_generation = tld.ttable.current_table().generation();
+
+        // If the child is already there, check its generation.
         if let Some(child) = choice.child() {
-            return Ok(child);
+            if child.generation() == current_arena_generation {
+                // Child is valid and current, return it.
+                return Ok(child);
+            }
         }
 
         // Lookup to see if we already have this position in the ttable.
+        // The `lookup` method already ensures the node's generation matches the current table's generation.
         if let Some(node) = tld.ttable.lookup(state) {
-            return Ok(choice.set_or_get_child(node).unwrap_or(node));
+            // If found in TT, it's guaranteed to be current generation.
+            // Set the child pointer to this node.
+            choice
+                .child
+                .store(ptr::from_ref(node).cast_mut(), Ordering::Relaxed);
+            return Ok(node);
         }
 
         // Create the child
@@ -437,6 +453,7 @@ impl SearchTree {
         // Insert the child into the ttable
         let inserted = tld.ttable.insert(state, created_node_arena_ref);
         let inserted_ptr = ptr::from_ref::<PositionNode>(inserted).cast_mut();
+        // Unconditionally store the new node
         choice.child.store(inserted_ptr, Ordering::Relaxed);
         Ok(inserted)
     }

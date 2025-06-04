@@ -4,7 +4,7 @@ use std::mem::{self, MaybeUninit};
 use std::ops::{Deref, DerefMut};
 use std::ptr::{self, NonNull};
 use std::slice;
-use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicU32, AtomicUsize, Ordering};
 
 use crate::mem::Align64;
 
@@ -26,10 +26,14 @@ type Chunk = Align64<[u8; CHUNK_SIZE]>;
 // re-allocates a valid chunk, so the dummy memory is never actually written to.
 static mut DUMMY_CHUNK: Chunk = Align64([0; CHUNK_SIZE]);
 
+// Global counter for arena generations, starting at 1.
+// 0 is reserved for "invalid" allocators.
+static GLOBAL_ARENA_GENERATION: AtomicU32 = AtomicU32::new(1);
+
 pub struct Arena {
     chunks: UnsafeCell<Box<[Chunk]>>,
     max: usize,
-    generation: AtomicU64,
+    generation: AtomicU32,
     current_chunk_idx: AtomicUsize,
 }
 
@@ -50,7 +54,7 @@ impl Arena {
         Self {
             chunks: UnsafeCell::new(chunks_box),
             max,
-            generation: AtomicU64::new(1),
+            generation: AtomicU32::new(GLOBAL_ARENA_GENERATION.fetch_add(1, Ordering::AcqRel)),
             current_chunk_idx: AtomicUsize::new(0),
         }
     }
@@ -93,7 +97,7 @@ impl Arena {
     pub fn allocator(&self) -> Allocator {
         let current_generation = self.generation.load(Ordering::Acquire);
         Allocator {
-            generation: AtomicU64::new(current_generation),
+            generation: AtomicU32::new(current_generation),
             arena: self,
             memory: UnsafeCell::new(self.alloc_chunk().unwrap()),
         }
@@ -107,7 +111,8 @@ impl Arena {
         let dummy_ref: &mut [u8] = unsafe { &mut *DUMMY_CHUNK };
 
         Allocator {
-            generation: AtomicU64::new(0), // Set to 0 to ensure re-allocation on first use
+            // Set to 0 to ensure re-allocation on first use, as 0 is an invalid generation.
+            generation: AtomicU32::new(0),
             arena: self,
             memory: UnsafeCell::new(dummy_ref),
         }
@@ -115,11 +120,14 @@ impl Arena {
 
     pub fn clear(&self) {
         self.current_chunk_idx.store(0, Ordering::Release);
-        self.generation.fetch_add(1, Ordering::Release);
+        self.generation.store(
+            GLOBAL_ARENA_GENERATION.fetch_add(1, Ordering::AcqRel),
+            Ordering::Release,
+        );
     }
 
     #[must_use]
-    pub fn generation(&self) -> u64 {
+    pub fn generation(&self) -> u32 {
         self.generation.load(Ordering::Acquire)
     }
 }
@@ -129,7 +137,7 @@ impl Arena {
 unsafe impl Sync for Arena {}
 
 pub struct Allocator<'a> {
-    generation: AtomicU64,
+    generation: AtomicU32,
     arena: &'a Arena,
     memory: UnsafeCell<&'a mut [u8]>,
 }
@@ -194,12 +202,12 @@ impl<'a> Allocator<'a> {
 
 pub struct ArenaRef<T: ?Sized> {
     ptr: NonNull<T>,
-    generation: u64,
+    generation: u32,
 }
 
 impl<T: ?Sized> ArenaRef<T> {
     #[must_use]
-    pub fn from_raw_parts(ptr: NonNull<T>, generation: u64) -> Self {
+    pub fn from_raw_parts(ptr: NonNull<T>, generation: u32) -> Self {
         Self { ptr, generation }
     }
 
@@ -209,7 +217,7 @@ impl<T: ?Sized> ArenaRef<T> {
     }
 
     #[must_use]
-    pub fn generation(&self) -> u64 {
+    pub fn generation(&self) -> u32 {
         self.generation
     }
 

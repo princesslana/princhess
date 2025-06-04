@@ -11,14 +11,14 @@ use crate::state::State;
 
 struct Entry {
     node_ptr: NonNull<PositionNode>,
-    generation: u64,
+    generation: u32,
 }
 
 unsafe impl Send for Entry {}
 unsafe impl Sync for Entry {}
 
 impl Entry {
-    fn new(node_ptr: NonNull<PositionNode>, generation: u64) -> Self {
+    fn new(node_ptr: NonNull<PositionNode>, generation: u32) -> Self {
         Self {
             node_ptr,
             generation,
@@ -59,6 +59,11 @@ impl TranspositionTable {
     #[must_use]
     pub fn arena(&self) -> &Arena {
         &self.arena
+    }
+
+    #[must_use]
+    pub fn generation(&self) -> u32 {
+        self.arena.generation()
     }
 
     pub fn clear(&self) {
@@ -168,7 +173,7 @@ impl LRTable {
         }
     }
 
-    fn current_table(&self) -> &TranspositionTable {
+    pub fn current_table(&self) -> &TranspositionTable {
         &self.tables[usize::from(self.current.load(Ordering::Acquire))]
     }
 
