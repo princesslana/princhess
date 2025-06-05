@@ -19,6 +19,9 @@ const LR: f32 = 0.001;
 const LR_DROP_AT: f32 = 0.4;
 const LR_DROP_FACTOR: f32 = 0.5;
 
+const SOFT_TARGET_WEIGHT: f32 = 8.0;
+const SOFT_TARGET_TEMPERATURE: f32 = 4.0;
+
 const _BUFFER_SIZE_CHECK: () = assert!(TrainingPosition::BUFFER_SIZE % BATCH_SIZE == 0);
 
 fn main() {
@@ -193,38 +196,58 @@ fn update_gradient(
     let features = position.get_policy_features();
     let moves = position.moves();
 
-    let mut actual = Vec::with_capacity(moves.len());
-
     let only_moves = moves.iter().map(|(mv, _)| *mv).collect();
     let move_idxes = state.moves_to_indexes(&only_moves).collect::<Vec<_>>();
 
-    network.get_all(&features, move_idxes.iter().copied(), &mut actual);
+    let mut raw_outputs = Vec::with_capacity(moves.len());
+    network.get_all(&features, move_idxes.iter().copied(), &mut raw_outputs);
 
-    let mut expected = moves.iter().map(|(_, v)| f32::from(*v)).collect::<Vec<_>>();
+    let mut actual_policy = raw_outputs;
+    math::softmax(&mut actual_policy[..moves.len()], 1.0);
 
-    math::softmax(&mut actual[..moves.len()], 1.);
+    let raw_counts: Vec<f32> = moves.iter().map(|(_, v)| f32::from(*v)).collect();
 
-    let sum_expected = expected.iter().sum::<f32>();
+    let expected_primary = calculate_target(&raw_counts, 1.0);
 
-    for e in expected.iter_mut() {
-        *e /= sum_expected;
-    }
+    let expected_secondary = calculate_target(&raw_counts, SOFT_TARGET_TEMPERATURE);
 
     for idx in 0..moves.len() {
         let move_idx = move_idxes[idx];
-        let expected = expected[idx];
-        let actual = actual[idx];
+        let actual_val = actual_policy[idx];
 
-        let error = actual - expected;
-        *loss -= expected * actual.ln();
+        let expected_primary_val = expected_primary[idx];
+        let error_primary = actual_val - expected_primary_val;
+        *loss -= expected_primary_val * actual_val.ln();
 
-        network.backprop(&features, gradients, move_idx, error);
+        let expected_secondary_val = expected_secondary[idx];
+        let error_secondary = actual_val - expected_secondary_val;
+        *loss -= expected_secondary_val * actual_val.ln() * SOFT_TARGET_WEIGHT;
+
+        let combined_error = error_primary + error_secondary * SOFT_TARGET_WEIGHT;
+        network.backprop(&features, gradients, move_idx, combined_error);
         count.increment(move_idx);
     }
 
-    if argmax(&expected) == argmax(&actual) {
+    if argmax(&expected_primary) == argmax(&actual_policy) {
         *acc += 1.;
     }
+}
+
+fn calculate_target(values: &[f32], temperature: f32) -> Vec<f32> {
+    let inv_temp = 1.0 / temperature;
+    let mut target = values.to_vec();
+
+    let mut sum_target = 0.0;
+    for val in target.iter_mut() {
+        *val = val.powf(inv_temp);
+        sum_target += *val;
+    }
+
+    for val in target.iter_mut() {
+        *val /= sum_target;
+    }
+
+    target
 }
 
 fn argmax(arr: &[f32]) -> usize {
