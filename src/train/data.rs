@@ -151,9 +151,8 @@ impl From<&SearchTree> for TrainingPosition {
 
         evaluation_i64 = stm
             .fold(evaluation_i64, -evaluation_i64)
-            .clamp(-(SCALE as i64), SCALE as i64); // Clamping with i64 values
+            .clamp(-(SCALE as i64), SCALE as i64);
 
-        // Convert to i32, assuming it fits within the range as per your statement
         let evaluation = evaluation_i64 as i32;
 
         // zero'd to be filled in later

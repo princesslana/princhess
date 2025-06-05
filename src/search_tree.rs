@@ -280,7 +280,10 @@ impl SearchTree {
     }
 
     pub fn best_edge(&self) -> &MoveEdge {
-        self.sort_moves(self.root_node.edges()).into_iter().next().expect("Root node must have moves to determine best edge")
+        self.sort_moves(self.root_node.edges())
+            .into_iter()
+            .next()
+            .expect("Root node must have moves to determine best edge")
     }
 
     fn sort_moves<'b>(&self, children: &'b [MoveEdge]) -> Vec<&'b MoveEdge> {
@@ -312,7 +315,10 @@ impl SearchTree {
     fn soft_time_multiplier(&self, opts: &TimeManagementOptions) -> f32 {
         let mut m = 1.0;
 
-        let bm = self.root_node().select_child_by_rewards().expect("Root node must have moves during active search for time management");
+        let bm = self
+            .root_node()
+            .select_child_by_rewards()
+            .expect("Root node must have moves during active search for time management");
         let bm_reward = bm.reward();
 
         let bm_frac = bm_reward.visits as f32 / self.root_node().visits() as f32;

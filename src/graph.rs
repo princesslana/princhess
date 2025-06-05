@@ -66,9 +66,7 @@ unsafe impl Sync for PositionNode {}
 static EMPTY_EDGES: LazyLock<Edges> = LazyLock::new(|| {
     let s: &'static [MoveEdge] = &[];
     // SAFETY: A static empty slice is guaranteed to be non-null.
-    // Using ptr::from_ref and cast_mut to satisfy clippy warnings.
-    // The result of cast_mut() needs to be wrapped in NonNull::new_unchecked().
-    Edges(unsafe { NonNull::new_unchecked(ptr::from_ref(s).cast_mut()) })
+    Edges(NonNull::from(s))
 });
 
 // Macro to define static PositionNode instances
