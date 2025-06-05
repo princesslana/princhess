@@ -2,9 +2,9 @@ use scoped_threadpool::Pool;
 use std::io::stdin;
 use std::str::SplitWhitespace;
 
+use crate::graph::print_size_list;
 use crate::options::{SearchOptions, UciOption, UciOptionMap};
 use crate::search::Search;
-use crate::search_tree::print_size_list;
 use crate::state::State;
 use crate::tablebase::set_tablebase_directory;
 use crate::time_management::TimeManagement;

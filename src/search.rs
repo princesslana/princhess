@@ -3,9 +3,10 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use crate::chess::Move;
 use crate::evaluation;
+use crate::graph::{MoveEdge, PositionNode};
 use crate::math::Rng;
 use crate::options::SearchOptions;
-use crate::search_tree::{MoveEdge, PositionNode, SearchTree};
+use crate::search_tree::SearchTree;
 use crate::state::State;
 use crate::tablebase;
 use crate::time_management::TimeManagement;
@@ -141,7 +142,7 @@ impl Search {
                 self.search_tree
                     .print_info(&time_management, self.ttable.full());
                 stop_signal.store(true, Ordering::Relaxed);
-                println!("bestmove {}", self.to_uci(self.best_move()),);
+                println!("bestmove {}", self.to_uci(self.best_move()));
             });
 
             for _ in 0..(thread_count - 1) {
@@ -198,7 +199,7 @@ impl Search {
         let root_node = self.search_tree.root_node();
         let root_state = self.search_tree.root_state();
 
-        let root_moves = root_node.hots();
+        let root_moves = root_node.edges();
 
         let state_moves = root_state.available_moves();
         let state_moves_eval = evaluation::policy(
@@ -245,6 +246,7 @@ impl Search {
             .search_tree
             .root_node()
             .select_child_by_visits()
+            .expect("Root node must have moves to determine most visited move")
             .get_move()
     }
 
