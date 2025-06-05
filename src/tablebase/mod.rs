@@ -6,12 +6,16 @@
     clippy::all,
     clippy::pedantic
 )]
+
+#[cfg(feature = "fathom")]
 mod bindings;
 
-use std::ffi::CString;
-use std::ptr;
-
 use crate::chess::{Board, Color, Move, Piece, Square};
+
+#[cfg(feature = "fathom")]
+use std::ffi::CString;
+#[cfg(feature = "fathom")]
+use std::ptr;
 
 pub enum Wdl {
     Win,
@@ -19,10 +23,17 @@ pub enum Wdl {
     Loss,
 }
 
+#[cfg(feature = "fathom")]
 fn max_pieces() -> usize {
     unsafe { bindings::TB_LARGEST as usize }
 }
 
+#[cfg(not(feature = "fathom"))]
+fn max_pieces() -> usize {
+    0
+}
+
+#[cfg(feature = "fathom")]
 pub fn set_tablebase_directory(paths: &str) {
     let c_paths = CString::new(paths).unwrap();
 
@@ -35,6 +46,12 @@ pub fn set_tablebase_directory(paths: &str) {
     }
 }
 
+#[cfg(not(feature = "fathom"))]
+pub fn set_tablebase_directory(_paths: &str) {
+    println!("info string Fathom feature not enabled, skipping initialization.");
+}
+
+#[cfg(feature = "fathom")]
 pub fn probe_wdl(b: &Board) -> Option<Wdl> {
     if b.occupied().count() > max_pieces() {
         return None;
@@ -54,9 +71,9 @@ pub fn probe_wdl(b: &Board) -> Option<Wdl> {
             b.bishops().0,
             b.knights().0,
             b.pawns().0,
-            0,
-            0,
-            0,
+            0, // rule50, not used by tb_probe_wdl_impl
+            0, // castling, not used by tb_probe_wdl_impl
+            0, // ep, not used by tb_probe_wdl_impl
             b.side_to_move() == Color::WHITE,
         );
 
@@ -71,6 +88,12 @@ pub fn probe_wdl(b: &Board) -> Option<Wdl> {
     }
 }
 
+#[cfg(not(feature = "fathom"))]
+pub fn probe_wdl(_b: &Board) -> Option<Wdl> {
+    None
+}
+
+#[cfg(feature = "fathom")]
 pub fn probe_best_move(b: &Board) -> Option<(Move, Wdl)> {
     if b.occupied().count() > max_pieces() {
         return None;
@@ -90,9 +113,9 @@ pub fn probe_best_move(b: &Board) -> Option<(Move, Wdl)> {
             b.bishops().0,
             b.knights().0,
             b.pawns().0,
-            0,
-            0,
-            0,
+            0, // rule50, not used by tb_probe_root_impl
+            0, // castling, not used by tb_probe_root_impl
+            0, // ep, not used by tb_probe_root_impl
             b.side_to_move() == Color::WHITE,
             ptr::null_mut(),
         );
@@ -127,5 +150,10 @@ pub fn probe_best_move(b: &Board) -> Option<(Move, Wdl)> {
             }
         }
     }
+    None
+}
+
+#[cfg(not(feature = "fathom"))]
+pub fn probe_best_move(_b: &Board) -> Option<(Move, Wdl)> {
     None
 }

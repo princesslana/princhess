@@ -1,8 +1,10 @@
 use std::env;
 
 fn main() {
-    build_fathom();
-    generate_bindings();
+    if env::var("CARGO_FEATURE_FATHOM").is_ok() {
+        build_fathom();
+        generate_bindings();
+    }
 }
 
 fn build_fathom() {
