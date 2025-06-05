@@ -25,9 +25,10 @@ scc = "=2.3.0"
 scoped_threadpool = "=0.1.9"
 
 [features]
-default = ["policy-net", "value-net"]
+default = ["policy-net", "value-net", "fathom"]
 policy-net = []
 value-net = []
+fathom = []
 
 [build-dependencies]
 bindgen = "=0.69.1"
