@@ -71,9 +71,9 @@ pub fn probe_wdl(b: &Board) -> Option<Wdl> {
             b.bishops().0,
             b.knights().0,
             b.pawns().0,
-            0, // rule50, not used by tb_probe_wdl_impl
-            0, // castling, not used by tb_probe_wdl_impl
-            0, // ep, not used by tb_probe_wdl_impl
+            0,
+            0,
+            0,
             b.side_to_move() == Color::WHITE,
         );
 
@@ -113,9 +113,9 @@ pub fn probe_best_move(b: &Board) -> Option<(Move, Wdl)> {
             b.bishops().0,
             b.knights().0,
             b.pawns().0,
-            0, // rule50, not used by tb_probe_root_impl
-            0, // castling, not used by tb_probe_root_impl
-            0, // ep, not used by tb_probe_root_impl
+            0,
+            0,
+            0,
             b.side_to_move() == Color::WHITE,
             ptr::null_mut(),
         );
