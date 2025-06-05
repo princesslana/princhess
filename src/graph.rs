@@ -11,8 +11,6 @@ use crate::search::SCALE;
 use crate::state::State;
 use crate::transposition_table::AllocNodeResult;
 
-// Removed MAX_PLAYOUT_LENGTH and PV_EVAL_MIN_DEPTH from here
-
 pub struct MoveEdge {
     sum_evaluations: AtomicI64,
     visits: AtomicU32,
@@ -51,13 +49,13 @@ pub struct PositionNode {
 }
 
 pub struct Reward {
-    pub average: i32,
-    pub visits: u32,
+    pub average: i64,
+    pub visits: u32, // This is fine as visits count up, not related to evaluation magnitude
 }
 
 impl Reward {
     pub const ZERO: Self = Self {
-        average: -SCALE as i32,
+        average: -SCALE as i64,
         visits: 0,
     };
 }
@@ -140,15 +138,12 @@ impl PositionNode {
         }
     }
 
-    pub fn select_child_by_rewards(&self) -> &MoveEdge {
-        self.edges()
-            .iter()
-            .max_by_key(|x| x.reward().average)
-            .unwrap()
+    pub fn select_child_by_rewards(&self) -> Option<&MoveEdge> {
+        self.edges().iter().max_by_key(|x| x.reward().average)
     }
 
-    pub fn select_child_by_visits(&self) -> &MoveEdge {
-        self.edges().iter().max_by_key(|x| x.visits()).unwrap()
+    pub fn select_child_by_visits(&self) -> Option<&MoveEdge> {
+        self.edges().iter().max_by_key(|x| x.visits())
     }
 
     pub fn generation(&self) -> u32 {
@@ -189,7 +184,7 @@ impl MoveEdge {
         let sum = self.sum_evaluations.load(Ordering::Relaxed);
 
         Reward {
-            average: (sum / i64::from(visits)) as i32,
+            average: sum / i64::from(visits),
             visits,
         }
     }
@@ -212,7 +207,7 @@ impl MoveEdge {
     }
 
     pub fn child(&self) -> Option<&PositionNode> {
-        let child = self.child.load(Ordering::Relaxed).cast_const();
+        let child = self.child.load(Ordering::Acquire).cast_const();
         if child.is_null() {
             None
         } else {
@@ -222,7 +217,7 @@ impl MoveEdge {
 
     pub fn set_child_ptr(&self, node: &PositionNode) {
         self.child
-            .store(ptr::from_ref(node).cast_mut(), Ordering::Relaxed);
+            .store(ptr::from_ref(node).cast_mut(), Ordering::Release);
     }
 }
 

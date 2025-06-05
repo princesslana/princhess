@@ -16,9 +16,9 @@ use crate::time_management::TimeManagement;
 use crate::transposition_table::{LRTable, TranspositionTable};
 use crate::tree_policy;
 
-pub const MAX_PLAYOUT_LENGTH: usize = 256;
+const MAX_PLAYOUT_LENGTH: usize = 256;
 
-pub const PV_EVAL_MIN_DEPTH: usize = 4;
+const PV_EVAL_MIN_DEPTH: usize = 4;
 
 pub struct SearchTree {
     root_node: ArenaRef<PositionNode>,
@@ -280,7 +280,7 @@ impl SearchTree {
     }
 
     pub fn best_edge(&self) -> &MoveEdge {
-        self.sort_moves(self.root_node.edges())[0]
+        self.sort_moves(self.root_node.edges()).into_iter().next().expect("Root node must have moves to determine best edge")
     }
 
     fn sort_moves<'b>(&self, children: &'b [MoveEdge]) -> Vec<&'b MoveEdge> {
@@ -312,7 +312,7 @@ impl SearchTree {
     fn soft_time_multiplier(&self, opts: &TimeManagementOptions) -> f32 {
         let mut m = 1.0;
 
-        let bm = self.root_node().select_child_by_rewards();
+        let bm = self.root_node().select_child_by_rewards().expect("Root node must have moves during active search for time management");
         let bm_reward = bm.reward();
 
         let bm_frac = bm_reward.visits as f32 / self.root_node().visits() as f32;
@@ -324,7 +324,7 @@ impl SearchTree {
             let bm_eval = bm_reward.average;
             let bm_pv_eval = pv_eval(self.root_state.clone(), bm, pv_eval_depth);
 
-            if (bm_eval - bm_pv_eval).abs() > (opts.pv_diff_c * SCALE) as i32 {
+            if (bm_eval - bm_pv_eval).abs() > (opts.pv_diff_c * SCALE) as i64 {
                 m *= opts.pv_diff_m;
             }
         }
@@ -501,7 +501,10 @@ pub fn principal_variation<'a>(
     let mut crnt = from;
 
     while !crnt.edges().is_empty() && result.len() < num_moves {
-        let choice = crnt.select_child_by_rewards();
+        let choice_option = crnt.select_child_by_rewards();
+
+        // Unwrap the option here, as the loop condition implies it won't be None
+        let choice = choice_option.expect("Expected a child move, but node had no edges.");
 
         if result.iter().any(|x| x.get_move() == choice.get_move()) {
             break;
@@ -526,7 +529,7 @@ pub fn principal_variation<'a>(
     result
 }
 
-pub fn pv_eval(mut state: State, mv: &MoveEdge, pv_depth: usize) -> i32 {
+pub fn pv_eval(mut state: State, mv: &MoveEdge, pv_depth: usize) -> i64 {
     match mv.child() {
         Some(child) => {
             state.make_move(*mv.get_move());
@@ -537,6 +540,6 @@ pub fn pv_eval(mut state: State, mv: &MoveEdge, pv_depth: usize) -> i32 {
 
             eval * [1, -1][pv.len() % 2]
         }
-        None => -SCALE as i32,
+        None => -SCALE as i64,
     }
 }

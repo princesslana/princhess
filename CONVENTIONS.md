@@ -7,7 +7,7 @@
     and DRY (Don't Repeat Yourself) 
   * Code Comments are:
     * Ideally avoided, in preference of self-documenting code
-    * Used to explain why something is done, not what is done
+    * Used to explain why the code is as it is, not what it does
 
 ## Commit Messages
 
