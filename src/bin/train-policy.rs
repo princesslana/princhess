@@ -19,7 +19,7 @@ const LR: f32 = 0.001;
 const LR_DROP_AT: f32 = 0.4;
 const LR_DROP_FACTOR: f32 = 0.5;
 
-const SOFT_TARGET_WEIGHT: f32 = 8.0;
+const SOFT_TARGET_WEIGHT: f32 = 0.1;
 const SOFT_TARGET_TEMPERATURE: f32 = 4.0;
 
 const _BUFFER_SIZE_CHECK: () = assert!(TrainingPosition::BUFFER_SIZE % BATCH_SIZE == 0);
