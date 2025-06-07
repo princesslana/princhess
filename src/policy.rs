@@ -135,9 +135,9 @@ impl PolicyNetwork {
         &self,
         features: &SparseVector,
         move_idxes: I,
-        out: &mut Vec<f32>,
+        out: &mut [f32],
     ) {
-        for move_idx in move_idxes {
+        for (i, move_idx) in move_idxes.enumerate() {
             let from_piece_sq = move_idx.from_piece_sq_index();
 
             let to_piece_sq = move_idx.to_piece_sq_index();
@@ -148,9 +148,8 @@ impl PolicyNetwork {
             let from_piece_sq_logits = self.get_piece_sq(from_piece_sq).out(features);
             let to_piece_sq_logits = self.get_piece_sq(to_piece_sq).out(features);
 
-            out.push(
-                to_sq_logits.dot(&to_piece_sq_logits) - from_sq_logits.dot(&from_piece_sq_logits),
-            );
+            out[i] =
+                to_sq_logits.dot(&to_piece_sq_logits) - from_sq_logits.dot(&from_piece_sq_logits);
         }
     }
 
@@ -248,9 +247,9 @@ impl QuantizedPolicyNetwork {
         &self,
         features: &SparseVector,
         move_idxes: I,
-        out: &mut Vec<f32>,
+        out: &mut [f32],
     ) {
-        for move_idx in move_idxes {
+        for (i, move_idx) in move_idxes.enumerate() {
             let from_sq_idx = move_idx.from_sq().index();
             let to_sq_idx = move_idx.to_sq().index();
 
@@ -271,7 +270,7 @@ impl QuantizedPolicyNetwork {
                 self.piece_sq.set(to_piece_sq_idx, *f, &mut to_piece_sq);
             }
 
-            out.push(to_sq.dot_relu(&to_piece_sq) - from_sq.dot_relu(&from_piece_sq));
+            out[i] = to_sq.dot_relu(&to_piece_sq) - from_sq.dot_relu(&from_piece_sq);
         }
     }
 }

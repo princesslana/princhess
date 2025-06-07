@@ -6,6 +6,7 @@ use std::path::Path;
 use std::thread;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
+use arrayvec::ArrayVec;
 use princhess::math;
 use princhess::policy::{PolicyCount, PolicyNetwork};
 use princhess::state::State;
@@ -21,6 +22,8 @@ const LR_DROP_FACTOR: f32 = 0.5;
 
 const SOFT_TARGET_WEIGHT: f32 = 0.1;
 const SOFT_TARGET_TEMPERATURE: f32 = 4.0;
+
+const EPSILON: f32 = 1e-9;
 
 const _BUFFER_SIZE_CHECK: () = assert!(TrainingPosition::BUFFER_SIZE % BATCH_SIZE == 0);
 
@@ -199,16 +202,16 @@ fn update_gradient(
     let only_moves = moves.iter().map(|(mv, _)| *mv).collect();
     let move_idxes = state.moves_to_indexes(&only_moves).collect::<Vec<_>>();
 
-    let mut raw_outputs = Vec::with_capacity(moves.len());
+    let mut raw_outputs = vec![0.0; moves.len()];
     network.get_all(&features, move_idxes.iter().copied(), &mut raw_outputs);
 
     let mut actual_policy = raw_outputs;
-    math::softmax(&mut actual_policy[..moves.len()], 1.0);
+    math::softmax(&mut actual_policy, 1.0);
 
-    let raw_counts: Vec<f32> = moves.iter().map(|(_, v)| f32::from(*v)).collect();
+    let raw_counts: ArrayVec<f32, { TrainingPosition::MAX_MOVES }> =
+        moves.iter().map(|(_, v)| f32::from(*v)).collect();
 
     let expected_primary = calculate_target(&raw_counts, 1.0);
-
     let expected_secondary = calculate_target(&raw_counts, SOFT_TARGET_TEMPERATURE);
 
     for idx in 0..moves.len() {
@@ -216,12 +219,13 @@ fn update_gradient(
         let actual_val = actual_policy[idx];
 
         let expected_primary_val = expected_primary[idx];
+        let log_actual_val = actual_val.max(EPSILON).ln();
         let error_primary = actual_val - expected_primary_val;
-        *loss -= expected_primary_val * actual_val.ln();
+        *loss -= expected_primary_val * log_actual_val;
 
         let expected_secondary_val = expected_secondary[idx];
         let error_secondary = actual_val - expected_secondary_val;
-        *loss -= expected_secondary_val * actual_val.ln() * SOFT_TARGET_WEIGHT;
+        *loss -= expected_secondary_val * log_actual_val * SOFT_TARGET_WEIGHT;
 
         let combined_error = error_primary + error_secondary * SOFT_TARGET_WEIGHT;
         network.backprop(&features, gradients, move_idx, combined_error);
@@ -233,19 +237,46 @@ fn update_gradient(
     }
 }
 
-fn calculate_target(values: &[f32], temperature: f32) -> Vec<f32> {
-    let inv_temp = 1.0 / temperature;
-    let mut target = values.to_vec();
+fn create_uniform_distribution(len: usize) -> ArrayVec<f32, { TrainingPosition::MAX_MOVES }> {
+    let mut target = ArrayVec::new();
+    if len == 0 {
+        return target;
+    }
+    let uniform_val = 1.0 / len as f32;
+    for _ in 0..len {
+        target.push(uniform_val);
+    }
+    target
+}
 
-    let mut sum_target = 0.0;
-    for val in target.iter_mut() {
-        *val = val.powf(inv_temp);
-        sum_target += *val;
+fn calculate_target(
+    values: &[f32],
+    temperature: f32,
+) -> ArrayVec<f32, { TrainingPosition::MAX_MOVES }> {
+    let mut target: ArrayVec<f32, { TrainingPosition::MAX_MOVES }> =
+        ArrayVec::from_iter(values.iter().copied());
+
+    if target.is_empty() {
+        return target;
     }
 
-    for val in target.iter_mut() {
-        *val /= sum_target;
+    // If all values are zero, return a uniform distribution to avoid NaN from log(0) and division by zero.
+    let all_zeros = target.iter().all(|&x| x == 0.0);
+    if all_zeros {
+        return create_uniform_distribution(target.len());
     }
+
+    // `x^(1/T) = exp(ln(x)/T)`. So, we pass `ln(x)` as the logit to `softmax` with temperature `T`.
+    // Zero values are mapped to negative infinity, which correctly results in 0 after exp.
+    for val in target.iter_mut() {
+        *val = if *val > 0.0 {
+            val.ln()
+        } else {
+            f32::NEG_INFINITY
+        };
+    }
+
+    math::softmax(&mut target, temperature);
 
     target
 }
