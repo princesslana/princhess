@@ -108,7 +108,7 @@ fn run_policy_net(_state: &State, moves: &MoveList, _t: f32) -> Vec<f32> {
 
 #[cfg(feature = "policy-net")]
 fn run_policy_net(state: &State, moves: &MoveList, t: f32) -> Vec<f32> {
-    let mut evalns = Vec::with_capacity(moves.len());
+    let mut evalns = vec![0.0; moves.len()];
 
     if moves.is_empty() {
         return evalns;

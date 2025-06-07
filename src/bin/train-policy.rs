@@ -6,6 +6,7 @@ use std::path::Path;
 use std::thread;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
+use arrayvec::ArrayVec;
 use princhess::math;
 use princhess::policy::{PolicyCount, PolicyNetwork};
 use princhess::state::State;
@@ -18,6 +19,11 @@ const THREADS: usize = 6;
 const LR: f32 = 0.001;
 const LR_DROP_AT: f32 = 0.4;
 const LR_DROP_FACTOR: f32 = 0.5;
+
+const SOFT_TARGET_WEIGHT: f32 = 0.1;
+const SOFT_TARGET_TEMPERATURE: f32 = 4.0;
+
+const EPSILON: f32 = 1e-9;
 
 const _BUFFER_SIZE_CHECK: () = assert!(TrainingPosition::BUFFER_SIZE % BATCH_SIZE == 0);
 
@@ -193,38 +199,86 @@ fn update_gradient(
     let features = position.get_policy_features();
     let moves = position.moves();
 
-    let mut actual = Vec::with_capacity(moves.len());
-
     let only_moves = moves.iter().map(|(mv, _)| *mv).collect();
     let move_idxes = state.moves_to_indexes(&only_moves).collect::<Vec<_>>();
 
-    network.get_all(&features, move_idxes.iter().copied(), &mut actual);
+    let mut raw_outputs = vec![0.0; moves.len()];
+    network.get_all(&features, move_idxes.iter().copied(), &mut raw_outputs);
 
-    let mut expected = moves.iter().map(|(_, v)| f32::from(*v)).collect::<Vec<_>>();
+    let mut actual_policy = raw_outputs;
+    math::softmax(&mut actual_policy, 1.0);
 
-    math::softmax(&mut actual[..moves.len()], 1.);
+    let raw_counts: ArrayVec<f32, { TrainingPosition::MAX_MOVES }> =
+        moves.iter().map(|(_, v)| f32::from(*v)).collect();
 
-    let sum_expected = expected.iter().sum::<f32>();
-
-    for e in expected.iter_mut() {
-        *e /= sum_expected;
-    }
+    let expected_primary = calculate_target(&raw_counts, 1.0);
+    let expected_secondary = calculate_target(&raw_counts, SOFT_TARGET_TEMPERATURE);
 
     for idx in 0..moves.len() {
         let move_idx = move_idxes[idx];
-        let expected = expected[idx];
-        let actual = actual[idx];
+        let actual_val = actual_policy[idx];
 
-        let error = actual - expected;
-        *loss -= expected * actual.ln();
+        let expected_primary_val = expected_primary[idx];
+        let log_actual_val = actual_val.max(EPSILON).ln();
+        let error_primary = actual_val - expected_primary_val;
+        *loss -= expected_primary_val * log_actual_val;
 
-        network.backprop(&features, gradients, move_idx, error);
+        let expected_secondary_val = expected_secondary[idx];
+        let error_secondary = actual_val - expected_secondary_val;
+        *loss -= expected_secondary_val * log_actual_val * SOFT_TARGET_WEIGHT;
+
+        let combined_error = error_primary + error_secondary * SOFT_TARGET_WEIGHT;
+        network.backprop(&features, gradients, move_idx, combined_error);
         count.increment(move_idx);
     }
 
-    if argmax(&expected) == argmax(&actual) {
+    if argmax(&expected_primary) == argmax(&actual_policy) {
         *acc += 1.;
     }
+}
+
+fn create_uniform_distribution(len: usize) -> ArrayVec<f32, { TrainingPosition::MAX_MOVES }> {
+    let mut target = ArrayVec::new();
+    if len == 0 {
+        return target;
+    }
+    let uniform_val = 1.0 / len as f32;
+    for _ in 0..len {
+        target.push(uniform_val);
+    }
+    target
+}
+
+fn calculate_target(
+    values: &[f32],
+    temperature: f32,
+) -> ArrayVec<f32, { TrainingPosition::MAX_MOVES }> {
+    let mut target: ArrayVec<f32, { TrainingPosition::MAX_MOVES }> =
+        ArrayVec::from_iter(values.iter().copied());
+
+    if target.is_empty() {
+        return target;
+    }
+
+    // If all values are zero, return a uniform distribution to avoid NaN from log(0) and division by zero.
+    let all_zeros = target.iter().all(|&x| x == 0.0);
+    if all_zeros {
+        return create_uniform_distribution(target.len());
+    }
+
+    // `x^(1/T) = exp(ln(x)/T)`. So, we pass `ln(x)` as the logit to `softmax` with temperature `T`.
+    // Zero values are mapped to negative infinity, which correctly results in 0 after exp.
+    for val in target.iter_mut() {
+        *val = if *val > 0.0 {
+            val.ln()
+        } else {
+            f32::NEG_INFINITY
+        };
+    }
+
+    math::softmax(&mut target, temperature);
+
+    target
 }
 
 fn argmax(arr: &[f32]) -> usize {
