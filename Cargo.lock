@@ -289,6 +289,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "princhess-training"
+version = "0.1.0"
+dependencies = [
+ "arrayvec",
+ "bytemuck",
+ "bytemuck_derive",
+ "fastapprox",
+ "goober",
+ "memmap",
+ "nohash-hasher",
+ "princhess",
+ "scc",
+ "scoped_threadpool",
+]
+
+[[package]]
 name = "proc-macro2"
 version = "1.0.92"
 source = "registry+https://github.com/rust-lang/crates.io-index"

@@ -1,4 +1,4 @@
-use princhess::train::TrainingPosition;
+use princhess_training::train::TrainingPosition;
 use princhess::value::ValueNetwork;
 
 use goober::{FeedForwardNetwork, OutputLayer, Vector};

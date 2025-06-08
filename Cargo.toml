@@ -9,16 +9,24 @@ repository = "https://github.com/princesslana/princhess"
 keywords = ["chess", "uci", "mcts"]
 categories = ["games"]
 
+[workspace]
+members = [
+    ".", # The main princhess package
+    "princhess-training",
+]
+
 [[bin]]
 name = "princhess"
 path = "src/main.rs"
 
 [dependencies]
 arrayvec = "=0.7.6"
+# bytemuck, fastapprox, memmap, nohash-hasher, scc, scoped_threadpool might be engine-specific or shared.
+# For now, we keep them. If they are only used by training, they will be removed later.
 bytemuck = { version = "=1.21.0", features = ["derive", "extern_crate_alloc", "min_const_generics", "must_cast"] }
 bytemuck_derive = "=1.8.1"
 fastapprox = "=0.3.1"
-goober = { git = "https://github.com/jw1912/goober/", rev = "32b9b52" }
+goober = { git = "https://github.com/jw1912/goober/", rev = "32b9b52" } # Added back
 nohash-hasher = "=0.2.0"
 memmap = "=0.7.0"
 scc = "=2.3.0"

@@ -1,0 +1,47 @@
+[package]
+name = "princhess-training"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+arrayvec = "=0.7.6" # Added
+goober = { git = "https://github.com/jw1912/goober/", rev = "32b9b52" }
+# Adding other potential dependencies moved from the main crate
+bytemuck = { version = "=1.21.0", features = ["derive", "extern_crate_alloc", "min_const_generics", "must_cast"] }
+bytemuck_derive = "=1.8.1"
+fastapprox = "=0.3.1"
+memmap = "=0.7.0"
+nohash-hasher = "=0.2.0"
+scc = "=2.3.0"
+scoped_threadpool = "=0.1.9"
+# princhess itself might be needed if the training code uses common structures/logic from the engine
+princhess = { path = ".." }
+
+
+[[bin]]
+name = "data-gen"
+path = "src/bin/data-gen.rs"
+
+[[bin]]
+name = "data-interleave"
+path = "src/bin/data-interleave.rs"
+
+[[bin]]
+name = "data-shuffle"
+path = "src/bin/data-shuffle.rs"
+
+[[bin]]
+name = "data-summary"
+path = "src/bin/data-summary.rs"
+
+[[bin]]
+name = "data-truncate"
+path = "src/bin/data-truncate.rs"
+
+[[bin]]
+name = "train-policy"
+path = "src/bin/train-policy.rs"
+
+[[bin]]
+name = "train-value"
+path = "src/bin/train-value.rs"

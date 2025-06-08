@@ -10,7 +10,7 @@ use arrayvec::ArrayVec;
 use princhess::math;
 use princhess::policy::{PolicyCount, PolicyNetwork};
 use princhess::state::State;
-use princhess::train::TrainingPosition;
+use princhess_training::train::TrainingPosition;
 
 const TARGET_BATCH_COUNT: usize = 300_000;
 const BATCH_SIZE: usize = 16384;

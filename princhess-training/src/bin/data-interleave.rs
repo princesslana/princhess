@@ -1,5 +1,5 @@
 use princhess::math::Rng;
-use princhess::train::TrainingPosition;
+use princhess_training::train::TrainingPosition;
 
 use std::env;
 use std::fs::File;

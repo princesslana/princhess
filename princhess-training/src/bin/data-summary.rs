@@ -1,6 +1,6 @@
 use princhess::policy::MoveIndex;
 use princhess::state::{self, State};
-use princhess::train::TrainingPosition;
+use princhess_training::train::TrainingPosition;
 
 use std::env;
 use std::fs::File;

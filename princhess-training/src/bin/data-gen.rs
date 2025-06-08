@@ -5,7 +5,7 @@ use princhess::options::{MctsOptions, SearchOptions};
 use princhess::search::Search;
 use princhess::state::State;
 use princhess::tablebase::{self, Wdl};
-use princhess::train::TrainingPosition;
+use princhess_training::train::TrainingPosition;
 
 use bytemuck::allocation;
 use std::collections::HashSet;

@@ -5,10 +5,10 @@ use std::fs::File;
 use std::io::{BufWriter, Write};
 use std::mem;
 
-use crate::chess::{Bitboard, Board, Castling, Color, Move, Piece, Square};
-use crate::search::SCALE;
-use crate::search_tree::SearchTree;
-use crate::state::State;
+use princhess::chess::{Bitboard, Board, Castling, Color, Move, Piece, Square};
+use princhess::search::SCALE;
+use princhess::search_tree::SearchTree;
+use princhess::state::State;
 
 #[derive(Clone, Copy, Debug, Pod, Zeroable)]
 #[repr(C)]
@@ -200,8 +200,8 @@ impl From<&TrainingPosition> for State {
 mod tests {
     use super::*;
 
-    use crate::options::SearchOptions;
-    use crate::search::Search;
+    use princhess::options::SearchOptions;
+    use princhess::search::Search;
 
     const STARTPOS_NO_CASTLING: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w - - 0 1";
     const KIWIPETE_NO_CASTLING: &str =
