@@ -91,7 +91,7 @@ impl Uci {
             self.options.set(&name, &value);
             self.search_options = SearchOptions::from(&self.options);
 
-            if name.to_lowercase().as_str() == "syzygypath" {
+            if name.eq_ignore_ascii_case("syzygypath") {
                 set_tablebase_directory(&value);
             }
 
