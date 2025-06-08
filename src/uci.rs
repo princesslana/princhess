@@ -1,4 +1,3 @@
-use scoped_threadpool::Pool;
 use std::io::stdin;
 use std::str::SplitWhitespace;
 
@@ -22,7 +21,6 @@ pub struct Uci {
     options: UciOptionMap,
     search_options: SearchOptions,
     search: Search,
-    search_threads: Pool,
 }
 
 impl Uci {
@@ -30,14 +28,12 @@ impl Uci {
     pub fn new() -> Self {
         let options = UciOptionMap::default();
         let search_options = SearchOptions::from(&options);
-        let search_threads = Pool::new(1);
         let search = Search::new(State::default(), search_options);
 
         Self {
             options,
             search_options,
             search,
-            search_threads,
         }
     }
 
@@ -69,42 +65,14 @@ impl Uci {
             match first_word {
                 "uci" => Self::uci_info(),
                 "isready" => println!("readyok"),
-                "setoption" => {
-                    if let Some((name, value)) = parse_set_option(tokens) {
-                        let root_state = self.search.root_state().clone();
-
-                        self.options.set(&name, &value);
-                        self.search_options = SearchOptions::from(&self.options);
-
-                        match name.to_lowercase().as_str() {
-                            "threads" => {
-                                self.search_threads = Pool::new(self.search_options.threads);
-                            }
-                            "syzygypath" => {
-                                set_tablebase_directory(&value);
-                            }
-                            _ => (),
-                        }
-
-                        self.search = Search::new(root_state, self.search_options);
-                    }
-                }
+                "setoption" => self.handle_setoption(tokens),
                 "ucinewgame" => {
                     self.search = Search::new(State::default(), self.search_options);
                 }
-                "position" => {
-                    if let Some(state) = State::from_tokens(tokens, self.search_options.is_chess960)
-                    {
-                        self.search.set_root_state(state);
-                    } else {
-                        println!("info string Couldn't parse '{line}' as position");
-                    }
-                }
+                "position" => self.handle_position(tokens, line),
                 "quit" => should_quit = true,
                 "go" => {
-                    next_line_from_go =
-                        self.search
-                            .go(&mut self.search_threads, tokens, is_interactive);
+                    next_line_from_go = self.handle_go(tokens, is_interactive);
                 }
                 "movelist" => self.search.print_move_list(),
                 "sizelist" => print_size_list(),
@@ -114,6 +82,33 @@ impl Uci {
             }
         }
         (should_quit, next_line_from_go)
+    }
+
+    fn handle_setoption(&mut self, tokens: Tokens) {
+        if let Some((name, value)) = parse_set_option(tokens) {
+            let root_state = self.search.root_state().clone();
+
+            self.options.set(&name, &value);
+            self.search_options = SearchOptions::from(&self.options);
+
+            if name.to_lowercase().as_str() == "syzygypath" {
+                set_tablebase_directory(&value);
+            }
+
+            self.search = Search::new(root_state, self.search_options);
+        }
+    }
+
+    fn handle_position(&mut self, tokens: Tokens, line: &str) {
+        if let Some(state) = State::from_tokens(tokens, self.search_options.is_chess960) {
+            self.search.set_root_state(state);
+        } else {
+            println!("info string Couldn't parse '{line}' as position");
+        }
+    }
+
+    fn handle_go(&self, tokens: Tokens, is_interactive: bool) -> Option<String> {
+        self.search.go(tokens, is_interactive)
     }
 
     fn run_bench(&mut self) {
