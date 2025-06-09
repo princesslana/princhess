@@ -102,6 +102,11 @@ impl SearchTree {
         let mut node: &'a PositionNode = &self.root_node;
         let mut path: ArrayVec<&'a MoveEdge, MAX_PLAYOUT_LENGTH> = ArrayVec::new();
         let mut evaln = 0;
+        
+        // Calculate virtual loss once for this playout.
+        // Virtual loss is a temporary penalty applied during descent to discourage
+        // other threads from exploring the same path. It's removed during backpropagation.
+        let virtual_loss = (self.search_options.mcts_options.virtual_loss * SCALE) as i64;
 
         loop {
             if node.is_terminal() || node.edges().is_empty() {
@@ -122,7 +127,7 @@ impl SearchTree {
             };
 
             let choice = tree_policy::choose_child(node.edges(), fpu, &mcts_options);
-            choice.down();
+            choice.down(virtual_loss);
             path.push(choice);
             state.make_move(*choice.get_move());
 
@@ -166,7 +171,7 @@ impl SearchTree {
 
         evaln = node.flag().adjust_eval(evaln);
 
-        Self::finish_playout(&path, evaln);
+        Self::finish_playout(&path, evaln, virtual_loss);
 
         let depth = path.len();
         let num_nodes = self.num_nodes.fetch_add(depth, Ordering::Relaxed) + depth;
@@ -259,10 +264,10 @@ impl SearchTree {
         Ok(inserted)
     }
 
-    fn finish_playout(path: &[&MoveEdge], evaln: i64) {
+    fn finish_playout(path: &[&MoveEdge], evaln: i64, virtual_loss: i64) {
         let mut evaln_value = -evaln;
         for move_info in path.iter().rev() {
-            move_info.up(evaln_value);
+            move_info.up(evaln_value, virtual_loss);
             evaln_value = -evaln_value;
         }
     }

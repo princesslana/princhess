@@ -187,21 +187,69 @@ impl MoveEdge {
         }
     }
 
-    pub fn down(&self) {
+    /// Apply virtual loss during descent to discourage other threads from taking this path.
+    /// This increments visits and subtracts virtual_loss from sum_evaluations.
+    pub fn down(&self, virtual_loss: i64) {
         self.visits.fetch_add(1, Ordering::Relaxed);
+        self.sum_evaluations.fetch_sub(virtual_loss, Ordering::Relaxed);
     }
 
-    pub fn up(&self, evaln: i64) {
+    /// Update edge statistics during backpropagation.
+    /// Adds the evaluation value and removes the virtual loss that was applied during descent.
+    /// 
+    /// Note: virtual_loss must be the same value that was passed to down() for this edge.
+    /// The virtual loss is always added back (regardless of evaln's sign) to restore
+    /// the original state before the temporary penalty.
+    pub fn up(&self, evaln: i64, virtual_loss: i64) {
+        // Add the actual evaluation (which may be positive or negative)
         self.sum_evaluations.fetch_add(evaln, Ordering::Relaxed);
+        // Remove the virtual loss by adding it back (always positive)
+        self.sum_evaluations.fetch_add(virtual_loss, Ordering::Relaxed);
     }
 
+    /// Replaces this edge's statistics with values from another edge.
+    /// 
+    /// This is used when copying historical data from the transposition table.
+    /// The operation uses Acquire/Release ordering to minimize the window where
+    /// the two values could be inconsistent, though perfect atomicity is not
+    /// guaranteed. This is acceptable for MCTS as small inconsistencies are
+    /// absorbed by the algorithm's inherent noise.
     pub fn replace(&self, other: &MoveEdge) {
-        self.visits
-            .store(other.visits.load(Ordering::Relaxed), Ordering::Relaxed);
-        self.sum_evaluations.store(
-            other.sum_evaluations.load(Ordering::Relaxed),
-            Ordering::Relaxed,
-        );
+        // Load both values with Acquire ordering to ensure we see a consistent
+        // view of any prior updates to the source edge
+        let visits = other.visits.load(Ordering::Acquire);
+        let sum = other.sum_evaluations.load(Ordering::Acquire);
+        
+        // Store both values with Release ordering to ensure they become visible
+        // to other threads as close together as possible
+        self.sum_evaluations.store(sum, Ordering::Release);
+        self.visits.store(visits, Ordering::Release);
+    }
+
+    /// Debug version that attempts to detect concurrent modifications.
+    /// Returns true if the copy appeared consistent, false if a concurrent
+    /// modification was detected (in which case it still performs the copy).
+    #[cfg(debug_assertions)]
+    pub fn replace_checked(&self, other: &MoveEdge) -> bool {
+        const MAX_RETRIES: u32 = 3;
+        
+        // Try to get a consistent snapshot
+        for _ in 0..MAX_RETRIES {
+            let visits1 = other.visits.load(Ordering::Acquire);
+            let sum = other.sum_evaluations.load(Ordering::Acquire);
+            let visits2 = other.visits.load(Ordering::Acquire);
+            
+            // If visits didn't change, we likely got a consistent snapshot
+            if visits1 == visits2 {
+                self.sum_evaluations.store(sum, Ordering::Release);
+                self.visits.store(visits1, Ordering::Release);
+                return true;
+            }
+        }
+        
+        // Fall back to best-effort copy
+        self.replace(other);
+        false
     }
 
     pub fn child(&self) -> Option<&PositionNode> {
