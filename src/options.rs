@@ -195,7 +195,7 @@ pub struct MctsOptions {
 
 #[allow(clippy::module_name_repetitions, clippy::struct_excessive_bools)]
 #[derive(Debug, Clone, Copy)]
-pub struct SearchOptions {
+pub struct EngineOptions {
     pub hash_size_mb: usize,
     pub threads: u32,
     pub c_visits_selection: f32,
@@ -249,13 +249,13 @@ impl From<&UciOptionMap> for TimeManagementOptions {
     }
 }
 
-impl Default for SearchOptions {
+impl Default for EngineOptions {
     fn default() -> Self {
-        SearchOptions::from(&UciOptionMap::default())
+        EngineOptions::from(&UciOptionMap::default())
     }
 }
 
-impl From<&UciOptionMap> for SearchOptions {
+impl From<&UciOptionMap> for EngineOptions {
     fn from(map: &UciOptionMap) -> Self {
         Self {
             hash_size_mb: map.get_and(&HASH, |s| s.parse().ok()),

@@ -6,8 +6,8 @@ use std::sync::LazyLock;
 
 use crate::arena::{ArenaRef, Error as ArenaError};
 use crate::chess;
+use crate::engine::SCALE;
 use crate::evaluation::{self, Flag};
-use crate::search::SCALE;
 use crate::state::State;
 use crate::transposition_table::AllocNodeResult;
 

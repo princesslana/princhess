@@ -1,30 +1,31 @@
 use arrayvec::ArrayVec;
+use fastapprox::faster;
+use std::f32;
 use std::fmt::{Display, Write};
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 
 use crate::arena::{ArenaRef, Error as ArenaError};
 use crate::chess;
+use crate::engine::{eval_in_cp, ThreadData, SCALE};
 use crate::evaluation;
 use crate::graph::{
     create_node, MoveEdge, PositionNode, DRAW_NODE, LOSS_NODE, TABLEBASE_DRAW_NODE,
     TABLEBASE_LOSS_NODE, TABLEBASE_WIN_NODE, UNEXPANDED_NODE, WIN_NODE,
 };
-use crate::options::{MctsOptions, SearchOptions, TimeManagementOptions};
-use crate::search::{eval_in_cp, ThreadData, SCALE};
+use crate::options::{EngineOptions, MctsOptions, TimeManagementOptions};
 use crate::state::State;
 use crate::time_management::TimeManagement;
 use crate::transposition_table::{LRTable, TranspositionTable};
-use crate::tree_policy;
 
 const MAX_PLAYOUT_LENGTH: usize = 256;
 
 const PV_EVAL_MIN_DEPTH: usize = 4;
 
-pub struct SearchTree {
+pub struct Mcts {
     root_node: ArenaRef<PositionNode>,
     root_state: State,
 
-    search_options: SearchOptions,
+    engine_options: EngineOptions,
 
     #[allow(dead_code)]
     root_table: TranspositionTable,
@@ -36,8 +37,8 @@ pub struct SearchTree {
     next_info: AtomicU64,
 }
 
-impl SearchTree {
-    pub fn new(state: State, table: &LRTable, search_options: SearchOptions) -> Self {
+impl Mcts {
+    pub fn new(state: State, table: &LRTable, engine_options: EngineOptions) -> Self {
         let root_table = TranspositionTable::for_root();
 
         let root_allocator = |sz| {
@@ -48,7 +49,7 @@ impl SearchTree {
         let mut root_node_arena_ref = create_node(
             &state,
             root_allocator,
-            search_options.mcts_options.policy_temperature_root,
+            engine_options.mcts_options.policy_temperature_root,
         )
         .expect("Unable to create root node");
 
@@ -57,7 +58,7 @@ impl SearchTree {
         Self {
             root_state: state,
             root_node: root_node_arena_ref,
-            search_options,
+            engine_options,
             root_table,
             num_nodes: 1.into(),
             playouts: 0.into(),
@@ -118,10 +119,10 @@ impl SearchTree {
 
             let mcts_options = MctsOptions {
                 cpuct,
-                ..self.search_options.mcts_options
+                ..self.engine_options.mcts_options
             };
 
-            let choice = tree_policy::choose_child(node.edges(), fpu, &mcts_options);
+            let choice = Mcts::select(node.edges(), fpu, &mcts_options);
             choice.down();
             path.push(choice);
             state.make_move(*choice.get_move());
@@ -196,7 +197,7 @@ impl SearchTree {
             }
 
             if let Some(soft_limit) = time_management.soft_limit() {
-                let opts = &self.search_options.time_management_options;
+                let opts = &self.engine_options.time_management_options;
 
                 if elapsed >= soft_limit.mul_f32(self.soft_time_multiplier(opts)) {
                     return false;
@@ -246,7 +247,7 @@ impl SearchTree {
         let mut created_node_arena_ref = create_node(
             state,
             |sz| tld.allocator.alloc_node(sz),
-            self.search_options.mcts_options.policy_temperature,
+            self.engine_options.mcts_options.policy_temperature,
         )?;
 
         // Copy any history
@@ -294,7 +295,7 @@ impl SearchTree {
                 return -(2. * SCALE) + f32::from(child.policy());
             }
 
-            let visits_adj = (self.search_options.c_visits_selection * 2. * SCALE)
+            let visits_adj = (self.engine_options.c_visits_selection * 2. * SCALE)
                 / (reward.visits as f32).sqrt();
 
             reward.average as f32 - visits_adj
@@ -356,9 +357,9 @@ impl SearchTree {
 
         let moves = self.sort_moves(self.root_node.edges());
 
-        let is_chess960 = self.search_options.is_chess960;
+        let is_chess960 = self.engine_options.is_chess960;
 
-        for (idx, edge) in moves.iter().enumerate().take(self.search_options.multi_pv) {
+        for (idx, edge) in moves.iter().enumerate().take(self.engine_options.multi_pv) {
             info_str.clear();
             info_str.push_str("info ");
             write!(info_str, "depth {} ", depth.max(1)).unwrap();
@@ -368,11 +369,11 @@ impl SearchTree {
             write!(info_str, "tbhits {} ", self.tb_hits()).unwrap();
             write!(info_str, "hashfull {hash_full} ").unwrap();
 
-            if self.search_options.show_movesleft {
+            if self.engine_options.show_movesleft {
                 write!(info_str, "movesleft {} ", self.root_state.moves_left()).unwrap();
             }
 
-            if self.search_options.show_wdl {
+            if self.engine_options.show_wdl {
                 let wdl = UciWdl::from_eval(
                     edge.reward().average as f32 / SCALE,
                     self.root_state.phase(),
@@ -406,6 +407,40 @@ impl SearchTree {
 
             println!("{info_str}");
         }
+    }
+
+    fn select<'a>(moves: &'a [MoveEdge], fpu: i64, options: &MctsOptions) -> &'a MoveEdge {
+        let total_visits = moves.iter().map(|v| u64::from(v.visits())).sum::<u64>() + 1;
+
+        let explore_coef = (options.cpuct
+            * faster::exp(options.cpuct_tau * faster::ln(total_visits as f32))
+            * SCALE) as i64;
+
+        let mut best_move = &moves[0];
+        let mut best_score = i64::MIN;
+
+        for mov in moves {
+            let reward = mov.reward();
+            let policy_evaln = mov.policy();
+
+            let q = if reward.visits > 0 {
+                reward.average
+            } else {
+                fpu
+            };
+
+            let u = explore_coef * i64::from(policy_evaln)
+                / ((i64::from(reward.visits) + 1) * SCALE as i64);
+
+            let score = q + u;
+
+            if score > best_score {
+                best_score = score;
+                best_move = mov;
+            }
+        }
+
+        best_move
     }
 }
 

@@ -4,18 +4,17 @@
 
 mod arena;
 mod graph;
+mod mcts;
 mod mem;
 mod nets;
-mod search_tree;
 mod subnets;
-mod tree_policy;
 
 pub mod chess;
+pub mod engine;
 pub mod evaluation;
 pub mod math;
 pub mod options;
 pub mod policy;
-pub mod search;
 pub mod state;
 pub mod tablebase;
 pub mod time_management;

@@ -5,8 +5,8 @@ use crate::chess::Move;
 use crate::evaluation;
 use crate::graph::{MoveEdge, PositionNode};
 use crate::math::Rng;
-use crate::options::SearchOptions;
-use crate::search_tree::SearchTree;
+use crate::mcts::Mcts;
+use crate::options::EngineOptions;
 use crate::state::State;
 use crate::tablebase;
 use crate::time_management::TimeManagement;
@@ -33,43 +33,43 @@ impl<'a> ThreadData<'a> {
 
 #[allow(clippy::struct_field_names)]
 #[must_use]
-pub struct Search {
-    search_tree: SearchTree,
-    search_options: SearchOptions,
+pub struct Engine {
+    mcts: Mcts,
+    engine_options: EngineOptions,
     ttable: LRTable,
     threads: ThreadPool,
 }
 
-impl Search {
-    pub fn new(state: State, search_options: SearchOptions) -> Self {
-        let ttable = LRTable::empty(search_options.hash_size_mb);
-        let search_tree = SearchTree::new(state, &ttable, search_options);
+impl Engine {
+    pub fn new(state: State, engine_options: EngineOptions) -> Self {
+        let ttable = LRTable::empty(engine_options.hash_size_mb);
+        let mcts = Mcts::new(state, &ttable, engine_options);
         let threads = ThreadPoolBuilder::new()
-            .num_threads(search_options.threads as usize)
+            .num_threads(engine_options.threads as usize)
             .build()
             .unwrap();
         Self {
-            search_tree,
-            search_options,
+            mcts,
+            engine_options,
             ttable,
             threads,
         }
     }
 
     pub fn set_root_state(&mut self, state: State) {
-        self.search_tree = SearchTree::new(state, &self.ttable, self.search_options);
+        self.mcts = Mcts::new(state, &self.ttable, self.engine_options);
     }
 
     pub fn root_node(&self) -> &PositionNode {
-        self.search_tree.root_node()
+        self.mcts.root_node()
     }
 
     pub fn root_state(&self) -> &State {
-        self.search_tree.root_state()
+        self.mcts.root_state()
     }
 
-    pub fn tree(&self) -> &SearchTree {
-        &self.search_tree
+    pub fn mcts(&self) -> &Mcts {
+        &self.mcts
     }
 
     pub fn table_full(&self) -> usize {
@@ -85,7 +85,7 @@ impl Search {
     }
 
     pub fn go(&self, tokens: Tokens, is_interactive: bool) -> Option<String> {
-        let state = self.search_tree.root_state();
+        let state = self.mcts.root_state();
         let mvs = state.available_moves();
 
         if mvs.len() == 1 {
@@ -111,7 +111,7 @@ impl Search {
         }
 
         let think_time =
-            TimeManagement::from_tokens(tokens, state, self.search_options.is_policy_only);
+            TimeManagement::from_tokens(tokens, state, self.engine_options.is_policy_only);
 
         self.playout_parallel(think_time, is_interactive)
     }
@@ -121,7 +121,7 @@ impl Search {
         time_management: TimeManagement,
         is_interactive: bool,
     ) -> Option<String> {
-        let cpuct = self.search_options.mcts_options.cpuct;
+        let cpuct = self.engine_options.mcts_options.cpuct;
         let stop_signal = AtomicBool::new(false);
         let thread_count = self.threads.current_num_threads();
 
@@ -137,14 +137,13 @@ impl Search {
 
         let run_search_thread = |cpuct: f32, tm: &TimeManagement| {
             let mut tld = ThreadData::create(&self.ttable);
-            while self.search_tree.playout(&mut tld, cpuct, tm, &stop_signal) {}
+            while self.mcts.playout(&mut tld, cpuct, tm, &stop_signal) {}
         };
 
         self.threads.in_place_scope(|s| {
             s.spawn(|_| {
                 run_search_thread(cpuct, &time_management);
-                self.search_tree
-                    .print_info(&time_management, self.ttable.full());
+                self.mcts.print_info(&time_management, self.ttable.full());
                 stop_signal.store(true, Ordering::Relaxed);
                 println!("bestmove {}", self.to_uci(self.best_move()));
             });
@@ -188,20 +187,20 @@ impl Search {
 
     pub fn playout_sync(&self, playouts: u64) {
         let mut tld = ThreadData::create(&self.ttable);
-        let cpuct = self.search_options.mcts_options.cpuct;
+        let cpuct = self.engine_options.mcts_options.cpuct;
         let tm = TimeManagement::infinite();
         let stop_signal = AtomicBool::new(false);
 
         for _ in 0..playouts {
-            if !self.search_tree.playout(&mut tld, cpuct, &tm, &stop_signal) {
+            if !self.mcts.playout(&mut tld, cpuct, &tm, &stop_signal) {
                 break;
             }
         }
     }
 
     pub fn print_move_list(&self) {
-        let root_node = self.search_tree.root_node();
-        let root_state = self.search_tree.root_state();
+        let root_node = self.mcts.root_node();
+        let root_state = self.mcts.root_state();
 
         let root_moves = root_node.edges();
 
@@ -209,7 +208,7 @@ impl Search {
         let state_moves_eval = evaluation::policy(
             root_state,
             &state_moves,
-            self.search_options.mcts_options.policy_temperature,
+            self.engine_options.mcts_options.policy_temperature,
         );
 
         let mut moves: Vec<(&MoveEdge, f32)> = root_moves.iter().zip(state_moves_eval).collect();
@@ -231,7 +230,7 @@ impl Search {
     }
 
     pub fn print_eval(&self) {
-        let eval = evaluation::value(self.search_tree.root_state());
+        let eval = evaluation::value(self.mcts.root_state());
         let scaled = eval as f32 / SCALE;
         println!(
             "info string eval {} scaled {} cp {}",
@@ -242,12 +241,12 @@ impl Search {
     }
 
     pub fn best_move(&self) -> Move {
-        self.search_tree.best_move()
+        self.mcts.best_move()
     }
 
     pub fn most_visited_move(&self) -> Move {
         *self
-            .search_tree
+            .mcts
             .root_node()
             .select_child_by_visits()
             .expect("Root node must have moves to determine most visited move")
@@ -255,7 +254,7 @@ impl Search {
     }
 
     fn to_uci(&self, mov: Move) -> String {
-        mov.to_uci(self.search_options.is_chess960)
+        mov.to_uci(self.engine_options.is_chess960)
     }
 }
 

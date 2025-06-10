@@ -16,13 +16,11 @@ path = "src/main.rs"
 [dependencies]
 arrayvec = "=0.7.6"
 bytemuck = { version = "=1.21.0", features = ["derive", "extern_crate_alloc", "min_const_generics", "must_cast"] }
-bytemuck_derive = "=1.8.1"
 fastapprox = "=0.3.1"
 goober = { git = "https://github.com/jw1912/goober/", rev = "32b9b52" }
 nohash-hasher = "=0.2.0"
-memmap = "=0.7.0"
 scc = "=2.3.0"
-rayon = "1.10.0"
+rayon = "=1.10.0"
 
 [features]
 default = ["policy-net", "value-net", "fathom"]

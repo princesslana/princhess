@@ -1,8 +1,8 @@
 use princhess::chess::{Board, Move};
+use princhess::engine::Engine;
 use princhess::evaluation;
 use princhess::math::Rng;
-use princhess::options::{MctsOptions, SearchOptions};
-use princhess::search::Search;
+use princhess::options::{EngineOptions, MctsOptions};
 use princhess::state::State;
 use princhess::tablebase::{self, Wdl};
 use princhess::train::TrainingPosition;
@@ -204,15 +204,15 @@ fn run_game(stats: &Stats, positions: &mut Vec<TrainingPosition>, rng: &mut Rng)
 
     let mcts_options = MctsOptions::default();
 
-    let search_options = SearchOptions {
+    let engine_options = EngineOptions {
         mcts_options,
         hash_size_mb: HASH_SIZE_MB,
-        ..SearchOptions::default()
+        ..EngineOptions::default()
     };
 
     while let Some(mut state) = variations.pop() {
         let mut game_stats = GameStats::zero();
-        let mut search = Search::new(state.clone(), search_options);
+        let mut engine = Engine::new(state.clone(), engine_options);
 
         if !state.is_available_move() {
             continue;
@@ -232,18 +232,18 @@ fn run_game(stats: &Stats, positions: &mut Vec<TrainingPosition>, rng: &mut Rng)
         let mut game_positions = Vec::with_capacity(256);
 
         let result = loop {
-            search.set_root_state(state.clone());
-            let legal_moves = search.root_node().edges().len();
+            engine.set_root_state(state.clone());
+            let legal_moves = engine.root_node().edges().len();
 
             if legal_moves > 1 {
-                let visits = search.root_node().visits();
-                search.playout_sync(VISITS_PER_POSITION.saturating_sub(visits));
+                let visits = engine.root_node().visits();
+                engine.playout_sync(VISITS_PER_POSITION.saturating_sub(visits));
             }
 
-            let best_move = search.best_move();
+            let best_move = engine.best_move();
 
             if variations_count < MAX_VARIATIONS {
-                let variation = search.most_visited_move();
+                let variation = engine.most_visited_move();
 
                 if variation != best_move && state.phase() > 18 {
                     game_stats.variations += 1;
@@ -257,7 +257,7 @@ fn run_game(stats: &Stats, positions: &mut Vec<TrainingPosition>, rng: &mut Rng)
             if legal_moves == 1 || legal_moves > TrainingPosition::MAX_MOVES {
                 game_stats.skipped += 1;
             } else {
-                let position = TrainingPosition::from(search.tree());
+                let position = TrainingPosition::from(engine.mcts());
 
                 if position.evaluation() > 0.95 {
                     break GameResult::WhiteWin;
@@ -268,10 +268,10 @@ fn run_game(stats: &Stats, positions: &mut Vec<TrainingPosition>, rng: &mut Rng)
                 game_positions.push(position);
 
                 game_stats.positions += 1;
-                game_stats.nodes += search.tree().num_nodes();
-                game_stats.playouts += search.tree().playouts();
-                game_stats.depth += search.tree().depth();
-                game_stats.seldepth += search.tree().max_depth();
+                game_stats.nodes += engine.mcts().num_nodes();
+                game_stats.playouts += engine.mcts().playouts();
+                game_stats.depth += engine.mcts().depth();
+                game_stats.seldepth += engine.mcts().max_depth();
             }
 
             state.make_move(best_move);
