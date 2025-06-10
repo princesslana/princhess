@@ -6,8 +6,8 @@ use std::io::{BufWriter, Write};
 use std::mem;
 
 use crate::chess::{Bitboard, Board, Castling, Color, Move, Piece, Square};
-use crate::search::SCALE;
-use crate::search_tree::SearchTree;
+use crate::engine::SCALE;
+use crate::mcts::Mcts;
 use crate::state::State;
 
 #[derive(Clone, Copy, Debug, Pod, Zeroable)]
@@ -108,8 +108,8 @@ impl TrainingPosition {
     }
 }
 
-impl From<&SearchTree> for TrainingPosition {
-    fn from(tree: &SearchTree) -> Self {
+impl From<&Mcts> for TrainingPosition {
+    fn from(tree: &Mcts) -> Self {
         let board = tree.root_state().board();
 
         let occupied = board.occupied();
@@ -200,8 +200,8 @@ impl From<&TrainingPosition> for State {
 mod tests {
     use super::*;
 
-    use crate::options::SearchOptions;
-    use crate::search::Search;
+    use crate::engine::Engine;
+    use crate::options::EngineOptions;
 
     const STARTPOS_NO_CASTLING: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w - - 0 1";
     const KIWIPETE_NO_CASTLING: &str =
@@ -212,9 +212,9 @@ mod tests {
     #[test]
     fn test_startpos_conversion() {
         let state_before = State::from_fen(STARTPOS_NO_CASTLING);
-        let search = Search::new(state_before.clone(), SearchOptions::default());
+        let engine = Engine::new(state_before.clone(), EngineOptions::default());
 
-        let training_position = TrainingPosition::from(search.tree());
+        let training_position = TrainingPosition::from(engine.mcts());
 
         let state_after = State::from(&training_position);
 
@@ -224,9 +224,9 @@ mod tests {
     #[test]
     fn test_kiwipete_conversion() {
         let state_before = State::from_fen(KIWIPETE_NO_CASTLING);
-        let search = Search::new(state_before.clone(), SearchOptions::default());
+        let engine = Engine::new(state_before.clone(), EngineOptions::default());
 
-        let training_position = TrainingPosition::from(search.tree());
+        let training_position = TrainingPosition::from(engine.mcts());
 
         let state_after = State::from(&training_position);
 
@@ -236,9 +236,9 @@ mod tests {
     #[test]
     fn test_kiwipete_stm_black_conversion() {
         let state_before = State::from_fen(KIWIPETE_NO_CASTLING_STMB);
-        let search = Search::new(state_before.clone(), SearchOptions::default());
+        let engine = Engine::new(state_before.clone(), EngineOptions::default());
 
-        let training_position = TrainingPosition::from(search.tree());
+        let training_position = TrainingPosition::from(engine.mcts());
 
         let state_after = State::from(&training_position);
 

@@ -1,9 +1,9 @@
 use std::io::stdin;
 use std::str::SplitWhitespace;
 
+use crate::engine::Engine;
 use crate::graph::print_size_list;
-use crate::options::{SearchOptions, UciOption, UciOptionMap};
-use crate::search::Search;
+use crate::options::{EngineOptions, UciOption, UciOptionMap};
 use crate::state::State;
 use crate::tablebase::set_tablebase_directory;
 use crate::time_management::TimeManagement;
@@ -19,21 +19,21 @@ const BENCH_PLAYOUTS_PER_POSITION: u64 = 5000;
 
 pub struct Uci {
     options: UciOptionMap,
-    search_options: SearchOptions,
-    search: Search,
+    engine_options: EngineOptions,
+    engine: Engine,
 }
 
 impl Uci {
     #[must_use]
     pub fn new() -> Self {
         let options = UciOptionMap::default();
-        let search_options = SearchOptions::from(&options);
-        let search = Search::new(State::default(), search_options);
+        let engine_options = EngineOptions::from(&options);
+        let engine = Engine::new(State::default(), engine_options);
 
         Self {
             options,
-            search_options,
-            search,
+            engine_options,
+            engine,
         }
     }
 
@@ -67,16 +67,16 @@ impl Uci {
                 "isready" => println!("readyok"),
                 "setoption" => self.handle_setoption(tokens),
                 "ucinewgame" => {
-                    self.search = Search::new(State::default(), self.search_options);
+                    self.engine = Engine::new(State::default(), self.engine_options);
                 }
                 "position" => self.handle_position(tokens, line),
                 "quit" => should_quit = true,
                 "go" => {
                     next_line_from_go = self.handle_go(tokens, is_interactive);
                 }
-                "movelist" => self.search.print_move_list(),
+                "movelist" => self.engine.print_move_list(),
                 "sizelist" => print_size_list(),
-                "eval" => self.search.print_eval(),
+                "eval" => self.engine.print_eval(),
                 "bench" => self.run_bench(),
                 _ => (),
             }
@@ -86,29 +86,29 @@ impl Uci {
 
     fn handle_setoption(&mut self, tokens: Tokens) {
         if let Some((name, value)) = parse_set_option(tokens) {
-            let root_state = self.search.root_state().clone();
+            let root_state = self.engine.root_state().clone();
 
             self.options.set(&name, &value);
-            self.search_options = SearchOptions::from(&self.options);
+            self.engine_options = EngineOptions::from(&self.options);
 
             if name.eq_ignore_ascii_case("syzygypath") {
                 set_tablebase_directory(&value);
             }
 
-            self.search = Search::new(root_state, self.search_options);
+            self.engine = Engine::new(root_state, self.engine_options);
         }
     }
 
     fn handle_position(&mut self, tokens: Tokens, line: &str) {
-        if let Some(state) = State::from_tokens(tokens, self.search_options.is_chess960) {
-            self.search.set_root_state(state);
+        if let Some(state) = State::from_tokens(tokens, self.engine_options.is_chess960) {
+            self.engine.set_root_state(state);
         } else {
             println!("info string Couldn't parse '{line}' as position");
         }
     }
 
     fn handle_go(&self, tokens: Tokens, is_interactive: bool) -> Option<String> {
-        self.search.go(tokens, is_interactive)
+        self.engine.go(tokens, is_interactive)
     }
 
     fn run_bench(&mut self) {
@@ -119,16 +119,16 @@ impl Uci {
             println!("info string {fen_line}");
 
             let state = State::from_fen(fen_line);
-            let local_search = Search::new(state, self.search_options);
+            let local_engine = Engine::new(state, self.engine_options);
             let time_management = TimeManagement::infinite();
 
-            local_search.playout_sync(BENCH_PLAYOUTS_PER_POSITION);
-            total_nodes += local_search.tree().num_nodes() as u64;
+            local_engine.playout_sync(BENCH_PLAYOUTS_PER_POSITION);
+            total_nodes += local_engine.mcts().num_nodes() as u64;
             total_elapsed_time_ms += time_management.elapsed().as_millis() as u64;
 
-            local_search
-                .tree()
-                .print_info(&time_management, local_search.table_full());
+            local_engine
+                .mcts()
+                .print_info(&time_management, local_engine.table_full());
         }
 
         let nps = if total_elapsed_time_ms > 0 {
