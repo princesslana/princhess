@@ -1,4 +1,4 @@
-use scoped_threadpool::Pool;
+use rayon::{ThreadPool, ThreadPoolBuilder};
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use crate::chess::Move;
@@ -37,16 +37,22 @@ pub struct Search {
     search_tree: SearchTree,
     search_options: SearchOptions,
     ttable: LRTable,
+    threads: ThreadPool,
 }
 
 impl Search {
     pub fn new(state: State, search_options: SearchOptions) -> Self {
         let ttable = LRTable::empty(search_options.hash_size_mb);
         let search_tree = SearchTree::new(state, &ttable, search_options);
+        let threads = ThreadPoolBuilder::new()
+            .num_threads(search_options.threads as usize)
+            .build()
+            .unwrap();
         Self {
             search_tree,
             search_options,
             ttable,
+            threads,
         }
     }
 
@@ -78,7 +84,7 @@ impl Search {
         self.ttable.flip(|| self.root_node().clear_children_links());
     }
 
-    pub fn go(&self, threads: &mut Pool, tokens: Tokens, is_interactive: bool) -> Option<String> {
+    pub fn go(&self, tokens: Tokens, is_interactive: bool) -> Option<String> {
         let state = self.search_tree.root_state();
         let mvs = state.available_moves();
 
@@ -107,23 +113,21 @@ impl Search {
         let think_time =
             TimeManagement::from_tokens(tokens, state, self.search_options.is_policy_only);
 
-        self.playout_parallel(threads, think_time, is_interactive)
+        self.playout_parallel(think_time, is_interactive)
     }
 
     fn playout_parallel(
         &self,
-        threads: &mut Pool,
         time_management: TimeManagement,
         is_interactive: bool,
     ) -> Option<String> {
         let cpuct = self.search_options.mcts_options.cpuct;
         let stop_signal = AtomicBool::new(false);
-        let thread_count = threads.thread_count();
+        let thread_count = self.threads.current_num_threads();
 
-        if self.table_capacity_remaining() < threads.thread_count() as usize {
+        if self.table_capacity_remaining() < thread_count {
             println!(
-                "info string not enough table capacity for {} threads, flipping table",
-                threads.thread_count()
+                "info string not enough table capacity for {thread_count} threads, flipping table"
             );
             self.flip_table();
         }
@@ -136,8 +140,8 @@ impl Search {
             while self.search_tree.playout(&mut tld, cpuct, tm, &stop_signal) {}
         };
 
-        threads.scoped(|s| {
-            s.execute(|| {
+        self.threads.in_place_scope(|s| {
+            s.spawn(|_| {
                 run_search_thread(cpuct, &time_management);
                 self.search_tree
                     .print_info(&time_management, self.ttable.full());
@@ -148,7 +152,7 @@ impl Search {
             for _ in 0..(thread_count - 1) {
                 let jitter = 1. + rng.next_f32_range(-0.03, 0.03);
 
-                s.execute(move || {
+                s.spawn(move |_| {
                     run_search_thread(cpuct * jitter, &TimeManagement::infinite());
                 });
             }
