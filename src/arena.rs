@@ -19,13 +19,6 @@ const CHUNK_SIZE: usize = BYTES_PER_MB * CHUNK_SIZE_MB;
 
 type Chunk = Align64<[u8; CHUNK_SIZE]>;
 
-// Declared as `static mut` to allow creating a `&mut` reference for `UnsafeCell::new`.
-// This is inherently unsafe and should only be done when strictly necessary,
-// as it allows mutable global state without synchronization.
-// In this context, it's used for an "invalid" allocator that immediately
-// re-allocates a valid chunk, so the dummy memory is never actually written to.
-static mut DUMMY_CHUNK: Chunk = Align64([0; CHUNK_SIZE]);
-
 // Global counter for arena generations, starting at 1.
 // 0 is reserved for "invalid" allocators.
 static GLOBAL_ARENA_GENERATION: AtomicU32 = AtomicU32::new(1);
@@ -96,25 +89,20 @@ impl Arena {
 
     pub fn allocator(&self) -> Allocator {
         let current_generation = self.generation.load(Ordering::Acquire);
+        let initial_chunk = self.alloc_chunk().unwrap();
         Allocator {
             generation: AtomicU32::new(current_generation),
             arena: self,
-            memory: UnsafeCell::new(self.alloc_chunk().unwrap()),
+            memory: UnsafeCell::new(Some(NonNull::from(initial_chunk))),
         }
     }
 
     pub fn invalid_allocator(&self) -> Allocator {
-        // SAFETY: DUMMY_CHUNK is `static mut`, allowing a mutable reference.
-        // This reference is immediately wrapped in `UnsafeCell` and is only
-        // used as a placeholder; `get_memory` will re-allocate a valid chunk
-        // before any actual writes occur if the generation is mismatched.
-        let dummy_ref: &mut [u8] = unsafe { &mut *DUMMY_CHUNK };
-
         Allocator {
             // Set to 0 to ensure re-allocation on first use, as 0 is an invalid generation.
             generation: AtomicU32::new(0),
             arena: self,
-            memory: UnsafeCell::new(dummy_ref),
+            memory: UnsafeCell::new(None),
         }
     }
 
@@ -139,35 +127,56 @@ unsafe impl Sync for Arena {}
 pub struct Allocator<'a> {
     generation: AtomicU32,
     arena: &'a Arena,
-    memory: UnsafeCell<&'a mut [u8]>,
+    memory: UnsafeCell<Option<NonNull<[u8]>>>,
 }
 
 const ALIGN: usize = 8;
 
 impl<'a> Allocator<'a> {
     fn get_memory(&self, sz: usize) -> Result<&'a mut [u8], Error> {
-        let memory = unsafe { &mut *self.memory.get() };
+        if sz > CHUNK_SIZE {
+            return Err(Error::Full);
+        }
 
         let current_arena_generation = self.arena.generation.load(Ordering::Acquire);
         let allocator_generation = self.generation.load(Ordering::Acquire);
 
-        if allocator_generation != current_arena_generation {
-            // Arena was cleared, this allocator is stale. Get a new chunk and update generation.
-            unsafe { *self.memory.get() = self.arena.alloc_chunk()? };
-            self.generation
-                .store(current_arena_generation, Ordering::Release);
-            self.get_memory(sz)
-        } else if sz <= memory.len() {
-            let (left, right) = memory.split_at_mut(sz);
-            unsafe { *self.memory.get() = right };
-            Ok(left)
-        } else if sz > CHUNK_SIZE {
-            Err(Error::Full)
+        let current_memory_slot = unsafe { &mut *self.memory.get() };
+
+        let mut chunk_to_use_ptr: NonNull<[u8]>;
+
+        // Condition 1: Allocator is stale (generation mismatch) or has no chunk yet (None)
+        // This covers the initial state of `invalid_allocator` (generation 0, memory None)
+        // and any allocator whose arena has been cleared.
+        if allocator_generation != current_arena_generation || current_memory_slot.is_none() {
+            let new_slice = self.arena.alloc_chunk()?;
+            chunk_to_use_ptr = NonNull::from(new_slice);
+            *current_memory_slot = Some(chunk_to_use_ptr);
+            self.generation.store(current_arena_generation, Ordering::Release);
         } else {
-            // Current chunk is full, get a new one.
-            unsafe { *self.memory.get() = self.arena.alloc_chunk()? };
-            self.get_memory(sz)
+            // Condition 2: Allocator is current, check if current chunk has enough space
+            let existing_chunk_ptr = current_memory_slot.unwrap(); // Safe: checked is_none() above
+            let existing_slice_len = unsafe { existing_chunk_ptr.as_ref().len() };
+
+            if sz <= existing_slice_len {
+                chunk_to_use_ptr = existing_chunk_ptr;
+            } else {
+                let new_slice = self.arena.alloc_chunk()?;
+                chunk_to_use_ptr = NonNull::from(new_slice);
+                *current_memory_slot = Some(chunk_to_use_ptr);
+                // Generation is already current, no need to update
+            }
         }
+
+        // Now, `chunk_to_use_ptr` holds the NonNull pointer to the slice we will use.
+        // It's guaranteed to be a valid pointer to a slice of at least `sz` length
+        // (because `alloc_chunk` returns a `CHUNK_SIZE` slice, and `sz <= CHUNK_SIZE` is checked).
+        let slice_to_return = unsafe { chunk_to_use_ptr.as_mut() };
+        let (left, right) = slice_to_return.split_at_mut(sz);
+
+        // Update the remaining part of the slice in the Allocator's memory slot
+        *current_memory_slot = Some(NonNull::from(right));
+        Ok(left)
     }
 
     pub fn alloc_one<T>(&self) -> Result<ArenaRef<MaybeUninit<T>>, Error> {
