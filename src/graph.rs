@@ -11,6 +11,7 @@ use crate::evaluation::{self, Flag};
 use crate::state::State;
 use crate::transposition_table::AllocNodeResult;
 
+#[repr(C)]
 pub struct MoveEdge {
     sum_evaluations: AtomicI64,
     visits: AtomicU32,
@@ -41,6 +42,7 @@ impl Deref for Edges {
 unsafe impl Send for Edges {}
 unsafe impl Sync for Edges {}
 
+#[repr(C)]
 #[derive(Clone)]
 pub struct PositionNode {
     edges: Edges,
@@ -146,6 +148,16 @@ impl PositionNode {
 
     pub fn generation(&self) -> u32 {
         self.generation
+    }
+
+    /// Checks if this `PositionNode` is stale relative to the given current arena generation.
+    ///
+    /// A node is considered stale if its generation does not match the current active
+    /// arena's generation. This typically means the arena it was allocated in has
+    /// been cleared or is no longer the active one for new allocations.
+    #[must_use]
+    pub fn is_stale(&self, current_arena_generation: u32) -> bool {
+        self.generation != current_arena_generation
     }
 }
 
