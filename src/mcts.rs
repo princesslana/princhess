@@ -41,12 +41,12 @@ impl Mcts {
     pub fn new(state: State, table: &LRTable, engine_options: EngineOptions) -> Self {
         let root_table = TranspositionTable::for_root();
 
-        let root_allocator = |sz| -> Result<_, ArenaError> {
-            let allocator = root_table
-                .arena()
-                .allocator()
-                .expect("Failed to allocate initial chunk for root node");
-            Ok((allocator.alloc_one()?, allocator.alloc_slice(sz)?))
+        let root_alloc = root_table
+            .arena()
+            .allocator()
+            .expect("Failed to allocate initial chunk for root node");
+        let root_allocator = move |sz| -> Result<_, ArenaError> {
+            Ok((root_alloc.alloc_one()?, root_alloc.alloc_slice(sz)?))
         };
 
         let mut root_node_arena_ref = create_node(
