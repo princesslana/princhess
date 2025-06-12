@@ -143,6 +143,7 @@ impl LRTable {
         )
     }
 
+    #[must_use]
     pub fn full(&self) -> usize {
         self.tables
             .iter()
@@ -151,8 +152,14 @@ impl LRTable {
             / self.tables.len()
     }
 
+    #[must_use]
     pub fn capacity_remaining(&self) -> usize {
         self.current_table().arena().capacity_remaining()
+    }
+
+    #[must_use]
+    pub fn current_generation(&self) -> u32 {
+        self.current_table().generation()
     }
 
     pub fn insert<'a>(&'a self, key: &State, value: ArenaRef<PositionNode>) -> &'a PositionNode {

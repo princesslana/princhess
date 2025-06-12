@@ -105,6 +105,13 @@ impl Mcts {
         let mut evaln = 0;
 
         loop {
+            // If the current node is not the root node (path is not empty) and it is stale relative
+            // to the current active arena's generation, abort the playout. The root node's arena
+            // is separate and its generation is stable.
+            if !path.is_empty() && node.is_stale(tld.ttable.current_generation()) {
+                return true;
+            }
+
             if node.is_terminal() || node.edges().is_empty() {
                 break;
             }
@@ -224,11 +231,11 @@ impl Mcts {
         choice: &'a MoveEdge,
         tld: &mut ThreadData<'a>,
     ) -> Result<&'a PositionNode, ArenaError> {
-        let current_arena_generation = tld.ttable.current_table().generation();
+        let current_arena_generation = tld.ttable.current_generation();
 
         // If the child is already there, check its generation.
         if let Some(child) = choice.child() {
-            if child.generation() == current_arena_generation {
+            if !child.is_stale(current_arena_generation) {
                 // Child is valid and current, return it.
                 return Ok(child);
             }
