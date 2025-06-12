@@ -87,17 +87,17 @@ impl Arena {
         Ok(&mut **chunk_ref)
     }
 
-    pub fn allocator(&self) -> Allocator {
+    pub fn allocator(&self) -> Result<Allocator, Error> {
         let current_generation = self.generation.load(Ordering::Acquire);
-        let initial_chunk = self.alloc_chunk().unwrap();
-        Allocator {
+        let initial_chunk = self.alloc_chunk()?;
+        Ok(Allocator {
             generation: AtomicU32::new(current_generation),
             arena: self,
             memory: UnsafeCell::new(Some(NonNull::from(initial_chunk))),
-        }
+        })
     }
 
-    pub fn invalid_allocator(&self) -> Allocator {
+    pub fn stale_allocator(&self) -> Allocator {
         Allocator {
             // Set to 0 to ensure re-allocation on first use, as 0 is an invalid generation.
             generation: AtomicU32::new(0),
@@ -134,9 +134,8 @@ const ALIGN: usize = 8;
 
 impl<'a> Allocator<'a> {
     fn get_memory(&self, sz: usize) -> Result<&'a mut [u8], Error> {
-        if sz > CHUNK_SIZE {
-            return Err(Error::Full);
-        }
+        // A single allocation request should never be larger than a chunk.
+        assert!(sz <= CHUNK_SIZE, "Allocation request exceeds CHUNK_SIZE");
 
         let current_arena_generation = self.arena.generation.load(Ordering::Acquire);
         let allocator_generation = self.generation.load(Ordering::Acquire);
@@ -146,16 +145,18 @@ impl<'a> Allocator<'a> {
         let mut chunk_to_use_ptr: NonNull<[u8]>;
 
         // Condition 1: Allocator is stale (generation mismatch) or has no chunk yet (None)
-        // This covers the initial state of `invalid_allocator` (generation 0, memory None)
+        // This covers the initial state of `stale_allocator` (generation 0, memory None)
         // and any allocator whose arena has been cleared.
         if allocator_generation != current_arena_generation || current_memory_slot.is_none() {
             let new_slice = self.arena.alloc_chunk()?;
             chunk_to_use_ptr = NonNull::from(new_slice);
             *current_memory_slot = Some(chunk_to_use_ptr);
-            self.generation.store(current_arena_generation, Ordering::Release);
+            self.generation
+                .store(current_arena_generation, Ordering::Release);
         } else {
             // Condition 2: Allocator is current, check if current chunk has enough space
-            let existing_chunk_ptr = current_memory_slot.unwrap(); // Safe: checked is_none() above
+            let existing_chunk_ptr = current_memory_slot
+                .expect("Allocator memory slot should be initialized and not None at this point");
             let existing_slice_len = unsafe { existing_chunk_ptr.as_ref().len() };
 
             if sz <= existing_slice_len {

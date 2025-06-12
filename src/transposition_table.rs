@@ -240,7 +240,7 @@ pub struct LRAllocator<'a> {
 impl<'a> LRAllocator<'a> {
     pub fn from_arenas(current: Arc<AtomicBool>, left: &'a Arena, right: &'a Arena) -> Self {
         Self {
-            allocators: [left.invalid_allocator(), right.invalid_allocator()],
+            allocators: [left.stale_allocator(), right.stale_allocator()],
             current,
         }
     }
