@@ -9,6 +9,22 @@ enum WorkerMessage<'scope> {
     Terminate,
 }
 
+// SAFETY:
+// This function transmutes a 'scope lifetime to a 'static lifetime.
+// This is safe because the ThreadPool::scope method guarantees that:
+// 1. The Scope::drop implementation will block until all tasks spawned within that scope
+//    have completed their execution.
+// 2. The active_tasks counter is accurately maintained: it's incremented before sending
+//    and decremented by TaskCompletionGuard (even on panics) or rolled back on send failures.
+//    This ensures Scope::drop correctly identifies when all tasks are done.
+// 3. Therefore, no task will ever outlive the 'scope lifetime from which it borrowed data,
+//    even though the type system is bypassed with 'static.
+unsafe fn promote_task<'scope>(
+    task: Box<dyn FnOnce() + Send + 'scope>,
+) -> Box<dyn FnOnce() + Send + 'static> {
+    std::mem::transmute(task)
+}
+
 struct ScopedSender<'scope> {
     sender: Sender<WorkerMessage<'static>>,
     _marker: PhantomData<&'scope ()>,
@@ -20,7 +36,7 @@ impl<'scope> ScopedSender<'scope> {
         F: FnOnce() + Send + 'scope,
     {
         let task: Box<dyn FnOnce() + Send + 'scope> = Box::new(f);
-        let task_static: Box<dyn FnOnce() + Send + 'static> = std::mem::transmute(task);
+        let task_static = promote_task(task);
         self.sender.send(WorkerMessage::RunTask(task_static))
     }
 }
@@ -38,16 +54,27 @@ impl<'scope> Scope<'scope> {
     where
         F: FnOnce() + Send + 'scope,
     {
-        *self.active_tasks.lock().unwrap() += 1;
+        // Acquire the lock to increment the counter. Panic if mutex is poisoned.
+        let mut active = self
+            .active_tasks
+            .lock()
+            .expect("active_tasks mutex poisoned during task spawn increment");
+        *active += 1;
+        drop(active); // Release the lock before sending
 
         // SAFETY: The `ThreadPool::scope` method guarantees that this `Scope`
         // and all tasks spawned from it will complete before the 'scope lifetime ends.
         let send_result = unsafe { self.sender.send_task(f) };
 
-        // If sending failed (e.g., channel disconnected during shutdown),
+        // If sending failed (e.g., channel disconnected due to shutdown),
         // decrement the counter to prevent deadlock in Scope::drop.
         if send_result.is_err() {
-            *self.active_tasks.lock().unwrap() -= 1;
+            // Acquire the lock to decrement the counter. Panic if mutex is poisoned.
+            let mut active = self
+                .active_tasks
+                .lock()
+                .expect("active_tasks mutex poisoned during task spawn rollback decrement");
+            *active -= 1;
         }
     }
 }
@@ -56,9 +83,17 @@ impl Drop for Scope<'_> {
     fn drop(&mut self) {
         // Wait for all tasks spawned within this scope to complete.
         // This is the crucial part that ensures safety for the transmuted lifetimes.
-        let mut active = self.active_tasks.lock().unwrap();
+        // Acquire the lock. Panic if mutex is poisoned.
+        let mut active = self
+            .active_tasks
+            .lock()
+            .expect("active_tasks mutex poisoned during scope drop wait (initial lock)");
         while *active > 0 {
-            active = self.task_completed_cvar.wait(active).unwrap();
+            // Wait on the condition variable. Panic if mutex is poisoned.
+            active = self
+                .task_completed_cvar
+                .wait(active)
+                .expect("active_tasks mutex poisoned during condvar wait");
         }
     }
 }
@@ -71,7 +106,11 @@ struct TaskCompletionGuard {
 
 impl Drop for TaskCompletionGuard {
     fn drop(&mut self) {
-        *self.active_tasks.lock().unwrap() -= 1;
+        // Acquire the lock to decrement the counter. Panic if mutex is poisoned.
+        *self
+            .active_tasks
+            .lock()
+            .expect("active_tasks mutex poisoned during task completion decrement") -= 1;
         self.task_completed_cvar.notify_one();
     }
 }
@@ -101,8 +140,9 @@ impl Worker {
                     // Catch panics from the user-provided task to ensure the counter is decremented.
                     let result = catch_unwind(AssertUnwindSafe(task));
 
+                    // If the task panicked, log the error but keep the worker thread alive.
                     if let Err(e) = result {
-                        std::panic::resume_unwind(e);
+                        println!("info string Worker thread task panicked: {e:?}");
                     }
                 }
                 WorkerMessage::Terminate => {
