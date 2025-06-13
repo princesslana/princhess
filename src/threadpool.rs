@@ -1,5 +1,6 @@
 use std::marker::PhantomData;
-use std::sync::mpsc::{channel, Receiver, Sender};
+use std::panic::{catch_unwind, AssertUnwindSafe};
+use std::sync::mpsc::{channel, Receiver, SendError, Sender};
 use std::sync::{Arc, Condvar, Mutex};
 use std::thread::{self, JoinHandle};
 
@@ -14,15 +15,13 @@ struct ScopedSender<'scope> {
 }
 
 impl<'scope> ScopedSender<'scope> {
-    unsafe fn send_task<F>(&self, f: F)
+    unsafe fn send_task<F>(&self, f: F) -> Result<(), SendError<WorkerMessage<'static>>>
     where
         F: FnOnce() + Send + 'scope,
     {
         let task: Box<dyn FnOnce() + Send + 'scope> = Box::new(f);
         let task_static: Box<dyn FnOnce() + Send + 'static> = std::mem::transmute(task);
-        self.sender
-            .send(WorkerMessage::RunTask(task_static))
-            .unwrap();
+        self.sender.send(WorkerMessage::RunTask(task_static))
     }
 }
 
@@ -40,10 +39,15 @@ impl<'scope> Scope<'scope> {
         F: FnOnce() + Send + 'scope,
     {
         *self.active_tasks.lock().unwrap() += 1;
+
         // SAFETY: The `ThreadPool::scope` method guarantees that this `Scope`
         // and all tasks spawned from it will complete before the 'scope lifetime ends.
-        unsafe {
-            self.sender.send_task(f);
+        let send_result = unsafe { self.sender.send_task(f) };
+
+        // If sending failed (e.g., channel disconnected during shutdown),
+        // decrement the counter to prevent deadlock in Scope::drop.
+        if send_result.is_err() {
+            *self.active_tasks.lock().unwrap() -= 1;
         }
     }
 }
@@ -56,6 +60,19 @@ impl Drop for Scope<'_> {
         while *active > 0 {
             active = self.task_completed_cvar.wait(active).unwrap();
         }
+    }
+}
+
+// Helper struct to ensure active_tasks is decremented even on panic
+struct TaskCompletionGuard {
+    active_tasks: Arc<Mutex<usize>>,
+    task_completed_cvar: Arc<Condvar>,
+}
+
+impl Drop for TaskCompletionGuard {
+    fn drop(&mut self) {
+        *self.active_tasks.lock().unwrap() -= 1;
+        self.task_completed_cvar.notify_one();
     }
 }
 
@@ -76,9 +93,17 @@ impl Worker {
 
             match message {
                 WorkerMessage::RunTask(task) => {
-                    task();
-                    *active_tasks.lock().unwrap() -= 1;
-                    task_completed_cvar.notify_one();
+                    let _guard = TaskCompletionGuard {
+                        active_tasks: Arc::clone(&active_tasks),
+                        task_completed_cvar: Arc::clone(&task_completed_cvar),
+                    };
+
+                    // Catch panics from the user-provided task to ensure the counter is decremented.
+                    let result = catch_unwind(AssertUnwindSafe(task));
+
+                    if let Err(e) = result {
+                        std::panic::resume_unwind(e);
+                    }
                 }
                 WorkerMessage::Terminate => {
                     break;
@@ -98,6 +123,7 @@ pub struct ThreadPool {
     sender: Sender<WorkerMessage<'static>>,
     active_tasks: Arc<Mutex<usize>>,
     task_completed_cvar: Arc<Condvar>,
+    scope_guard: Mutex<()>,
 }
 
 impl ThreadPool {
@@ -125,6 +151,7 @@ impl ThreadPool {
             sender,
             active_tasks,
             task_completed_cvar,
+            scope_guard: Mutex::new(()),
         }
     }
 
@@ -134,6 +161,11 @@ impl ThreadPool {
     where
         F: FnOnce(&Scope<'scope>),
     {
+        let _guard = self
+            .scope_guard
+            .try_lock()
+            .expect("ThreadPool::scope called concurrently, which is not allowed.");
+
         // The 'static lifetime on `WorkerMessage` is a lie, but it's made safe
         // by the blocking `wait` in the `Scope`'s `Drop` implementation.
         let scoped_sender = ScopedSender {
@@ -148,9 +180,6 @@ impl ThreadPool {
         };
 
         f(&scope_obj);
-
-        // The waiting logic is now handled by the `Drop` implementation of `scope_obj`
-        // when it goes out of scope here.
     }
 
     pub fn current_num_threads(&self) -> usize {
