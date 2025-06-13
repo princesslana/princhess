@@ -1,5 +1,6 @@
-use rayon::{ThreadPool, ThreadPoolBuilder};
+use crate::threadpool::{Scope, ThreadPool};
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 
 use crate::chess::Move;
 use crate::evaluation;
@@ -44,10 +45,7 @@ impl Engine {
     pub fn new(state: State, engine_options: EngineOptions) -> Self {
         let ttable = LRTable::empty(engine_options.hash_size_mb);
         let mcts = Mcts::new(state, &ttable, engine_options);
-        let threads = ThreadPoolBuilder::new()
-            .num_threads(engine_options.threads as usize)
-            .build()
-            .unwrap();
+        let threads = ThreadPool::new(engine_options.threads as usize);
         Self {
             mcts,
             engine_options,
@@ -81,7 +79,8 @@ impl Engine {
     }
 
     pub fn flip_table(&self) {
-        self.ttable.flip(|| self.root_node().clear_children_links());
+        self.ttable
+            .flip(|| self.mcts.root_node().clear_children_links());
     }
 
     pub fn go(&self, tokens: Tokens, is_interactive: bool) -> Option<String> {
@@ -122,7 +121,7 @@ impl Engine {
         is_interactive: bool,
     ) -> Option<String> {
         let cpuct = self.engine_options.mcts_options.cpuct;
-        let stop_signal = AtomicBool::new(false);
+        let stop_signal = Arc::new(AtomicBool::new(false));
         let thread_count = self.threads.current_num_threads();
 
         if self.table_capacity_remaining() < thread_count {
@@ -135,26 +134,31 @@ impl Engine {
         let mut rng = Rng::default();
         let mut returned_line: Option<String> = None;
 
-        let run_search_thread = |cpuct: f32, tm: &TimeManagement| {
-            let mut tld = ThreadData::create(&self.ttable);
-            while self.mcts.playout(&mut tld, cpuct, tm, &stop_signal) {}
-        };
-
-        self.threads.in_place_scope(|s| {
-            s.spawn(|_| {
-                run_search_thread(cpuct, &time_management);
-                self.mcts.print_info(&time_management, self.ttable.full());
-                stop_signal.store(true, Ordering::Relaxed);
-                println!("bestmove {}", self.to_uci(self.best_move()));
-            });
-
+        self.threads.scope(|s: &Scope| {
             for _ in 0..(thread_count - 1) {
                 let jitter = 1. + rng.next_f32_range(-0.03, 0.03);
+                let stop_signal_clone = Arc::clone(&stop_signal);
 
-                s.spawn(move |_| {
-                    run_search_thread(cpuct * jitter, &TimeManagement::infinite());
+                // `s.spawn` allows borrowing from the current stack frame (`self`, `stop_signal_clone`)
+                s.spawn(move || {
+                    let mut tld_worker = ThreadData::create(&self.ttable);
+                    while self.mcts.playout(
+                        &mut tld_worker,
+                        cpuct * jitter,
+                        &TimeManagement::infinite(),
+                        &stop_signal_clone,
+                    ) {}
                 });
             }
+
+            let mut tld_main = ThreadData::create(&self.ttable);
+            while self
+                .mcts
+                .playout(&mut tld_main, cpuct, &time_management, &stop_signal)
+            {}
+            self.mcts.print_info(&time_management, self.ttable.full());
+            stop_signal.store(true, Ordering::Relaxed);
+            println!("bestmove {}", self.to_uci(self.best_move()));
 
             if is_interactive {
                 while !stop_signal.load(Ordering::Relaxed) {
@@ -181,7 +185,8 @@ impl Engine {
                     }
                 }
             }
-        });
+        }); // The `scope` method blocks until all spawned tasks are complete.
+
         returned_line
     }
 
@@ -260,7 +265,7 @@ impl Engine {
 
 // eval here is [-1.0, 1.0]
 #[must_use]
-pub fn eval_in_cp(eval: f32) -> String {
+pub fn eval_in_cp(eval: f32) -> i64 {
     let cps = if eval > 0.5 {
         18. * (eval - 0.5) + 1.
     } else if eval < -0.5 {
@@ -269,5 +274,5 @@ pub fn eval_in_cp(eval: f32) -> String {
         2. * eval
     };
 
-    format!("cp {}", (cps * 100.).round().clamp(-1000., 1000.) as i64)
+    (cps * 100.).round().clamp(-1000., 1000.) as i64
 }

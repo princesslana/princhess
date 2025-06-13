@@ -393,7 +393,7 @@ impl Mcts {
 
             write!(
                 info_str,
-                "score {} ",
+                "score cp {} ",
                 eval_in_cp(edge.reward().average as f32 / SCALE)
             )
             .unwrap();
