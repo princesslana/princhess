@@ -12,7 +12,7 @@ struct ScopedSender<'pool, 'scope> {
     _marker: std::marker::PhantomData<&'scope ()>,
 }
 
-impl<'pool, 'scope> ScopedSender<'pool, 'scope> {
+impl<'scope> ScopedSender<'_, 'scope> {
     unsafe fn send_task<F>(&self, f: F)
     where
         F: FnOnce() + Send + 'scope,

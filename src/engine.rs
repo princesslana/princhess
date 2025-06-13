@@ -1,6 +1,5 @@
 use crate::threadpool::{Scope, ThreadPool};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
 
 use crate::chess::Move;
 use crate::evaluation;
@@ -79,8 +78,7 @@ impl Engine {
     }
 
     pub fn flip_table(&self) {
-        self.ttable
-            .flip(|| self.mcts.root_node().clear_children_links());
+        self.ttable.flip(|| self.root_node().clear_children_links());
     }
 
     pub fn go(&self, tokens: Tokens, is_interactive: bool) -> Option<String> {
@@ -121,7 +119,7 @@ impl Engine {
         is_interactive: bool,
     ) -> Option<String> {
         let cpuct = self.engine_options.mcts_options.cpuct;
-        let stop_signal = Arc::new(AtomicBool::new(false));
+        let stop_signal = AtomicBool::new(false);
         let thread_count = self.threads.current_num_threads();
 
         if self.table_capacity_remaining() < thread_count {
@@ -134,31 +132,26 @@ impl Engine {
         let mut rng = Rng::default();
         let mut returned_line: Option<String> = None;
 
+        let run_search_thread = |cpuct: f32, tm: &TimeManagement| {
+            let mut tld = ThreadData::create(&self.ttable);
+            while self.mcts.playout(&mut tld, cpuct, tm, &stop_signal) {}
+        };
+
         self.threads.scope(|s: &Scope| {
+            s.spawn(|| {
+                run_search_thread(cpuct, &time_management);
+                self.mcts.print_info(&time_management, self.ttable.full());
+                stop_signal.store(true, Ordering::Relaxed);
+                println!("bestmove {}", self.to_uci(self.best_move()));
+            });
+
             for _ in 0..(thread_count - 1) {
                 let jitter = 1. + rng.next_f32_range(-0.03, 0.03);
-                let stop_signal_clone = Arc::clone(&stop_signal);
 
-                // `s.spawn` allows borrowing from the current stack frame (`self`, `stop_signal_clone`)
                 s.spawn(move || {
-                    let mut tld_worker = ThreadData::create(&self.ttable);
-                    while self.mcts.playout(
-                        &mut tld_worker,
-                        cpuct * jitter,
-                        &TimeManagement::infinite(),
-                        &stop_signal_clone,
-                    ) {}
+                    run_search_thread(cpuct * jitter, &TimeManagement::infinite());
                 });
             }
-
-            let mut tld_main = ThreadData::create(&self.ttable);
-            while self
-                .mcts
-                .playout(&mut tld_main, cpuct, &time_management, &stop_signal)
-            {}
-            self.mcts.print_info(&time_management, self.ttable.full());
-            stop_signal.store(true, Ordering::Relaxed);
-            println!("bestmove {}", self.to_uci(self.best_move()));
 
             if is_interactive {
                 while !stop_signal.load(Ordering::Relaxed) {
@@ -185,7 +178,7 @@ impl Engine {
                     }
                 }
             }
-        }); // The `scope` method blocks until all spawned tasks are complete.
+        });
 
         returned_line
     }
@@ -238,7 +231,7 @@ impl Engine {
         let eval = evaluation::value(self.mcts.root_state());
         let scaled = eval as f32 / SCALE;
         println!(
-            "info string eval {} scaled {} cp {}",
+            "info string eval {} scaled {} {}",
             eval,
             scaled,
             eval_in_cp(scaled)
@@ -265,7 +258,7 @@ impl Engine {
 
 // eval here is [-1.0, 1.0]
 #[must_use]
-pub fn eval_in_cp(eval: f32) -> i64 {
+pub fn eval_in_cp(eval: f32) -> String {
     let cps = if eval > 0.5 {
         18. * (eval - 0.5) + 1.
     } else if eval < -0.5 {
@@ -274,5 +267,5 @@ pub fn eval_in_cp(eval: f32) -> i64 {
         2. * eval
     };
 
-    (cps * 100.).round().clamp(-1000., 1000.) as i64
+    format!("cp {}", (cps * 100.).round().clamp(-1000., 1000.) as i64)
 }
