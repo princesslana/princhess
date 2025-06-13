@@ -142,7 +142,14 @@ impl Worker {
 
                     // If the task panicked, log the error but keep the worker thread alive.
                     if let Err(e) = result {
-                        println!("info string Worker thread task panicked: {e:?}");
+                        let panic_message = if let Some(s) = e.downcast_ref::<&str>() {
+                            s
+                        } else if let Some(s) = e.downcast_ref::<String>() {
+                            s
+                        } else {
+                            "unknown panic payload"
+                        };
+                        println!("info string Worker thread task panicked: {panic_message}");
                     }
                 }
                 WorkerMessage::Terminate => {
