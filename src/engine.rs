@@ -1,4 +1,3 @@
-use crate::threadpool::{Scope, ThreadPool};
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use crate::chess::Move;
@@ -9,6 +8,7 @@ use crate::mcts::Mcts;
 use crate::options::EngineOptions;
 use crate::state::State;
 use crate::tablebase;
+use crate::threadpool::{Scope, ThreadPool};
 use crate::time_management::TimeManagement;
 use crate::transposition_table::{LRAllocator, LRTable};
 use crate::uci::{read_stdin, Tokens};
