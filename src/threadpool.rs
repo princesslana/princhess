@@ -1,3 +1,4 @@
+use std::marker::PhantomData;
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::{Arc, Condvar, Mutex};
 use std::thread::{self, JoinHandle};
@@ -7,12 +8,12 @@ enum WorkerMessage<'scope> {
     Terminate,
 }
 
-struct ScopedSender<'pool, 'scope> {
-    sender: &'pool Sender<WorkerMessage<'static>>,
-    _marker: std::marker::PhantomData<&'scope ()>,
+struct ScopedSender<'scope> {
+    sender: Sender<WorkerMessage<'static>>,
+    _marker: PhantomData<&'scope ()>,
 }
 
-impl<'scope> ScopedSender<'_, 'scope> {
+impl<'scope> ScopedSender<'scope> {
     unsafe fn send_task<F>(&self, f: F)
     where
         F: FnOnce() + Send + 'scope,
@@ -26,9 +27,8 @@ impl<'scope> ScopedSender<'_, 'scope> {
 }
 
 pub struct Scope<'scope> {
-    sender: ScopedSender<'scope, 'scope>,
+    sender: ScopedSender<'scope>,
     active_tasks: Arc<Mutex<usize>>,
-    #[allow(dead_code)]
     task_completed_cvar: Arc<Condvar>,
 }
 
@@ -44,6 +44,17 @@ impl<'scope> Scope<'scope> {
         // and all tasks spawned from it will complete before the 'scope lifetime ends.
         unsafe {
             self.sender.send_task(f);
+        }
+    }
+}
+
+impl Drop for Scope<'_> {
+    fn drop(&mut self) {
+        // Wait for all tasks spawned within this scope to complete.
+        // This is the crucial part that ensures safety for the transmuted lifetimes.
+        let mut active = self.active_tasks.lock().unwrap();
+        while *active > 0 {
+            active = self.task_completed_cvar.wait(active).unwrap();
         }
     }
 }
@@ -119,16 +130,15 @@ impl ThreadPool {
 
     /// Executes a closure within a scope, allowing tasks to borrow from that scope.
     /// Blocks until all spawned tasks within the scope are complete.
-    pub fn scope<'scope, F, R>(&'scope self, f: F) -> R
+    pub fn scope<'scope, F>(&'scope self, f: F)
     where
-        F: FnOnce(&Scope<'scope>) -> R,
+        F: FnOnce(&Scope<'scope>),
     {
-        // Create a sender that can send 'scope-bound tasks.
         // The 'static lifetime on `WorkerMessage` is a lie, but it's made safe
-        // by the blocking `wait` below.
+        // by the blocking `wait` in the `Scope`'s `Drop` implementation.
         let scoped_sender = ScopedSender {
-            sender: &self.sender,
-            _marker: std::marker::PhantomData,
+            sender: self.sender.clone(),
+            _marker: PhantomData,
         };
 
         let scope_obj = Scope {
@@ -137,16 +147,10 @@ impl ThreadPool {
             task_completed_cvar: Arc::clone(&self.task_completed_cvar),
         };
 
-        let result = f(&scope_obj);
+        f(&scope_obj);
 
-        // Wait for all tasks spawned within this scope to complete.
-        // This is the crucial part that ensures safety for the transmuted lifetimes.
-        let mut active = self.active_tasks.lock().unwrap();
-        while *active > 0 {
-            active = self.task_completed_cvar.wait(active).unwrap();
-        }
-
-        result
+        // The waiting logic is now handled by the `Drop` implementation of `scope_obj`
+        // when it goes out of scope here.
     }
 
     pub fn current_num_threads(&self) -> usize {
