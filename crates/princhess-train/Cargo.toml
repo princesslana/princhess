@@ -5,8 +5,7 @@ edition = "2021"
 publish = false
 
 [dependencies]
-princhess = { path = "../../" }
-
-goober = { workspace = true }
 arrayvec = { workspace = true }
 bytemuck = { workspace = true }
+goober = { workspace = true }
+princhess = { path = "../../" }
