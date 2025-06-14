@@ -15,7 +15,7 @@ path = "src/main.rs"
 
 [workspace]
 members = [
-    ".", # This refers to the current crate (princhess)
+    ".",
     "crates/princhess-train",
 ]
 default-members = [".", "crates/princhess-train"]
