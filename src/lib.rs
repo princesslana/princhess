@@ -11,7 +11,6 @@ pub mod options;
 pub mod quantized_policy;
 pub mod quantized_value;
 pub mod state;
-pub mod subnets;
 pub mod tablebase;
 pub mod time_management;
 pub mod train;

@@ -1,12 +1,18 @@
 use bytemuck::{allocation, Zeroable};
+use goober::activation::ReLU;
+use goober::layer::SparseConnected;
 use goober::{FeedForwardNetwork, OutputLayer, SparseVector};
+use princhess::chess::Square;
+use princhess::math::Rng;
+use princhess::nets::MoveIndex;
+use princhess::quantized_policy::{
+    QuantizedPolicyNetwork, RawPolicyPieceSqBias, RawPolicyPieceSqWeights, RawPolicySqBias,
+    RawPolicySqWeights, ATTENTION_SIZE, INPUT_SIZE, QA,
+};
 use std::fmt::{self, Display};
 use std::ops::AddAssign;
 
-use princhess::chess::Square;
-use princhess::nets::MoveIndex;
-use princhess::quantized_policy::QuantizedPolicyNetwork;
-use princhess::subnets::LinearNetwork;
+use crate::nets::{q_i16, randomize_sparse};
 
 #[allow(clippy::module_name_repetitions)]
 #[derive(Zeroable)]
@@ -164,7 +170,47 @@ impl PolicyNetwork {
 
     #[must_use]
     pub fn to_boxed_and_quantized(&self) -> Box<QuantizedPolicyNetwork> {
-        QuantizedPolicyNetwork::boxed_from_slices(&self.sq, &self.piece_sq)
+        let mut sq_weights: Box<RawPolicySqWeights> = allocation::zeroed_box();
+        let mut sq_bias: Box<RawPolicySqBias> = allocation::zeroed_box();
+        let mut piece_sq_weights: Box<RawPolicyPieceSqWeights> = allocation::zeroed_box();
+        let mut piece_sq_bias: Box<RawPolicyPieceSqBias> = allocation::zeroed_box();
+
+        for (subnet, raw) in self.sq.iter().zip(sq_weights.iter_mut()) {
+            for (row_idx, weights) in raw.iter_mut().enumerate() {
+                let row = subnet.output.weights_row(row_idx);
+                for weight_idx in 0..ATTENTION_SIZE {
+                    weights[weight_idx] = q_i16(row[weight_idx], QA);
+                }
+            }
+        }
+
+        for (subnet, raw) in self.sq.iter().zip(sq_bias.iter_mut()) {
+            for (weight_idx, bias) in raw.iter_mut().enumerate() {
+                *bias = q_i16(subnet.output.bias()[weight_idx], QA);
+            }
+        }
+
+        for (subnet, raw) in self.piece_sq.iter().zip(piece_sq_weights.iter_mut()) {
+            for (row_idx, weights) in raw.iter_mut().enumerate() {
+                let row = subnet.output.weights_row(row_idx);
+                for weight_idx in 0..ATTENTION_SIZE {
+                    weights[weight_idx] = q_i16(row[weight_idx], QA);
+                }
+            }
+        }
+
+        for (subnet, raw) in self.piece_sq.iter().zip(piece_sq_bias.iter_mut()) {
+            for (weight_idx, bias) in raw.iter_mut().enumerate() {
+                *bias = q_i16(subnet.output.bias()[weight_idx], QA);
+            }
+        }
+
+        QuantizedPolicyNetwork::boxed_from_slices(
+            &sq_weights,
+            &sq_bias,
+            &piece_sq_weights,
+            &piece_sq_bias,
+        )
     }
 }
 
@@ -186,6 +232,30 @@ impl AddAssign<&Self> for PolicyCount {
         for (lhs, rhs) in self.piece_sq.iter_mut().zip(&rhs.piece_sq) {
             *lhs += rhs;
         }
+    }
+}
+
+type Linear = SparseConnected<ReLU, INPUT_SIZE, ATTENTION_SIZE>;
+
+#[repr(C)]
+#[derive(FeedForwardNetwork)]
+pub struct LinearNetwork {
+    output: Linear,
+}
+
+unsafe impl Zeroable for LinearNetwork {}
+
+impl LinearNetwork {
+    pub fn randomize(&mut self) {
+        let mut rng = Rng::default();
+
+        randomize_sparse(&mut self.output, &mut rng);
+    }
+}
+
+impl Display for LinearNetwork {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{INPUT_SIZE}->{ATTENTION_SIZE}")
     }
 }
 

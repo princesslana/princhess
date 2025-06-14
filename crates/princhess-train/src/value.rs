@@ -2,8 +2,7 @@ use bytemuck::{allocation, Zeroable};
 use goober::activation::Tanh;
 use goober::layer::{DenseConnected, SparseConnected};
 use goober::{FeedForwardNetwork, OutputLayer, SparseVector, Vector};
-use princhess::math::{randomize_dense, randomize_sparse, Rng};
-use princhess::nets::{q_i16, q_i32};
+use princhess::math::Rng;
 use princhess::quantized_value::{
     QuantizedValueNetwork, RawFeatureBias, RawFeatureWeights, RawOutputWeights, HIDDEN_SIZE,
     INPUT_SIZE, QA, QAB, QB,
@@ -12,7 +11,7 @@ use std::boxed::Box;
 use std::fmt::{self, Display, Formatter};
 use std::ops::AddAssign;
 
-use crate::activation::SCReLU;
+use crate::nets::{q_i16, q_i32, randomize_dense, randomize_sparse, SCReLU};
 
 pub const OUTPUT_SIZE: usize = 1;
 

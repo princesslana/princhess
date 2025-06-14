@@ -5,7 +5,6 @@ use std::ops::AddAssign;
 use std::path::Path;
 
 use crate::chess::{Piece, Rank, Square};
-use crate::subnets::QAA;
 
 #[derive(Clone, Copy, Debug, Zeroable)]
 #[repr(C)]
@@ -28,14 +27,14 @@ impl<T: AddAssign, const H: usize> Accumulator<T, H> {
 
 impl<const H: usize> Accumulator<i16, H> {
     #[must_use]
-    pub fn dot_relu(&self, rhs: &Accumulator<i16, H>) -> f32 {
+    pub fn dot_relu<const Q: i32>(&self, rhs: &Accumulator<i16, H>) -> f32 {
         let mut result: i32 = 0;
 
         for (a, b) in self.vals.iter().zip(&rhs.vals) {
             result += relu(*a) * relu(*b);
         }
 
-        result as f32 / QAA as f32
+        result as f32 / Q as f32
     }
 }
 
@@ -50,20 +49,6 @@ where
 pub fn screlu(x: i16, q: i32) -> i32 {
     let clamped = i32::from(x).clamp(0, q);
     clamped * clamped
-}
-
-#[must_use]
-pub fn q_i16(x: f32, q: i32) -> i16 {
-    let quantized = x * q as f32;
-    assert!(f32::from(i16::MIN) < quantized && quantized < f32::from(i16::MAX),);
-    quantized as i16
-}
-
-#[must_use]
-pub fn q_i32(x: f32, q: i32) -> i32 {
-    let quantized = x * q as f32;
-    assert!((i32::MIN as f32) < quantized && quantized < i32::MAX as f32);
-    quantized as i32
 }
 
 pub fn save_to_bin<T: Pod>(dir: &Path, file_name: &str, data: &T) {

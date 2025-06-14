@@ -1,14 +1,27 @@
 use bytemuck::{allocation, Pod, Zeroable};
 use std::path::Path;
 
-use crate::nets::{save_to_bin, MoveIndex};
-use crate::subnets::{LinearNetwork, QuantizedLinearNetwork, RawLinearBias, RawLinearWeights};
+use crate::mem::Align16;
+use crate::nets::{save_to_bin, Accumulator, MoveIndex};
+use crate::state;
 use goober::SparseVector;
+
+pub const INPUT_SIZE: usize = state::POLICY_NUMBER_FEATURES;
+pub const ATTENTION_SIZE: usize = 8;
+
+pub const QA: i32 = 256;
+pub const QAA: i32 = QA * QA;
 
 pub type RawPolicySqWeights = [RawLinearWeights; MoveIndex::SQ_COUNT];
 pub type RawPolicySqBias = [RawLinearBias; MoveIndex::SQ_COUNT];
 pub type RawPolicyPieceSqWeights = [RawLinearWeights; MoveIndex::TO_PIECE_SQ_COUNT];
 pub type RawPolicyPieceSqBias = [RawLinearBias; MoveIndex::TO_PIECE_SQ_COUNT];
+
+type RawLinearWeights = Align16<[[i16; ATTENTION_SIZE]; INPUT_SIZE]>;
+type RawLinearBias = Align16<[i16; ATTENTION_SIZE]>;
+
+type QuantizedLinearWeights = [Align16<Accumulator<i16, ATTENTION_SIZE>>; INPUT_SIZE];
+type QuantizedLinearBias = Align16<Accumulator<i16, ATTENTION_SIZE>>;
 
 #[repr(C)]
 #[derive(Copy, Clone, Pod, Zeroable)]
@@ -25,14 +38,24 @@ impl QuantizedPolicyNetwork {
 
     #[must_use]
     pub fn boxed_from_slices(
-        sq: &[LinearNetwork; MoveIndex::SQ_COUNT],
-        piece_sq: &[LinearNetwork; MoveIndex::TO_PIECE_SQ_COUNT],
+        sq_weights: &RawPolicySqWeights,
+        sq_bias: &RawPolicySqBias,
+        piece_sq_weights: &RawPolicyPieceSqWeights,
+        piece_sq_bias: &RawPolicyPieceSqBias,
     ) -> Box<Self> {
         let mut result: Box<QuantizedPolicyNetwork> = allocation::zeroed_box();
 
-        result.sq = *QuantizedLinearNetwork::boxed_from(sq);
-        result.piece_sq = *QuantizedLinearNetwork::boxed_from(piece_sq);
+        let linear_sq_weights = bytemuck::must_cast_ref(sq_weights);
+        let linear_sq_bias = bytemuck::must_cast_ref(sq_bias);
 
+        let linear_piece_sq_weights = bytemuck::must_cast_ref(piece_sq_weights);
+        let linear_piece_sq_bias = bytemuck::must_cast_ref(piece_sq_bias);
+
+        result.sq = *QuantizedLinearNetwork::boxed_from_slices(linear_sq_weights, linear_sq_bias);
+        result.piece_sq = *QuantizedLinearNetwork::boxed_from_slices(
+            linear_piece_sq_weights,
+            linear_piece_sq_bias,
+        );
         result
     }
 
@@ -67,7 +90,44 @@ impl QuantizedPolicyNetwork {
                 self.piece_sq.set(to_piece_sq_idx, *f, &mut to_piece_sq);
             }
 
-            out[i] = to_sq.dot_relu(&to_piece_sq) - from_sq.dot_relu(&from_piece_sq);
+            out[i] = to_sq.dot_relu::<QAA>(&to_piece_sq) - from_sq.dot_relu::<QAA>(&from_piece_sq);
         }
+    }
+}
+
+#[repr(C)]
+#[derive(Copy, Clone, Zeroable)]
+pub struct QuantizedLinearNetwork<const N: usize> {
+    weights: [QuantizedLinearWeights; N],
+    bias: [QuantizedLinearBias; N],
+}
+
+unsafe impl<const N: usize> Pod for QuantizedLinearNetwork<N> {}
+
+impl<const N: usize> QuantizedLinearNetwork<N> {
+    #[must_use]
+    pub fn boxed_from_slices(
+        weights: &[RawLinearWeights; N],
+        bias: &[RawLinearBias; N],
+    ) -> Box<Self> {
+        let mut result: Box<Self> = allocation::zeroed_box();
+
+        result.weights = *bytemuck::must_cast_ref(weights);
+        result.bias = *bytemuck::must_cast_ref(bias);
+
+        result
+    }
+
+    #[must_use]
+    pub fn get_bias(&self, idx: usize) -> Accumulator<i16, ATTENTION_SIZE> {
+        unsafe { **self.bias.get_unchecked(idx) }
+    }
+
+    fn get_weights(&self, idx: usize, feat_idx: usize) -> &Accumulator<i16, ATTENTION_SIZE> {
+        unsafe { self.weights.get_unchecked(idx).get_unchecked(feat_idx) }
+    }
+
+    pub fn set(&self, idx: usize, feat_idx: usize, acc: &mut Accumulator<i16, ATTENTION_SIZE>) {
+        acc.set(self.get_weights(idx, feat_idx));
     }
 }
