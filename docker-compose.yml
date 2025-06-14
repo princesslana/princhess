@@ -190,11 +190,12 @@ services:
     command:
       -engine cmd=/engines/princhess name=princhess-left
       -engine cmd=/engines/princhess name=princhess-right
+      -engine cmd=/engines/princhess-main name=princhess-main
 
       -each proto=uci tc=8+0.08
             option.SyzygyPath=/syzygy option.Hash=256 option.Threads=6
       -openings file=/books/UHO_Lichess_4852_v1.epd format=epd order=random
-      -rounds 250
+      -rounds 100
       -log file=pgn/debug.log engine=true
       -pgnout /pgn/debug.pgn
     volumes:

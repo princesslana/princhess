@@ -20,7 +20,6 @@ fastapprox = "=0.3.1"
 goober = { git = "https://github.com/jw1912/goober/", rev = "32b9b52" }
 nohash-hasher = "=0.2.0"
 scc = "=2.3.0"
-rayon = "=1.10.0"
 
 [features]
 default = ["policy-net", "value-net", "fathom"]

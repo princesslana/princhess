@@ -8,6 +8,7 @@ mod mcts;
 mod mem;
 mod nets;
 mod subnets;
+mod threadpool;
 
 pub mod chess;
 pub mod engine;

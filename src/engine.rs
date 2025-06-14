@@ -1,4 +1,3 @@
-use rayon::{ThreadPool, ThreadPoolBuilder};
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use crate::chess::Move;
@@ -9,6 +8,7 @@ use crate::mcts::Mcts;
 use crate::options::EngineOptions;
 use crate::state::State;
 use crate::tablebase;
+use crate::threadpool::{Scope, ThreadPool};
 use crate::time_management::TimeManagement;
 use crate::transposition_table::{LRAllocator, LRTable};
 use crate::uci::{read_stdin, Tokens};
@@ -44,10 +44,7 @@ impl Engine {
     pub fn new(state: State, engine_options: EngineOptions) -> Self {
         let ttable = LRTable::empty(engine_options.hash_size_mb);
         let mcts = Mcts::new(state, &ttable, engine_options);
-        let threads = ThreadPoolBuilder::new()
-            .num_threads(engine_options.threads as usize)
-            .build()
-            .unwrap();
+        let threads = ThreadPool::new(engine_options.threads as usize);
         Self {
             mcts,
             engine_options,
@@ -140,8 +137,8 @@ impl Engine {
             while self.mcts.playout(&mut tld, cpuct, tm, &stop_signal) {}
         };
 
-        self.threads.in_place_scope(|s| {
-            s.spawn(|_| {
+        self.threads.scope(|s: &Scope| {
+            s.spawn(|| {
                 run_search_thread(cpuct, &time_management);
                 self.mcts.print_info(&time_management, self.ttable.full());
                 stop_signal.store(true, Ordering::Relaxed);
@@ -151,7 +148,7 @@ impl Engine {
             for _ in 0..(thread_count - 1) {
                 let jitter = 1. + rng.next_f32_range(-0.03, 0.03);
 
-                s.spawn(move |_| {
+                s.spawn(move || {
                     run_search_thread(cpuct * jitter, &TimeManagement::infinite());
                 });
             }
@@ -182,6 +179,7 @@ impl Engine {
                 }
             }
         });
+
         returned_line
     }
 
@@ -233,7 +231,7 @@ impl Engine {
         let eval = evaluation::value(self.mcts.root_state());
         let scaled = eval as f32 / SCALE;
         println!(
-            "info string eval {} scaled {} cp {}",
+            "info string eval {} scaled {} {}",
             eval,
             scaled,
             eval_in_cp(scaled)
