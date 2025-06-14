@@ -276,6 +276,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "princhess-train"
+version = "0.0.0-dev"
+dependencies = [
+ "arrayvec",
+ "bytemuck",
+ "goober",
+ "princhess",
+]
+
+[[package]]
 name = "proc-macro2"
 version = "1.0.92"
 source = "registry+https://github.com/rust-lang/crates.io-index"

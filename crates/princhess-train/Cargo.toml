@@ -1,0 +1,12 @@
+[package]
+name = "princhess-train"
+version = "0.0.0-dev"
+edition = "2021"
+publish = false # This crate is not intended for publishing to crates.io
+
+[dependencies]
+princhess = { path = "../../" } # Path to the main princhess crate
+
+goober = { workspace = true } # Use the goober dependency from the workspace
+arrayvec = { workspace = true } # Use the arrayvec dependency from the workspace
+bytemuck = { workspace = true } # Use the bytemuck dependency from the workspace

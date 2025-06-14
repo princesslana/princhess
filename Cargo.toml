@@ -13,11 +13,23 @@ categories = ["games"]
 name = "princhess"
 path = "src/main.rs"
 
-[dependencies]
+[workspace]
+members = [
+    ".", # This refers to the current crate (princhess)
+    "crates/princhess-train",
+]
+default-members = [".", "crates/princhess-train"]
+
+[workspace.dependencies]
 arrayvec = "=0.7.6"
 bytemuck = { version = "=1.21.0", features = ["derive", "extern_crate_alloc", "min_const_generics", "must_cast"] }
-fastapprox = "=0.3.1"
 goober = { git = "https://github.com/jw1912/goober/", rev = "32b9b52" }
+
+[dependencies]
+arrayvec = { workspace = true }
+bytemuck = { workspace = true }
+fastapprox = "=0.3.1"
+goober = { workspace = true }
 nohash-hasher = "=0.2.0"
 scc = "=2.3.0"
 
