@@ -1,23 +1,41 @@
 [package]
-authors = ["Princess Lana <ianagbip1oti@gmail.com>"]
 name = "princhess"
-description = "A UCI compatible chess engine using MCTS search aimed at running on the CPU"
 version = "0.0.0-dev"
+authors = ["Princess Lana <ianagbip1oti@gmail.com>"]
+categories = ["games"]
 edition = "2021"
+keywords = ["chess", "uci", "mcts"]
 license = "GPL-3.0"
 repository = "https://github.com/princesslana/princhess"
-keywords = ["chess", "uci", "mcts"]
-categories = ["games"]
+description = "A UCI compatible chess engine using MCTS search aimed at running on the CPU"
 
 [[bin]]
 name = "princhess"
 path = "src/main.rs"
 
-[dependencies]
+[workspace]
+members = [".", "crates/princhess-train"]
+default-members = [".", "crates/princhess-train"]
+
+[workspace.dependencies]
 arrayvec = "=0.7.6"
-bytemuck = { version = "=1.21.0", features = ["derive", "extern_crate_alloc", "min_const_generics", "must_cast"] }
-fastapprox = "=0.3.1"
 goober = { git = "https://github.com/jw1912/goober/", rev = "32b9b52" }
+princhess = { version = "0.0.0-dev", path = "." }
+
+[workspace.dependencies.bytemuck]
+version = "=1.21.0"
+features = [
+    "derive",
+    "extern_crate_alloc",
+    "min_const_generics",
+    "must_cast",
+]
+
+[dependencies]
+arrayvec = { workspace = true }
+bytemuck = { workspace = true }
+fastapprox = "=0.3.1"
+goober = { workspace = true }
 nohash-hasher = "=0.2.0"
 scc = "=2.3.0"
 
