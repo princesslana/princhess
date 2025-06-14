@@ -1,4 +1,8 @@
+use arrayvec::ArrayVec;
 use bytemuck::Zeroable;
+use princhess::math;
+use princhess::state::State;
+use princhess::train::TrainingPosition;
 use std::env;
 use std::fs::{self, File};
 use std::io::{self, BufRead, BufReader, Write};
@@ -6,11 +10,7 @@ use std::path::Path;
 use std::thread;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
-use arrayvec::ArrayVec;
-use princhess::math;
-use princhess::policy::{PolicyCount, PolicyNetwork};
-use princhess::state::State;
-use princhess::train::TrainingPosition;
+use princhess_train::policy::{PolicyCount, PolicyNetwork};
 
 const TARGET_BATCH_COUNT: usize = 300_000;
 const BATCH_SIZE: usize = 16384;

@@ -9,19 +9,19 @@ use crate::mem::Align16;
 use crate::nets::{q_i16, Accumulator};
 use crate::state;
 
-const INPUT_SIZE: usize = state::POLICY_NUMBER_FEATURES;
-const ATTENTION_SIZE: usize = 8;
+pub const INPUT_SIZE: usize = state::POLICY_NUMBER_FEATURES;
+pub const ATTENTION_SIZE: usize = 8;
 
 pub const QA: i32 = 256;
 pub const QAA: i32 = QA * QA;
 
 type Linear = SparseConnected<ReLU, INPUT_SIZE, ATTENTION_SIZE>;
 
+pub type RawLinearWeights = Align16<[[i16; ATTENTION_SIZE]; INPUT_SIZE]>;
+pub type RawLinearBias = Align16<[i16; ATTENTION_SIZE]>;
+
 type QuantizedLinearWeights = [Align16<Accumulator<i16, ATTENTION_SIZE>>; INPUT_SIZE];
 type QuantizedLinearBias = Align16<Accumulator<i16, ATTENTION_SIZE>>;
-
-type RawLinearWeights = Align16<[[i16; ATTENTION_SIZE]; INPUT_SIZE]>;
-type RawLinearBias = Align16<[i16; ATTENTION_SIZE]>;
 
 #[repr(C)]
 #[derive(FeedForwardNetwork)]
@@ -83,6 +83,7 @@ impl<const N: usize> QuantizedLinearNetwork<N> {
         result
     }
 
+    #[must_use]
     pub fn get_bias(&self, idx: usize) -> Accumulator<i16, ATTENTION_SIZE> {
         unsafe { **self.bias.get_unchecked(idx) }
     }
