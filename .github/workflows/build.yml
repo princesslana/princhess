@@ -32,7 +32,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: stable
-      - run: cargo test
+      - run: cargo test --release
       - run: cargo rustc --release --bin princhess -- -C target-feature=+crt-static -C target-cpu=$TARGET_CPU
         env:
           TARGET_CPU: ${{ matrix.cpu }}

@@ -1,78 +1,24 @@
-use bytemuck::{allocation, Pod, Zeroable};
+use bytemuck::{allocation, Zeroable};
+use goober::activation::ReLU;
+use goober::layer::SparseConnected;
 use goober::{FeedForwardNetwork, OutputLayer, SparseVector};
+use princhess::chess::Square;
+use princhess::math::Rng;
+use princhess::nets::MoveIndex;
+use princhess::quantized_policy::{
+    QuantizedPolicyNetwork, RawPolicyPieceSqBias, RawPolicyPieceSqWeights, RawPolicySqBias,
+    RawPolicySqWeights, ATTENTION_SIZE, INPUT_SIZE, QA,
+};
 use std::fmt::{self, Display};
 use std::ops::AddAssign;
-use std::path::Path;
 
-use crate::chess::{Piece, Rank, Square};
-use crate::nets::save_to_bin;
-use crate::subnets::{LinearNetwork, QuantizedLinearNetwork};
-
-#[must_use]
-#[derive(Debug, Copy, Clone)]
-pub struct MoveIndex {
-    piece: Piece,
-    promotion: Piece,
-    from_sq: Square,
-    to_sq: Square,
-    good_see: bool,
-}
-
-impl MoveIndex {
-    pub const SQ_COUNT: usize = Square::COUNT;
-    pub const FROM_PIECE_SQ_COUNT: usize = Piece::COUNT * Square::COUNT;
-    pub const TO_PIECE_SQ_COUNT: usize = (5 + Piece::COUNT) * Square::COUNT;
-
-    pub fn new(piece: Piece, promotion: Piece, from: Square, to: Square, good_see: bool) -> Self {
-        Self {
-            piece,
-            promotion,
-            from_sq: from,
-            to_sq: to,
-            good_see,
-        }
-    }
-
-    pub fn from_sq(&self) -> Square {
-        self.from_sq
-    }
-
-    pub fn to_sq(&self) -> Square {
-        self.to_sq
-    }
-
-    #[must_use]
-    pub fn from_piece_sq_index(&self) -> usize {
-        self.piece.index() * Square::COUNT + self.from_sq.index()
-    }
-
-    #[must_use]
-    pub fn to_piece_sq_index(&self) -> usize {
-        let bucket = match self.piece {
-            Piece::KING => self.piece.index(),
-            p => [0, 6][usize::from(self.good_see)] + p.index(),
-        };
-        let to_sq = match self.promotion {
-            Piece::KNIGHT => self.to_sq.with_rank(Rank::_1),
-            Piece::BISHOP | Piece::ROOK => self.to_sq.with_rank(Rank::_2),
-            _ => self.to_sq,
-        };
-        bucket * Square::COUNT + to_sq.index()
-    }
-}
+use crate::nets::{q_i16, randomize_sparse};
 
 #[allow(clippy::module_name_repetitions)]
 #[derive(Zeroable)]
 pub struct PolicyNetwork {
     sq: [LinearNetwork; MoveIndex::SQ_COUNT],
     piece_sq: [LinearNetwork; MoveIndex::TO_PIECE_SQ_COUNT],
-}
-
-#[repr(C)]
-#[derive(Copy, Clone, Pod, Zeroable)]
-pub struct QuantizedPolicyNetwork {
-    sq: QuantizedLinearNetwork<{ MoveIndex::SQ_COUNT }>,
-    piece_sq: QuantizedLinearNetwork<{ MoveIndex::TO_PIECE_SQ_COUNT }>,
 }
 
 #[allow(clippy::module_name_repetitions)]
@@ -224,54 +170,47 @@ impl PolicyNetwork {
 
     #[must_use]
     pub fn to_boxed_and_quantized(&self) -> Box<QuantizedPolicyNetwork> {
-        let mut result: Box<QuantizedPolicyNetwork> = allocation::zeroed_box();
+        let mut sq_weights: Box<RawPolicySqWeights> = allocation::zeroed_box();
+        let mut sq_bias: Box<RawPolicySqBias> = allocation::zeroed_box();
+        let mut piece_sq_weights: Box<RawPolicyPieceSqWeights> = allocation::zeroed_box();
+        let mut piece_sq_bias: Box<RawPolicyPieceSqBias> = allocation::zeroed_box();
 
-        result.sq = *QuantizedLinearNetwork::boxed_from(&self.sq);
-        result.piece_sq = *QuantizedLinearNetwork::boxed_from(&self.piece_sq);
-
-        result
-    }
-}
-
-impl QuantizedPolicyNetwork {
-    #[must_use]
-    pub fn zeroed() -> Box<Self> {
-        allocation::zeroed_box()
-    }
-
-    pub fn save_to_bin(&self, dir: &Path) {
-        save_to_bin(dir, "policy.bin", self);
-    }
-
-    pub fn get_all<I: Iterator<Item = MoveIndex>>(
-        &self,
-        features: &SparseVector,
-        move_idxes: I,
-        out: &mut [f32],
-    ) {
-        for (i, move_idx) in move_idxes.enumerate() {
-            let from_sq_idx = move_idx.from_sq().index();
-            let to_sq_idx = move_idx.to_sq().index();
-
-            let from_piece_sq_idx = move_idx.from_piece_sq_index();
-            let to_piece_sq_idx = move_idx.to_piece_sq_index();
-
-            let mut from_sq = self.sq.get_bias(from_sq_idx);
-            let mut to_sq = self.sq.get_bias(to_sq_idx);
-
-            let mut from_piece_sq = self.piece_sq.get_bias(from_piece_sq_idx);
-            let mut to_piece_sq = self.piece_sq.get_bias(to_piece_sq_idx);
-
-            for f in features.iter() {
-                self.sq.set(from_sq_idx, *f, &mut from_sq);
-                self.sq.set(to_sq_idx, *f, &mut to_sq);
-
-                self.piece_sq.set(from_piece_sq_idx, *f, &mut from_piece_sq);
-                self.piece_sq.set(to_piece_sq_idx, *f, &mut to_piece_sq);
+        for (subnet, raw) in self.sq.iter().zip(sq_weights.iter_mut()) {
+            for (row_idx, weights) in raw.iter_mut().enumerate() {
+                let row = subnet.output.weights_row(row_idx);
+                for weight_idx in 0..ATTENTION_SIZE {
+                    weights[weight_idx] = q_i16(row[weight_idx], QA);
+                }
             }
-
-            out[i] = to_sq.dot_relu(&to_piece_sq) - from_sq.dot_relu(&from_piece_sq);
         }
+
+        for (subnet, raw) in self.sq.iter().zip(sq_bias.iter_mut()) {
+            for (weight_idx, bias) in raw.iter_mut().enumerate() {
+                *bias = q_i16(subnet.output.bias()[weight_idx], QA);
+            }
+        }
+
+        for (subnet, raw) in self.piece_sq.iter().zip(piece_sq_weights.iter_mut()) {
+            for (row_idx, weights) in raw.iter_mut().enumerate() {
+                let row = subnet.output.weights_row(row_idx);
+                for weight_idx in 0..ATTENTION_SIZE {
+                    weights[weight_idx] = q_i16(row[weight_idx], QA);
+                }
+            }
+        }
+
+        for (subnet, raw) in self.piece_sq.iter().zip(piece_sq_bias.iter_mut()) {
+            for (weight_idx, bias) in raw.iter_mut().enumerate() {
+                *bias = q_i16(subnet.output.bias()[weight_idx], QA);
+            }
+        }
+
+        QuantizedPolicyNetwork::boxed_from_slices(
+            &sq_weights,
+            &sq_bias,
+            &piece_sq_weights,
+            &piece_sq_bias,
+        )
     }
 }
 
@@ -293,5 +232,41 @@ impl AddAssign<&Self> for PolicyCount {
         for (lhs, rhs) in self.piece_sq.iter_mut().zip(&rhs.piece_sq) {
             *lhs += rhs;
         }
+    }
+}
+
+type Linear = SparseConnected<ReLU, INPUT_SIZE, ATTENTION_SIZE>;
+
+#[repr(C)]
+#[derive(FeedForwardNetwork)]
+pub struct LinearNetwork {
+    output: Linear,
+}
+
+unsafe impl Zeroable for LinearNetwork {}
+
+impl LinearNetwork {
+    pub fn randomize(&mut self) {
+        let mut rng = Rng::default();
+
+        randomize_sparse(&mut self.output, &mut rng);
+    }
+}
+
+impl Display for LinearNetwork {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{INPUT_SIZE}->{ATTENTION_SIZE}")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_quantization_does_not_crash() {
+        // This test ensures that the conversion to a quantized policy network does not crash.
+        let policy_net = PolicyNetwork::random();
+        let _quantized_policy_net = policy_net.to_boxed_and_quantized();
     }
 }

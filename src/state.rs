@@ -1,7 +1,7 @@
 use arrayvec::ArrayVec;
 
 use crate::chess::{Board, Color, File, Move, MoveList, Piece, Square};
-use crate::policy::MoveIndex;
+use crate::nets::MoveIndex;
 use crate::uci::Tokens;
 
 const NUMBER_KING_BUCKETS: usize = 3;

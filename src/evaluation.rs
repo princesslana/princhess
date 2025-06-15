@@ -4,10 +4,10 @@ use crate::chess::MoveList;
 use crate::math;
 
 use crate::engine::SCALE;
-use crate::policy::QuantizedPolicyNetwork;
+use crate::quantized_policy::QuantizedPolicyNetwork;
+use crate::quantized_value::QuantizedValueNetwork;
 use crate::state::State;
 use crate::tablebase::{self, Wdl};
-use crate::value::QuantizedValueNetwork;
 
 #[derive(Clone, Copy, Debug)]
 pub enum Flag {

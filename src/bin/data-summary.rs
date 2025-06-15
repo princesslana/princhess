@@ -1,4 +1,4 @@
-use princhess::policy::MoveIndex;
+use princhess::nets::MoveIndex; // Corrected import path
 use princhess::state::{self, State};
 use princhess::train::TrainingPosition;
 

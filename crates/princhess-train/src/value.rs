@@ -1,35 +1,22 @@
-use bytemuck::{allocation, Pod, Zeroable};
+use bytemuck::{allocation, Zeroable};
 use goober::activation::Tanh;
 use goober::layer::{DenseConnected, SparseConnected};
 use goober::{FeedForwardNetwork, OutputLayer, SparseVector, Vector};
+use princhess::math::Rng;
+use princhess::quantized_value::{
+    QuantizedValueNetwork, RawFeatureBias, RawFeatureWeights, RawOutputWeights, HIDDEN_SIZE,
+    INPUT_SIZE, QA, QAB, QB,
+};
 use std::boxed::Box;
 use std::fmt::{self, Display, Formatter};
 use std::ops::AddAssign;
-use std::path::Path;
 
-use crate::math::{randomize_dense, randomize_sparse, Rng};
-use crate::mem::Align64;
-use crate::nets::{q_i16, q_i32, save_to_bin, screlu, Accumulator, SCReLU};
-use crate::state::{self, State};
+use crate::nets::{q_i16, q_i32, randomize_dense, randomize_sparse, SCReLU};
 
-const INPUT_SIZE: usize = state::VALUE_NUMBER_FEATURES;
-const HIDDEN_SIZE: usize = 320;
-const OUTPUT_SIZE: usize = 1;
-
-const QA: i32 = 256;
-const QB: i32 = 256;
-const QAB: i32 = QA * QB;
+pub const OUTPUT_SIZE: usize = 1;
 
 type Feature = SparseConnected<SCReLU, INPUT_SIZE, HIDDEN_SIZE>;
 type Output = DenseConnected<Tanh, { HIDDEN_SIZE * 2 }, OUTPUT_SIZE>;
-
-type QuantizedFeatureWeights = [Align64<Accumulator<i16, HIDDEN_SIZE>>; INPUT_SIZE];
-type QuantizedFeatureBias = Align64<Accumulator<i16, HIDDEN_SIZE>>;
-type QuantizedOutputWeights = [Align64<Accumulator<i16, HIDDEN_SIZE>>; 2];
-
-type RawFeatureWeights = Align64<[[i16; HIDDEN_SIZE]; INPUT_SIZE]>;
-type RawFeatureBias = Align64<[i16; HIDDEN_SIZE]>;
-type RawOutputWeights = Align64<[i16; HIDDEN_SIZE * 2]>;
 
 #[allow(clippy::module_name_repetitions)]
 pub struct ValueNetwork {
@@ -39,18 +26,6 @@ pub struct ValueNetwork {
 }
 
 unsafe impl Zeroable for ValueNetwork {}
-
-#[derive(Copy, Clone, Pod, Zeroable)]
-#[repr(C)]
-pub struct QuantizedValueNetwork {
-    stm_weights: QuantizedFeatureWeights,
-    stm_bias: QuantizedFeatureBias,
-    nstm_weights: QuantizedFeatureWeights,
-    nstm_bias: QuantizedFeatureBias,
-    output_weights: QuantizedOutputWeights,
-    output_bias: i32,
-    _padding: [u8; 60],
-}
 
 impl Display for ValueNetwork {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
@@ -231,74 +206,6 @@ impl FeedForwardNetwork for ValueNetwork {
             .backprop(&nstm_input, &mut grad.nstm, nstm_errs, &layers.nstm);
 
         SparseVector::with_capacity(0)
-    }
-}
-
-impl QuantizedValueNetwork {
-    #[must_use]
-    pub fn zeroed() -> Box<Self> {
-        allocation::zeroed_box()
-    }
-
-    #[must_use]
-    pub fn from_slices(
-        stm_weights: &RawFeatureWeights,
-        stm_bias: &RawFeatureBias,
-        nstm_weights: &RawFeatureWeights,
-        nstm_bias: &RawFeatureBias,
-        output_weights: &RawOutputWeights,
-        output_bias: i32,
-    ) -> Box<Self> {
-        let mut network = Self::zeroed();
-
-        network.stm_weights = *bytemuck::must_cast_ref(stm_weights);
-        network.stm_bias = *bytemuck::must_cast_ref(stm_bias);
-
-        network.nstm_weights = *bytemuck::must_cast_ref(nstm_weights);
-        network.nstm_bias = *bytemuck::must_cast_ref(nstm_bias);
-
-        network.output_weights = *bytemuck::must_cast_ref(output_weights);
-        network.output_bias = output_bias;
-
-        network
-    }
-
-    pub fn save_to_bin(&self, dir: &Path) {
-        save_to_bin(dir, "value.bin", self);
-    }
-
-    #[must_use]
-    #[allow(clippy::cast_possible_wrap)]
-    pub fn get(&self, state: &State) -> f32 {
-        let mut stm = self.stm_bias;
-        let mut nstm = self.nstm_bias;
-
-        state.value_features_map(|idx| {
-            if idx < INPUT_SIZE {
-                stm.set(&self.stm_weights[idx]);
-            } else {
-                nstm.set(&self.nstm_weights[idx % INPUT_SIZE]);
-            }
-        });
-
-        let mut result: i32 = 0;
-
-        for (&x, w) in stm.vals.iter().zip(self.output_weights[0].vals) {
-            result += screlu(x, QA) * i32::from(w);
-        }
-
-        for (&x, w) in nstm.vals.iter().zip(self.output_weights[1].vals) {
-            result += screlu(x, QA) * i32::from(w);
-        }
-
-        result = result / QA + self.output_bias;
-
-        // Fifty move rule dampening
-        // Constants are chosen to make the max effect more significant at higher levels and max 50%
-        let hmc = state.halfmove_clock();
-        result = result * (256 - i32::from(hmc.saturating_sub(20) + hmc.saturating_sub(52))) / 256;
-
-        (result as f32 / QAB as f32).tanh()
     }
 }
 
