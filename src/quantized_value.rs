@@ -3,8 +3,7 @@ use std::path::Path;
 
 use crate::mem::Align64;
 use crate::nets::{save_to_bin, screlu, Accumulator};
-use crate::state; // Added this line to import the 'state' module
-use crate::state::State;
+use crate::state::{self, State};
 
 pub const INPUT_SIZE: usize = state::VALUE_NUMBER_FEATURES;
 pub const HIDDEN_SIZE: usize = 320;
