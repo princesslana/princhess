@@ -19,7 +19,6 @@ default-members = [".", "crates/princhess-train"]
 
 [workspace.dependencies]
 arrayvec = "=0.7.6"
-goober = { git = "https://github.com/jw1912/goober/", rev = "32b9b52" }
 princhess = { version = "0.0.0-dev", path = "." }
 
 [workspace.dependencies.bytemuck]
@@ -35,7 +34,6 @@ features = [
 arrayvec = { workspace = true }
 bytemuck = { workspace = true }
 fastapprox = "=0.3.1"
-goober = { workspace = true }
 nohash-hasher = "=0.2.0"
 scc = "=2.3.0"
 

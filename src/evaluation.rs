@@ -1,9 +1,6 @@
-use goober::SparseVector;
-
 use crate::chess::MoveList;
-use crate::math;
-
 use crate::engine::SCALE;
+use crate::math;
 use crate::quantized_policy::QuantizedPolicyNetwork;
 use crate::quantized_value::QuantizedValueNetwork;
 use crate::state::State;
@@ -108,16 +105,13 @@ fn run_policy_net(_state: &State, moves: &MoveList, _t: f32) -> Vec<f32> {
 
 #[cfg(feature = "policy-net")]
 fn run_policy_net(state: &State, moves: &MoveList, t: f32) -> Vec<f32> {
-    let mut features = SparseVector::with_capacity(32);
-    state.policy_features_map(|idx| features.push(idx));
-
     let mut evalns = vec![0.0; moves.len()];
 
     if moves.is_empty() {
         return evalns;
     }
 
-    POLICY_NETWORK.get_all(&features, state.moves_to_indexes(moves), &mut evalns);
+    POLICY_NETWORK.get_all(state, state.moves_to_indexes(moves), &mut evalns);
 
     math::softmax(&mut evalns, t);
 

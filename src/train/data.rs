@@ -1,6 +1,5 @@
 use arrayvec::ArrayVec;
 use bytemuck::{self, Pod, Zeroable};
-use goober::SparseVector;
 use std::fs::File;
 use std::io::{BufWriter, Write};
 use std::mem;
@@ -85,26 +84,6 @@ impl TrainingPosition {
 
     pub fn set_result(&mut self, result: i8) {
         self.result = result;
-    }
-
-    #[must_use]
-    pub fn get_value_features(&self) -> SparseVector {
-        let mut features = SparseVector::with_capacity(64);
-        let state = State::from(self);
-
-        state.value_features_map(|idx| features.push(idx));
-
-        features
-    }
-
-    #[must_use]
-    pub fn get_policy_features(&self) -> SparseVector {
-        let mut features = SparseVector::with_capacity(64);
-        let state = State::from(self);
-
-        state.policy_features_map(|idx| features.push(idx));
-
-        features
     }
 }
 
