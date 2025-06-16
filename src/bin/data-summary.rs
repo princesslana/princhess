@@ -1,3 +1,4 @@
+use arrayvec::ArrayVec;
 use princhess::nets::MoveIndex; // Corrected import path
 use princhess::state::{self, State};
 use princhess::train::TrainingPosition;
@@ -51,9 +52,11 @@ fn main() {
         }
 
         for position in positions.iter() {
-            let features = position.get_policy_features();
-            let moves = position.moves().iter().map(|(mv, _)| *mv).collect();
             let state = State::from(position);
+            let moves = position.moves().iter().map(|(mv, _)| *mv).collect();
+
+            let mut features = ArrayVec::<usize, 64>::new();
+            state.policy_features_map(|feature| features.push(feature));
 
             let material_balance_idx = (state.material_balance() + 12).clamp(0, 24) as usize;
 

@@ -1,5 +1,6 @@
 use arrayvec::ArrayVec;
 use bytemuck::Zeroable;
+use goober::SparseVector;
 use princhess::math;
 use princhess::state::State;
 use princhess::train::TrainingPosition;
@@ -196,8 +197,10 @@ fn update_gradient(
     acc: &mut f32,
 ) {
     let state = State::from(position);
-    let features = position.get_policy_features();
     let moves = position.moves();
+
+    let mut features = SparseVector::with_capacity(64);
+    state.policy_features_map(|feature| features.push(feature));
 
     let only_moves = moves.iter().map(|(mv, _)| *mv).collect();
     let move_idxes = state.moves_to_indexes(&only_moves).collect::<Vec<_>>();

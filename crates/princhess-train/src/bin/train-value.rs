@@ -1,4 +1,5 @@
-use goober::{FeedForwardNetwork, OutputLayer, Vector};
+use goober::{FeedForwardNetwork, OutputLayer, SparseVector, Vector};
+use princhess::state::State;
 use princhess::train::TrainingPosition;
 use std::env;
 use std::fs::{self, File};
@@ -168,7 +169,8 @@ fn update_gradient(
     gradients: &mut ValueNetwork,
     loss: &mut f32,
 ) {
-    let features = position.get_value_features();
+    let mut features = SparseVector::with_capacity(64);
+    State::from(position).value_features_map(|feature| features.push(feature));
 
     let net_out = network.out_with_layers(&features);
 

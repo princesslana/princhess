@@ -1,10 +1,10 @@
+use arrayvec::ArrayVec;
 use bytemuck::{allocation, Pod, Zeroable};
 use std::path::Path;
 
 use crate::mem::Align16;
 use crate::nets::{save_to_bin, Accumulator, MoveIndex};
-use crate::state;
-use goober::SparseVector;
+use crate::state::{self, State};
 
 pub const INPUT_SIZE: usize = state::POLICY_NUMBER_FEATURES;
 pub const ATTENTION_SIZE: usize = 8;
@@ -22,6 +22,8 @@ type RawLinearBias = Align16<[i16; ATTENTION_SIZE]>;
 
 type QuantizedLinearWeights = [Align16<Accumulator<i16, ATTENTION_SIZE>>; INPUT_SIZE];
 type QuantizedLinearBias = Align16<Accumulator<i16, ATTENTION_SIZE>>;
+
+type FeatureVector = ArrayVec<usize, 64>;
 
 #[repr(C)]
 #[derive(Copy, Clone, Pod, Zeroable)]
@@ -65,10 +67,16 @@ impl QuantizedPolicyNetwork {
 
     pub fn get_all<I: Iterator<Item = MoveIndex>>(
         &self,
-        features: &SparseVector,
+        state: &State,
         move_idxes: I,
         out: &mut [f32],
     ) {
+        let mut features = FeatureVector::new();
+
+        state.policy_features_map(|feature| {
+            features.push(feature);
+        });
+
         for (i, move_idx) in move_idxes.enumerate() {
             let from_sq_idx = move_idx.from_sq().index();
             let to_sq_idx = move_idx.to_sq().index();
@@ -82,7 +90,7 @@ impl QuantizedPolicyNetwork {
             let mut from_piece_sq = self.piece_sq.get_bias(from_piece_sq_idx);
             let mut to_piece_sq = self.piece_sq.get_bias(to_piece_sq_idx);
 
-            for f in features.iter() {
+            for f in &features {
                 self.sq.set(from_sq_idx, *f, &mut from_sq);
                 self.sq.set(to_sq_idx, *f, &mut to_sq);
 
