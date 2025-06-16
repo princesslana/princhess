@@ -23,7 +23,8 @@ type RawLinearBias = Align16<[i16; ATTENTION_SIZE]>;
 type QuantizedLinearWeights = [Align16<Accumulator<i16, ATTENTION_SIZE>>; INPUT_SIZE];
 type QuantizedLinearBias = Align16<Accumulator<i16, ATTENTION_SIZE>>;
 
-type FeatureVector = ArrayVec<usize, 64>;
+// Max number of features is 1 per piece
+type FeatureVector = ArrayVec<usize, 32>;
 
 #[repr(C)]
 #[derive(Copy, Clone, Pod, Zeroable)]
