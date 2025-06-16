@@ -558,10 +558,6 @@ pub fn principal_variation<'a>(
         // Unwrap the option here, as the loop condition implies it won't be None
         let choice = choice_option.expect("Expected a child move, but node had no edges.");
 
-        if result.iter().any(|x| x.get_move() == choice.get_move()) {
-            break;
-        }
-
         result.push(choice);
 
         state.make_move(*choice.get_move());
