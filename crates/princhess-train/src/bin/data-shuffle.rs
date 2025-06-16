@@ -1,11 +1,11 @@
-use princhess::math::Rng;
-use princhess::train::TrainingPosition;
-
 use bytemuck::allocation;
+use princhess::math::Rng;
 use std::env;
 use std::fs::File;
 use std::io::{self, BufRead, BufReader, BufWriter, Write};
 use std::time::Instant;
+
+use princhess_train::data::TrainingPosition;
 
 fn main() {
     let mut args = env::args();

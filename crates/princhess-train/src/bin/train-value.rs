@@ -1,6 +1,5 @@
 use goober::{FeedForwardNetwork, OutputLayer, SparseVector, Vector};
 use princhess::state::State;
-use princhess::train::TrainingPosition;
 use std::env;
 use std::fs::{self, File};
 use std::io::{self, BufRead, BufReader, Write};
@@ -8,6 +7,7 @@ use std::path::Path;
 use std::thread;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
+use princhess_train::data::TrainingPosition;
 use princhess_train::value::ValueNetwork;
 
 const TARGET_BATCH_COUNT: usize = 400_000;

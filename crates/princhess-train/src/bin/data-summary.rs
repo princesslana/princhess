@@ -1,11 +1,11 @@
 use arrayvec::ArrayVec;
 use princhess::nets::MoveIndex; // Corrected import path
 use princhess::state::{self, State};
-use princhess::train::TrainingPosition;
-
 use std::env;
 use std::fs::File;
 use std::io::{self, BufRead, BufReader, Write};
+
+use princhess_train::data::TrainingPosition;
 
 fn main() {
     let mut args = env::args();

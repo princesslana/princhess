@@ -1,3 +1,4 @@
+use bytemuck::allocation;
 use princhess::chess::{Board, Move};
 use princhess::engine::Engine;
 use princhess::evaluation;
@@ -5,9 +6,6 @@ use princhess::math::Rng;
 use princhess::options::{EngineOptions, MctsOptions};
 use princhess::state::State;
 use princhess::tablebase::{self, Wdl};
-use princhess::train::TrainingPosition;
-
-use bytemuck::allocation;
 use std::collections::HashSet;
 use std::fmt::{Display, Formatter};
 use std::fs::File;
@@ -17,6 +15,8 @@ use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+
+use princhess_train::data::TrainingPosition;
 
 const HASH_SIZE_MB: usize = 128;
 
