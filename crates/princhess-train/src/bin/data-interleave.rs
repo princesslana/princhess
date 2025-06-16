@@ -1,10 +1,10 @@
 use princhess::math::Rng;
-use princhess::train::TrainingPosition;
-
 use std::env;
 use std::fs::File;
 use std::io::{self, BufReader, BufWriter, Read, Write};
 use std::time::{SystemTime, UNIX_EPOCH};
+
+use princhess_train::data::TrainingPosition;
 
 fn main() {
     let mut args = env::args();

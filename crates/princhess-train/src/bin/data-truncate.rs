@@ -1,9 +1,9 @@
-use princhess::train::TrainingPosition;
-
 use std::env;
 use std::fs::File;
 use std::io::{self, BufRead, BufReader, BufWriter, Write};
 use std::time::Instant;
+
+use princhess_train::data::TrainingPosition;
 
 fn main() {
     let mut args = env::args();

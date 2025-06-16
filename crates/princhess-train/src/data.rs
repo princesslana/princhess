@@ -1,13 +1,12 @@
 use arrayvec::ArrayVec;
 use bytemuck::{self, Pod, Zeroable};
+use princhess::chess::{Bitboard, Board, Castling, Color, Move, Piece, Square};
+use princhess::engine::SCALE;
+use princhess::mcts::Mcts;
+use princhess::state::State;
 use std::fs::File;
 use std::io::{BufWriter, Write};
 use std::mem;
-
-use crate::chess::{Bitboard, Board, Castling, Color, Move, Piece, Square};
-use crate::engine::SCALE;
-use crate::mcts::Mcts;
-use crate::state::State;
 
 #[derive(Clone, Copy, Debug, Pod, Zeroable)]
 #[repr(C)]
@@ -179,8 +178,8 @@ impl From<&TrainingPosition> for State {
 mod tests {
     use super::*;
 
-    use crate::engine::Engine;
-    use crate::options::EngineOptions;
+    use princhess::engine::Engine;
+    use princhess::options::EngineOptions;
 
     const STARTPOS_NO_CASTLING: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w - - 0 1";
     const KIWIPETE_NO_CASTLING: &str =

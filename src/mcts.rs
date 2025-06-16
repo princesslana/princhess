@@ -543,6 +543,7 @@ mod tests {
     }
 }
 
+#[must_use]
 pub fn principal_variation<'a>(
     mut state: State,
     from: &'a PositionNode,
