@@ -350,7 +350,14 @@ impl Board {
 
         let color = self.stm;
         let piece = self.piece_at(mov.from());
-        let capture = self.piece_at(mov.to());
+
+        // Castling moves are represented as king moving to rook's square.
+        // This means `mov.to()` will contain the rook, but it's not a capture.
+        let capture = if mov.is_castle() {
+            Piece::NONE
+        } else {
+            self.piece_at(mov.to())
+        };
 
         let is_zeroing_move = piece == Piece::PAWN || capture != Piece::NONE;
 
