@@ -178,8 +178,8 @@ impl From<&TrainingPosition> for State {
 mod tests {
     use super::*;
 
-    use crate::engine::Engine;
-    use crate::options::EngineOptions;
+    use princhess::engine::Engine;
+    use princhess::options::EngineOptions;
 
     const STARTPOS_NO_CASTLING: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w - - 0 1";
     const KIWIPETE_NO_CASTLING: &str =
