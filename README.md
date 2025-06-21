@@ -9,6 +9,7 @@ Princhess is a chess engine written in Rust. It implements a Monte Carlo Tree Se
 *   **Bitboard Representation:** Uses bitboards for board representation and move generation.
 *   **Multi-threading:** Supports multi-threaded operation.
 *   **Custom Memory Allocator:** Includes an arena memory allocator for managing the MCTS graph within a fixed memory size.
+*   **Phase-Aware Policy Networks:** Dynamically loads separate policy networks for middle-game and endgame phases.
 *   **Endgame Tablebase Integration:** Integrates with Fathom tablebases for endgame evaluation.
 *   **Self-Play & Training Infrastructure:** The `princhess-train` crate provides tools for self-play data generation. The policy and value networks are trained on this self-play data and are designed to be small enough to run efficiently on the CPU.
 

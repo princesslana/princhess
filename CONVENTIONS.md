@@ -23,5 +23,5 @@
     * 🤖 TST: when you add or update tests
   * Commit messages should be:
       * Imperative and Action-Oriented. Write commit messages as if you are giving an order,
-        focusing on the action performed by the commit (e.g., 'Add', 'Fix', 'Refactor')."
+        focusing on the action performed by the commit (e.g., 'Add', 'Fix', 'Refactor').
       * Concise. Keep commit messages short and to the point, ideally under 50 characters.
