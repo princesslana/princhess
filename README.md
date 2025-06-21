@@ -39,7 +39,9 @@ Pre-built binaries for released versions are available on the [GitHub Releases p
 
 Princhess is a UCI-compatible chess engine. Run the executable and connect it to a UCI-compatible interface.
 
+```bash
 ./target/release/princhess # Or the path to your downloaded binary
+```
 
 The engine responds to standard UCI commands.
 
@@ -61,3 +63,4 @@ The Fathom tablebase library (`deps/fathom/`) is licensed under the [MIT License
 *   **GitHub Repository:** [https://github.com/princesslana/princhess](https://github.com/princesslana/princhess)
 *   **Engine Programming Discord:** Princhess channel on the [Engine Programming Discord](https://discord.gg/YctB2p4).
 *   **Lichess Bot:** [https://lichess.org/@/princhess_bot](https://lichess.org/@/princhess_bot) (infrequently online).
+*   **Policy-Only Lichess Bot:** [https://lichess.org/@/princhess_policy_bot](https://lichess.org/@/princhess_policy_bot) (plays using only the policy network, no search, infrequently online).
