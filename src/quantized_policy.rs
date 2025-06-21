@@ -48,22 +48,14 @@ impl QuantizedPolicyNetwork {
     ) -> Box<Self> {
         let mut result: Box<QuantizedPolicyNetwork> = allocation::zeroed_box();
 
-        let linear_sq_weights = bytemuck::must_cast_ref(sq_weights);
-        let linear_sq_bias = bytemuck::must_cast_ref(sq_bias);
-
-        let linear_piece_sq_weights = bytemuck::must_cast_ref(piece_sq_weights);
-        let linear_piece_sq_bias = bytemuck::must_cast_ref(piece_sq_bias);
-
-        result.sq = *QuantizedLinearNetwork::boxed_from_slices(linear_sq_weights, linear_sq_bias);
-        result.piece_sq = *QuantizedLinearNetwork::boxed_from_slices(
-            linear_piece_sq_weights,
-            linear_piece_sq_bias,
-        );
+        result.sq = *QuantizedLinearNetwork::boxed_from_slices(sq_weights, sq_bias);
+        result.piece_sq =
+            *QuantizedLinearNetwork::boxed_from_slices(piece_sq_weights, piece_sq_bias);
         result
     }
 
-    pub fn save_to_bin(&self, dir: &Path) {
-        save_to_bin(dir, "policy.bin", self);
+    pub fn save_to_bin(&self, dir: &Path, name: &str) {
+        save_to_bin(dir, name, self);
     }
 
     pub fn get_all<I: Iterator<Item = MoveIndex>>(

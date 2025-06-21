@@ -164,6 +164,14 @@ impl State {
         self.prev_state_hashes.iter().rev().any(|h| *h == crnt_hash)
     }
 
+    #[must_use]
+    pub fn is_endgame(&self) -> bool {
+        let b = &self.board;
+        let major_pieces_count = (b.queens() | b.rooks() | b.bishops() | b.knights()).count();
+
+        major_pieces_count <= 6
+    }
+
     #[allow(clippy::similar_names)]
     pub fn value_features_map<F>(&self, mut f: F)
     where

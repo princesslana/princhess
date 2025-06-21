@@ -35,6 +35,9 @@ fn main() {
     let mut policy_outputs_to_piece_sq: [u64; MoveIndex::TO_PIECE_SQ_COUNT] =
         [0; MoveIndex::TO_PIECE_SQ_COUNT];
 
+    let mut mg_positions = 0;
+    let mut eg_positions = 0;
+
     let mut count = 0;
 
     let mut first = true;
@@ -54,6 +57,12 @@ fn main() {
         for position in positions.iter() {
             let state = State::from(position);
             let moves = position.moves().iter().map(|(mv, _)| *mv).collect();
+
+            if state.is_endgame() {
+                eg_positions += 1;
+            } else {
+                mg_positions += 1;
+            }
 
             let mut features = ArrayVec::<usize, 64>::new();
             state.policy_features_map(|feature| features.push(feature));
@@ -197,4 +206,8 @@ fn main() {
             println!();
         }
     }
+
+    println!("\nPositions:");
+    println!("  Middle Game: {:>15}", mg_positions);
+    println!("  Endgame:     {:>15}", eg_positions);
 }
