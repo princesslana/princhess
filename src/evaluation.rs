@@ -89,7 +89,11 @@ pub fn evaluate_state_flag(state: &State, is_legal_moves: bool) -> Flag {
 }
 
 #[cfg(feature = "policy-net")]
-static POLICY_NETWORK: QuantizedPolicyNetwork =
+static MG_POLICY_NETWORK: QuantizedPolicyNetwork =
+    unsafe { std::mem::transmute(*include_bytes!("nets/mg-policy.bin")) };
+
+#[cfg(feature = "policy-net")]
+static EG_POLICY_NETWORK: QuantizedPolicyNetwork =
     unsafe { std::mem::transmute(*include_bytes!("nets/policy.bin")) };
 
 #[cfg(not(feature = "policy-net"))]
@@ -111,7 +115,8 @@ fn run_policy_net(state: &State, moves: &MoveList, t: f32) -> Vec<f32> {
         return evalns;
     }
 
-    POLICY_NETWORK.get_all(state, state.moves_to_indexes(moves), &mut evalns);
+    let network = [&MG_POLICY_NETWORK, &EG_POLICY_NETWORK][usize::from(state.is_endgame())];
+    network.get_all(state, state.moves_to_indexes(moves), &mut evalns);
 
     math::softmax(&mut evalns, t);
 

@@ -4,6 +4,7 @@ use goober::SparseVector;
 use princhess::math;
 use princhess::state::State;
 use std::env;
+use std::fmt::Display;
 use std::fs::{self, File};
 use std::io::{self, BufRead, BufReader, Write};
 use std::path::Path;
@@ -14,11 +15,11 @@ use princhess_train::data::TrainingPosition;
 use princhess_train::policy::{PolicyCount, PolicyNetwork};
 
 const TARGET_BATCH_COUNT: usize = 300_000;
-const BATCH_SIZE: usize = 16384;
+const BATCH_SIZE: usize = 32768;
 const THREADS: usize = 6;
 
 const LR: f32 = 0.001;
-const LR_DROP_AT: f32 = 0.4;
+const LR_DROP_AT: f32 = 0.35;
 const LR_DROP_FACTOR: f32 = 0.5;
 
 const SOFT_TARGET_WEIGHT: f32 = 0.1;
@@ -28,12 +29,50 @@ const EPSILON: f32 = 1e-9;
 
 const _BUFFER_SIZE_CHECK: () = assert!(TrainingPosition::BUFFER_SIZE % BATCH_SIZE == 0);
 
+#[derive(Debug, Clone, Copy)]
+enum Phase {
+    MiddleGame,
+    Endgame,
+}
+
+impl Phase {
+    fn from_arg(arg: &str) -> Option<Self> {
+        match arg.to_lowercase().as_str() {
+            "mg" => Some(Self::MiddleGame),
+            "eg" => Some(Self::Endgame),
+            _ => None,
+        }
+    }
+
+    fn matches(&self, state: &State) -> bool {
+        match self {
+            Self::MiddleGame => !state.is_endgame(),
+            Self::Endgame => state.is_endgame(),
+        }
+    }
+}
+
+impl Display for Phase {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::MiddleGame => write!(f, "mg"),
+            Self::Endgame => write!(f, "eg"),
+        }
+    }
+}
+
 fn main() {
     println!("Running...");
     let mut args = env::args();
-    args.next();
+    args.next(); 
 
     let input = args.next().expect("Missing input file");
+    let phase_arg = args
+        .next()
+        .expect("Missing phase argument (--phase <mg|eg>)");
+
+    let phase = Phase::from_arg(&phase_arg)
+        .unwrap_or_else(|| panic!("Invalid phase argument: {phase_arg}. Use 'mg' or 'eg'."));
 
     let file = File::open(input.clone()).unwrap();
     let count = file.metadata().unwrap().len() as usize / TrainingPosition::SIZE;
@@ -53,9 +92,10 @@ fn main() {
     println!("Network: {}", network);
     println!("Positions: {}", count);
     println!("File: {}", input);
+    println!("Training Phase: {}", phase);
 
     let epochs = TARGET_BATCH_COUNT.div_ceil(count / BATCH_SIZE);
-    let lr_drop_at = (epochs as f32 * LR_DROP_AT) as usize;
+    let lr_drop_at = (epochs as f32 * LR_DROP_AT).ceil() as usize;
     let net_save_period = epochs.div_ceil(10);
 
     for epoch in 1..=epochs {
@@ -68,6 +108,7 @@ fn main() {
             &mut momentum,
             &mut velocity,
             input.as_str(),
+            phase,
         );
 
         let seconds = start.elapsed().as_secs();
@@ -80,13 +121,15 @@ fn main() {
         );
 
         if epoch % net_save_period == 0 || epoch == epochs {
-            let dir_name = format!("nets/policy-{}-e{:03}", timestamp, epoch);
+            let dir_name = format!("nets/policy-{}-{}-e{:03}", phase, timestamp, epoch);
 
             fs::create_dir(&dir_name).unwrap();
 
             let dir = Path::new(&dir_name);
 
-            network.to_boxed_and_quantized().save_to_bin(dir);
+            network
+                .to_boxed_and_quantized()
+                .save_to_bin(dir, format!("{}-policy.bin", phase).as_str());
 
             println!("Saved to {}", dir_name);
         }
@@ -103,6 +146,7 @@ fn train(
     momentum: &mut PolicyNetwork,
     velocity: &mut PolicyNetwork,
     input: &str,
+    phase: Phase,
 ) {
     let file = File::open(input).unwrap();
     let positions = file.metadata().unwrap().len() as usize / TrainingPosition::SIZE;
@@ -125,7 +169,7 @@ fn train(
             let mut gradients = PolicyNetwork::zeroed();
             let mut count = PolicyCount::zeroed();
 
-            let (loss, acc) = gradients_batch(network, &mut gradients, &mut count, batch);
+            let (loss, acc) = gradients_batch(network, &mut gradients, &mut count, batch, phase);
             running_loss += loss;
             running_acc += acc;
 
@@ -149,6 +193,7 @@ fn gradients_batch(
     gradients: &mut PolicyNetwork,
     count: &mut PolicyCount,
     batch: &[TrainingPosition],
+    phase: Phase,
 ) -> (f32, f32) {
     let size = (batch.len() / THREADS) + 1;
     let mut loss = [0.0; THREADS];
@@ -171,6 +216,7 @@ fn gradients_batch(
                             &mut inner_count,
                             loss,
                             acc,
+                            phase,
                         );
                     }
                     (inner_gradients, inner_count)
@@ -195,8 +241,14 @@ fn update_gradient(
     count: &mut PolicyCount,
     loss: &mut f32,
     acc: &mut f32,
+    phase: Phase,
 ) {
     let state = State::from(position);
+
+    if !phase.matches(&state) {
+        return;
+    }
+
     let moves = position.moves();
 
     let mut features = SparseVector::with_capacity(64);
@@ -223,14 +275,13 @@ fn update_gradient(
 
         let expected_primary_val = expected_primary[idx];
         let log_actual_val = actual_val.max(EPSILON).ln();
-        let error_primary = actual_val - expected_primary_val;
         *loss -= expected_primary_val * log_actual_val;
 
         let expected_secondary_val = expected_secondary[idx];
-        let error_secondary = actual_val - expected_secondary_val;
         *loss -= expected_secondary_val * log_actual_val * SOFT_TARGET_WEIGHT;
 
-        let combined_error = error_primary + error_secondary * SOFT_TARGET_WEIGHT;
+        let combined_error = (actual_val - expected_primary_val)
+            + (actual_val - expected_secondary_val) * SOFT_TARGET_WEIGHT;
         network.backprop(&features, gradients, move_idx, combined_error);
         count.increment(move_idx);
     }
