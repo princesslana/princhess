@@ -1,11 +1,12 @@
 use arrayvec::ArrayVec;
-use princhess::nets::MoveIndex; // Corrected import path
+use princhess::nets::MoveIndex;
 use princhess::state::{self, State};
 use std::env;
 use std::fs::File;
 use std::io::{self, BufRead, BufReader, Write};
 
 use princhess_train::data::TrainingPosition;
+use princhess_train::policy::Phase;
 
 fn main() {
     let mut args = env::args();
@@ -35,8 +36,8 @@ fn main() {
     let mut policy_outputs_to_piece_sq: [u64; MoveIndex::TO_PIECE_SQ_COUNT] =
         [0; MoveIndex::TO_PIECE_SQ_COUNT];
 
-    let mut mg_positions = 0;
-    let mut eg_positions = 0;
+    let mut middle_game_matched_count: u64 = 0;
+    let mut endgame_matched_count: u64 = 0;
 
     let mut count = 0;
 
@@ -58,10 +59,11 @@ fn main() {
             let state = State::from(position);
             let moves = position.moves().iter().map(|(mv, _)| *mv).collect();
 
-            if state.is_endgame() {
-                eg_positions += 1;
-            } else {
-                mg_positions += 1;
+            if Phase::MiddleGame.matches(&state) {
+                middle_game_matched_count += 1;
+            }
+            if Phase::Endgame.matches(&state) {
+                endgame_matched_count += 1;
             }
 
             let mut features = ArrayVec::<usize, 64>::new();
@@ -207,7 +209,15 @@ fn main() {
         }
     }
 
-    println!("\nPositions:");
-    println!("  Middle Game: {:>15}", mg_positions);
-    println!("  Endgame:     {:>15}", eg_positions);
+    println!("\nPositions by training phase:");
+    println!(
+        "  Middle Game: {:>15} ({:>5.2}%)",
+        middle_game_matched_count,
+        middle_game_matched_count as f32 / records as f32 * 100.0
+    );
+    println!(
+        "  Endgame:     {:>15} ({:>5.2}%)",
+        endgame_matched_count,
+        endgame_matched_count as f32 / records as f32 * 100.0
+    );
 }

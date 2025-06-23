@@ -9,10 +9,47 @@ use princhess::quantized_policy::{
     QuantizedPolicyNetwork, RawPolicyPieceSqBias, RawPolicyPieceSqWeights, RawPolicySqBias,
     RawPolicySqWeights, ATTENTION_SIZE, INPUT_SIZE, QA,
 };
+use princhess::state::State;
 use std::fmt::{self, Display};
 use std::ops::AddAssign;
 
 use crate::nets::{q_i16, randomize_sparse};
+
+#[derive(Debug, Clone, Copy)]
+pub enum Phase {
+    MiddleGame,
+    Endgame,
+}
+
+impl Phase {
+    pub fn from_arg(arg: &str) -> Option<Self> {
+        match arg.to_lowercase().as_str() {
+            "mg" => Some(Self::MiddleGame),
+            "eg" => Some(Self::Endgame),
+            _ => None,
+        }
+    }
+
+    pub fn matches(&self, state: &State) -> bool {
+        let board = state.board();
+        let major_pieces_count =
+            (board.queens() | board.rooks() | board.bishops() | board.knights()).count();
+
+        match self {
+            Self::MiddleGame => major_pieces_count > 6,
+            Self::Endgame => major_pieces_count <= 8,
+        }
+    }
+}
+
+impl Display for Phase {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::MiddleGame => write!(f, "mg"),
+            Self::Endgame => write!(f, "eg"),
+        }
+    }
+}
 
 #[allow(clippy::module_name_repetitions)]
 #[derive(Zeroable)]

@@ -94,7 +94,7 @@ static MG_POLICY_NETWORK: QuantizedPolicyNetwork =
 
 #[cfg(feature = "policy-net")]
 static EG_POLICY_NETWORK: QuantizedPolicyNetwork =
-    unsafe { std::mem::transmute(*include_bytes!("nets/policy.bin")) };
+    unsafe { std::mem::transmute(*include_bytes!("nets/eg-policy.bin")) };
 
 #[cfg(not(feature = "policy-net"))]
 fn run_policy_net(_state: &State, moves: &MoveList, _t: f32) -> Vec<f32> {
