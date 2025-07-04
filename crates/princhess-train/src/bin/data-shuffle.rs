@@ -24,7 +24,7 @@ fn main() {
 
         let start = Instant::now();
 
-        println!("Loading {}...", input);
+        println!("Loading {input}...");
 
         while let Ok(bytes) = buffer.fill_buf() {
             if bytes.is_empty() {
@@ -54,9 +54,9 @@ fn main() {
             }
         }
 
-        println!("Saving {}.shuffled...", input);
+        println!("Saving {input}.shuffled...");
 
-        let mut writer = BufWriter::new(File::create(format!("{}.shuffled", input)).unwrap());
+        let mut writer = BufWriter::new(File::create(format!("{input}.shuffled")).unwrap());
         let mut buffer: Box<[TrainingPosition; TrainingPosition::BUFFER_COUNT]> =
             allocation::zeroed_box();
 

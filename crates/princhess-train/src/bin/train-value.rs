@@ -46,15 +46,15 @@ fn main() {
         .as_secs();
 
     println!("Beginning training...");
-    println!("Network: {}", network);
-    println!("Positions: {}", count);
-    println!("File: {}", input);
+    println!("Network: {network}");
+    println!("Positions: {count}");
+    println!("File: {input}");
 
     let epochs = TARGET_BATCH_COUNT.div_ceil(count / BATCH_SIZE);
     let lr_drop_at = (epochs as f32 * LR_DROP_AT) as usize;
 
     for epoch in 1..=epochs {
-        println!("\nEpoch {}/{} (LR: {})...", epoch, epochs, lr);
+        println!("\nEpoch {epoch}/{epochs} (LR: {lr})...");
         let start = Instant::now();
 
         train(
@@ -74,7 +74,7 @@ fn main() {
             (seconds % 60)
         );
 
-        let dir_name = format!("nets/value-{}-e{:03}", timestamp, epoch);
+        let dir_name = format!("nets/value-{timestamp}-e{epoch:03}");
 
         fs::create_dir(dir_name.clone()).expect("Failed to create directory");
 
@@ -82,7 +82,7 @@ fn main() {
 
         network.to_boxed_and_quantized().save_to_bin(dir);
 
-        println!("Saved to {}", dir_name);
+        println!("Saved to {dir_name}");
 
         if epoch % lr_drop_at == 0 {
             lr *= LR_DROP_FACTOR;
@@ -122,7 +122,7 @@ fn train(
             network.adam(&gradients, momentum, velocity, adj, lr);
 
             batch_n += 1;
-            print!("Batch {}/{}\r", batch_n, batches,);
+            print!("Batch {batch_n}/{batches}\r",);
             io::stdout().flush().unwrap();
         }
 

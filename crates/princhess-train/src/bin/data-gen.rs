@@ -422,12 +422,12 @@ fn main() {
         s.spawn(move || {
             while stats.positions.load(Ordering::Relaxed) < MAX_POSITIONS_TOTAL {
                 thread::sleep(Duration::from_secs(1));
-                print!("{}\r", stats);
+                print!("{stats}\r");
                 io::stdout().flush().unwrap();
             }
             println!("\nStopping...");
         });
     });
 
-    println!("{}", stats);
+    println!("{stats}");
 }

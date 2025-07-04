@@ -72,17 +72,17 @@ fn main() {
         .as_secs();
 
     println!("Beginning training...");
-    println!("Network: {}", network);
-    println!("Positions: {}", count);
-    println!("File: {}", input);
-    println!("Training Phase: {}", phase);
+    println!("Network: {network}");
+    println!("Positions: {count}");
+    println!("File: {input}");
+    println!("Training Phase: {phase}");
 
     let epochs = TARGET_BATCH_COUNT.div_ceil(count / BATCH_SIZE);
     let lr_drop_at = (epochs as f32 * LR_DROP_AT).ceil() as usize;
     let net_save_period = epochs.div_ceil(10);
 
     for epoch in 1..=epochs {
-        println!("\nEpoch {}/{} (LR: {})...", epoch, epochs, lr);
+        println!("\nEpoch {epoch}/{epochs} (LR: {lr})...");
         let start = Instant::now();
 
         train(
@@ -104,7 +104,7 @@ fn main() {
         );
 
         if epoch % net_save_period == 0 || epoch == epochs {
-            let dir_name = format!("nets/policy-{}-{}-e{:03}", phase, timestamp, epoch);
+            let dir_name = format!("nets/policy-{phase}-{timestamp}-e{epoch:03}");
 
             fs::create_dir(&dir_name).unwrap();
 
@@ -112,9 +112,9 @@ fn main() {
 
             network
                 .to_boxed_and_quantized()
-                .save_to_bin(dir, format!("{}-policy.bin", phase).as_str());
+                .save_to_bin(dir, format!("{phase}-policy.bin").as_str());
 
-            println!("Saved to {}", dir_name);
+            println!("Saved to {dir_name}");
         }
 
         if epoch % lr_drop_at == 0 {
@@ -157,7 +157,7 @@ fn train(
             network.adam(&gradients, momentum, velocity, &count, lr);
 
             batch_n += 1;
-            print!("Batch {}/{}\r", batch_n, batches,);
+            print!("Batch {batch_n}/{batches}\r",);
             io::stdout().flush().unwrap();
         }
 
@@ -175,7 +175,7 @@ fn train(
             running_metrics.accuracy / running_metrics.processed_count as f32
         );
     } else {
-        println!("No positions processed for phase: {}", phase);
+        println!("No positions processed for phase: {phase}");
     }
 }
 
