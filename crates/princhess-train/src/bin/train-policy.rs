@@ -157,7 +157,7 @@ fn train(
             network.adam(&gradients, momentum, velocity, &count, lr);
 
             batch_n += 1;
-            print!("Batch {batch_n}/{batches}\r",);
+            print!("Batch {batch_n}/{batches}\r");
             io::stdout().flush().unwrap();
         }
 
