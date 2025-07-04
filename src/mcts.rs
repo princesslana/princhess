@@ -508,41 +508,6 @@ impl UciWdl {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_uciwdl_from_eval() {
-        let wdl = UciWdl::from_eval(0.5, 12);
-        assert_eq!(wdl.white, 500);
-        assert_eq!(wdl.draw, 500);
-        assert_eq!(wdl.black, 0);
-
-        let wdl = UciWdl::from_eval(-0.5, 12);
-        assert_eq!(wdl.white, 0);
-        assert_eq!(wdl.draw, 500);
-        assert_eq!(wdl.black, 500);
-
-        let wdl = UciWdl::from_eval(0.0, 12);
-        assert_eq!(wdl.white, 132);
-        assert_eq!(wdl.draw, 736);
-        assert_eq!(wdl.black, 132);
-    }
-
-    #[test]
-    fn test_uciwdl_from_eval_symmetry() {
-        let test_cases = [(0.3, 7), (0.6, 12), (0.9, 3), (0.1, 22)];
-
-        for &(eval, phase) in &test_cases {
-            let white = UciWdl::from_eval(eval, phase);
-            let black = UciWdl::from_eval(-eval, phase);
-
-            assert_eq!(white, black.flip());
-        }
-    }
-}
-
 #[must_use]
 pub fn principal_variation<'a>(
     mut state: State,
@@ -589,5 +554,40 @@ pub fn pv_eval(mut state: State, mv: &MoveEdge, pv_depth: usize) -> i64 {
             eval * [1, -1][pv.len() % 2]
         }
         None => -SCALE as i64,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_uciwdl_from_eval() {
+        let wdl = UciWdl::from_eval(0.5, 12);
+        assert_eq!(wdl.white, 500);
+        assert_eq!(wdl.draw, 500);
+        assert_eq!(wdl.black, 0);
+
+        let wdl = UciWdl::from_eval(-0.5, 12);
+        assert_eq!(wdl.white, 0);
+        assert_eq!(wdl.draw, 500);
+        assert_eq!(wdl.black, 500);
+
+        let wdl = UciWdl::from_eval(0.0, 12);
+        assert_eq!(wdl.white, 132);
+        assert_eq!(wdl.draw, 736);
+        assert_eq!(wdl.black, 132);
+    }
+
+    #[test]
+    fn test_uciwdl_from_eval_symmetry() {
+        let test_cases = [(0.3, 7), (0.6, 12), (0.9, 3), (0.1, 22)];
+
+        for &(eval, phase) in &test_cases {
+            let white = UciWdl::from_eval(eval, phase);
+            let black = UciWdl::from_eval(-eval, phase);
+
+            assert_eq!(white, black.flip());
+        }
     }
 }

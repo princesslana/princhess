@@ -18,14 +18,11 @@ fn main() {
 
         let mut buffer = BufReader::with_capacity(TrainingPosition::BUFFER_SIZE, file);
 
-        let out_file = format!("{}.{}m.truncated", input, truncate_to);
+        let out_file = format!("{input}.{truncate_to}m.truncated");
         let mut writer = BufWriter::new(File::create(out_file).unwrap());
 
         let start = Instant::now();
-        println!(
-            "Truncating {} positions from {} to {}m positions...",
-            positions, input, truncate_to
-        );
+        println!("Truncating {positions} positions from {input} to {truncate_to}m positions...");
 
         let mut processed = 0;
 

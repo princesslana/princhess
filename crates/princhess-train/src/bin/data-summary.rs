@@ -111,7 +111,7 @@ fn main() {
         buffer.consume(consumed);
     }
 
-    println!("records: {}", records);
+    println!("records: {records}");
 
     println!("phase:");
     for idx in 0..25 {

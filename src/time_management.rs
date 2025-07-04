@@ -219,7 +219,7 @@ mod tests {
             tm.hard_limit(),
             Some(Duration::from_secs(DEFAULT_MOVE_TIME_SECS))
         );
-        assert_eq!(tm.node_limit(), 100000);
+        assert_eq!(tm.node_limit(), 100_000);
     }
 
     // Test for "go wtime <ms> btime <ms>" (White to move)
@@ -230,7 +230,7 @@ mod tests {
         let tm = TimeManagement::from_tokens(tokens, &state, false);
 
         let expected_remaining = Duration::from_millis(60000).saturating_sub(MOVE_OVERHEAD);
-        let expected_move_time_fraction = state.moves_left() as u32 * 20 / 27; // 43 * 20 / 27 = 860 / 27 = 31
+        let expected_move_time_fraction = u32::from(state.moves_left()) * 20 / 27; // 43 * 20 / 27 = 860 / 27 = 31
         let expected_soft_limit = (expected_remaining
             + expected_move_time_fraction * Duration::ZERO)
             / expected_move_time_fraction;
@@ -252,7 +252,7 @@ mod tests {
         let tm = TimeManagement::from_tokens(tokens, &state, false);
 
         let expected_remaining = Duration::from_millis(50000).saturating_sub(MOVE_OVERHEAD);
-        let expected_move_time_fraction = state.moves_left() as u32 * 20 / 27;
+        let expected_move_time_fraction = u32::from(state.moves_left()) * 20 / 27;
         let expected_soft_limit = (expected_remaining
             + expected_move_time_fraction * Duration::ZERO)
             / expected_move_time_fraction;
@@ -275,7 +275,7 @@ mod tests {
 
         let expected_remaining = Duration::from_millis(60000).saturating_sub(MOVE_OVERHEAD);
         let expected_increment = Duration::from_millis(1000);
-        let expected_move_time_fraction = state.moves_left() as u32 * 20 / 27;
+        let expected_move_time_fraction = u32::from(state.moves_left()) * 20 / 27;
         let expected_soft_limit = (expected_remaining
             + expected_move_time_fraction * expected_increment)
             / expected_move_time_fraction;
@@ -300,7 +300,7 @@ mod tests {
         // moves_left() = 43. 43 * 20 / 27 = 31.
         // movestogo (40) + 2 = 42.
         // min(42, 31) = 31.
-        let expected_move_time_fraction = (40 + 2).min(state.moves_left() as u32 * 20 / 27);
+        let expected_move_time_fraction = (40 + 2).min(u32::from(state.moves_left()) * 20 / 27);
         assert_eq!(expected_move_time_fraction, 31);
 
         let expected_soft_limit = (expected_remaining
@@ -359,7 +359,7 @@ mod tests {
 
         let expected_remaining = Duration::from_millis(60000).saturating_sub(MOVE_OVERHEAD);
         // (0 + 2) = 2. min(2, 31) = 2.
-        let expected_move_time_fraction = (0 + 2).min(state.moves_left() as u32 * 20 / 27);
+        let expected_move_time_fraction = 2.min(u32::from(state.moves_left()) * 20 / 27);
         assert_eq!(expected_move_time_fraction, 2);
 
         let expected_soft_limit = (expected_remaining
@@ -414,7 +414,7 @@ mod tests {
         let tm = TimeManagement::from_tokens(tokens, &state, false);
 
         let expected_remaining = Duration::from_millis(60000).saturating_sub(MOVE_OVERHEAD);
-        let expected_move_time_fraction = state.moves_left() as u32 * 20 / 27;
+        let expected_move_time_fraction = u32::from(state.moves_left()) * 20 / 27;
         let expected_soft_limit = (expected_remaining
             + expected_move_time_fraction * Duration::ZERO)
             / expected_move_time_fraction;
@@ -437,7 +437,7 @@ mod tests {
 
         let expected_remaining = Duration::from_millis(3_600_000_000).saturating_sub(MOVE_OVERHEAD);
         let expected_increment = Duration::from_millis(100_000);
-        let expected_move_time_fraction = state.moves_left() as u32 * 20 / 27;
+        let expected_move_time_fraction = u32::from(state.moves_left()) * 20 / 27;
 
         let expected_soft_limit = (expected_remaining
             + expected_move_time_fraction * expected_increment)
@@ -461,7 +461,7 @@ mod tests {
         // Since btime is negative and it's white to move, 'remaining' for white should still be parsed.
         // The negative btime token will be ignored for white's time.
         let expected_remaining = Duration::from_millis(60000).saturating_sub(MOVE_OVERHEAD);
-        let expected_move_time_fraction = state.moves_left() as u32 * 20 / 27;
+        let expected_move_time_fraction = u32::from(state.moves_left()) * 20 / 27;
         let expected_soft_limit = (expected_remaining
             + expected_move_time_fraction * Duration::ZERO)
             / expected_move_time_fraction;
@@ -485,7 +485,7 @@ mod tests {
         // Since wtime is negative and it's black to move, 'remaining' for black should still be parsed.
         // The negative wtime token will be ignored for black's time.
         let expected_remaining = Duration::from_millis(60000).saturating_sub(MOVE_OVERHEAD);
-        let expected_move_time_fraction = state.moves_left() as u32 * 20 / 27;
+        let expected_move_time_fraction = u32::from(state.moves_left()) * 20 / 27;
         let expected_soft_limit = (expected_remaining
             + expected_move_time_fraction * Duration::ZERO)
             / expected_move_time_fraction;
