@@ -69,7 +69,7 @@ fn main() {
             let chunk_size = positions.len().min(TrainingPosition::BUFFER_COUNT);
             buffer[..chunk_size]
                 .copy_from_slice(&positions.drain(..chunk_size).collect::<Vec<_>>());
-            TrainingPosition::write_buffer(&mut writer, &buffer);
+            TrainingPosition::write_buffer(&mut writer, &buffer[..chunk_size]);
         }
 
         println!("Done ({}ms).", start.elapsed().as_millis());

@@ -411,7 +411,7 @@ fn main() {
                             positions.drain(..TrainingPosition::BUFFER_COUNT).as_slice(),
                         );
 
-                        TrainingPosition::write_buffer(&mut writer, &buffer);
+                        TrainingPosition::write_buffer(&mut writer, &buffer[..]);
                     }
                 });
             }

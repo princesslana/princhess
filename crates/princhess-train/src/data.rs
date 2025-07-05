@@ -33,8 +33,8 @@ impl TrainingPosition {
     pub const BUFFER_COUNT: usize = 1 << 16;
     pub const BUFFER_SIZE: usize = Self::BUFFER_COUNT * Self::SIZE;
 
-    pub fn write_buffer(out: &mut BufWriter<File>, data: &[TrainingPosition; Self::BUFFER_COUNT]) {
-        out.write_all(bytemuck::bytes_of(data)).unwrap();
+    pub fn write_buffer(out: &mut BufWriter<File>, data: &[TrainingPosition]) {
+        out.write_all(bytemuck::cast_slice(data)).unwrap();
     }
 
     #[must_use]
