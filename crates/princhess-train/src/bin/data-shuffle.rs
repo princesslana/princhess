@@ -3,6 +3,7 @@ use princhess::math::Rng;
 use std::env;
 use std::fs::File;
 use std::io::{self, BufRead, BufReader, BufWriter, Write};
+use std::path::PathBuf;
 use std::time::Instant;
 
 use princhess_train::data::TrainingPosition;
@@ -54,15 +55,21 @@ fn main() {
             }
         }
 
-        println!("Saving {input}.shuffled...");
+        let mut output_path = PathBuf::from(&input);
+        output_path.set_extension("shuffled");
+        let output_filename = output_path.to_string_lossy();
 
-        let mut writer = BufWriter::new(File::create(format!("{input}.shuffled")).unwrap());
+        println!("Saving {output_filename}...");
+
+        let mut writer = BufWriter::new(File::create(&output_path).unwrap());
         let mut buffer: Box<[TrainingPosition; TrainingPosition::BUFFER_COUNT]> =
             allocation::zeroed_box();
 
         while !positions.is_empty() {
-            buffer.copy_from_slice(positions.drain(..TrainingPosition::BUFFER_COUNT).as_slice());
-            TrainingPosition::write_buffer(&mut writer, &buffer);
+            let chunk_size = positions.len().min(TrainingPosition::BUFFER_COUNT);
+            buffer[..chunk_size]
+                .copy_from_slice(&positions.drain(..chunk_size).collect::<Vec<_>>());
+            TrainingPosition::write_buffer(&mut writer, &buffer[..chunk_size]);
         }
 
         println!("Done ({}ms).", start.elapsed().as_millis());
