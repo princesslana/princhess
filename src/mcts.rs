@@ -341,9 +341,15 @@ impl Mcts {
             let bm_eval = bm_reward.average;
             let bm_pv_eval = pv_eval(self.root_state.clone(), bm, pv_eval_depth);
 
-            if (bm_eval - bm_pv_eval).abs() > (opts.pv_diff_c * SCALE) as i64 {
-                m *= opts.pv_diff_m;
-            }
+            let diff_abs_normalized = (bm_eval - bm_pv_eval).abs() as f32 / SCALE;
+
+            // `opts.pv_diff_c` is the threshold for the normalized PV difference.
+            // `opts.pv_diff_m` is the scaling factor for the time multiplier adjustment.
+            // The adjustment can be positive (increase time) or negative (decrease time)
+            // depending on whether `diff_abs_normalized` is above or below `opts.pv_diff_c`.
+            let adjustment = (diff_abs_normalized - opts.pv_diff_c) * opts.pv_diff_m;
+
+            m *= 1.0 + adjustment;
         }
 
         m = m.clamp(opts.min_m, opts.max_m);

@@ -100,8 +100,8 @@ static TM_MIN_M: UciOption = UciOption::spin("TMMinM", 10, 0, 2 << 16);
 static TM_MAX_M: UciOption = UciOption::spin("TMMaxM", 500, 0, 2 << 16);
 static TM_VISITS_BASE: UciOption = UciOption::spin("TMVisitsBase", 140, 0, 2 << 16);
 static TM_VISITS_M: UciOption = UciOption::spin("TMVisitsM", 139, 0, 2 << 16);
-static TM_PV_DIFF_C: UciOption = UciOption::spin("TMPvDiffC", 20, 0, 100);
-static TM_PV_DIFF_M: UciOption = UciOption::spin("TMPvDiffM", 461, 0, 2 << 16);
+static TM_PV_DIFF_C: UciOption = UciOption::spin("TMPvDiffC", 0, 0, 100);
+static TM_PV_DIFF_M: UciOption = UciOption::spin("TMPvDiffM", 121, 0, 2 << 16);
 
 static CHESS960: UciOption = UciOption::check("UCI_Chess960", false);
 static POLICY_ONLY: UciOption = UciOption::check("PolicyOnly", false);
