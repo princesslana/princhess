@@ -44,6 +44,7 @@ cargo clippy            # Lint code
 - 📖 DOC: Documentation updates
 - 🤖 TST: Test additions/updates
 - Keep messages under 50 characters, imperative mood
+- **SINGLE LINE ONLY** - no multi-line commit messages
 
 ## Testing
 - `./target/release/princhess` - Run UCI engine (interactive mode)
