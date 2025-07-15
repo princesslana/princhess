@@ -352,3 +352,58 @@ fn pawn_pushes(color: Color, from: Square, occ: Bitboard) -> Bitboard {
 
     pushes
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::chess::Board;
+    use crate::state::State;
+
+    fn perft(state: &State, depth: usize) -> u64 {
+        if depth == 0 {
+            return 1;
+        }
+
+        let mut count = 0;
+        let movegen = MoveGen::new(state.board());
+        movegen.gen(|mv| {
+            let mut new_state = state.clone();
+            new_state.make_move(mv);
+            count += perft(&new_state, depth - 1);
+            Continue::<()>(())
+        });
+        count
+    }
+
+    #[test]
+    fn test_perft_startpos() {
+        let state = State::from_board(Board::startpos());
+
+        assert_eq!(perft(&state, 1), 20);
+        assert_eq!(perft(&state, 2), 400);
+        assert_eq!(perft(&state, 3), 8902);
+        assert_eq!(perft(&state, 4), 197281);
+    }
+
+    #[test]
+    fn test_perft_kiwipete() {
+        let fen = "r3k2r/Pppp1ppp/1b3nbN/nP6/BBP1P3/q4N2/Pp1P2PP/R2Q1RK1 w kq - 0 1";
+        let board = Board::from_fen(fen);
+        let state = State::from_board(board);
+
+        assert_eq!(perft(&state, 1), 6);
+        assert_eq!(perft(&state, 2), 264);
+        assert_eq!(perft(&state, 3), 9467);
+    }
+
+    #[test]
+    fn test_perft_endgame() {
+        let fen = "8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1";
+        let board = Board::from_fen(fen);
+        let state = State::from_board(board);
+
+        assert_eq!(perft(&state, 1), 14);
+        assert_eq!(perft(&state, 2), 191);
+        assert_eq!(perft(&state, 3), 2812);
+    }
+}
