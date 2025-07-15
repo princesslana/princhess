@@ -12,6 +12,8 @@ use crate::state::State;
 use crate::transposition_table::AllocNodeResult;
 
 #[repr(C)]
+/// Edge in the MCTS graph storing move, policy prior, and accumulated statistics.
+/// Unlike standard MCTS, visit counts and rewards are stored on edges rather than nodes.
 pub struct MoveEdge {
     sum_evaluations: AtomicI64,
     visits: AtomicU32,

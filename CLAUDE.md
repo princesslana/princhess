@@ -37,6 +37,12 @@ cargo clippy            # Lint code
 - KISS, YAGNI, DRY principles
 - Minimal unsafe blocks with explanatory comments
 
+## Strategic Comments
+- **High-impact only**: Comments should clarify complex algorithms or non-obvious architectural decisions
+- **Algorithm understanding**: Brief comments on core concepts (e.g., "PUCT selection", "tree traversal phase")
+- **Avoid over-commenting**: Don't explain what the code does, explain why or what algorithm step it represents
+- **Preserve readability**: Comments should enhance, not clutter the code
+
 ## Commit Messages (Emoji Log)
 - 📦 NEW: Add entirely new features
 - 👌 IMP: Improve/enhance existing code

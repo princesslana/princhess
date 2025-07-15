@@ -21,6 +21,9 @@ const MAX_PLAYOUT_LENGTH: usize = 256;
 
 const PV_EVAL_MIN_DEPTH: usize = 4;
 
+/// Monte Carlo Tree Search implementation using PUCT algorithm.
+/// Despite the name "tree search", this forms a graph due to transposition handling
+/// where the same position can be reached via different move sequences.
 pub struct Mcts {
     root_node: ArenaRef<PositionNode>,
     root_state: State,
@@ -95,6 +98,7 @@ impl Mcts {
     }
 
     #[inline(never)]
+    /// Single MCTS playout: selection → expansion → evaluation → backpropagation
     pub fn playout<'a>(
         &'a self,
         tld: &mut ThreadData<'a>,
@@ -425,6 +429,8 @@ impl Mcts {
         }
     }
 
+    /// PUCT selection: choose best child using Q(action) + U(action)
+    /// where U incorporates policy priors and visit counts
     fn select<'a>(moves: &'a [MoveEdge], fpu: i64, options: &MctsOptions) -> &'a MoveEdge {
         let total_visits = moves.iter().map(|v| u64::from(v.visits())).sum::<u64>() + 1;
 
