@@ -1,5 +1,5 @@
-use goober::{FeedForwardNetwork, OutputLayer, SparseVector, Vector};
 use princhess::state::State;
+use princhess_train::neural::{FeedForwardNetwork, OutputLayer, SparseVector, Vector};
 use std::env;
 use std::fs::{self, File};
 use std::io::{self, BufRead, BufReader, Write};

@@ -7,5 +7,5 @@ publish = false
 [dependencies]
 arrayvec = { workspace = true }
 bytemuck = { workspace = true }
-goober = { git = "https://github.com/jw1912/goober/", rev = "32b9b52" } # TODO: Use a released version
+# goober dependency has been absorbed into the neural module
 princhess = { path = "../../", default-features = false }
