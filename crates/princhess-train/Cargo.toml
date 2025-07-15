@@ -7,5 +7,4 @@ publish = false
 [dependencies]
 arrayvec = { workspace = true }
 bytemuck = { workspace = true }
-# goober dependency has been absorbed into the neural module
 princhess = { path = "../../", default-features = false }
