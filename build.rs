@@ -29,6 +29,11 @@ fn build_fathom() {
 fn generate_bindings() {
     let bindings = bindgen::Builder::default()
         .header("./deps/fathom/src/tbprobe.h")
+        .allowlist_function("tb_.*")
+        .allowlist_type("TB_.*")
+        .allowlist_var("TB_.*")
+        .blocklist_item("__.*")
+        .blocklist_item("_.*")
         .parse_callbacks(Box::new(bindgen::CargoCallbacks::new()))
         .layout_tests(false)
         .generate()
