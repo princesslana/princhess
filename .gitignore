@@ -8,5 +8,4 @@
 /pgn
 /syzygy
 /train
-.aider*
-AIDER.md
+.claude/settings.local.json
