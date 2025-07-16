@@ -58,6 +58,8 @@ The project's initial codebase was [Sashimi](https://github.com/zxqfl/sashimi), 
 
 The Fathom tablebase library (`deps/fathom/`) is licensed under the [MIT License](LICENSE.fathom).
 
+The neural network training components (`crates/princhess-train/src/neural/`) are based on the [Goober](https://github.com/jw1912/goober/) library by Jamie Whiting, which is licensed under the [MIT License](LICENSE.goober).
+
 ## Links
 
 *   **GitHub Repository:** [https://github.com/princesslana/princhess](https://github.com/princesslana/princhess)

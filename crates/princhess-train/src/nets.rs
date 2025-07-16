@@ -1,25 +1,5 @@
-use goober::activation::Activation;
-use goober::layer::{DenseConnected, SparseConnected};
+use crate::neural::{Activation, DenseConnected, SparseConnected};
 use princhess::math::Rng;
-
-#[derive(Clone, Copy)]
-pub struct SCReLU;
-
-impl Activation for SCReLU {
-    fn activate(x: f32) -> f32 {
-        let clamped = x.clamp(0.0, 1.0);
-        clamped * clamped
-    }
-
-    fn derivative(x: f32) -> f32 {
-        // Workaround for error in how goober handles an activation such as SCReLU
-        if 0.0 < x && x < 1.0 {
-            2.0 * x.sqrt()
-        } else {
-            0.0
-        }
-    }
-}
 
 pub fn randomize_sparse<A: Activation, const I: usize, const O: usize>(
     layer: &mut SparseConnected<A, I, O>,

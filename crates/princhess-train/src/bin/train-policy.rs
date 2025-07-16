@@ -1,8 +1,8 @@
 use arrayvec::ArrayVec;
 use bytemuck::Zeroable;
-use goober::SparseVector;
 use princhess::math;
 use princhess::state::State;
+use princhess_train::neural::SparseVector;
 use std::env;
 use std::fs::{self, File};
 use std::io::{self, BufRead, BufReader, Write};

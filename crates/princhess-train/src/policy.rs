@@ -1,7 +1,5 @@
+use crate::neural::{FeedForwardNetwork, OutputLayer, ReLU, SparseConnected, SparseVector};
 use bytemuck::{allocation, Zeroable};
-use goober::activation::ReLU;
-use goober::layer::SparseConnected;
-use goober::{FeedForwardNetwork, OutputLayer, SparseVector};
 use princhess::chess::Square;
 use princhess::math::Rng;
 use princhess::nets::MoveIndex;
@@ -275,12 +273,17 @@ impl AddAssign<&Self> for PolicyCount {
 type Linear = SparseConnected<ReLU, INPUT_SIZE, ATTENTION_SIZE>;
 
 #[repr(C)]
-#[derive(FeedForwardNetwork)]
 pub struct LinearNetwork {
     output: Linear,
 }
 
 unsafe impl Zeroable for LinearNetwork {}
+
+impl std::ops::AddAssign<&LinearNetwork> for LinearNetwork {
+    fn add_assign(&mut self, rhs: &LinearNetwork) {
+        self.output += &rhs.output;
+    }
+}
 
 impl LinearNetwork {
     pub fn randomize(&mut self) {
@@ -293,6 +296,32 @@ impl LinearNetwork {
 impl Display for LinearNetwork {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{INPUT_SIZE}->{ATTENTION_SIZE}")
+    }
+}
+
+impl FeedForwardNetwork for LinearNetwork {
+    type InputType = SparseVector;
+    type OutputType = crate::neural::Vector<ATTENTION_SIZE>;
+    type Layers = <Linear as FeedForwardNetwork>::Layers;
+
+    fn adam(&mut self, g: &Self, m: &mut Self, v: &mut Self, adj: f32, lr: f32) {
+        self.output
+            .adam(&g.output, &mut m.output, &mut v.output, adj, lr);
+    }
+
+    fn out_with_layers(&self, input: &Self::InputType) -> Self::Layers {
+        self.output.out_with_layers(input)
+    }
+
+    fn backprop(
+        &self,
+        input: &Self::InputType,
+        grad: &mut Self,
+        out_err: Self::OutputType,
+        layers: &Self::Layers,
+    ) -> Self::InputType {
+        self.output
+            .backprop(input, &mut grad.output, out_err, layers)
     }
 }
 
