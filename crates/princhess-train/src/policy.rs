@@ -1,4 +1,6 @@
-use crate::neural::{FeedForwardNetwork, OutputLayer, ReLU, SparseConnected, SparseVector};
+use crate::neural::{
+    AdamWOptimizer, FeedForwardNetwork, OutputLayer, ReLU, SparseConnected, SparseVector,
+};
 use bytemuck::{allocation, Zeroable};
 use princhess::chess::Square;
 use princhess::math::Rng;
@@ -11,7 +13,7 @@ use princhess::state::State;
 use std::fmt::{self, Display};
 use std::ops::AddAssign;
 
-use crate::nets::{q_i16, randomize_sparse};
+use crate::nets::q_i16;
 
 #[derive(Debug, Clone, Copy)]
 pub enum Phase {
@@ -134,16 +136,23 @@ impl PolicyNetwork {
         }
     }
 
-    pub fn adam(&mut self, g: &Self, m: &mut Self, v: &mut Self, count: &PolicyCount, lr: f32) {
+    pub fn adamw(
+        &mut self,
+        g: &Self,
+        m: &mut Self,
+        v: &mut Self,
+        count: &PolicyCount,
+        optimizer: &AdamWOptimizer,
+    ) {
         for subnet_idx in 0..self.sq.len() {
             match count.sq[subnet_idx] {
                 0 => (),
-                n => self.sq[subnet_idx].adam(
+                n => self.sq[subnet_idx].adamw(
                     &g.sq[subnet_idx],
                     &mut m.sq[subnet_idx],
                     &mut v.sq[subnet_idx],
+                    optimizer,
                     1.0 / n as f32,
-                    lr,
                 ),
             }
         }
@@ -151,12 +160,12 @@ impl PolicyNetwork {
         for subnet_idx in 0..self.piece_sq.len() {
             match count.piece_sq[subnet_idx] {
                 0 => (),
-                n => self.piece_sq[subnet_idx].adam(
+                n => self.piece_sq[subnet_idx].adamw(
                     &g.piece_sq[subnet_idx],
                     &mut m.piece_sq[subnet_idx],
                     &mut v.piece_sq[subnet_idx],
+                    optimizer,
                     1.0 / n as f32,
-                    lr,
                 ),
             }
         }
@@ -289,7 +298,7 @@ impl LinearNetwork {
     pub fn randomize(&mut self) {
         let mut rng = Rng::default();
 
-        randomize_sparse(&mut self.output, &mut rng);
+        self.output = *SparseConnected::randomized(&mut rng);
     }
 }
 
@@ -304,9 +313,16 @@ impl FeedForwardNetwork for LinearNetwork {
     type OutputType = crate::neural::Vector<ATTENTION_SIZE>;
     type Layers = <Linear as FeedForwardNetwork>::Layers;
 
-    fn adam(&mut self, g: &Self, m: &mut Self, v: &mut Self, adj: f32, lr: f32) {
+    fn adamw(
+        &mut self,
+        g: &Self,
+        m: &mut Self,
+        v: &mut Self,
+        optimizer: &AdamWOptimizer,
+        adj: f32,
+    ) {
         self.output
-            .adam(&g.output, &mut m.output, &mut v.output, adj, lr);
+            .adamw(&g.output, &mut m.output, &mut v.output, optimizer, adj);
     }
 
     fn out_with_layers(&self, input: &Self::InputType) -> Self::Layers {

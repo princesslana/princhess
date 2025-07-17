@@ -1,10 +1,12 @@
+use bytemuck::Zeroable;
+
 pub trait Activation: Copy {
     fn activate(x: f32) -> f32;
 
     fn derivative(x: f32) -> f32;
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Zeroable)]
 pub struct Identity;
 impl Activation for Identity {
     fn activate(x: f32) -> f32 {
@@ -16,7 +18,7 @@ impl Activation for Identity {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Zeroable)]
 pub struct ReLU;
 impl Activation for ReLU {
     fn activate(x: f32) -> f32 {
@@ -32,7 +34,7 @@ impl Activation for ReLU {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Zeroable)]
 pub struct SCReLU;
 impl Activation for SCReLU {
     fn activate(x: f32) -> f32 {
@@ -50,7 +52,7 @@ impl Activation for SCReLU {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Zeroable)]
 pub struct Tanh;
 impl Activation for Tanh {
     fn activate(x: f32) -> f32 {

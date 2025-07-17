@@ -2,7 +2,7 @@ use arrayvec::ArrayVec;
 use bytemuck::Zeroable;
 use princhess::math;
 use princhess::state::State;
-use princhess_train::neural::SparseVector;
+use princhess_train::neural::{AdamWConfig, AdamWOptimizer, SparseVector};
 use std::env;
 use std::fs::{self, File};
 use std::io::{self, BufRead, BufReader, Write};
@@ -66,6 +66,11 @@ fn main() {
     let mut momentum = PolicyNetwork::zeroed();
     let mut velocity = PolicyNetwork::zeroed();
 
+    let mut optimizer = AdamWOptimizer::new(AdamWConfig {
+        learning_rate: lr,
+        ..Default::default()
+    });
+
     let timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap()
@@ -87,9 +92,9 @@ fn main() {
 
         train(
             &mut network,
-            lr,
             &mut momentum,
             &mut velocity,
+            &mut optimizer,
             input.as_str(),
             phase,
         );
@@ -119,15 +124,16 @@ fn main() {
 
         if epoch % lr_drop_at == 0 {
             lr *= LR_DROP_FACTOR;
+            optimizer.set_learning_rate(lr);
         }
     }
 }
 
 fn train(
     network: &mut PolicyNetwork,
-    lr: f32,
     momentum: &mut PolicyNetwork,
     velocity: &mut PolicyNetwork,
+    optimizer: &mut AdamWOptimizer,
     input: &str,
     phase: Phase,
 ) {
@@ -154,7 +160,8 @@ fn train(
             let batch_metrics = gradients_batch(network, &mut gradients, &mut count, batch, phase);
             running_metrics += batch_metrics;
 
-            network.adam(&gradients, momentum, velocity, &count, lr);
+            optimizer.step();
+            network.adamw(&gradients, momentum, velocity, &count, optimizer);
 
             batch_n += 1;
             print!("Batch {batch_n}/{batches}\r");
