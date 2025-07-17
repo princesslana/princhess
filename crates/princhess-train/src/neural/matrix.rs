@@ -1,7 +1,8 @@
 use crate::neural::Vector;
+use bytemuck::Zeroable;
 
 #[repr(C)]
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Zeroable)]
 pub struct Matrix<const M: usize, const N: usize> {
     inner: [Vector<N>; M],
 }
@@ -65,11 +66,5 @@ impl<const M: usize, const N: usize> Matrix<M, N> {
             }
             v
         })
-    }
-
-    pub fn adam(&mut self, g: &Self, m: &mut Self, v: &mut Self, adj: f32, lr: f32) {
-        for i in 0..M {
-            self.inner[i].adam(g.inner[i], &mut m.inner[i], &mut v.inner[i], adj, lr);
-        }
     }
 }

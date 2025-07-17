@@ -1,4 +1,5 @@
 use crate::neural::activation::Activation;
+use bytemuck::Zeroable;
 
 #[repr(C)]
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -34,7 +35,7 @@ impl SparseVector {
 }
 
 #[repr(C)]
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Zeroable)]
 pub struct Vector<const N: usize> {
     inner: [f32; N],
 }
@@ -184,19 +185,20 @@ impl<const N: usize> Vector<N> {
         self
     }
 
-    pub fn adam(&mut self, mut g: Self, m: &mut Self, v: &mut Self, adj: f32, lr: f32) {
-        const B1: f32 = 0.9;
-        const B2: f32 = 0.999;
-
-        g = adj * g;
-        *m = B1 * *m + (1. - B1) * g;
-        *v = B2 * *v + (1. - B2) * g * g;
-        *self -= lr * *m / (v.sqrt() + 0.000_000_01);
-    }
-
     pub fn madd(&mut self, other: &Self, mul: f32) {
         for (i, j) in self.inner.iter_mut().zip(other.inner.iter()) {
             *i += mul * *j;
         }
+    }
+}
+
+impl<const N: usize> std::ops::Div<f32> for Vector<N> {
+    type Output = Self;
+
+    fn div(mut self, rhs: f32) -> Self::Output {
+        for i in self.inner.iter_mut() {
+            *i /= rhs;
+        }
+        self
     }
 }

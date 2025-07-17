@@ -1,5 +1,7 @@
 use princhess::state::State;
-use princhess_train::neural::{FeedForwardNetwork, OutputLayer, SparseVector, Vector};
+use princhess_train::neural::{
+    AdamWConfig, AdamWOptimizer, FeedForwardNetwork, OutputLayer, SparseVector, Vector,
+};
 use std::env;
 use std::fs::{self, File};
 use std::io::{self, BufRead, BufReader, Write};
@@ -18,7 +20,6 @@ const LR: f32 = 0.001;
 const LR_DROP_AT: f32 = 0.7;
 const LR_DROP_FACTOR: f32 = 0.1;
 
-const WEIGHT_DECAY: f32 = 0.01;
 
 const WDL_WEIGHT: f32 = 0.3;
 
@@ -40,6 +41,11 @@ fn main() {
     let mut momentum = ValueNetwork::zeroed();
     let mut velocity = ValueNetwork::zeroed();
 
+    let mut optimizer = AdamWOptimizer::new(AdamWConfig {
+        learning_rate: lr,
+        ..Default::default()
+    });
+
     let timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap()
@@ -59,9 +65,9 @@ fn main() {
 
         train(
             &mut network,
-            lr,
             &mut momentum,
             &mut velocity,
+            &mut optimizer,
             input.as_str(),
         );
 
@@ -86,15 +92,16 @@ fn main() {
 
         if epoch % lr_drop_at == 0 {
             lr *= LR_DROP_FACTOR;
+            optimizer.set_learning_rate(lr);
         }
     }
 }
 
 fn train(
     network: &mut ValueNetwork,
-    lr: f32,
     momentum: &mut ValueNetwork,
     velocity: &mut ValueNetwork,
+    optimizer: &mut AdamWOptimizer,
     input: &str,
 ) {
     let file = File::open(input).unwrap();
@@ -118,8 +125,8 @@ fn train(
             running_loss += gradients_batch(network, &mut gradients, batch);
             let adj = 2.0 / batch.len() as f32;
 
-            network.decay_weights(1.0 - WEIGHT_DECAY * lr);
-            network.adam(&gradients, momentum, velocity, adj, lr);
+            optimizer.step();
+            network.adamw(&gradients, momentum, velocity, optimizer, adj);
 
             batch_n += 1;
             print!("Batch {batch_n}/{batches}\r",);

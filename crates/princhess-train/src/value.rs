@@ -1,5 +1,6 @@
 use crate::neural::{
-    DenseConnected, FeedForwardNetwork, OutputLayer, SparseConnected, SparseVector, Tanh, Vector,
+    AdamWOptimizer, DenseConnected, FeedForwardNetwork, OutputLayer, SparseConnected, SparseVector,
+    Tanh, Vector,
 };
 use bytemuck::{allocation, Zeroable};
 use princhess::math::Rng;
@@ -11,7 +12,7 @@ use std::boxed::Box;
 use std::fmt::{self, Display, Formatter};
 use std::ops::AddAssign;
 
-use crate::nets::{q_i16, q_i32, randomize_dense, randomize_sparse};
+use crate::nets::{q_i16, q_i32};
 use crate::neural::SCReLU;
 
 pub const OUTPUT_SIZE: usize = 1;
@@ -52,41 +53,11 @@ impl ValueNetwork {
     pub fn random() -> Box<Self> {
         let mut rng = Rng::default();
 
-        let mut network = Self::zeroed();
-
-        randomize_sparse(&mut network.stm, &mut rng);
-        randomize_sparse(&mut network.nstm, &mut rng);
-        randomize_dense(&mut network.output, &mut rng);
-
+        let mut network: Box<Self> = allocation::zeroed_box();
+        network.stm = *SparseConnected::randomized(&mut rng);
+        network.nstm = *SparseConnected::randomized(&mut rng);
+        network.output = *DenseConnected::randomized(&mut rng);
         network
-    }
-
-    pub fn decay_weights(&mut self, decay: f32) {
-        for row_idx in 0..INPUT_SIZE {
-            let stm_row = self.stm.weights_row_mut(row_idx);
-            let nstm_row = self.nstm.weights_row_mut(row_idx);
-
-            for weight_idx in 0..HIDDEN_SIZE {
-                stm_row[weight_idx] *= decay;
-                nstm_row[weight_idx] *= decay;
-            }
-        }
-
-        for weight_idx in 0..HIDDEN_SIZE {
-            self.stm.bias_mut()[weight_idx] *= decay;
-            self.nstm.bias_mut()[weight_idx] *= decay;
-        }
-
-        for col_idx in 0..HIDDEN_SIZE {
-            let col = self.output.weights_col_mut(col_idx);
-            for weight_idx in 0..OUTPUT_SIZE {
-                col[weight_idx] *= decay;
-            }
-        }
-
-        for weight_idx in 0..OUTPUT_SIZE {
-            self.output.bias_mut()[weight_idx] *= decay;
-        }
     }
 
     #[must_use]
@@ -157,11 +128,20 @@ impl FeedForwardNetwork for ValueNetwork {
     type OutputType = Vector<OUTPUT_SIZE>;
     type Layers = ValueNetworkLayers;
 
-    fn adam(&mut self, g: &Self, m: &mut Self, v: &mut Self, adj: f32, lr: f32) {
-        self.stm.adam(&g.stm, &mut m.stm, &mut v.stm, adj, lr);
-        self.nstm.adam(&g.nstm, &mut m.nstm, &mut v.nstm, adj, lr);
+    fn adamw(
+        &mut self,
+        g: &Self,
+        m: &mut Self,
+        v: &mut Self,
+        optimizer: &AdamWOptimizer,
+        adj: f32,
+    ) {
+        self.stm
+            .adamw(&g.stm, &mut m.stm, &mut v.stm, optimizer, adj);
+        self.nstm
+            .adamw(&g.nstm, &mut m.nstm, &mut v.nstm, optimizer, adj);
         self.output
-            .adam(&g.output, &mut m.output, &mut v.output, adj, lr);
+            .adamw(&g.output, &mut m.output, &mut v.output, optimizer, adj);
     }
 
     fn out_with_layers(&self, input: &Self::InputType) -> Self::Layers {

@@ -1,12 +1,15 @@
 use std::marker::PhantomData;
 
 use crate::neural::{
-    activation::Activation, FeedForwardNetwork, Matrix, OutputLayer, SparseVector, Vector,
+    activation::Activation, AdamWOptimizer, FeedForwardNetwork, Matrix, OutputLayer, SparseVector,
+    Vector,
 };
+use bytemuck::{allocation, Zeroable};
+use princhess::math::Rng;
 
 #[repr(C)]
-#[derive(Clone, Copy)]
-pub struct DenseConnected<T: Activation, const M: usize, const N: usize> {
+#[derive(Clone, Copy, Zeroable)]
+pub struct DenseConnected<T, const M: usize, const N: usize> {
     weights: Matrix<M, N>,
     bias: Vector<N>,
     phantom: PhantomData<T>,
@@ -21,7 +24,7 @@ impl<T: Activation, const M: usize, const N: usize> std::ops::AddAssign<&DenseCo
     }
 }
 
-impl<T: Activation, const M: usize, const N: usize> DenseConnected<T, M, N> {
+impl<T: Activation + Zeroable, const M: usize, const N: usize> DenseConnected<T, M, N> {
     pub const INPUT_SIZE: usize = M;
     pub const OUTPUT_SIZE: usize = N;
 
@@ -43,6 +46,19 @@ impl<T: Activation, const M: usize, const N: usize> DenseConnected<T, M, N> {
 
     pub const fn zeroed() -> Self {
         Self::from_raw(Matrix::zeroed(), Vector::zeroed())
+    }
+
+    pub fn randomized(rng: &mut Rng) -> Box<Self> {
+        let limit = (6. / (M + N) as f32).sqrt();
+
+        let mut layer: Box<Self> = allocation::zeroed_box();
+        for col_idx in 0..M {
+            let col = layer.weights_col_mut(col_idx);
+            for weight_idx in 0..N {
+                col[weight_idx] = rng.next_f32_range(-limit, limit);
+            }
+        }
+        layer
     }
 
     pub const fn from_raw(weights: Matrix<M, N>, bias: Vector<N>) -> Self {
@@ -72,16 +88,29 @@ impl<const N: usize> OutputLayer<Vector<N>> for DenseConnectedLayers<N> {
     }
 }
 
-impl<T: Activation, const M: usize, const N: usize> FeedForwardNetwork for DenseConnected<T, M, N> {
+impl<T: Activation + Zeroable, const M: usize, const N: usize> FeedForwardNetwork
+    for DenseConnected<T, M, N>
+{
     type InputType = Vector<M>;
     type OutputType = Vector<N>;
     type Layers = DenseConnectedLayers<N>;
 
-    fn adam(&mut self, g: &Self, m: &mut Self, v: &mut Self, adj: f32, lr: f32) {
-        self.weights
-            .adam(&g.weights, &mut m.weights, &mut v.weights, adj, lr);
-
-        self.bias.adam(g.bias, &mut m.bias, &mut v.bias, adj, lr);
+    fn adamw(
+        &mut self,
+        g: &Self,
+        m: &mut Self,
+        v: &mut Self,
+        optimizer: &AdamWOptimizer,
+        adj: f32,
+    ) {
+        optimizer.update_matrix(
+            &mut self.weights,
+            &g.weights,
+            &mut m.weights,
+            &mut v.weights,
+            adj,
+        );
+        optimizer.update_vector(&mut self.bias, &g.bias, &mut m.bias, &mut v.bias, adj);
     }
 
     fn out_with_layers(&self, input: &Self::InputType) -> Self::Layers {
@@ -109,8 +138,8 @@ impl<T: Activation, const M: usize, const N: usize> FeedForwardNetwork for Dense
 }
 
 #[repr(C)]
-#[derive(Clone, Copy)]
-pub struct SparseConnected<T: Activation, const M: usize, const N: usize> {
+#[derive(Clone, Copy, Zeroable)]
+pub struct SparseConnected<T, const M: usize, const N: usize> {
     weights: Matrix<M, N>,
     bias: Vector<N>,
     phantom: PhantomData<T>,
@@ -125,7 +154,7 @@ impl<T: Activation, const M: usize, const N: usize> std::ops::AddAssign<&SparseC
     }
 }
 
-impl<T: Activation, const M: usize, const N: usize> SparseConnected<T, M, N> {
+impl<T: Activation + Zeroable, const M: usize, const N: usize> SparseConnected<T, M, N> {
     pub fn weights_row(&self, idx: usize) -> Vector<N> {
         self.weights[idx]
     }
@@ -144,6 +173,19 @@ impl<T: Activation, const M: usize, const N: usize> SparseConnected<T, M, N> {
 
     pub const fn zeroed() -> Self {
         Self::from_raw(Matrix::zeroed(), Vector::zeroed())
+    }
+
+    pub fn randomized(rng: &mut Rng) -> Box<Self> {
+        let limit = (6. / (M + N) as f32).sqrt();
+
+        let mut layer: Box<Self> = allocation::zeroed_box();
+        for row_idx in 0..M {
+            let row = layer.weights_row_mut(row_idx);
+            for weight_idx in 0..N {
+                row[weight_idx] = rng.next_f32_range(-limit, limit);
+            }
+        }
+        layer
     }
 
     pub const fn from_raw(weights: Matrix<M, N>, bias: Vector<N>) -> Self {
@@ -173,24 +215,37 @@ impl<const N: usize> OutputLayer<Vector<N>> for SparseConnectedLayers<N> {
     }
 }
 
-impl<T: Activation, const M: usize, const N: usize> FeedForwardNetwork
+impl<T: Activation + Zeroable, const M: usize, const N: usize> FeedForwardNetwork
     for SparseConnected<T, M, N>
 {
     type InputType = SparseVector;
     type OutputType = Vector<N>;
     type Layers = SparseConnectedLayers<N>;
 
-    fn adam(&mut self, grad: &Self, momentum: &mut Self, velocity: &mut Self, adj: f32, lr: f32) {
-        self.weights.adam(
-            &grad.weights,
-            &mut momentum.weights,
-            &mut velocity.weights,
+    fn adamw(
+        &mut self,
+        grad: &Self,
+        momentum: &mut Self,
+        velocity: &mut Self,
+        optimizer: &AdamWOptimizer,
+        adj: f32,
+    ) {
+        for i in 0..M {
+            optimizer.update_vector(
+                &mut self.weights[i],
+                &grad.weights[i],
+                &mut momentum.weights[i],
+                &mut velocity.weights[i],
+                adj,
+            );
+        }
+        optimizer.update_vector(
+            &mut self.bias,
+            &grad.bias,
+            &mut momentum.bias,
+            &mut velocity.bias,
             adj,
-            lr,
         );
-
-        self.bias
-            .adam(grad.bias, &mut momentum.bias, &mut velocity.bias, adj, lr);
     }
 
     fn out_with_layers(&self, input: &Self::InputType) -> Self::Layers {
