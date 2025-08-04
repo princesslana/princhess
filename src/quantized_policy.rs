@@ -69,12 +69,20 @@ impl QuantizedPolicyNetwork {
     }
 
     #[must_use]
-    pub fn sq_subnet_weight(&self, idx: usize, feat_idx: usize) -> &Accumulator<i16, ATTENTION_SIZE> {
+    pub fn sq_subnet_weight(
+        &self,
+        idx: usize,
+        feat_idx: usize,
+    ) -> &Accumulator<i16, ATTENTION_SIZE> {
         self.sq.get_weights(idx, feat_idx)
     }
 
     #[must_use]
-    pub fn piece_sq_subnet_weight(&self, idx: usize, feat_idx: usize) -> &Accumulator<i16, ATTENTION_SIZE> {
+    pub fn piece_sq_subnet_weight(
+        &self,
+        idx: usize,
+        feat_idx: usize,
+    ) -> &Accumulator<i16, ATTENTION_SIZE> {
         self.piece_sq.get_weights(idx, feat_idx)
     }
 

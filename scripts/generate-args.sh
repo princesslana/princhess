@@ -27,28 +27,22 @@ is_long_test() {
     esac
 }
 
+# Set common values for all time controls
+HASH=128
+THREADS=1
+CONCURRENCY=6
+OPENING_BOOK="UHO_Lichess_4852_v1.epd"
+
 # Set time control specific values
 case $TIME_CONTROL in
     stc)
         TC="8+0.08"
-        HASH=128
-        THREADS=1
-        CONCURRENCY=6
-        OPENING_BOOK="UHO_Lichess_4852_v1.epd"
         ;;
     ltc)
         TC="40+0.4"
-        HASH=128
-        THREADS=1
-        CONCURRENCY=6
-        OPENING_BOOK="UHO_Lichess_4852_v1.epd"
         ;;
     nodes25k)
         TC="inf nodes=25000"
-        HASH=128
-        THREADS=1
-        CONCURRENCY=6
-        OPENING_BOOK="UHO_Lichess_4852_v1.epd"
         ;;
     *)
         echo "Unknown time control: $TIME_CONTROL"

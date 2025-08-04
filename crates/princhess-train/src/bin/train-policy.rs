@@ -141,16 +141,12 @@ fn main() {
         }
 
         if epoch % lr_drop_at == 0 {
-            match phase {
-                Phase::MiddleGame => {
-                    lr *= MG_LR_DROP_FACTOR;
-                    optimizer.set_learning_rate(lr);
-                }
-                Phase::Endgame => {
-                    lr *= EG_LR_DROP_FACTOR;
-                    optimizer.set_learning_rate(lr);
-                }
-            }
+            let drop_factor = match phase {
+                Phase::MiddleGame => MG_LR_DROP_FACTOR,
+                Phase::Endgame => EG_LR_DROP_FACTOR,
+            };
+            lr *= drop_factor;
+            optimizer.set_learning_rate(lr);
         }
     }
 }
