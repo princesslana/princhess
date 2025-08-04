@@ -58,6 +58,36 @@ impl QuantizedPolicyNetwork {
         save_to_bin(dir, name, self);
     }
 
+    #[must_use]
+    pub fn sq_subnet_bias(&self, idx: usize) -> Accumulator<i16, ATTENTION_SIZE> {
+        self.sq.get_bias(idx)
+    }
+
+    #[must_use]
+    pub fn piece_sq_subnet_bias(&self, idx: usize) -> Accumulator<i16, ATTENTION_SIZE> {
+        self.piece_sq.get_bias(idx)
+    }
+
+    #[must_use]
+    pub fn sq_subnet_weight(&self, idx: usize, feat_idx: usize) -> &Accumulator<i16, ATTENTION_SIZE> {
+        self.sq.get_weights(idx, feat_idx)
+    }
+
+    #[must_use]
+    pub fn piece_sq_subnet_weight(&self, idx: usize, feat_idx: usize) -> &Accumulator<i16, ATTENTION_SIZE> {
+        self.piece_sq.get_weights(idx, feat_idx)
+    }
+
+    #[must_use]
+    pub fn sq_count(&self) -> usize {
+        MoveIndex::SQ_COUNT
+    }
+
+    #[must_use]
+    pub fn piece_sq_count(&self) -> usize {
+        MoveIndex::TO_PIECE_SQ_COUNT
+    }
+
     pub fn get_all<I: Iterator<Item = MoveIndex>>(
         &self,
         state: &State,
@@ -124,7 +154,8 @@ impl<const N: usize> QuantizedLinearNetwork<N> {
         unsafe { **self.bias.get_unchecked(idx) }
     }
 
-    fn get_weights(&self, idx: usize, feat_idx: usize) -> &Accumulator<i16, ATTENTION_SIZE> {
+    #[must_use]
+    pub fn get_weights(&self, idx: usize, feat_idx: usize) -> &Accumulator<i16, ATTENTION_SIZE> {
         unsafe { self.weights.get_unchecked(idx).get_unchecked(feat_idx) }
     }
 

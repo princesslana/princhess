@@ -25,15 +25,24 @@ impl Default for AdamWConfig {
 pub struct AdamWOptimizer {
     config: AdamWConfig,
     step: u32,
+    bias_correction1: f32,
+    bias_correction2: f32,
 }
 
 impl AdamWOptimizer {
     pub fn new(config: AdamWConfig) -> Self {
-        Self { config, step: 0 }
+        Self {
+            config,
+            step: 0,
+            bias_correction1: 1.0,
+            bias_correction2: 1.0,
+        }
     }
 
     pub fn step(&mut self) {
         self.step += 1;
+        self.bias_correction1 = 1.0 - self.config.beta1.powi(self.step as i32);
+        self.bias_correction2 = 1.0 - self.config.beta2.powi(self.step as i32);
     }
 
     pub fn get_step(&self) -> u32 {
@@ -54,15 +63,12 @@ impl AdamWOptimizer {
     ) {
         let scaled_grad = adj * *grad;
 
-        let bias_correction1 = 1.0 - self.config.beta1.powi(self.step as i32);
-        let bias_correction2 = 1.0 - self.config.beta2.powi(self.step as i32);
-
         *momentum = self.config.beta1 * *momentum + (1.0 - self.config.beta1) * scaled_grad;
         *velocity =
             self.config.beta2 * *velocity + (1.0 - self.config.beta2) * (scaled_grad * scaled_grad);
 
-        let corrected_momentum = *momentum / bias_correction1;
-        let corrected_velocity = *velocity / bias_correction2;
+        let corrected_momentum = *momentum / self.bias_correction1;
+        let corrected_velocity = *velocity / self.bias_correction2;
 
         let weight_decay_update = self.config.weight_decay * *param;
 

@@ -15,7 +15,7 @@ use std::ops::AddAssign;
 
 use crate::nets::q_i16;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Phase {
     MiddleGame,
     Endgame,
