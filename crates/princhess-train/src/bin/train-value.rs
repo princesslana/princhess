@@ -124,10 +124,11 @@ fn train(
         for batch in data.chunks(BATCH_SIZE) {
             let mut gradients = ValueNetwork::zeroed();
             running_loss += gradients_batch(network, &mut gradients, batch);
-            let adj = 2.0 / batch.len() as f32;
+
+            *gradients /= batch.len() as f32;
 
             optimizer.step();
-            network.adamw(&gradients, momentum, velocity, optimizer, adj);
+            network.adamw(&gradients, momentum, velocity, optimizer);
 
             batch_n += 1;
 
@@ -201,5 +202,10 @@ fn update_gradient(
     let error = actual - expected;
     *loss += error * error;
 
-    network.backprop(&features, gradients, Vector::from_raw([error]), &net_out);
+    network.backprop(
+        &features,
+        gradients,
+        Vector::from_raw([2.0 * error]),
+        &net_out,
+    );
 }

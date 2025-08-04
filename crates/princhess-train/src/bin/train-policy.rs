@@ -183,8 +183,10 @@ fn train(
             let batch_metrics = gradients_batch(network, &mut gradients, &mut count, batch, phase);
             running_metrics += batch_metrics;
 
+            gradients.scale_by_counts(&count);
+
             optimizer.step();
-            network.adamw(&gradients, momentum, velocity, &count, optimizer);
+            network.adamw(&gradients, momentum, velocity, optimizer);
 
             batch_n += 1;
 

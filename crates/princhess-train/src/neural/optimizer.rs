@@ -59,13 +59,9 @@ impl AdamWOptimizer {
         grad: &Vector<N>,
         momentum: &mut Vector<N>,
         velocity: &mut Vector<N>,
-        adj: f32,
     ) {
-        let scaled_grad = adj * *grad;
-
-        *momentum = self.config.beta1 * *momentum + (1.0 - self.config.beta1) * scaled_grad;
-        *velocity =
-            self.config.beta2 * *velocity + (1.0 - self.config.beta2) * (scaled_grad * scaled_grad);
+        *momentum = self.config.beta1 * *momentum + (1.0 - self.config.beta1) * *grad;
+        *velocity = self.config.beta2 * *velocity + (1.0 - self.config.beta2) * (*grad * *grad);
 
         let corrected_momentum = *momentum / self.bias_correction1;
         let corrected_velocity = *velocity / self.bias_correction2;
@@ -83,16 +79,9 @@ impl AdamWOptimizer {
         grad: &Matrix<R, C>,
         momentum: &mut Matrix<R, C>,
         velocity: &mut Matrix<R, C>,
-        adj: f32,
     ) {
         for i in 0..R {
-            self.update_vector(
-                &mut param[i],
-                &grad[i],
-                &mut momentum[i],
-                &mut velocity[i],
-                adj,
-            );
+            self.update_vector(&mut param[i], &grad[i], &mut momentum[i], &mut velocity[i]);
         }
     }
 }

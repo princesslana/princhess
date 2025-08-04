@@ -9,7 +9,7 @@ pub trait FeedForwardNetwork: Sized {
     type OutputType: Clone;
     type Layers: OutputLayer<Self::OutputType>;
 
-    fn adamw(&mut self, g: &Self, m: &mut Self, v: &mut Self, optimizer: &AdamWOptimizer, adj: f32);
+    fn adamw(&mut self, g: &Self, m: &mut Self, v: &mut Self, optimizer: &AdamWOptimizer);
 
     fn out_with_layers(&self, input: &Self::InputType) -> Self::Layers;
 

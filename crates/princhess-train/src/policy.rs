@@ -136,37 +136,35 @@ impl PolicyNetwork {
         }
     }
 
-    pub fn adamw(
-        &mut self,
-        g: &Self,
-        m: &mut Self,
-        v: &mut Self,
-        count: &PolicyCount,
-        optimizer: &AdamWOptimizer,
-    ) {
+    pub fn adamw(&mut self, g: &Self, m: &mut Self, v: &mut Self, optimizer: &AdamWOptimizer) {
         for subnet_idx in 0..self.sq.len() {
-            match count.sq[subnet_idx] {
-                0 => (),
-                n => self.sq[subnet_idx].adamw(
-                    &g.sq[subnet_idx],
-                    &mut m.sq[subnet_idx],
-                    &mut v.sq[subnet_idx],
-                    optimizer,
-                    1.0 / n as f32,
-                ),
-            }
+            self.sq[subnet_idx].adamw(
+                &g.sq[subnet_idx],
+                &mut m.sq[subnet_idx],
+                &mut v.sq[subnet_idx],
+                optimizer,
+            );
         }
 
         for subnet_idx in 0..self.piece_sq.len() {
-            match count.piece_sq[subnet_idx] {
-                0 => (),
-                n => self.piece_sq[subnet_idx].adamw(
-                    &g.piece_sq[subnet_idx],
-                    &mut m.piece_sq[subnet_idx],
-                    &mut v.piece_sq[subnet_idx],
-                    optimizer,
-                    1.0 / n as f32,
-                ),
+            self.piece_sq[subnet_idx].adamw(
+                &g.piece_sq[subnet_idx],
+                &mut m.piece_sq[subnet_idx],
+                &mut v.piece_sq[subnet_idx],
+                optimizer,
+            );
+        }
+    }
+
+    pub fn scale_by_counts(&mut self, count: &PolicyCount) {
+        for subnet_idx in 0..self.sq.len() {
+            if count.sq[subnet_idx] > 0 {
+                self.sq[subnet_idx] /= count.sq[subnet_idx] as f32;
+            }
+        }
+        for subnet_idx in 0..self.piece_sq.len() {
+            if count.piece_sq[subnet_idx] > 0 {
+                self.piece_sq[subnet_idx] /= count.piece_sq[subnet_idx] as f32;
             }
         }
     }
@@ -294,6 +292,12 @@ impl std::ops::AddAssign<&LinearNetwork> for LinearNetwork {
     }
 }
 
+impl std::ops::DivAssign<f32> for LinearNetwork {
+    fn div_assign(&mut self, rhs: f32) {
+        self.output /= rhs;
+    }
+}
+
 impl LinearNetwork {
     pub fn randomize(&mut self) {
         let mut rng = Rng::default();
@@ -313,16 +317,9 @@ impl FeedForwardNetwork for LinearNetwork {
     type OutputType = crate::neural::Vector<ATTENTION_SIZE>;
     type Layers = <Linear as FeedForwardNetwork>::Layers;
 
-    fn adamw(
-        &mut self,
-        g: &Self,
-        m: &mut Self,
-        v: &mut Self,
-        optimizer: &AdamWOptimizer,
-        adj: f32,
-    ) {
+    fn adamw(&mut self, g: &Self, m: &mut Self, v: &mut Self, optimizer: &AdamWOptimizer) {
         self.output
-            .adamw(&g.output, &mut m.output, &mut v.output, optimizer, adj);
+            .adamw(&g.output, &mut m.output, &mut v.output, optimizer);
     }
 
     fn out_with_layers(&self, input: &Self::InputType) -> Self::Layers {

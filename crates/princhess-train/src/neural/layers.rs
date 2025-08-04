@@ -24,6 +24,15 @@ impl<T: Activation, const M: usize, const N: usize> std::ops::AddAssign<&DenseCo
     }
 }
 
+impl<T: Activation, const M: usize, const N: usize> std::ops::DivAssign<f32>
+    for DenseConnected<T, M, N>
+{
+    fn div_assign(&mut self, rhs: f32) {
+        self.weights /= rhs;
+        self.bias /= rhs;
+    }
+}
+
 impl<T: Activation + Zeroable, const M: usize, const N: usize> DenseConnected<T, M, N> {
     pub const INPUT_SIZE: usize = M;
     pub const OUTPUT_SIZE: usize = N;
@@ -95,22 +104,14 @@ impl<T: Activation + Zeroable, const M: usize, const N: usize> FeedForwardNetwor
     type OutputType = Vector<N>;
     type Layers = DenseConnectedLayers<N>;
 
-    fn adamw(
-        &mut self,
-        g: &Self,
-        m: &mut Self,
-        v: &mut Self,
-        optimizer: &AdamWOptimizer,
-        adj: f32,
-    ) {
+    fn adamw(&mut self, g: &Self, m: &mut Self, v: &mut Self, optimizer: &AdamWOptimizer) {
         optimizer.update_matrix(
             &mut self.weights,
             &g.weights,
             &mut m.weights,
             &mut v.weights,
-            adj,
         );
-        optimizer.update_vector(&mut self.bias, &g.bias, &mut m.bias, &mut v.bias, adj);
+        optimizer.update_vector(&mut self.bias, &g.bias, &mut m.bias, &mut v.bias);
     }
 
     fn out_with_layers(&self, input: &Self::InputType) -> Self::Layers {
@@ -151,6 +152,15 @@ impl<T: Activation, const M: usize, const N: usize> std::ops::AddAssign<&SparseC
     fn add_assign(&mut self, rhs: &SparseConnected<T, M, N>) {
         self.weights += &rhs.weights;
         self.bias += rhs.bias;
+    }
+}
+
+impl<T: Activation, const M: usize, const N: usize> std::ops::DivAssign<f32>
+    for SparseConnected<T, M, N>
+{
+    fn div_assign(&mut self, rhs: f32) {
+        self.weights /= rhs;
+        self.bias /= rhs;
     }
 }
 
@@ -228,7 +238,6 @@ impl<T: Activation + Zeroable, const M: usize, const N: usize> FeedForwardNetwor
         momentum: &mut Self,
         velocity: &mut Self,
         optimizer: &AdamWOptimizer,
-        adj: f32,
     ) {
         for i in 0..M {
             optimizer.update_vector(
@@ -236,7 +245,6 @@ impl<T: Activation + Zeroable, const M: usize, const N: usize> FeedForwardNetwor
                 &grad.weights[i],
                 &mut momentum.weights[i],
                 &mut velocity.weights[i],
-                adj,
             );
         }
         optimizer.update_vector(
@@ -244,7 +252,6 @@ impl<T: Activation + Zeroable, const M: usize, const N: usize> FeedForwardNetwor
             &grad.bias,
             &mut momentum.bias,
             &mut velocity.bias,
-            adj,
         );
     }
 

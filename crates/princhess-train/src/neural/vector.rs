@@ -83,6 +83,14 @@ impl<const N: usize> std::ops::AddAssign<Vector<N>> for Vector<N> {
     }
 }
 
+impl<const N: usize> std::ops::DivAssign<f32> for Vector<N> {
+    fn div_assign(&mut self, rhs: f32) {
+        for x in self.inner.iter_mut() {
+            *x /= rhs;
+        }
+    }
+}
+
 impl<const N: usize> std::ops::Div<Vector<N>> for Vector<N> {
     type Output = Vector<N>;
     fn div(mut self, rhs: Vector<N>) -> Self::Output {
