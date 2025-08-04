@@ -22,6 +22,13 @@ Princhess is a CPU-optimized chess engine written in Rust using Monte Carlo Tree
 - `src/chess/` - Chess game logic (bitboards, moves, etc.)
 - `src/uci.rs` - UCI protocol implementation
 - `crates/princhess-train/` - Training infrastructure
+- `DEVELOPMENT_NOTES.md` - Historical record of experiments, training results, and technical findings
+  - Primary purpose: Provide context for "what should we try next" decisions
+  - Update with objective observations and key metrics from tests/training
+  - Factual data only - no opinions or speculation  
+  - Include both positive and negative results with sufficient context
+  - Document conditions/parameters of failed experiments for future reference
+  - Keep entries concise but detailed enough to inform retry decisions
 
 ## Development Commands
 ```bash
@@ -33,15 +40,10 @@ cargo clippy            # Lint code
 
 ## Code Standards
 - Follow Rust conventions (snake_case, PascalCase, SCREAMING_SNAKE_CASE)
-- Self-documenting code preferred, minimal comments
+- Self-documenting code with strategic comments only
 - KISS, YAGNI, DRY principles
 - Minimal unsafe blocks with explanatory comments
-
-## Strategic Comments
-- **High-impact only**: Comments should clarify complex algorithms or non-obvious architectural decisions
-- **Algorithm understanding**: Brief comments on core concepts (e.g., "PUCT selection", "tree traversal phase")
-- **Avoid over-commenting**: Don't explain what the code does, explain why or what algorithm step it represents
-- **Preserve readability**: Comments should enhance, not clutter the code
+- Comments clarify algorithms/architecture, not obvious operations
 
 ## Commit Messages (Emoji Log)
 - 📦 NEW: Add entirely new features
@@ -51,6 +53,7 @@ cargo clippy            # Lint code
 - 🤖 TST: Test additions/updates
 - Keep messages under 50 characters, imperative mood
 - **SINGLE LINE ONLY** - no multi-line commit messages
+
 
 ## Testing
 - `./target/release/princhess` - Run UCI engine (interactive mode)

@@ -18,11 +18,16 @@ const TARGET_BATCH_COUNT: usize = 300_000;
 const BATCH_SIZE: usize = 32768;
 const THREADS: usize = 6;
 
-const LR: f32 = 0.001;
-const LR_DROP_AT: f32 = 0.35;
-const LR_DROP_FACTOR: f32 = 0.5;
+const MG_LR: f32 = 0.001;
+const MG_LR_DROP_AT: f32 = 0.35;
+const MG_LR_DROP_FACTOR: f32 = 0.5;
 
-const SOFT_TARGET_WEIGHT: f32 = 0.1;
+const EG_LR: f32 = 0.001;
+const EG_LR_DROP_AT: f32 = 0.35;
+const EG_LR_DROP_FACTOR: f32 = 0.5;
+
+const MG_SOFT_TARGET_WEIGHT: f32 = 0.1;
+const EG_SOFT_TARGET_WEIGHT: f32 = 0.1;
 const SOFT_TARGET_TEMPERATURE: f32 = 4.0;
 
 const EPSILON: f32 = 1e-9;
@@ -62,12 +67,21 @@ fn main() {
 
     let mut network = PolicyNetwork::random();
 
-    let mut lr = LR;
+    let mut lr = match phase {
+        Phase::Endgame => EG_LR,
+        Phase::MiddleGame => MG_LR,
+    };
     let mut momentum = PolicyNetwork::zeroed();
     let mut velocity = PolicyNetwork::zeroed();
 
+    let weight_decay = match phase {
+        Phase::MiddleGame => 0.01,
+        Phase::Endgame => 0.0,
+    };
+
     let mut optimizer = AdamWOptimizer::new(AdamWConfig {
         learning_rate: lr,
+        weight_decay,
         ..Default::default()
     });
 
@@ -83,7 +97,10 @@ fn main() {
     println!("Training Phase: {phase}");
 
     let epochs = TARGET_BATCH_COUNT.div_ceil(count / BATCH_SIZE);
-    let lr_drop_at = (epochs as f32 * LR_DROP_AT).ceil() as usize;
+    let lr_drop_at = match phase {
+        Phase::MiddleGame => (epochs as f32 * MG_LR_DROP_AT).ceil() as usize,
+        Phase::Endgame => (epochs as f32 * EG_LR_DROP_AT).ceil() as usize,
+    };
     let net_save_period = epochs.div_ceil(10);
 
     for epoch in 1..=epochs {
@@ -97,6 +114,7 @@ fn main() {
             &mut optimizer,
             input.as_str(),
             phase,
+            start,
         );
 
         let seconds = start.elapsed().as_secs();
@@ -123,7 +141,11 @@ fn main() {
         }
 
         if epoch % lr_drop_at == 0 {
-            lr *= LR_DROP_FACTOR;
+            let drop_factor = match phase {
+                Phase::MiddleGame => MG_LR_DROP_FACTOR,
+                Phase::Endgame => EG_LR_DROP_FACTOR,
+            };
+            lr *= drop_factor;
             optimizer.set_learning_rate(lr);
         }
     }
@@ -136,6 +158,7 @@ fn train(
     optimizer: &mut AdamWOptimizer,
     input: &str,
     phase: Phase,
+    start_time: Instant,
 ) {
     let file = File::open(input).unwrap();
     let _positions = file.metadata().unwrap().len() as usize / TrainingPosition::SIZE;
@@ -164,7 +187,17 @@ fn train(
             network.adamw(&gradients, momentum, velocity, &count, optimizer);
 
             batch_n += 1;
-            print!("Batch {batch_n}/{batches}\r");
+
+            let elapsed = start_time.elapsed().as_secs();
+            let estimated_total = if batch_n > 0 {
+                (elapsed * batches as u64) / batch_n as u64
+            } else {
+                0
+            };
+            let remaining = estimated_total.saturating_sub(elapsed);
+            let remaining_min = remaining / 60;
+
+            print!("Batch {batch_n:5}/{batches:5} (ETA: {remaining_min:3}m)\r");
             io::stdout().flush().unwrap();
         }
 
@@ -173,6 +206,7 @@ fn train(
     }
 
     if running_metrics.processed_count > 0 {
+        println!();
         println!(
             "Running loss: {}",
             running_metrics.loss / running_metrics.processed_count as f32
@@ -273,11 +307,16 @@ fn update_gradient(
         let expected_primary_val = expected_primary[idx];
         metrics.loss -= expected_primary_val * log_actual_val;
 
+        let soft_target_weight = match phase {
+            Phase::MiddleGame => MG_SOFT_TARGET_WEIGHT,
+            Phase::Endgame => EG_SOFT_TARGET_WEIGHT,
+        };
+
         let expected_secondary_val = expected_secondary[idx];
-        metrics.loss -= expected_secondary_val * log_actual_val * SOFT_TARGET_WEIGHT;
+        metrics.loss -= expected_secondary_val * log_actual_val * soft_target_weight;
 
         let combined_error = (actual_val - expected_primary_val)
-            + (actual_val - expected_secondary_val) * SOFT_TARGET_WEIGHT;
+            + (actual_val - expected_secondary_val) * soft_target_weight;
         network.backprop(&features, gradients, move_idx, combined_error);
         count.increment(move_idx);
     }

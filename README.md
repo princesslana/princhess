@@ -47,8 +47,9 @@ The engine responds to standard UCI commands.
 
 ## Contributing
 
-Refer to [CONVENTIONS.md](CONVENTIONS.md) for code style and commit message guidelines.
-[Emoji Log](https://github.com/ahmadawais/Emoji-Log) is used for commit messages.
+Contributions are welcome! Please follow Rust conventions and ensure code is properly formatted with `cargo fmt` and passes `cargo clippy`.
+
+Commit messages use [Emoji Log](https://github.com/ahmadawais/Emoji-Log) format.
 
 ## License
 

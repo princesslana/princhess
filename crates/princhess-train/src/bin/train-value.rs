@@ -20,7 +20,6 @@ const LR: f32 = 0.001;
 const LR_DROP_AT: f32 = 0.7;
 const LR_DROP_FACTOR: f32 = 0.1;
 
-
 const WDL_WEIGHT: f32 = 0.3;
 
 const _BUFFER_SIZE_CHECK: () = assert!(TrainingPosition::BUFFER_SIZE % BATCH_SIZE == 0);
@@ -69,6 +68,7 @@ fn main() {
             &mut velocity,
             &mut optimizer,
             input.as_str(),
+            start,
         );
 
         let seconds = start.elapsed().as_secs();
@@ -103,6 +103,7 @@ fn train(
     velocity: &mut ValueNetwork,
     optimizer: &mut AdamWOptimizer,
     input: &str,
+    start_time: Instant,
 ) {
     let file = File::open(input).unwrap();
     let positions = file.metadata().unwrap().len() as usize / TrainingPosition::SIZE;
@@ -129,7 +130,18 @@ fn train(
             network.adamw(&gradients, momentum, velocity, optimizer, adj);
 
             batch_n += 1;
-            print!("Batch {batch_n}/{batches}\r",);
+
+            // Calculate time remaining estimate
+            let elapsed = start_time.elapsed().as_secs();
+            let estimated_total = if batch_n > 0 {
+                (elapsed * batches as u64) / batch_n as u64
+            } else {
+                0
+            };
+            let remaining = estimated_total.saturating_sub(elapsed);
+            let remaining_min = remaining / 60;
+
+            print!("Batch {batch_n:5}/{batches:5} (ETA: {remaining_min:3}m)\r");
             io::stdout().flush().unwrap();
         }
 
@@ -137,6 +149,7 @@ fn train(
         buffer.consume(consumed);
     }
 
+    println!();
     println!("Running loss: {}", running_loss / positions as f32);
 }
 
