@@ -38,6 +38,23 @@
 - Weight decay acts as L2 regularization applied directly to weights
 - Different networks show varying sensitivity to weight decay hyperparameter
 
+### EG Policy Learning Rate Schedule Testing (August 2025)
+
+**Context**: Testing EG policy with standard learning rate schedule: 0.001 → 0.0005 (single drop at 50% training).
+
+**Training Results (13 epochs)**:
+- Final loss: 2.6578
+- Final accuracy: 40.84%
+
+**Tournament Results**:
+- **STC (25k nodes)**: +6.25 Elo ±12.95 (82.8% LOS, 1000 games)
+- **LTC (40+0.4)**: -4.45 Elo ±9.11 (16.9% LOS, 1326 games)
+
+**Network Analysis Data**:
+- Piece attention utilization: bad_see_pawn 79.7%, good_see_pawn 83.3%, bad_see_queen 83.7%, king 70.3%
+- Weight magnitude progression: E2 512k → E10 1.40M (bad_see_pawn_to_g8)
+- Node attention variance: 3-5% range across attention heads
+
 **Strategic Implications**:
 - Value and MG policy networks benefit from AdamW's regularization
 - EG policy network may be more sensitive to overfitting or requires different regularization approach
