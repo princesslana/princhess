@@ -399,9 +399,14 @@ fn analyze_bucket_differentiation(network: &QuantizedValueNetwork) {
         }
     }
 
-    // Sort by differentiation ratio
-    differentiation_ratios
-        .sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+    differentiation_ratios.sort_by(|a, b| {
+        match (a.1.is_nan(), b.1.is_nan()) {
+            (true, true) => std::cmp::Ordering::Equal,
+            (true, false) => std::cmp::Ordering::Greater,
+            (false, true) => std::cmp::Ordering::Less,
+            (false, false) => b.1.partial_cmp(&a.1).unwrap(),
+        }
+    });
 
     println!("Feature-by-feature bucket differentiation analysis:");
     println!("(Comparing same logical feature across different king/threat bucket combinations)\n");
@@ -417,7 +422,14 @@ fn analyze_bucket_differentiation(network: &QuantizedValueNetwork) {
         let avg_ratio = finite_ratios.iter().sum::<f64>() / finite_ratios.len() as f64;
         let median_ratio = {
             let mut sorted = finite_ratios.clone();
-            sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            sorted.sort_by(|a, b| {
+                match (a.is_nan(), b.is_nan()) {
+                    (true, true) => std::cmp::Ordering::Equal,
+                    (true, false) => std::cmp::Ordering::Greater,
+                    (false, true) => std::cmp::Ordering::Less,
+                    (false, false) => a.partial_cmp(b).unwrap(),
+                }
+            });
             sorted[sorted.len() / 2]
         };
 
@@ -940,7 +952,14 @@ fn analyze_bucket_similarity_matrix(network: &QuantizedValueNetwork) {
         }
     }
 
-    similarities.sort_by(|a, b| b.2.partial_cmp(&a.2).unwrap_or(std::cmp::Ordering::Equal));
+    similarities.sort_by(|a, b| {
+        match (a.2.is_nan(), b.2.is_nan()) {
+            (true, true) => std::cmp::Ordering::Equal,
+            (true, false) => std::cmp::Ordering::Greater,
+            (false, true) => std::cmp::Ordering::Less,
+            (false, false) => b.2.partial_cmp(&a.2).unwrap(),
+        }
+    });
 
     println!("\nMost similar bucket pairs:");
     for (i, j, sim) in similarities.iter().take(10) {
