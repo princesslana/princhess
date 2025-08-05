@@ -1,6 +1,6 @@
 use crate::neural::{
-    AdamWOptimizer, DenseConnected, FeedForwardNetwork, OutputLayer, SparseConnected, SparseVector,
-    Tanh, Vector,
+    AdamWOptimizer, DenseConnected, FeedForwardNetwork, LRScheduler, OutputLayer, SparseConnected,
+    SparseVector, Tanh, Vector,
 };
 use bytemuck::{allocation, Zeroable};
 use princhess::math::Rng;
@@ -10,7 +10,7 @@ use princhess::quantized_value::{
 };
 use std::boxed::Box;
 use std::fmt::{self, Display, Formatter};
-use std::ops::AddAssign;
+use std::ops::{AddAssign, DivAssign};
 
 use crate::nets::{q_i16, q_i32};
 use crate::neural::SCReLU;
@@ -40,6 +40,14 @@ impl AddAssign<&Self> for ValueNetwork {
         self.stm += &rhs.stm;
         self.nstm += &rhs.nstm;
         self.output += &rhs.output;
+    }
+}
+
+impl DivAssign<f32> for ValueNetwork {
+    fn div_assign(&mut self, rhs: f32) {
+        self.stm /= rhs;
+        self.nstm /= rhs;
+        self.output /= rhs;
     }
 }
 
@@ -128,20 +136,18 @@ impl FeedForwardNetwork for ValueNetwork {
     type OutputType = Vector<OUTPUT_SIZE>;
     type Layers = ValueNetworkLayers;
 
-    fn adamw(
+    fn adamw<S: LRScheduler>(
         &mut self,
         g: &Self,
         m: &mut Self,
         v: &mut Self,
-        optimizer: &AdamWOptimizer,
-        adj: f32,
+        optimizer: &AdamWOptimizer<S>,
     ) {
-        self.stm
-            .adamw(&g.stm, &mut m.stm, &mut v.stm, optimizer, adj);
+        self.stm.adamw(&g.stm, &mut m.stm, &mut v.stm, optimizer);
         self.nstm
-            .adamw(&g.nstm, &mut m.nstm, &mut v.nstm, optimizer, adj);
+            .adamw(&g.nstm, &mut m.nstm, &mut v.nstm, optimizer);
         self.output
-            .adamw(&g.output, &mut m.output, &mut v.output, optimizer, adj);
+            .adamw(&g.output, &mut m.output, &mut v.output, optimizer);
     }
 
     fn out_with_layers(&self, input: &Self::InputType) -> Self::Layers {

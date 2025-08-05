@@ -1,6 +1,7 @@
 use princhess::state::State;
 use princhess_train::neural::{
-    AdamWConfig, AdamWOptimizer, FeedForwardNetwork, OutputLayer, SparseVector, Vector,
+    AdamWOptimizer, FeedForwardNetwork, LRScheduler, OutputLayer, SparseVector, StepLRScheduler,
+    Vector,
 };
 use std::env;
 use std::fs::{self, File};
@@ -25,7 +26,6 @@ const WDL_WEIGHT: f32 = 0.3;
 const _BUFFER_SIZE_CHECK: () = assert!(TrainingPosition::BUFFER_SIZE % BATCH_SIZE == 0);
 
 fn main() {
-    println!("Running...");
     let mut args = env::args();
     args.next();
 
@@ -36,30 +36,26 @@ fn main() {
 
     let mut network = ValueNetwork::random();
 
-    let mut lr = LR;
     let mut momentum = ValueNetwork::zeroed();
     let mut velocity = ValueNetwork::zeroed();
 
-    let mut optimizer = AdamWOptimizer::new(AdamWConfig {
-        learning_rate: lr,
-        ..Default::default()
-    });
+    let epochs = TARGET_BATCH_COUNT.div_ceil(count / BATCH_SIZE);
+    let total_steps = (epochs * (count / BATCH_SIZE)) as u32;
+    let scheduler = StepLRScheduler::new(LR, LR_DROP_FACTOR, LR_DROP_AT, total_steps);
+
+    let mut optimizer = AdamWOptimizer::with_scheduler(scheduler);
 
     let timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap()
         .as_secs();
 
-    println!("Beginning training...");
     println!("Network: {network}");
     println!("Positions: {count}");
     println!("File: {input}");
 
-    let epochs = TARGET_BATCH_COUNT.div_ceil(count / BATCH_SIZE);
-    let lr_drop_at = (epochs as f32 * LR_DROP_AT) as usize;
-
     for epoch in 1..=epochs {
-        println!("\nEpoch {epoch}/{epochs} (LR: {lr})...");
+        println!("\nEpoch {epoch}/{epochs}...");
         let start = Instant::now();
 
         train(
@@ -89,19 +85,14 @@ fn main() {
         network.to_boxed_and_quantized().save_to_bin(dir);
 
         println!("Saved to {dir_name}");
-
-        if epoch % lr_drop_at == 0 {
-            lr *= LR_DROP_FACTOR;
-            optimizer.set_learning_rate(lr);
-        }
     }
 }
 
-fn train(
+fn train<S: LRScheduler>(
     network: &mut ValueNetwork,
     momentum: &mut ValueNetwork,
     velocity: &mut ValueNetwork,
-    optimizer: &mut AdamWOptimizer,
+    optimizer: &mut AdamWOptimizer<S>,
     input: &str,
     start_time: Instant,
 ) {
@@ -124,10 +115,11 @@ fn train(
         for batch in data.chunks(BATCH_SIZE) {
             let mut gradients = ValueNetwork::zeroed();
             running_loss += gradients_batch(network, &mut gradients, batch);
-            let adj = 2.0 / batch.len() as f32;
+
+            *gradients /= batch.len() as f32;
 
             optimizer.step();
-            network.adamw(&gradients, momentum, velocity, optimizer, adj);
+            network.adamw(&gradients, momentum, velocity, optimizer);
 
             batch_n += 1;
 
@@ -141,7 +133,13 @@ fn train(
             let remaining = estimated_total.saturating_sub(elapsed);
             let remaining_min = remaining / 60;
 
-            print!("Batch {batch_n:5}/{batches:5} (ETA: {remaining_min:3}m)\r");
+            print!(
+                "B {:>5}/{:>5} | ETA {:>3}m | LR {:.6}\r",
+                batch_n,
+                batches,
+                remaining_min,
+                optimizer.get_learning_rate()
+            );
             io::stdout().flush().unwrap();
         }
 
@@ -201,5 +199,10 @@ fn update_gradient(
     let error = actual - expected;
     *loss += error * error;
 
-    network.backprop(&features, gradients, Vector::from_raw([error]), &net_out);
+    network.backprop(
+        &features,
+        gradients,
+        Vector::from_raw([2.0 * error]),
+        &net_out,
+    );
 }

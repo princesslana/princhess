@@ -1,8 +1,8 @@
 use std::marker::PhantomData;
 
 use crate::neural::{
-    activation::Activation, AdamWOptimizer, FeedForwardNetwork, Matrix, OutputLayer, SparseVector,
-    Vector,
+    activation::Activation, AdamWOptimizer, FeedForwardNetwork, LRScheduler, Matrix, OutputLayer,
+    SparseVector, Vector,
 };
 use bytemuck::{allocation, Zeroable};
 use princhess::math::Rng;
@@ -21,6 +21,15 @@ impl<T: Activation, const M: usize, const N: usize> std::ops::AddAssign<&DenseCo
     fn add_assign(&mut self, rhs: &DenseConnected<T, M, N>) {
         self.weights += &rhs.weights;
         self.bias += rhs.bias;
+    }
+}
+
+impl<T: Activation, const M: usize, const N: usize> std::ops::DivAssign<f32>
+    for DenseConnected<T, M, N>
+{
+    fn div_assign(&mut self, rhs: f32) {
+        self.weights /= rhs;
+        self.bias /= rhs;
     }
 }
 
@@ -95,22 +104,20 @@ impl<T: Activation + Zeroable, const M: usize, const N: usize> FeedForwardNetwor
     type OutputType = Vector<N>;
     type Layers = DenseConnectedLayers<N>;
 
-    fn adamw(
+    fn adamw<S: LRScheduler>(
         &mut self,
         g: &Self,
         m: &mut Self,
         v: &mut Self,
-        optimizer: &AdamWOptimizer,
-        adj: f32,
+        optimizer: &AdamWOptimizer<S>,
     ) {
         optimizer.update_matrix(
             &mut self.weights,
             &g.weights,
             &mut m.weights,
             &mut v.weights,
-            adj,
         );
-        optimizer.update_vector(&mut self.bias, &g.bias, &mut m.bias, &mut v.bias, adj);
+        optimizer.update_vector(&mut self.bias, &g.bias, &mut m.bias, &mut v.bias);
     }
 
     fn out_with_layers(&self, input: &Self::InputType) -> Self::Layers {
@@ -151,6 +158,15 @@ impl<T: Activation, const M: usize, const N: usize> std::ops::AddAssign<&SparseC
     fn add_assign(&mut self, rhs: &SparseConnected<T, M, N>) {
         self.weights += &rhs.weights;
         self.bias += rhs.bias;
+    }
+}
+
+impl<T: Activation, const M: usize, const N: usize> std::ops::DivAssign<f32>
+    for SparseConnected<T, M, N>
+{
+    fn div_assign(&mut self, rhs: f32) {
+        self.weights /= rhs;
+        self.bias /= rhs;
     }
 }
 
@@ -222,13 +238,12 @@ impl<T: Activation + Zeroable, const M: usize, const N: usize> FeedForwardNetwor
     type OutputType = Vector<N>;
     type Layers = SparseConnectedLayers<N>;
 
-    fn adamw(
+    fn adamw<S: LRScheduler>(
         &mut self,
         grad: &Self,
         momentum: &mut Self,
         velocity: &mut Self,
-        optimizer: &AdamWOptimizer,
-        adj: f32,
+        optimizer: &AdamWOptimizer<S>,
     ) {
         for i in 0..M {
             optimizer.update_vector(
@@ -236,7 +251,6 @@ impl<T: Activation + Zeroable, const M: usize, const N: usize> FeedForwardNetwor
                 &grad.weights[i],
                 &mut momentum.weights[i],
                 &mut velocity.weights[i],
-                adj,
             );
         }
         optimizer.update_vector(
@@ -244,7 +258,6 @@ impl<T: Activation + Zeroable, const M: usize, const N: usize> FeedForwardNetwor
             &grad.bias,
             &mut momentum.bias,
             &mut velocity.bias,
-            adj,
         );
     }
 

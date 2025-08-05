@@ -59,3 +59,28 @@
 - Value and MG policy networks benefit from AdamW's regularization
 - EG policy network may be more sensitive to overfitting or requires different regularization approach
 - Loss/accuracy metrics may not correlate with ELO performance for EG policy training
+
+### Value Network King Bucketing Testing (August 2025)
+
+**Context**: Testing consolidation of all endgame positions (≤6 major pieces) to king bucket 2 instead of using original KING_BUCKETS mapping.
+
+**Results**:
+- **Fixed-node test (25k nodes, 1000 games)**: -13.90 ±15.46 Elo (3.87% LOS)
+- **Games**: 305 wins, 345 losses, 350 draws (48.00% points)
+
+**Conclusion**: Endgame-aware king bucketing shows negative Elo. Reverted to original KING_BUCKETS logic.
+
+### Value Network King Bucketing - f1/c1 Position Testing (August 2025)
+
+**Context**: Testing moving f1 and c1 squares from king bucket 0 to king bucket 1 in KING_BUCKETS mapping.
+
+**Training Results**:
+- 9 epochs, 802M positions, LR schedule: 0.001 (epochs 1-6) → 0.0001 (epochs 7-9)
+- Loss progression: 0.0696 → 0.0531 (23.6% reduction)
+- Epoch 6: 0.0584 loss, Epoch 9: 0.0531 loss
+
+**Tournament Results**:
+- **Epoch 6 vs main**: -70.44 ±17.25 Elo (0.00% LOS, 1000 games)
+- **Epoch 9 vs main**: -5.56 ±16.12 Elo (24.94% LOS, 1000 games)
+
+**Conclusion**: Moving f1/c1 from bucket 0 to bucket 1 reduces performance. Original bucket mapping retained.
