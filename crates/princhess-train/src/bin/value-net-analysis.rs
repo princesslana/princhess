@@ -25,7 +25,18 @@ fn main() {
     let network_bytes = fs::read(&network_path)
         .unwrap_or_else(|e| panic!("Failed to read network file {network_path}: {e}"));
 
-    let network: &QuantizedValueNetwork =
+    // Validate file size matches expected struct size
+    if network_bytes.len() != std::mem::size_of::<QuantizedValueNetwork>() {
+        panic!(
+            "File size mismatch: expected {} bytes, got {} bytes",
+            std::mem::size_of::<QuantizedValueNetwork>(),
+            network_bytes.len()
+        );
+    }
+    
+    // Use validated unsafe cast - necessary due to large struct size and alignment requirements
+    // Safety: We've validated the size matches exactly, and modern CPUs handle unaligned access
+    let network: &QuantizedValueNetwork = 
         unsafe { &*(network_bytes.as_ptr() as *const QuantizedValueNetwork) };
 
     analyze_network_weights(network);
