@@ -683,27 +683,6 @@ fn analyze_hidden_layer_size(network: &QuantizedValueNetwork) {
     let mut nodes_for_80pct = 0;
     let mut nodes_for_95pct = 0;
 
-    for (_, magnitude) in &indexed_nodes {
-        cumulative_magnitude += magnitude;
-        let cumulative_pct = 100.0 * cumulative_magnitude as f64 / total_magnitude as f64;
-
-        if nodes_for_50pct == 0 && cumulative_pct >= 50.0 {
-            nodes_for_50pct = cumulative_magnitude as usize / *magnitude as usize;
-        }
-        if nodes_for_80pct == 0 && cumulative_pct >= 80.0 {
-            nodes_for_80pct = cumulative_magnitude as usize / *magnitude as usize;
-        }
-        if nodes_for_95pct == 0 && cumulative_pct >= 95.0 {
-            nodes_for_95pct = cumulative_magnitude as usize / *magnitude as usize;
-        }
-    }
-
-    // Fix the cumulative calculation
-    cumulative_magnitude = 0;
-    nodes_for_50pct = 0;
-    nodes_for_80pct = 0;
-    nodes_for_95pct = 0;
-
     for (count, (_, magnitude)) in indexed_nodes.iter().enumerate() {
         cumulative_magnitude += magnitude;
         let cumulative_pct = 100.0 * cumulative_magnitude as f64 / total_magnitude as f64;
