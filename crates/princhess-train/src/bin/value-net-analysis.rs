@@ -2,6 +2,7 @@ use princhess::chess::Square;
 use princhess::quantized_value::{QuantizedValueNetwork, HIDDEN_SIZE, INPUT_SIZE};
 use princhess::state::{NUMBER_KING_BUCKETS, NUMBER_POSITIONS};
 use princhess_train::analysis_utils::{king_bucket_name, piece_name, threat_bucket_name};
+use std::alloc::{alloc, Layout};
 
 type FeatureBucketMap = std::collections::HashMap<(usize, usize, bool), Vec<(usize, i64)>>;
 use std::env;
@@ -34,10 +35,28 @@ fn main() {
         );
     }
     
-    // Use validated unsafe cast - necessary due to large struct size and alignment requirements
-    // Safety: We've validated the size matches exactly, and modern CPUs handle unaligned access
-    let network: &QuantizedValueNetwork = 
-        unsafe { &*(network_bytes.as_ptr() as *const QuantizedValueNetwork) };
+    let required_align = std::mem::align_of::<QuantizedValueNetwork>();
+    let ptr = network_bytes.as_ptr();
+    
+    let network: &QuantizedValueNetwork = if ptr.align_offset(required_align) == 0 {
+        bytemuck::from_bytes(&network_bytes)
+    } else {
+        let layout = Layout::from_size_align(
+            std::mem::size_of::<QuantizedValueNetwork>(),
+            required_align,
+        ).expect("Invalid layout");
+        
+        let aligned_ptr = unsafe { alloc(layout) };
+        if aligned_ptr.is_null() {
+            panic!("Failed to allocate aligned memory for network");
+        }
+        
+        unsafe {
+            std::ptr::copy_nonoverlapping(ptr, aligned_ptr, network_bytes.len());
+            let aligned_slice = std::slice::from_raw_parts(aligned_ptr, network_bytes.len());
+            bytemuck::from_bytes(aligned_slice)
+        }
+    };
 
     analyze_network_weights(network);
 }
