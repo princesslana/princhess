@@ -173,7 +173,7 @@ impl State {
     }
 
     #[must_use]
-    fn king_bucket(&self, king_sq: Square) -> usize {
+    fn king_bucket(king_sq: Square) -> usize {
         KING_BUCKETS[king_sq]
     }
 
@@ -203,8 +203,8 @@ impl State {
             (false, false) => sq,
         };
 
-        let stm_king_bucket = self.king_bucket(flip_stm(stm_ksq));
-        let nstm_king_bucket = self.king_bucket(flip_nstm(nstm_ksq));
+        let stm_king_bucket = Self::king_bucket(flip_stm(stm_ksq));
+        let nstm_king_bucket = Self::king_bucket(flip_nstm(nstm_ksq));
 
         for sq in b.occupied() {
             let piece = b.piece_at(sq);

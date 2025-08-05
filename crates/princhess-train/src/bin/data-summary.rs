@@ -6,57 +6,9 @@ use std::env;
 use std::fs::File as FsFile;
 use std::io::{self, BufRead, BufReader, Write};
 
+use princhess_train::analysis_utils::{king_bucket_name, piece_name, threat_bucket_name};
 use princhess_train::data::TrainingPosition;
 use princhess_train::policy::Phase;
-
-fn king_bucket_name(bucket: usize, short: bool) -> &'static str {
-    match bucket {
-        0 => {
-            if short {
-                "Corner"
-            } else {
-                "King corner"
-            }
-        }
-        1 => {
-            if short {
-                "Center"
-            } else {
-                "King center"
-            }
-        }
-        2 => {
-            if short {
-                "Other"
-            } else {
-                "King other"
-            }
-        }
-        _ => "Unknown",
-    }
-}
-
-fn threat_bucket_name(bucket: usize) -> &'static str {
-    match bucket {
-        0 => "Safe",
-        1 => "Defended",
-        2 => "Threatened",
-        3 => "Both",
-        _ => "Unknown",
-    }
-}
-
-fn piece_name(piece_idx: usize) -> &'static str {
-    match piece_idx {
-        0 => "pawn",
-        1 => "knight",
-        2 => "bishop",
-        3 => "rook",
-        4 => "queen",
-        5 => "king",
-        _ => "unknown",
-    }
-}
 
 fn main() {
     let mut args = env::args();
@@ -422,7 +374,7 @@ fn main() {
 
     println!("Middle Game:");
     for (bucket, &count) in mg_king_buckets.iter().enumerate() {
-        let bucket_name = king_bucket_name(bucket, true);
+        let bucket_name = king_bucket_name(bucket);
         let percentage = if total_mg_king_features > 0 {
             count as f32 / total_mg_king_features as f32 * 100.0
         } else {
@@ -433,7 +385,7 @@ fn main() {
 
     println!("Endgame:");
     for (bucket, &count) in eg_king_buckets.iter().enumerate() {
-        let bucket_name = king_bucket_name(bucket, true);
+        let bucket_name = king_bucket_name(bucket);
         let percentage = if total_eg_king_features > 0 {
             count as f32 / total_eg_king_features as f32 * 100.0
         } else {

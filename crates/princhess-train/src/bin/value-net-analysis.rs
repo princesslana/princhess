@@ -1,6 +1,7 @@
 use princhess::chess::Square;
 use princhess::quantized_value::{QuantizedValueNetwork, HIDDEN_SIZE, INPUT_SIZE};
 use princhess::state::{NUMBER_KING_BUCKETS, NUMBER_POSITIONS};
+use princhess_train::analysis_utils::{king_bucket_name, piece_name, threat_bucket_name};
 
 type FeatureBucketMap = std::collections::HashMap<(usize, usize, bool), Vec<(usize, i64)>>;
 use std::env;
@@ -9,56 +10,6 @@ use std::fs;
 const DEAD_FEATURE_THRESHOLD: i32 = 100;
 const SIGNIFICANT_WEIGHT_THRESHOLD: i16 = 5;
 const LOW_UTILIZATION_THRESHOLD: f64 = 0.1;
-
-// Helper functions to eliminate redundant mappings
-fn king_bucket_name(bucket: usize, short: bool) -> &'static str {
-    match bucket {
-        0 => {
-            if short {
-                "Corner"
-            } else {
-                "King corner"
-            }
-        }
-        1 => {
-            if short {
-                "Center"
-            } else {
-                "King center"
-            }
-        }
-        2 => {
-            if short {
-                "Other"
-            } else {
-                "King other"
-            }
-        }
-        _ => "Unknown",
-    }
-}
-
-fn threat_bucket_name(bucket: usize) -> &'static str {
-    match bucket {
-        0 => "Safe",
-        1 => "Defended",
-        2 => "Threatened",
-        3 => "Both",
-        _ => "Unknown",
-    }
-}
-
-fn piece_name(piece_idx: usize) -> &'static str {
-    match piece_idx {
-        0 => "pawn",
-        1 => "knight",
-        2 => "bishop",
-        3 => "rook",
-        4 => "queen",
-        5 => "king",
-        _ => "unknown",
-    }
-}
 
 fn main() {
     let mut args = env::args();
@@ -821,7 +772,7 @@ fn analyze_per_bucket_stats(feature_buckets: &FeatureBucketMap) {
         let king_bucket = bucket_id % NUMBER_KING_BUCKETS;
         let threat_bucket = bucket_id / NUMBER_KING_BUCKETS;
 
-        let king_desc = king_bucket_name(king_bucket, false);
+        let king_desc = format!("King {}", king_bucket_name(king_bucket));
         let threat_desc = threat_bucket_name(threat_bucket);
 
         let total_features = importances.len();
@@ -883,7 +834,7 @@ fn analyze_per_bucket_stats(feature_buckets: &FeatureBucketMap) {
         } else {
             0.0
         };
-        let king_desc = king_bucket_name(i, false);
+        let king_desc = format!("King {}", king_bucket_name(i));
         println!("  {king_desc}: {zero_pct:.1}% zero features, avg importance: {avg_imp:.0}");
     }
 
@@ -1046,7 +997,7 @@ fn analyze_bucket_similarity_matrix(network: &QuantizedValueNetwork) {
     for (k, sims) in king_bucket_sims.iter().enumerate() {
         if !sims.is_empty() {
             let avg = sims.iter().sum::<f64>() / sims.len() as f64;
-            let king_desc = king_bucket_name(k, true);
+            let king_desc = king_bucket_name(k);
             println!(
                 "  King bucket {k} ({king_desc}): {avg:.3} avg similarity across threat buckets"
             );
