@@ -2,7 +2,7 @@ use arrayvec::ArrayVec;
 use bytemuck::Zeroable;
 use princhess::math;
 use princhess::state::State;
-use princhess_train::neural::{AdamWConfig, AdamWOptimizer, SparseVector};
+use princhess_train::neural::{AdamWOptimizer, LRScheduler, SparseVector, StepLRScheduler};
 use std::env;
 use std::fs::{self, File};
 use std::io::{self, BufRead, BufReader, Write};
@@ -50,7 +50,6 @@ impl AddAssign for BatchMetrics {
 }
 
 fn main() {
-    println!("Running...");
     let mut args = env::args();
     args.next();
 
@@ -67,10 +66,6 @@ fn main() {
 
     let mut network = PolicyNetwork::random();
 
-    let mut lr = match phase {
-        Phase::Endgame => EG_LR,
-        Phase::MiddleGame => MG_LR,
-    };
     let mut momentum = PolicyNetwork::zeroed();
     let mut velocity = PolicyNetwork::zeroed();
 
@@ -79,32 +74,32 @@ fn main() {
         Phase::Endgame => 0.0,
     };
 
-    let mut optimizer = AdamWOptimizer::new(AdamWConfig {
-        learning_rate: lr,
-        weight_decay,
-        ..Default::default()
-    });
+    let epochs = TARGET_BATCH_COUNT.div_ceil(count / BATCH_SIZE);
+    let total_steps = (epochs * (count / BATCH_SIZE)) as u32;
+
+    let (initial_lr, drop_at_fraction, drop_factor) = match phase {
+        Phase::MiddleGame => (MG_LR, MG_LR_DROP_AT, MG_LR_DROP_FACTOR),
+        Phase::Endgame => (EG_LR, EG_LR_DROP_AT, EG_LR_DROP_FACTOR),
+    };
+
+    let scheduler = StepLRScheduler::new(initial_lr, drop_factor, drop_at_fraction, total_steps);
+
+    let mut optimizer = AdamWOptimizer::with_scheduler(scheduler).weight_decay(weight_decay);
 
     let timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap()
         .as_secs();
 
-    println!("Beginning training...");
     println!("Network: {network}");
     println!("Positions: {count}");
     println!("File: {input}");
     println!("Training Phase: {phase}");
 
-    let epochs = TARGET_BATCH_COUNT.div_ceil(count / BATCH_SIZE);
-    let lr_drop_at = match phase {
-        Phase::MiddleGame => (epochs as f32 * MG_LR_DROP_AT).ceil() as usize,
-        Phase::Endgame => (epochs as f32 * EG_LR_DROP_AT).ceil() as usize,
-    };
     let net_save_period = epochs.div_ceil(10);
 
     for epoch in 1..=epochs {
-        println!("\nEpoch {epoch}/{epochs} (LR: {lr})...");
+        println!("\nEpoch {epoch}/{epochs}...");
         let start = Instant::now();
 
         train(
@@ -139,23 +134,14 @@ fn main() {
 
             println!("Saved to {dir_name}");
         }
-
-        if epoch % lr_drop_at == 0 {
-            let drop_factor = match phase {
-                Phase::MiddleGame => MG_LR_DROP_FACTOR,
-                Phase::Endgame => EG_LR_DROP_FACTOR,
-            };
-            lr *= drop_factor;
-            optimizer.set_learning_rate(lr);
-        }
     }
 }
 
-fn train(
+fn train<S: LRScheduler>(
     network: &mut PolicyNetwork,
     momentum: &mut PolicyNetwork,
     velocity: &mut PolicyNetwork,
-    optimizer: &mut AdamWOptimizer,
+    optimizer: &mut AdamWOptimizer<S>,
     input: &str,
     phase: Phase,
     start_time: Instant,
@@ -199,7 +185,13 @@ fn train(
             let remaining = estimated_total.saturating_sub(elapsed);
             let remaining_min = remaining / 60;
 
-            print!("Batch {batch_n:5}/{batches:5} (ETA: {remaining_min:3}m)\r");
+            print!(
+                "B {:>5}/{:>5} | ETA {:>3}m | LR {:.6}\r",
+                batch_n,
+                batches,
+                remaining_min,
+                optimizer.get_learning_rate()
+            );
             io::stdout().flush().unwrap();
         }
 

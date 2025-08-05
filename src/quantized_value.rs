@@ -97,4 +97,34 @@ impl QuantizedValueNetwork {
 
         (result as f32 / QAB as f32).tanh()
     }
+
+    #[must_use]
+    pub fn stm_weight(&self, feat_idx: usize) -> &Accumulator<i16, HIDDEN_SIZE> {
+        &self.stm_weights[feat_idx]
+    }
+
+    #[must_use]
+    pub fn stm_bias(&self) -> &Accumulator<i16, HIDDEN_SIZE> {
+        &self.stm_bias
+    }
+
+    #[must_use]
+    pub fn nstm_weight(&self, feat_idx: usize) -> &Accumulator<i16, HIDDEN_SIZE> {
+        &self.nstm_weights[feat_idx]
+    }
+
+    #[must_use]
+    pub fn nstm_bias(&self) -> &Accumulator<i16, HIDDEN_SIZE> {
+        &self.nstm_bias
+    }
+
+    #[must_use]
+    pub fn output_weight(&self, idx: usize) -> &Accumulator<i16, HIDDEN_SIZE> {
+        &self.output_weights[idx]
+    }
+
+    #[must_use]
+    pub fn output_bias(&self) -> i32 {
+        self.output_bias
+    }
 }

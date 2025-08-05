@@ -4,9 +4,9 @@ use crate::chess::{Board, Color, File, Move, MoveList, Piece, Square};
 use crate::nets::MoveIndex;
 use crate::uci::Tokens;
 
-const NUMBER_KING_BUCKETS: usize = 3;
-const NUMBER_THREAT_BUCKETS: usize = 4;
-const NUMBER_POSITIONS: usize = 768;
+pub const NUMBER_KING_BUCKETS: usize = 3;
+pub const NUMBER_THREAT_BUCKETS: usize = 4;
+pub const NUMBER_POSITIONS: usize = 768;
 
 pub const VALUE_NUMBER_FEATURES: usize =
     NUMBER_POSITIONS * NUMBER_KING_BUCKETS * NUMBER_THREAT_BUCKETS;
@@ -172,6 +172,11 @@ impl State {
         major_pieces_count <= 6
     }
 
+    #[must_use]
+    fn king_bucket(&self, king_sq: Square) -> usize {
+        KING_BUCKETS[king_sq]
+    }
+
     #[allow(clippy::similar_names)]
     pub fn value_features_map<F>(&self, mut f: F)
     where
@@ -198,8 +203,8 @@ impl State {
             (false, false) => sq,
         };
 
-        let stm_king_bucket = KING_BUCKETS[flip_stm(stm_ksq)];
-        let nstm_king_bucket = KING_BUCKETS[flip_nstm(nstm_ksq)];
+        let stm_king_bucket = self.king_bucket(flip_stm(stm_ksq));
+        let nstm_king_bucket = self.king_bucket(flip_nstm(nstm_ksq));
 
         for sq in b.occupied() {
             let piece = b.piece_at(sq);
@@ -213,7 +218,6 @@ impl State {
 
             let threat_bucket = usize::from(threatened) * 2 + usize::from(defended);
 
-            // stm
             {
                 let sq_idx = flip_stm(sq).index();
 
@@ -224,7 +228,6 @@ impl State {
                 f(index);
             }
 
-            //nstm
             {
                 let sq_idx = flip_nstm(sq).index();
 

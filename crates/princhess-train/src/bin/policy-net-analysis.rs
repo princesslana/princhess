@@ -1,3 +1,4 @@
+use princhess::chess::Square;
 use princhess::nets::Accumulator;
 use princhess::quantized_policy::{QuantizedPolicyNetwork, ATTENTION_SIZE, INPUT_SIZE};
 use std::env;
@@ -244,12 +245,7 @@ fn square_index_to_name(sq_idx: usize) -> String {
         return format!("invalid_{sq_idx}");
     }
 
-    let file = (sq_idx % 8) as u8;
-    let rank = (sq_idx / 8) as u8;
-    let file_char = (b'a' + file) as char;
-    let rank_char = (b'1' + rank) as char;
-
-    format!("{file_char}{rank_char}")
+    Square::from(sq_idx as u8).to_string()
 }
 
 fn format_sign(avg_sign: f64) -> &'static str {
@@ -352,7 +348,7 @@ fn analyze_attention_utilization(network: &QuantizedPolicyNetwork) {
         }
     }
 
-    let total_sq_connections = network.sq_count() * (INPUT_SIZE + 1); // +1 for bias
+    let total_sq_connections = network.sq_count() * (INPUT_SIZE + 1);
     let total_piece_sq_connections = network.piece_sq_count() * (INPUT_SIZE + 1);
 
     println!("Square subnet attention node utilization:");

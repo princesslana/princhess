@@ -1,5 +1,6 @@
 use crate::neural::{
-    AdamWOptimizer, FeedForwardNetwork, OutputLayer, ReLU, SparseConnected, SparseVector,
+    AdamWOptimizer, FeedForwardNetwork, LRScheduler, OutputLayer, ReLU, SparseConnected,
+    SparseVector,
 };
 use bytemuck::{allocation, Zeroable};
 use princhess::chess::Square;
@@ -136,7 +137,13 @@ impl PolicyNetwork {
         }
     }
 
-    pub fn adamw(&mut self, g: &Self, m: &mut Self, v: &mut Self, optimizer: &AdamWOptimizer) {
+    pub fn adamw<S: LRScheduler>(
+        &mut self,
+        g: &Self,
+        m: &mut Self,
+        v: &mut Self,
+        optimizer: &AdamWOptimizer<S>,
+    ) {
         for subnet_idx in 0..self.sq.len() {
             self.sq[subnet_idx].adamw(
                 &g.sq[subnet_idx],
@@ -317,7 +324,13 @@ impl FeedForwardNetwork for LinearNetwork {
     type OutputType = crate::neural::Vector<ATTENTION_SIZE>;
     type Layers = <Linear as FeedForwardNetwork>::Layers;
 
-    fn adamw(&mut self, g: &Self, m: &mut Self, v: &mut Self, optimizer: &AdamWOptimizer) {
+    fn adamw<S: LRScheduler>(
+        &mut self,
+        g: &Self,
+        m: &mut Self,
+        v: &mut Self,
+        optimizer: &AdamWOptimizer<S>,
+    ) {
         self.output
             .adamw(&g.output, &mut m.output, &mut v.output, optimizer);
     }

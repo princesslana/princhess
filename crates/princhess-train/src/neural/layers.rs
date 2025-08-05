@@ -1,8 +1,8 @@
 use std::marker::PhantomData;
 
 use crate::neural::{
-    activation::Activation, AdamWOptimizer, FeedForwardNetwork, Matrix, OutputLayer, SparseVector,
-    Vector,
+    activation::Activation, AdamWOptimizer, FeedForwardNetwork, LRScheduler, Matrix, OutputLayer,
+    SparseVector, Vector,
 };
 use bytemuck::{allocation, Zeroable};
 use princhess::math::Rng;
@@ -104,7 +104,13 @@ impl<T: Activation + Zeroable, const M: usize, const N: usize> FeedForwardNetwor
     type OutputType = Vector<N>;
     type Layers = DenseConnectedLayers<N>;
 
-    fn adamw(&mut self, g: &Self, m: &mut Self, v: &mut Self, optimizer: &AdamWOptimizer) {
+    fn adamw<S: LRScheduler>(
+        &mut self,
+        g: &Self,
+        m: &mut Self,
+        v: &mut Self,
+        optimizer: &AdamWOptimizer<S>,
+    ) {
         optimizer.update_matrix(
             &mut self.weights,
             &g.weights,
@@ -232,12 +238,12 @@ impl<T: Activation + Zeroable, const M: usize, const N: usize> FeedForwardNetwor
     type OutputType = Vector<N>;
     type Layers = SparseConnectedLayers<N>;
 
-    fn adamw(
+    fn adamw<S: LRScheduler>(
         &mut self,
         grad: &Self,
         momentum: &mut Self,
         velocity: &mut Self,
-        optimizer: &AdamWOptimizer,
+        optimizer: &AdamWOptimizer<S>,
     ) {
         for i in 0..M {
             optimizer.update_vector(

@@ -133,7 +133,6 @@ impl From<&Mcts> for TrainingPosition {
 
         let evaluation = evaluation_i64 as i32;
 
-        // zero'd to be filled in later
         let result = 0;
 
         TrainingPosition {

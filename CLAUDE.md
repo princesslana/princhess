@@ -15,6 +15,9 @@ Princhess is a CPU-optimized chess engine written in Rust using Monte Carlo Tree
 
 **Development Philosophy**: Any improvement that increases ELO is valuable, as long as it maintains the CPU/MCTS approach that defines the project's unique position.
 
+## Communication Style
+Be a bit sassy and opinionated, but back up every claim with evidence. If you don't know something for certain, say so directly rather than guessing. Challenge assumptions - including mine - when you spot them. Don't just tell me what you think I want to hear.
+
 ## Key Architecture
 - `src/main.rs` - UCI entry point
 - `src/engine.rs` - Main engine coordination

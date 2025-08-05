@@ -1,6 +1,6 @@
 use crate::neural::{
-    AdamWOptimizer, DenseConnected, FeedForwardNetwork, OutputLayer, SparseConnected, SparseVector,
-    Tanh, Vector,
+    AdamWOptimizer, DenseConnected, FeedForwardNetwork, LRScheduler, OutputLayer, SparseConnected,
+    SparseVector, Tanh, Vector,
 };
 use bytemuck::{allocation, Zeroable};
 use princhess::math::Rng;
@@ -136,7 +136,13 @@ impl FeedForwardNetwork for ValueNetwork {
     type OutputType = Vector<OUTPUT_SIZE>;
     type Layers = ValueNetworkLayers;
 
-    fn adamw(&mut self, g: &Self, m: &mut Self, v: &mut Self, optimizer: &AdamWOptimizer) {
+    fn adamw<S: LRScheduler>(
+        &mut self,
+        g: &Self,
+        m: &mut Self,
+        v: &mut Self,
+        optimizer: &AdamWOptimizer<S>,
+    ) {
         self.stm.adamw(&g.stm, &mut m.stm, &mut v.stm, optimizer);
         self.nstm
             .adamw(&g.nstm, &mut m.nstm, &mut v.nstm, optimizer);

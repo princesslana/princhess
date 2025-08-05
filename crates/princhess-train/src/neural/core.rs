@@ -2,6 +2,7 @@ pub trait OutputLayer<OutputType> {
     fn output_layer(&self) -> OutputType;
 }
 
+use crate::neural::lr_scheduler::LRScheduler;
 use crate::neural::optimizer::AdamWOptimizer;
 
 pub trait FeedForwardNetwork: Sized {
@@ -9,7 +10,13 @@ pub trait FeedForwardNetwork: Sized {
     type OutputType: Clone;
     type Layers: OutputLayer<Self::OutputType>;
 
-    fn adamw(&mut self, g: &Self, m: &mut Self, v: &mut Self, optimizer: &AdamWOptimizer);
+    fn adamw<S: LRScheduler>(
+        &mut self,
+        g: &Self,
+        m: &mut Self,
+        v: &mut Self,
+        optimizer: &AdamWOptimizer<S>,
+    );
 
     fn out_with_layers(&self, input: &Self::InputType) -> Self::Layers;
 
