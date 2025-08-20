@@ -10,7 +10,7 @@ use princhess::quantized_value::{
 };
 use std::boxed::Box;
 use std::fmt::{self, Display, Formatter};
-use std::ops::{AddAssign, DivAssign};
+use std::ops::{AddAssign, DivAssign, MulAssign};
 
 use crate::nets::{q_i16, q_i32};
 use crate::neural::SCReLU;
@@ -51,10 +51,74 @@ impl DivAssign<f32> for ValueNetwork {
     }
 }
 
+impl MulAssign<f32> for ValueNetwork {
+    fn mul_assign(&mut self, rhs: f32) {
+        self.stm *= rhs;
+        self.nstm *= rhs;
+        self.output *= rhs;
+    }
+}
+
 impl ValueNetwork {
     #[must_use]
     pub fn zeroed() -> Box<Self> {
         allocation::zeroed_box()
+    }
+
+    /// Compute the L2 norm of all gradients
+    pub fn gradient_norm(&self) -> f32 {
+        let stm_norm = self.stm.weights_norm();
+        let nstm_norm = self.nstm.weights_norm();
+        let output_norm = self.output.weights_norm();
+
+        stm_norm.hypot(nstm_norm).hypot(output_norm)
+    }
+
+    /// Get weight statistics for monitoring
+    pub fn output_weights_norm(&self) -> f32 {
+        self.output.weights_norm()
+    }
+
+    pub fn output_bias(&self) -> f32 {
+        self.output.bias()[0]
+    }
+
+
+    pub fn stm_weights_norm(&self) -> f32 {
+        self.stm.weights_norm()
+    }
+
+    pub fn nstm_weights_norm(&self) -> f32 {
+        self.nstm.weights_norm()
+    }
+
+    /// Apply optimization step with different optimizers for feature and output layers
+    pub fn train_step<S: LRScheduler>(
+        &mut self,
+        gradients: &Self,
+        momentum: &mut Self,
+        velocity: &mut Self,
+        feature_optimizer: &AdamWOptimizer<S>,
+        output_optimizer: &AdamWOptimizer<S>,
+    ) {
+        self.stm.adamw(
+            &gradients.stm,
+            &mut momentum.stm,
+            &mut velocity.stm,
+            feature_optimizer,
+        );
+        self.nstm.adamw(
+            &gradients.nstm,
+            &mut momentum.nstm,
+            &mut velocity.nstm,
+            feature_optimizer,
+        );
+        self.output.adamw(
+            &gradients.output,
+            &mut momentum.output,
+            &mut velocity.output,
+            output_optimizer,
+        );
     }
 
     #[must_use]
@@ -135,20 +199,6 @@ impl FeedForwardNetwork for ValueNetwork {
     type InputType = SparseVector;
     type OutputType = Vector<OUTPUT_SIZE>;
     type Layers = ValueNetworkLayers;
-
-    fn adamw<S: LRScheduler>(
-        &mut self,
-        g: &Self,
-        m: &mut Self,
-        v: &mut Self,
-        optimizer: &AdamWOptimizer<S>,
-    ) {
-        self.stm.adamw(&g.stm, &mut m.stm, &mut v.stm, optimizer);
-        self.nstm
-            .adamw(&g.nstm, &mut m.nstm, &mut v.nstm, optimizer);
-        self.output
-            .adamw(&g.output, &mut m.output, &mut v.output, optimizer);
-    }
 
     fn out_with_layers(&self, input: &Self::InputType) -> Self::Layers {
         let (stm_input, nstm_input) = split_sparse(input);

@@ -174,6 +174,7 @@ pub struct ThreadPool {
 }
 
 impl ThreadPool {
+    #[must_use]
     pub fn new(num_threads: usize) -> Self {
         assert!(num_threads > 0, "ThreadPool must have at least one thread.");
 

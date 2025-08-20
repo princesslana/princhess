@@ -43,3 +43,33 @@ impl LRScheduler for ConstantLRScheduler {
         self.lr
     }
 }
+
+#[derive(Debug, Clone)]
+pub struct CosineAnnealingLRScheduler {
+    initial_lr: f32,
+    min_lr: f32,
+    total_steps: u32,
+}
+
+impl CosineAnnealingLRScheduler {
+    pub fn new(initial_lr: f32, min_lr: f32, total_steps: u32) -> Self {
+        Self {
+            initial_lr,
+            min_lr,
+            total_steps,
+        }
+    }
+}
+
+impl LRScheduler for CosineAnnealingLRScheduler {
+    fn get_lr(&self, step: u32) -> f32 {
+        if step >= self.total_steps {
+            return self.min_lr;
+        }
+
+        let progress = step as f32 / self.total_steps as f32;
+        let cosine_factor = (1.0 + (std::f32::consts::PI * progress).cos()) / 2.0;
+
+        self.min_lr + (self.initial_lr - self.min_lr) * cosine_factor
+    }
+}

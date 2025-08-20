@@ -18,7 +18,7 @@ macro_rules! shortcircuit {
 }
 
 impl MoveGen<'_> {
-    pub fn new(board: &Board) -> MoveGen {
+    pub fn new(board: &Board) -> MoveGen<'_> {
         let king_sq = board.king_of(board.side_to_move());
         let threats = threats(board);
         let pinned = pinned(board);

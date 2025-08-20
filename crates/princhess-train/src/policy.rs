@@ -311,6 +311,17 @@ impl LinearNetwork {
 
         self.output = *SparseConnected::randomized(&mut rng);
     }
+
+    pub fn adamw<S: LRScheduler>(
+        &mut self,
+        g: &Self,
+        m: &mut Self,
+        v: &mut Self,
+        optimizer: &AdamWOptimizer<S>,
+    ) {
+        self.output
+            .adamw(&g.output, &mut m.output, &mut v.output, optimizer);
+    }
 }
 
 impl Display for LinearNetwork {
@@ -323,17 +334,6 @@ impl FeedForwardNetwork for LinearNetwork {
     type InputType = SparseVector;
     type OutputType = crate::neural::Vector<ATTENTION_SIZE>;
     type Layers = <Linear as FeedForwardNetwork>::Layers;
-
-    fn adamw<S: LRScheduler>(
-        &mut self,
-        g: &Self,
-        m: &mut Self,
-        v: &mut Self,
-        optimizer: &AdamWOptimizer<S>,
-    ) {
-        self.output
-            .adamw(&g.output, &mut m.output, &mut v.output, optimizer);
-    }
 
     fn out_with_layers(&self, input: &Self::InputType) -> Self::Layers {
         self.output.out_with_layers(input)
