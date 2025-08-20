@@ -163,3 +163,9 @@
    - **LR Schedule**: Smooth cosine decay vs previous harsh step drops, ended at min LR 0.0001
    - **Fixed-node Test (25k nodes)**: +10.77 ±14.96 Elo (92.12% LOS, 1000 games)
    - **LTC Test (40+0.4s)**: -13.41 ±15.15 Elo (4.12% LOS, 648 games)
+
+16. **Balanced Weight Decay (0.01/0.01)**: Both layers 0.01 weight decay, cosine annealing 0.001→0.0001
+   - **Training**: 9 epochs, loss 0.0700 → 0.0531, stable gradients throughout
+   - **Weight Analysis**: 1.80x avg bucket differentiation, normalized specialization patterns
+   - **Fixed-node Test (25k nodes)**: -6.95 ±16.01 Elo (19.71% LOS, 1000 games)
+   - **LTC Test (40+0.4s)**: +0.69 ±5.26 Elo (60.18% LOS, 5014 games)
