@@ -152,6 +152,11 @@ impl UciOptionMap {
         self.inner.get(option).map(String::as_str)
     }
 
+    /// Gets an option value and applies a parsing function, falling back to default.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the parsing function fails on the option's default value.
     pub fn get_and<F, T>(&self, option: &UciOption, f: F) -> T
     where
         F: FnOnce(&str) -> Option<T> + Copy,
@@ -174,7 +179,7 @@ impl UciOptionMap {
 
     pub fn set(&mut self, name: &str, value: &str) {
         for option in ALL_OPTIONS {
-            if option.name().to_lowercase() == name.to_lowercase() {
+            if option.name().eq_ignore_ascii_case(name) {
                 self.inner.insert(*option, value.to_owned());
                 return;
             }

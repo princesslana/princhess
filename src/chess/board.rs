@@ -115,6 +115,14 @@ impl Board {
         board
     }
 
+    /// Creates a board from FEN notation.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the FEN is malformed:
+    /// - contains invalid piece characters,
+    /// - has invalid en passant square notation,
+    /// - or if halfmove/fullmove fields fail to parse as integers.
     #[allow(clippy::many_single_char_names)]
     pub fn from_fen(fen: &str) -> Self {
         let mut board = Self::empty();
@@ -269,10 +277,15 @@ impl Board {
         self.castling
     }
 
+    /// Returns the color of the piece at the given square.
+    ///
+    /// # Panics
+    ///
+    /// Panics if there is no piece at the given square.
     pub fn color_at(&self, sq: Square) -> Color {
-        if self.colors[0].contains(sq) {
+        if self.colors[Color::WHITE].contains(sq) {
             Color::WHITE
-        } else if self.colors[1].contains(sq) {
+        } else if self.colors[Color::BLACK].contains(sq) {
             Color::BLACK
         } else {
             panic!("no color at square {sq}");
@@ -514,6 +527,11 @@ impl Board {
         self.piece_at(mv.to()).see_value() + promotion_value
     }
 
+    /// Static Exchange Evaluation - determines if a move is tactically profitable.
+    ///
+    /// # Panics
+    ///
+    /// Panics if there's a logic error in the bitboard iteration (should never happen).
     #[must_use]
     pub fn see(&self, mv: Move, threshold: i32) -> bool {
         let sq = mv.to();

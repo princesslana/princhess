@@ -10,7 +10,9 @@
 #[cfg(feature = "fathom")]
 mod bindings;
 
-use crate::chess::{Board, Color, Move, Piece, Square};
+use crate::chess::{Board, Move};
+#[cfg(feature = "fathom")]
+use crate::chess::{Color, Piece, Square};
 
 #[cfg(feature = "fathom")]
 use std::ffi::CString;

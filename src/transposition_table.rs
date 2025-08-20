@@ -71,6 +71,11 @@ impl TranspositionTable {
         self.arena.clear();
     }
 
+    /// Inserts a position node into the transposition table.
+    ///
+    /// # Panics
+    ///
+    /// Panics if reading from the table fails (should never happen).
     #[must_use]
     pub fn insert<'a>(&'a self, key: &State, value: ArenaRef<PositionNode>) -> &'a PositionNode {
         let hash = key.hash();
@@ -193,6 +198,11 @@ impl LRTable {
         self.current.fetch_not(Ordering::Release);
     }
 
+    /// Flips the transposition table and executes the given function.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the mutex lock is poisoned.
     pub fn flip<F>(&self, f: F)
     where
         F: FnOnce(),
@@ -202,6 +212,11 @@ impl LRTable {
         f();
     }
 
+    /// Flips the transposition table if it's full and executes the given function.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the mutex lock is poisoned.
     pub fn flip_if_full<F>(&self, f: F)
     where
         F: FnOnce(),

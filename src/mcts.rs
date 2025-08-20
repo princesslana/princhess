@@ -41,6 +41,11 @@ pub struct Mcts {
 }
 
 impl Mcts {
+    /// Creates a new MCTS instance with the given root state.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the initial memory allocation for the root node fails.
     pub fn new(state: State, table: &LRTable, engine_options: EngineOptions) -> Self {
         let root_table = TranspositionTable::for_root();
 
@@ -294,6 +299,11 @@ impl Mcts {
         *self.best_edge().get_move()
     }
 
+    /// Returns the best move edge from the root position.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the root node has no moves (e.g., checkmate or stalemate positions).
     pub fn best_edge(&self) -> &MoveEdge {
         self.sort_moves(self.root_node.edges())
             .into_iter()
@@ -520,6 +530,11 @@ impl UciWdl {
     }
 }
 
+/// Extracts the principal variation (best line of play) from the search tree.
+///
+/// # Panics
+///
+/// Panics if there's a logic error where a node has edges but `select_child_by_rewards` returns None.
 #[must_use]
 pub fn principal_variation<'a>(
     mut state: State,

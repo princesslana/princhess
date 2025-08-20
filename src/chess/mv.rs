@@ -73,6 +73,11 @@ impl Move {
         }
     }
 
+    /// Converts the move to UCI notation.
+    ///
+    /// # Panics
+    ///
+    /// Panics if this is a castle move to an invalid square.
     #[must_use]
     pub fn to_uci(self, is_chess960: bool) -> String {
         let from = self.from();

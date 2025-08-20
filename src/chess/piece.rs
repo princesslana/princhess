@@ -32,6 +32,11 @@ impl Piece {
         }
     }
 
+    /// Creates a piece from a promotion index (0-3).
+    ///
+    /// # Panics
+    ///
+    /// Panics if the index is not in the range 0-3.
     pub fn from_promotion_idx(idx: u16) -> Piece {
         match idx {
             0 => Piece::KNIGHT,
@@ -42,6 +47,11 @@ impl Piece {
         }
     }
 
+    /// Converts a piece to its promotion index.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the piece is not a valid promotion piece (Knight, Bishop, Rook, Queen).
     #[must_use]
     pub fn to_promotion_idx(self) -> u16 {
         match self {
