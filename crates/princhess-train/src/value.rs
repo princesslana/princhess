@@ -71,7 +71,7 @@ impl ValueNetwork {
         let nstm_norm = self.nstm.weights_norm();
         let output_norm = self.output.weights_norm();
 
-        (stm_norm * stm_norm + nstm_norm * nstm_norm + output_norm * output_norm).sqrt()
+        stm_norm.hypot(nstm_norm).hypot(output_norm)
     }
 
     /// Get weight statistics for monitoring
@@ -82,6 +82,7 @@ impl ValueNetwork {
     pub fn output_bias(&self) -> f32 {
         self.output.bias()[0]
     }
+
 
     pub fn stm_weights_norm(&self) -> f32 {
         self.stm.weights_norm()
