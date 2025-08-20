@@ -67,53 +67,11 @@ impl ValueNetwork {
 
     /// Compute the L2 norm of all gradients
     pub fn gradient_norm(&self) -> f32 {
-        let mut norm_sq: f32 = 0.0;
+        let stm_norm = self.stm.weights_norm();
+        let nstm_norm = self.nstm.weights_norm();
+        let output_norm = self.output.weights_norm();
 
-        // STM weights and bias
-        for row in 0..INPUT_SIZE {
-            let weights = self.stm.weights_row(row);
-            for col in 0..HIDDEN_SIZE {
-                let w = weights[col];
-                norm_sq += w * w;
-            }
-        }
-        for i in 0..HIDDEN_SIZE {
-            let b = self.stm.bias()[i];
-            norm_sq += b * b;
-        }
-
-        // NSTM weights and bias
-        for row in 0..INPUT_SIZE {
-            let weights = self.nstm.weights_row(row);
-            for col in 0..HIDDEN_SIZE {
-                let w = weights[col];
-                norm_sq += w * w;
-            }
-        }
-        for i in 0..HIDDEN_SIZE {
-            let b = self.nstm.bias()[i];
-            norm_sq += b * b;
-        }
-
-        // Output weights and bias
-        for col in 0..(HIDDEN_SIZE * 2) {
-            let weights = self.output.weights_col(col);
-            let w = weights[0]; // OUTPUT_SIZE = 1
-            norm_sq += w * w;
-        }
-        let b = self.output.bias()[0]; // OUTPUT_SIZE = 1
-        norm_sq += b * b;
-
-        norm_sq.sqrt()
-    }
-
-    /// Clip gradients to maximum norm
-    pub fn clip_gradients(&mut self, max_norm: f32) {
-        let norm = self.gradient_norm();
-        if norm > max_norm {
-            let scale = max_norm / norm;
-            *self *= scale;
-        }
+        (stm_norm * stm_norm + nstm_norm * nstm_norm + output_norm * output_norm).sqrt()
     }
 
     /// Get weight statistics for monitoring

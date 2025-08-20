@@ -90,8 +90,10 @@ fn main() {
     let mut momentum = ValueNetwork::zeroed();
     let mut velocity = ValueNetwork::zeroed();
 
-    let epochs = TARGET_BATCH_COUNT.div_ceil(count / BATCH_SIZE);
-    let total_steps = (epochs * (count / BATCH_SIZE)) as u32;
+    let batches = count.div_ceil(BATCH_SIZE);
+    assert!(batches > 0, "No training positions found in {input}");
+    let epochs = TARGET_BATCH_COUNT.div_ceil(batches);
+    let total_steps = (epochs * batches) as u32;
     let feature_scheduler =
         CosineAnnealingLRScheduler::new(FEATURE_LEARNING_RATE, MIN_LEARNING_RATE, total_steps);
     let output_scheduler =
