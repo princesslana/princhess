@@ -214,7 +214,7 @@ impl LRTable {
         }
     }
 
-    pub fn allocator(&self) -> LRAllocator {
+    pub fn allocator(&self) -> LRAllocator<'_> {
         LRAllocator::from_arenas(
             self.current.clone(),
             self.tables[0].arena(),

@@ -23,6 +23,14 @@ impl<const M: usize, const N: usize> std::ops::DivAssign<f32> for Matrix<M, N> {
     }
 }
 
+impl<const M: usize, const N: usize> std::ops::MulAssign<f32> for Matrix<M, N> {
+    fn mul_assign(&mut self, rhs: f32) {
+        for row in self.inner.iter_mut() {
+            *row *= rhs;
+        }
+    }
+}
+
 impl<const M: usize, const N: usize> std::ops::Deref for Matrix<M, N> {
     type Target = [Vector<N>; M];
     fn deref(&self) -> &Self::Target {

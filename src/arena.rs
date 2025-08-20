@@ -87,7 +87,7 @@ impl Arena {
         Ok(&mut **chunk_ref)
     }
 
-    pub fn allocator(&self) -> Result<Allocator, Error> {
+    pub fn allocator(&self) -> Result<Allocator<'_>, Error> {
         let current_generation = self.generation.load(Ordering::Acquire);
         let initial_chunk = self.alloc_chunk()?;
         Ok(Allocator {
@@ -97,7 +97,7 @@ impl Arena {
         })
     }
 
-    pub fn stale_allocator(&self) -> Allocator {
+    pub fn stale_allocator(&self) -> Allocator<'_> {
         Allocator {
             // Set to 0 to ensure re-allocation on first use, as 0 is an invalid generation.
             generation: AtomicU32::new(0),

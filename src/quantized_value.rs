@@ -91,7 +91,6 @@ impl QuantizedValueNetwork {
         result = result / QA + self.output_bias;
 
         // Fifty move rule dampening
-        // Constants are chosen to make the max effect more significant at higher levels and max 50%
         let hmc = state.halfmove_clock();
         result = result * (256 - i32::from(hmc.saturating_sub(20) + hmc.saturating_sub(52))) / 256;
 

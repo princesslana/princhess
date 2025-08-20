@@ -34,23 +34,22 @@ fn main() {
             network_bytes.len()
         );
     }
-    
+
     let required_align = std::mem::align_of::<QuantizedValueNetwork>();
     let ptr = network_bytes.as_ptr();
-    
+
     let network: &QuantizedValueNetwork = if ptr.align_offset(required_align) == 0 {
         bytemuck::from_bytes(&network_bytes)
     } else {
-        let layout = Layout::from_size_align(
-            std::mem::size_of::<QuantizedValueNetwork>(),
-            required_align,
-        ).expect("Invalid layout");
-        
+        let layout =
+            Layout::from_size_align(std::mem::size_of::<QuantizedValueNetwork>(), required_align)
+                .expect("Invalid layout");
+
         let aligned_ptr = unsafe { alloc(layout) };
         if aligned_ptr.is_null() {
             panic!("Failed to allocate aligned memory for network");
         }
-        
+
         unsafe {
             std::ptr::copy_nonoverlapping(ptr, aligned_ptr, network_bytes.len());
             let aligned_slice = std::slice::from_raw_parts(aligned_ptr, network_bytes.len());
@@ -418,13 +417,11 @@ fn analyze_bucket_differentiation(network: &QuantizedValueNetwork) {
         }
     }
 
-    differentiation_ratios.sort_by(|a, b| {
-        match (a.1.is_nan(), b.1.is_nan()) {
-            (true, true) => std::cmp::Ordering::Equal,
-            (true, false) => std::cmp::Ordering::Greater,
-            (false, true) => std::cmp::Ordering::Less,
-            (false, false) => b.1.partial_cmp(&a.1).unwrap(),
-        }
+    differentiation_ratios.sort_by(|a, b| match (a.1.is_nan(), b.1.is_nan()) {
+        (true, true) => std::cmp::Ordering::Equal,
+        (true, false) => std::cmp::Ordering::Greater,
+        (false, true) => std::cmp::Ordering::Less,
+        (false, false) => b.1.partial_cmp(&a.1).unwrap(),
     });
 
     println!("Feature-by-feature bucket differentiation analysis:");
@@ -441,13 +438,11 @@ fn analyze_bucket_differentiation(network: &QuantizedValueNetwork) {
         let avg_ratio = finite_ratios.iter().sum::<f64>() / finite_ratios.len() as f64;
         let median_ratio = {
             let mut sorted = finite_ratios.clone();
-            sorted.sort_by(|a, b| {
-                match (a.is_nan(), b.is_nan()) {
-                    (true, true) => std::cmp::Ordering::Equal,
-                    (true, false) => std::cmp::Ordering::Greater,
-                    (false, true) => std::cmp::Ordering::Less,
-                    (false, false) => a.partial_cmp(b).unwrap(),
-                }
+            sorted.sort_by(|a, b| match (a.is_nan(), b.is_nan()) {
+                (true, true) => std::cmp::Ordering::Equal,
+                (true, false) => std::cmp::Ordering::Greater,
+                (false, true) => std::cmp::Ordering::Less,
+                (false, false) => a.partial_cmp(b).unwrap(),
             });
             sorted[sorted.len() / 2]
         };
@@ -971,13 +966,11 @@ fn analyze_bucket_similarity_matrix(network: &QuantizedValueNetwork) {
         }
     }
 
-    similarities.sort_by(|a, b| {
-        match (a.2.is_nan(), b.2.is_nan()) {
-            (true, true) => std::cmp::Ordering::Equal,
-            (true, false) => std::cmp::Ordering::Greater,
-            (false, true) => std::cmp::Ordering::Less,
-            (false, false) => b.2.partial_cmp(&a.2).unwrap(),
-        }
+    similarities.sort_by(|a, b| match (a.2.is_nan(), b.2.is_nan()) {
+        (true, true) => std::cmp::Ordering::Equal,
+        (true, false) => std::cmp::Ordering::Greater,
+        (false, true) => std::cmp::Ordering::Less,
+        (false, false) => b.2.partial_cmp(&a.2).unwrap(),
     });
 
     println!("\nMost similar bucket pairs:");
