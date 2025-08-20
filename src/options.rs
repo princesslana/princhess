@@ -152,6 +152,11 @@ impl UciOptionMap {
         self.inner.get(option).map(String::as_str)
     }
 
+    /// Gets an option value and applies a parsing function, falling back to default.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the parsing function fails on the option's default value.
     pub fn get_and<F, T>(&self, option: &UciOption, f: F) -> T
     where
         F: FnOnce(&str) -> Option<T> + Copy,

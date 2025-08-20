@@ -156,6 +156,11 @@ impl Default for Uci {
     }
 }
 
+/// Reads a line from standard input.
+///
+/// # Panics
+///
+/// Panics if reading from stdin fails.
 #[must_use]
 pub fn read_stdin() -> String {
     let mut input = String::new();

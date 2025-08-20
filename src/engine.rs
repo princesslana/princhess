@@ -242,6 +242,11 @@ impl Engine {
         self.mcts.best_move()
     }
 
+    /// Returns the move with the highest visit count from the root position.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the root node has no child moves (e.g., checkmate or stalemate positions).
     pub fn most_visited_move(&self) -> Move {
         *self
             .mcts

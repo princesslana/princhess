@@ -51,6 +51,11 @@ pub fn screlu(x: i16, q: i32) -> i32 {
     clamped * clamped
 }
 
+/// Saves neural network data to a binary file.
+///
+/// # Panics
+///
+/// Panics if the file cannot be created or written to.
 pub fn save_to_bin<T: Pod>(dir: &Path, file_name: &str, data: &T) {
     let mut file = fs::File::create(dir.join(file_name)).expect("Failed to create file");
 

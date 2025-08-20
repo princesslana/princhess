@@ -33,6 +33,11 @@ impl TrainingPosition {
     pub const BUFFER_COUNT: usize = 1 << 16;
     pub const BUFFER_SIZE: usize = Self::BUFFER_COUNT * Self::SIZE;
 
+    /// Writes training position data to a buffer.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the write operation fails.
     pub fn write_buffer(out: &mut BufWriter<File>, data: &[TrainingPosition]) {
         out.write_all(bytemuck::cast_slice(data)).unwrap();
     }

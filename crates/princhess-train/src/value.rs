@@ -83,7 +83,6 @@ impl ValueNetwork {
         self.output.bias()[0]
     }
 
-
     pub fn stm_weights_norm(&self) -> f32 {
         self.stm.weights_norm()
     }

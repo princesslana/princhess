@@ -68,7 +68,7 @@ impl LRScheduler for CosineAnnealingLRScheduler {
         }
 
         let progress = step as f32 / self.total_steps as f32;
-        let cosine_factor = (1.0 + (std::f32::consts::PI * progress).cos()) / 2.0;
+        let cosine_factor = f32::midpoint(1.0, (std::f32::consts::PI * progress).cos());
 
         self.min_lr + (self.initial_lr - self.min_lr) * cosine_factor
     }
