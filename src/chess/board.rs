@@ -119,7 +119,10 @@ impl Board {
     ///
     /// # Panics
     ///
-    /// Panics if the FEN string contains invalid piece characters.
+    /// Panics if the FEN is malformed:
+    /// - contains invalid piece characters,
+    /// - has invalid en passant square notation,
+    /// - or if halfmove/fullmove fields fail to parse as integers.
     #[allow(clippy::many_single_char_names)]
     pub fn from_fen(fen: &str) -> Self {
         let mut board = Self::empty();
@@ -280,9 +283,9 @@ impl Board {
     ///
     /// Panics if there is no piece at the given square.
     pub fn color_at(&self, sq: Square) -> Color {
-        if self.colors[0].contains(sq) {
+        if self.colors[Color::WHITE].contains(sq) {
             Color::WHITE
-        } else if self.colors[1].contains(sq) {
+        } else if self.colors[Color::BLACK].contains(sq) {
             Color::BLACK
         } else {
             panic!("no color at square {sq}");

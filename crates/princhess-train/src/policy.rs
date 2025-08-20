@@ -24,10 +24,12 @@ pub enum Phase {
 
 impl Phase {
     pub fn from_arg(arg: &str) -> Option<Self> {
-        match arg.to_lowercase().as_str() {
-            "mg" => Some(Self::MiddleGame),
-            "eg" => Some(Self::Endgame),
-            _ => None,
+        if arg.eq_ignore_ascii_case("mg") {
+            Some(Self::MiddleGame)
+        } else if arg.eq_ignore_ascii_case("eg") {
+            Some(Self::Endgame)
+        } else {
+            None
         }
     }
 

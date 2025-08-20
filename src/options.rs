@@ -179,7 +179,7 @@ impl UciOptionMap {
 
     pub fn set(&mut self, name: &str, value: &str) {
         for option in ALL_OPTIONS {
-            if option.name().to_lowercase() == name.to_lowercase() {
+            if option.name().eq_ignore_ascii_case(name) {
                 self.inner.insert(*option, value.to_owned());
                 return;
             }
