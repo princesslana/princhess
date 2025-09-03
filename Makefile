@@ -12,6 +12,7 @@ help:
 	@echo "  sprt-gain     - Start SPRT gain test (STC)"
 	@echo "  sprt-gain-ltc - Start SPRT gain test (LTC)"
 	@echo "  sprt-equal    - Start SPRT equal test (STC)"
+	@echo "  sprt-equal-2t - Start SPRT equal test (STC, 2 threads)"
 	@echo "  elo-check     - Start ELO check test (STC)"
 	@echo "  elo-check-25k - Start ELO check test (25k nodes)"
 	@echo "  resume-test   - Resume previous test"
@@ -51,6 +52,10 @@ sprt-gain-ltc:
 .PHONY: sprt-equal
 sprt-equal:
 	@scripts/start-test.sh sprt_equal stc princhess princhess-main
+
+.PHONY: sprt-equal-2t
+sprt-equal-2t:
+	@scripts/start-test.sh sprt_equal stc princhess princhess-main 2t
 
 .PHONY: elo-check
 elo-check:

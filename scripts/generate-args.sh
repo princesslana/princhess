@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Generate fastchess command line arguments
-# Usage: generate-args.sh <test_type> <time_control> <engine1> <engine2>
+# Usage: generate-args.sh <test_type> <time_control> <engine1> <engine2> [thread_config]
 
 set -e
 
@@ -9,13 +9,22 @@ TEST_TYPE=$1
 TIME_CONTROL=$2
 ENGINE1=$3
 ENGINE2=$4
+THREAD_CONFIG=${5:-1t}
 
 if [ -z "$TEST_TYPE" ] || [ -z "$TIME_CONTROL" ] || [ -z "$ENGINE1" ] || [ -z "$ENGINE2" ]; then
-    echo "Usage: $0 <test_type> <time_control> <engine1> <engine2>"
+    echo "Usage: $0 <test_type> <time_control> <engine1> <engine2> [thread_config]"
     echo "  test_type: sprt_gain, sprt_equal, elo_check"
     echo "  time_control: stc, ltc, nodes25k"
     echo "  engine1: princhess, princhess-main, etc"
     echo "  engine2: princhess-main, stockfish, etc"
+    echo "  thread_config: 1t, 2t, 4t, etc (default: 1t)"
+    exit 1
+fi
+
+# Parse thread count from thread config (e.g., "2t" -> 2)
+THREADS=$(echo "$THREAD_CONFIG" | sed 's/t$//')
+if ! [[ "$THREADS" =~ ^[0-9]+$ ]]; then
+    echo "Invalid thread config: $THREAD_CONFIG (should be like '2t', '4t', etc)"
     exit 1
 fi
 
@@ -23,14 +32,24 @@ fi
 is_long_test() {
     case $TIME_CONTROL in
         ltc) return 0 ;;  # Long time control
-        *) return 1 ;;
+        *) 
+            # Multi-threaded tests are long due to reduced concurrency
+            if [ "$THREADS" -gt 1 ]; then
+                return 0
+            else
+                return 1
+            fi
+            ;;
     esac
 }
 
 # Set common values for all time controls
 HASH=128
-THREADS=1
-CONCURRENCY=6
+# Calculate concurrency to use 6 total threads (6 / threads_per_game)
+CONCURRENCY=$((6 / THREADS))
+if [ $CONCURRENCY -lt 1 ]; then
+    CONCURRENCY=1
+fi
 OPENING_BOOK="UHO_Lichess_4852_v1.epd"
 
 # Set time control specific values
