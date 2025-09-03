@@ -91,6 +91,7 @@ static SYZYGY_PATH: UciOption = UciOption::string("SyzygyPath", "<empty>");
 
 static CPUCT: UciOption = UciOption::spin("CPuct", 16, 1, 2 << 16);
 static CPUCT_TAU: UciOption = UciOption::spin("CPuctTau", 84, 0, 100);
+static CPUCT_TREND_ADJUSTMENT: UciOption = UciOption::spin("CPuctTrendAdjustment", 15, -100, 100);
 static CVISITS_SELECTION: UciOption = UciOption::spin("CVisitsSelection", 1, 0, 100);
 static POLICY_TEMPERATURE: UciOption = UciOption::spin("PolicyTemperature", 100, 0, 2 << 16);
 static POLICY_TEMPERATURE_ROOT: UciOption =
@@ -115,6 +116,7 @@ static ALL_OPTIONS: &[UciOption] = &[
     SYZYGY_PATH,
     CPUCT,
     CPUCT_TAU,
+    CPUCT_TREND_ADJUSTMENT,
     CVISITS_SELECTION,
     POLICY_TEMPERATURE,
     POLICY_TEMPERATURE_ROOT,
@@ -196,6 +198,7 @@ pub struct MctsOptions {
     pub cpuct_tau: f32,
     pub policy_temperature: f32,
     pub policy_temperature_root: f32,
+    pub cpuct_trend_adjustment: f32,
 }
 
 #[allow(clippy::module_name_repetitions, clippy::struct_excessive_bools)]
@@ -237,6 +240,7 @@ impl From<&UciOptionMap> for MctsOptions {
             cpuct_tau: map.get_f32(&CPUCT_TAU),
             policy_temperature: map.get_f32(&POLICY_TEMPERATURE),
             policy_temperature_root: map.get_f32(&POLICY_TEMPERATURE_ROOT),
+            cpuct_trend_adjustment: map.get_f32(&CPUCT_TREND_ADJUSTMENT),
         }
     }
 }
