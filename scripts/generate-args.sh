@@ -3,7 +3,8 @@
 # Generate fastchess command line arguments
 # Usage: generate-args.sh <test_type> <time_control> <engine1> <engine2> [thread_config]
 
-set -e
+set -euo pipefail
+IFS=$'\n\t'
 
 TEST_TYPE=$1
 TIME_CONTROL=$2
@@ -21,12 +22,14 @@ if [ -z "$TEST_TYPE" ] || [ -z "$TIME_CONTROL" ] || [ -z "$ENGINE1" ] || [ -z "$
     exit 1
 fi
 
-# Parse thread count from thread config (e.g., "2t" -> 2)
-THREADS=$(echo "$THREAD_CONFIG" | sed 's/t$//')
-if ! [[ "$THREADS" =~ ^[0-9]+$ ]]; then
-    echo "Invalid thread config: $THREAD_CONFIG (should be like '2t', '4t', etc)"
+# Parse and validate thread config (must be positive integer followed by 't')
+if ! [[ "$THREAD_CONFIG" =~ ^[1-9][0-9]*t$ ]]; then
+    echo "Invalid thread config: $THREAD_CONFIG (must be positive integer followed by 't', like '2t', '4t', etc)"
     exit 1
 fi
+
+# Extract thread count (e.g., "2t" -> 2)
+THREADS=$(echo "$THREAD_CONFIG" | sed 's/t$//')
 
 # Determine if this is a "long" test (needs adjudication and relaxed SPRT)
 is_long_test() {

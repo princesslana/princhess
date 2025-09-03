@@ -3,7 +3,8 @@
 # Start a new fastchess test
 # Usage: start-test.sh <test_type> <time_control> <engine1> <engine2> [thread_config]
 
-set -e
+set -euo pipefail
+IFS=$'\n\t'
 
 TEST_TYPE=$1
 TIME_CONTROL=$2
@@ -29,11 +30,11 @@ mkdir -p "$PROJECT_ROOT/target/fastchess"
 
 # Generate fastchess arguments
 echo "Generating command for $TEST_TYPE test ($TIME_CONTROL, $THREAD_CONFIG): $ENGINE1 vs $ENGINE2"
-FASTCHESS_ARGS=$("$SCRIPT_DIR/generate-args.sh" "$TEST_TYPE" "$TIME_CONTROL" "$ENGINE1" "$ENGINE2" "$THREAD_CONFIG")
+mapfile -t FASTCHESS_ARGS < <("$SCRIPT_DIR/generate-args.sh" "$TEST_TYPE" "$TIME_CONTROL" "$ENGINE1" "$ENGINE2" "$THREAD_CONFIG")
 
 echo "Starting fastchess with args:"
-echo "$FASTCHESS_ARGS"
+printf '%s\n' "${FASTCHESS_ARGS[@]}"
 
 # Start docker compose with command override
 cd "$PROJECT_ROOT"
-docker compose run --rm fastchess $FASTCHESS_ARGS
+docker compose run --rm fastchess "${FASTCHESS_ARGS[@]}"
