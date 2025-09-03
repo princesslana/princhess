@@ -108,6 +108,7 @@ impl Mcts {
     }
 
     #[inline(never)]
+    #[allow(clippy::too_many_lines)]
     /// Single MCTS playout: selection → expansion → evaluation → backpropagation
     pub fn playout<'a>(
         &'a self,
