@@ -65,8 +65,8 @@ cargo clippy            # Lint code
 - Comments clarify algorithms/architecture, not obvious operations
 
 ## Commit Messages (Emoji Log)
-- 📦 NEW: Add entirely new features
-- 👌 IMP: Improve/enhance existing code
+- 📦 NEW: Add entirely new or Elo-gaining features
+- 👌 IMP: Refactor existing code
 - 🐛 FIX: Fix bugs
 - 📖 DOC: Documentation updates
 - 🤖 TST: Test additions/updates
