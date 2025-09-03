@@ -241,7 +241,7 @@ impl Mcts {
             }
         }
 
-        if tld.playouts % 128 == 0 {
+        if self.playouts() % 128 == 0 {
             self.update_root_trend();
         }
 
