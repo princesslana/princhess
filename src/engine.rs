@@ -19,6 +19,8 @@ pub struct ThreadData<'a> {
     pub ttable: &'a LRTable,
     pub allocator: LRAllocator<'a>,
     pub playouts: usize,
+    pub last_root_reward: i64,
+    pub winning_trend: f32,
 }
 
 impl<'a> ThreadData<'a> {
@@ -27,6 +29,8 @@ impl<'a> ThreadData<'a> {
             ttable,
             allocator: ttable.allocator(),
             playouts: 0,
+            last_root_reward: 0,
+            winning_trend: 0.0,
         }
     }
 }

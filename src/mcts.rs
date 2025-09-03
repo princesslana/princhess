@@ -2,7 +2,7 @@ use arrayvec::ArrayVec;
 use fastapprox::faster;
 use std::f32;
 use std::fmt::{Display, Write};
-use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU64, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 
 use crate::arena::{ArenaRef, Error as ArenaError};
 use crate::chess;
@@ -38,9 +38,6 @@ pub struct Mcts {
     max_depth: AtomicUsize,
     tb_hits: AtomicUsize,
     next_info: AtomicU64,
-
-    winning_trend: AtomicBool,
-    last_root_reward: AtomicI64,
 }
 
 impl Mcts {
@@ -79,8 +76,6 @@ impl Mcts {
             max_depth: 0.into(),
             tb_hits: 0.into(),
             next_info: 0.into(),
-            winning_trend: AtomicBool::new(false),
-            last_root_reward: AtomicI64::new(0),
         }
     }
 
@@ -117,7 +112,7 @@ impl Mcts {
         time_management: &TimeManagement,
         stop_signal: &AtomicBool,
     ) -> bool {
-        let dynamic_cpuct = self.compute_dynamic_cpuct(cpuct);
+        let dynamic_cpuct = self.compute_dynamic_cpuct(cpuct, tld.winning_trend);
         let mut state = self.root_state.clone();
         let mut node: &'a PositionNode = &self.root_node;
         let mut path: ArrayVec<&'a MoveEdge, MAX_PLAYOUT_LENGTH> = ArrayVec::new();
@@ -241,8 +236,15 @@ impl Mcts {
             }
         }
 
-        if self.playouts() % 128 == 0 {
-            self.update_root_trend();
+        if tld.playouts % 128 == 0 {
+            let current_reward = self.best_edge().reward().average;
+            let last_reward = tld.last_root_reward;
+            tld.last_root_reward = current_reward;
+            tld.winning_trend = if current_reward > last_reward {
+                -1.0
+            } else {
+                1.0
+            };
         }
 
         true
@@ -486,23 +488,10 @@ impl Mcts {
         best_move
     }
 
-    /// Update the root reward trend tracking
-    fn update_root_trend(&self) {
-        let current_reward = self.best_edge().reward().average;
-        let last_reward = self
-            .last_root_reward
-            .swap(current_reward, Ordering::Relaxed);
-
-        let is_improving = current_reward > last_reward;
-        self.winning_trend.store(is_improving, Ordering::Relaxed);
-    }
-
     /// Compute dynamic CPUCT based on root reward trend
-    fn compute_dynamic_cpuct(&self, base_cpuct: f32) -> f32 {
-        let winning = self.winning_trend.load(Ordering::Relaxed);
+    fn compute_dynamic_cpuct(&self, base_cpuct: f32, winning_trend: f32) -> f32 {
         let adjustment = self.engine_options.mcts_options.cpuct_trend_adjustment;
-
-        base_cpuct * (1.0 + [-adjustment, adjustment][usize::from(winning)])
+        base_cpuct * (1.0 + adjustment * winning_trend)
     }
 }
 

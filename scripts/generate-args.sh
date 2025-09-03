@@ -3,8 +3,7 @@
 # Generate fastchess command line arguments
 # Usage: generate-args.sh <test_type> <time_control> <engine1> <engine2> [thread_config]
 
-set -euo pipefail
-IFS=$'\n\t'
+set -e
 
 TEST_TYPE=$1
 TIME_CONTROL=$2
