@@ -19,15 +19,21 @@ pub struct ThreadData<'a> {
     pub ttable: &'a LRTable,
     pub allocator: LRAllocator<'a>,
     pub playouts: usize,
+    pub thread_id: usize,
 }
 
 impl<'a> ThreadData<'a> {
-    fn create(ttable: &'a LRTable) -> Self {
+    fn create(ttable: &'a LRTable, thread_id: usize) -> Self {
         Self {
             ttable,
             allocator: ttable.allocator(),
             playouts: 0,
+            thread_id,
         }
+    }
+
+    pub fn is_main_thread(&self) -> bool {
+        self.thread_id == 0
     }
 }
 
@@ -132,24 +138,24 @@ impl Engine {
         let mut rng = Rng::default();
         let mut returned_line: Option<String> = None;
 
-        let run_search_thread = |cpuct: f32, tm: &TimeManagement| {
-            let mut tld = ThreadData::create(&self.ttable);
+        let run_search_thread = |cpuct: f32, tm: &TimeManagement, thread_id: usize| {
+            let mut tld = ThreadData::create(&self.ttable, thread_id);
             while self.mcts.playout(&mut tld, cpuct, tm, &stop_signal) {}
         };
 
         self.threads.scope(|s: &Scope| {
             s.spawn(|| {
-                run_search_thread(cpuct, &time_management);
+                run_search_thread(cpuct, &time_management, 0);
                 self.mcts.print_info(&time_management, self.ttable.full());
                 stop_signal.store(true, Ordering::Relaxed);
                 println!("bestmove {}", self.to_uci(self.best_move()));
             });
 
-            for _ in 0..(thread_count - 1) {
+            for thread_id in 1..thread_count {
                 let jitter = 1. + rng.next_f32_range(-0.03, 0.03);
 
                 s.spawn(move || {
-                    run_search_thread(cpuct * jitter, &TimeManagement::infinite());
+                    run_search_thread(cpuct * jitter, &TimeManagement::infinite(), thread_id);
                 });
             }
 
@@ -184,7 +190,7 @@ impl Engine {
     }
 
     pub fn playout_sync(&self, playouts: u64) {
-        let mut tld = ThreadData::create(&self.ttable);
+        let mut tld = ThreadData::create(&self.ttable, 0);
         let cpuct = self.engine_options.mcts_options.cpuct;
         let tm = TimeManagement::infinite();
         let stop_signal = AtomicBool::new(false);
