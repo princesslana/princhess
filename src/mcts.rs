@@ -2,7 +2,7 @@ use arrayvec::ArrayVec;
 use fastapprox::faster;
 use std::f32;
 use std::fmt::{Display, Write};
-use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU64, AtomicUsize, Ordering};
 
 use crate::arena::{ArenaRef, Error as ArenaError};
 use crate::chess;
@@ -38,6 +38,9 @@ pub struct Mcts {
     max_depth: AtomicUsize,
     tb_hits: AtomicUsize,
     next_info: AtomicU64,
+
+    winning_trend: AtomicBool,
+    last_root_reward: AtomicI64,
 }
 
 impl Mcts {
@@ -76,6 +79,8 @@ impl Mcts {
             max_depth: 0.into(),
             tb_hits: 0.into(),
             next_info: 0.into(),
+            winning_trend: false.into(),
+            last_root_reward: 0.into(),
         }
     }
 
@@ -112,7 +117,7 @@ impl Mcts {
         time_management: &TimeManagement,
         stop_signal: &AtomicBool,
     ) -> bool {
-        let dynamic_cpuct = self.compute_dynamic_cpuct(cpuct, tld.winning_trend);
+        let dynamic_cpuct = self.compute_dynamic_cpuct(cpuct, tld);
         let mut state = self.root_state.clone();
         let mut node: &'a PositionNode = &self.root_node;
         let mut path: ArrayVec<&'a MoveEdge, MAX_PLAYOUT_LENGTH> = ArrayVec::new();
@@ -236,15 +241,13 @@ impl Mcts {
             }
         }
 
-        if tld.playouts % 128 == 0 {
+        if tld.is_main_thread() && tld.playouts % 128 == 0 {
             let current_reward = self.best_edge().reward().average;
-            let last_reward = tld.last_root_reward;
-            tld.last_root_reward = current_reward;
-            tld.winning_trend = if current_reward > last_reward {
-                -1.0
-            } else {
-                1.0
-            };
+            let last_reward = self.last_root_reward.load(Ordering::Relaxed);
+            self.last_root_reward
+                .store(current_reward, Ordering::Relaxed);
+            self.winning_trend
+                .store(current_reward > last_reward, Ordering::Relaxed);
         }
 
         true
@@ -489,9 +492,15 @@ impl Mcts {
     }
 
     /// Compute dynamic CPUCT based on root reward trend
-    fn compute_dynamic_cpuct(&self, base_cpuct: f32, winning_trend: f32) -> f32 {
-        let adjustment = self.engine_options.mcts_options.cpuct_trend_adjustment;
-        base_cpuct * (1.0 + adjustment * winning_trend)
+    fn compute_dynamic_cpuct(&self, cpuct: f32, tld: &ThreadData) -> f32 {
+        if tld.is_main_thread() {
+            let adjustment = self.engine_options.mcts_options.cpuct_trend_adjustment;
+            let winning_trend = self.winning_trend.load(Ordering::Relaxed);
+            let trend_factor = [-adjustment, adjustment][usize::from(winning_trend)];
+            cpuct * (1.0 + trend_factor)
+        } else {
+            cpuct
+        }
     }
 }
 
