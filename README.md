@@ -45,6 +45,37 @@ Princhess is a UCI-compatible chess engine. Run the executable and connect it to
 
 The engine responds to standard UCI commands.
 
+## UCI Options
+
+### Basic Engine Options
+- **Hash** (default: 128): Memory in MB allowed for storage of the MCTS search tree
+- **Threads** (default: 1): Number of search threads
+- **MultiPV** (default: 1): Number of best moves to display in analysis output
+- **SyzygyPath** (default: \<empty>): Path to Syzygy endgame tablebase files
+
+### MCTS Search Parameters
+- **CPuct** (default: 16): PUCT exploration constant
+- **CPuctTau** (default: 84): Tau from the generalized PUCT formula
+- **CPuctTrendAdjustment** (default: 15): Dynamic CPUCT adjustment based on position trend (winning/losing)
+- **CVisitsSelection** (default: 1): How much to consider visits vs Q-value in final move selection
+- **PolicyTemperature** (default: 100): Softmax temperature for policy network during node expansion
+- **PolicyTemperatureRoot** (default: 1450): Separate policy temperature specifically for root node
+
+### Time Management
+Adaptive time allocation controls:
+- **TMMinM** (default: 10): Minimum time multiplier
+- **TMMaxM** (default: 500): Maximum time multiplier
+- **TMVisitsBase** (default: 140): Base visits factor for time scaling based on best move visit count
+- **TMVisitsM** (default: 139): Visits multiplier for time scaling based on best move visit count
+- **TMPvDiffC** (default: 0): PV difference threshold for time scaling based on eval stability
+- **TMPvDiffM** (default: 121): PV difference multiplier for time scaling based on eval stability
+
+### Special Modes
+- **UCI_Chess960** (default: false): Enable Chess960
+- **PolicyOnly** (default: false): Skip search entirely, use only policy network for move selection
+- **UCI_ShowMovesLeft** (default: false): Display estimated moves remaining in analysis
+- **UCI_ShowWDL** (default: false): Show Win/Draw/Loss probabilities in analysis output
+
 ## Contributing
 
 Contributions are welcome! Please follow Rust conventions and ensure code is properly formatted with `cargo fmt` and passes `cargo clippy`.
