@@ -57,6 +57,8 @@ cargo fmt               # Format code (always run after changes)
 cargo clippy            # Lint code
 ```
 
+- **Always use exact version pinning** (`=X.Y.Z`) - even patch updates can affect ELO and require testing
+
 ## Code Standards
 - Follow Rust conventions (snake_case, PascalCase, SCREAMING_SNAKE_CASE)
 - Self-documenting code with strategic comments only

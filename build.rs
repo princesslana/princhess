@@ -16,7 +16,7 @@ fn build_fathom() {
 
     let target_cpu = env::var("TARGET_CPU").unwrap_or("native".to_string());
 
-    cc.flag(&format!("-march={target_cpu}"));
+    cc.flag(format!("-march={target_cpu}"));
 
     // MSVC doesn't support stdatomic.h, so use clang on Windows
     if env::consts::OS == "windows" {
