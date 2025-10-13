@@ -22,7 +22,7 @@ arrayvec = "=0.7.6"
 princhess = { version = "0.0.0-dev", path = "." }
 
 [workspace.dependencies.bytemuck]
-version = "=1.21.0"
+version = "=1.24.0"
 features = [
     "derive",
     "extern_crate_alloc",
@@ -35,7 +35,7 @@ arrayvec = { workspace = true }
 bytemuck = { workspace = true }
 fastapprox = "=0.3.1"
 nohash-hasher = "=0.2.0"
-scc = "=2.3.0"
+scc = "=3.3.1"
 
 [features]
 default = ["policy-net", "value-net", "fathom"]
@@ -44,8 +44,8 @@ value-net = []
 fathom = []
 
 [build-dependencies]
-bindgen = "=0.69.1"
-cc = "=1.0.83"
+bindgen = "=0.72.1"
+cc = "=1.2.41"
 
 [profile.release]
 lto = true

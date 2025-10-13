@@ -67,7 +67,7 @@ impl TranspositionTable {
     }
 
     pub fn clear(&self) {
-        self.table.clear();
+        self.table.clear_sync();
         self.arena.clear();
     }
 
@@ -82,11 +82,11 @@ impl TranspositionTable {
         let generation = value.generation();
         let node_ptr = value.into_non_null();
 
-        match self.table.insert(hash, Entry::new(node_ptr, generation)) {
+        match self.table.insert_sync(hash, Entry::new(node_ptr, generation)) {
             Ok(()) => unsafe { node_ptr.as_ref() },
             Err(_) => self
                 .table
-                .read(&hash, |_, entry| unsafe { entry.node_ptr.as_ref() })
+                .read_sync(&hash, |_, entry| unsafe { entry.node_ptr.as_ref() })
                 .unwrap(),
         }
     }
@@ -95,7 +95,7 @@ impl TranspositionTable {
     pub fn lookup<'a>(&'a self, key: &State) -> Option<&'a PositionNode> {
         let hash = key.hash();
 
-        self.table.read(&hash, |_, entry| {
+        self.table.read_sync(&hash, |_, entry| {
             let current_arena_gen = self.arena.generation();
 
             if entry.generation == current_arena_gen {
