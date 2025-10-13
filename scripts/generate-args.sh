@@ -72,8 +72,20 @@ case $TIME_CONTROL in
 esac
 
 # Generate command line arguments
-echo "-engine cmd=/engines/$ENGINE1 name=$ENGINE1"
-echo "-engine cmd=/engines/$ENGINE2 name=$ENGINE2"
+# Function to find engine path
+get_engine_path() {
+    local engine=$1
+    if [ -f "./builds/$engine" ]; then
+        # Engine exists in local builds directory, will be available at /engines/builds/ in container
+        echo "/engines/builds/$engine"
+    else
+        # Use direct engine mount (e.g., princhess from target/release)
+        echo "/engines/$engine"
+    fi
+}
+
+echo "-engine cmd=$(get_engine_path $ENGINE1) name=$ENGINE1"
+echo "-engine cmd=$(get_engine_path $ENGINE2) name=$ENGINE2"
 echo ""
 echo "-each proto=uci tc=$TC"
 echo "      option.SyzygyPath=/syzygy option.Hash=$HASH option.Threads=$THREADS"

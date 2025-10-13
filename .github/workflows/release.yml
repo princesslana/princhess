@@ -37,7 +37,7 @@ jobs:
         with:
           toolchain: stable
       - name: Set version
-        run: sed -i "s/^version = .*/version = \"$(git describe --tags --dirty --always)\"/" Cargo.toml
+        run: sed -i '0,/^version = .*/{s/^version = .*/version = "'"$(git describe --tags --dirty --always)"'"/}' Cargo.toml
         shell: bash
       - run: cargo rustc --release --bin princhess -- -C target-feature=+crt-static -C target-cpu=$TARGET_CPU
         env:
