@@ -82,12 +82,22 @@ impl TranspositionTable {
         let generation = value.generation();
         let node_ptr = value.into_non_null();
 
-        match self.table.insert_sync(hash, Entry::new(node_ptr, generation)) {
+        match self
+            .table
+            .insert_sync(hash, Entry::new(node_ptr, generation))
+        {
             Ok(()) => unsafe { node_ptr.as_ref() },
-            Err(_) => self
-                .table
-                .read_sync(&hash, |_, entry| unsafe { entry.node_ptr.as_ref() })
-                .unwrap(),
+            Err(_) => {
+                // Entry exists, replace it if the new generation is more recent
+                self.table
+                    .update_sync(&hash, |_, entry| {
+                        if generation > entry.generation {
+                            *entry = Entry::new(node_ptr, generation);
+                        }
+                        unsafe { entry.node_ptr.as_ref() }
+                    })
+                    .unwrap()
+            }
         }
     }
 
