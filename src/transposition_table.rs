@@ -86,7 +86,11 @@ impl TranspositionTable {
             .table
             .insert_sync(hash, Entry::new(node_ptr, generation))
         {
-            Ok(()) => unsafe { node_ptr.as_ref() },
+            Ok(()) => {
+                // SAFETY: node_ptr from ArenaRef::into_non_null() is guaranteed non-null,
+                // properly aligned, and points to initialized PositionNode from arena allocation
+                unsafe { node_ptr.as_ref() }
+            }
             Err(_) => {
                 // Entry exists, replace it if the new generation is more recent
                 self.table
@@ -94,9 +98,16 @@ impl TranspositionTable {
                         if generation > entry.generation {
                             *entry = Entry::new(node_ptr, generation);
                         }
+                        // SAFETY: entry.node_ptr stored in Entry is NonNull from arena allocation,
+                        // guaranteed valid and initialized by insert_sync or previous update_sync
                         unsafe { entry.node_ptr.as_ref() }
                     })
-                    .unwrap()
+                    .unwrap_or({
+                        // Entry cleared between insert_sync and update_sync; return our node
+                        // SAFETY: node_ptr from ArenaRef::into_non_null() is guaranteed non-null,
+                        // properly aligned, and points to initialized PositionNode from arena allocation
+                        unsafe { node_ptr.as_ref() }
+                    })
             }
         }
     }
@@ -109,6 +120,8 @@ impl TranspositionTable {
             let current_arena_gen = self.arena.generation();
 
             if entry.generation == current_arena_gen {
+                // SAFETY: entry.node_ptr from current generation is NonNull, properly aligned,
+                // and points to valid PositionNode guaranteed by arena allocation invariants
                 unsafe { Some(entry.node_ptr.as_ref()) }
             } else {
                 None
