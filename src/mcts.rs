@@ -138,6 +138,7 @@ impl Mcts {
                 break;
             }
             if path.len() >= MAX_PLAYOUT_LENGTH {
+                evaln = evaluation::value(&state);
                 break;
             }
 
@@ -209,13 +210,13 @@ impl Mcts {
             return false;
         }
 
-        if tld.playouts % 128 == 0 && stop_signal.load(Ordering::Relaxed) {
+        if tld.playouts.is_multiple_of(128) && stop_signal.load(Ordering::Relaxed) {
             return false;
         }
 
         let elapsed = time_management.elapsed();
 
-        if tld.playouts % 128 == 0 {
+        if tld.playouts.is_multiple_of(128) {
             if let Some(hard_limit) = time_management.hard_limit() {
                 if elapsed >= hard_limit {
                     return false;
@@ -231,7 +232,7 @@ impl Mcts {
             }
         }
 
-        if tld.playouts % 65536 == 0 {
+        if tld.playouts.is_multiple_of(65536) {
             let elapsed = time_management.elapsed().as_secs();
 
             let next_info = self.next_info.fetch_max(elapsed, Ordering::Relaxed);
@@ -241,7 +242,7 @@ impl Mcts {
             }
         }
 
-        if tld.is_main_thread() && tld.playouts % 128 == 0 {
+        if tld.is_main_thread() && tld.playouts.is_multiple_of(128) {
             let current_reward = self.best_edge().reward().average;
             let last_reward = self.last_root_reward.load(Ordering::Relaxed);
             self.last_root_reward

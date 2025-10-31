@@ -25,7 +25,7 @@ const WDL_WEIGHT: f32 = 0.3;
 const FEATURE_WEIGHT_DECAY: f32 = 0.01;
 const OUTPUT_WEIGHT_DECAY: f32 = 0.01;
 
-const _BUFFER_SIZE_CHECK: () = assert!(TrainingPosition::BUFFER_SIZE % BATCH_SIZE == 0);
+const _BUFFER_SIZE_CHECK: () = assert!(TrainingPosition::BUFFER_SIZE.is_multiple_of(BATCH_SIZE));
 
 struct Optimizers<S: LRScheduler> {
     feature: AdamWOptimizer<S>,

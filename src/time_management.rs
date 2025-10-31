@@ -178,7 +178,7 @@ mod tests {
     const BLACK_TO_MOVE_FEN: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR b KQkq - 0 1";
 
     // Helper to create tokens from a string
-    fn create_tokens(s: &str) -> Tokens {
+    fn create_tokens(s: &str) -> Tokens<'_> {
         s.split_whitespace()
     }
 
