@@ -32,7 +32,7 @@ const SOFT_TARGET_TEMPERATURE: f32 = 4.0;
 
 const EPSILON: f32 = 1e-9;
 
-const _BUFFER_SIZE_CHECK: () = assert!(TrainingPosition::BUFFER_SIZE % BATCH_SIZE == 0);
+const _BUFFER_SIZE_CHECK: () = assert!(TrainingPosition::BUFFER_SIZE.is_multiple_of(BATCH_SIZE));
 
 #[derive(Debug, Default, Clone, Copy)]
 struct BatchMetrics {

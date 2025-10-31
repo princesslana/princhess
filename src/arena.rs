@@ -181,7 +181,7 @@ impl<'a> Allocator<'a> {
     }
 
     pub fn alloc_one<T>(&self) -> Result<ArenaRef<MaybeUninit<T>>, Error> {
-        assert!(ALIGN % mem::align_of::<T>() == 0);
+        assert!(ALIGN.is_multiple_of(mem::align_of::<T>()));
         let x = mem::size_of::<T>();
         let x = (x + ALIGN - 1) & !(ALIGN - 1);
         let x = self.get_memory(x)?;
@@ -193,7 +193,7 @@ impl<'a> Allocator<'a> {
     }
 
     pub fn alloc_slice<T>(&self, sz: usize) -> Result<ArenaRef<[MaybeUninit<T>]>, Error> {
-        assert!(ALIGN % mem::align_of::<T>() == 0);
+        assert!(ALIGN.is_multiple_of(mem::align_of::<T>()));
         let x = mem::size_of::<T>();
         let x = (x + ALIGN - 1) & !(ALIGN - 1);
         let x = self.get_memory(x * sz)?;
