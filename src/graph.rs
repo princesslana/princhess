@@ -83,15 +83,15 @@ macro_rules! define_static_node {
 
 // These static nodes, created via `PositionNode::new_static`, are not allocated in an Arena,
 // so their generation is 0 (invalid). This is fine as they are never looked up in the TT or cleared.
-define_static_node!(WIN_NODE, Flag::TerminalWin);
-define_static_node!(DRAW_NODE, Flag::TerminalDraw);
-define_static_node!(LOSS_NODE, Flag::TerminalLoss);
+define_static_node!(WIN_NODE, Flag::TERMINAL_WIN);
+define_static_node!(DRAW_NODE, Flag::TERMINAL_DRAW);
+define_static_node!(LOSS_NODE, Flag::TERMINAL_LOSS);
 
-define_static_node!(TABLEBASE_WIN_NODE, Flag::TablebaseWin);
-define_static_node!(TABLEBASE_DRAW_NODE, Flag::TablebaseDraw);
-define_static_node!(TABLEBASE_LOSS_NODE, Flag::TablebaseLoss);
+define_static_node!(TABLEBASE_WIN_NODE, Flag::TABLEBASE_WIN);
+define_static_node!(TABLEBASE_DRAW_NODE, Flag::TABLEBASE_DRAW);
+define_static_node!(TABLEBASE_LOSS_NODE, Flag::TABLEBASE_LOSS);
 
-define_static_node!(UNEXPANDED_NODE, Flag::Standard);
+define_static_node!(UNEXPANDED_NODE, Flag::STANDARD);
 
 impl PositionNode {
     fn new(edges: Edges, flag: Flag, generation: u32) -> Self {

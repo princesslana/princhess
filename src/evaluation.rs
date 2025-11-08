@@ -9,44 +9,59 @@ use crate::quantized_value::QuantizedValueNetwork;
 use crate::state::State;
 use crate::tablebase::{self, Wdl};
 
-#[derive(Clone, Copy, Debug)]
-pub enum Flag {
-    Standard,
-    #[allow(dead_code)] // Turns out we don't need it, but feels incomplete without it
-    TerminalWin,
-    TerminalDraw,
-    TerminalLoss,
-    TablebaseWin,
-    TablebaseDraw,
-    TablebaseLoss,
-}
+/// Bitflag representation for position evaluation state.
+/// Bits 0-1: outcome (00=standard, 01=loss, 10=win, 11=draw)
+/// Bit 2: source (0=terminal, 1=tablebase)
+/// Bits 3-7: reserved (must be zero)
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Flag(u8);
 
 impl Flag {
+    const OUTCOME_MASK: u8 = 0b0000_0011;
+    const TABLEBASE_MASK: u8 = 0b0000_0100;
+    const RESERVED_MASK: u8 = 0b1111_1000;
+
+    pub const STANDARD: Self = Self(0b0000_0000);
+    pub const TERMINAL_LOSS: Self = Self(0b0000_0001);
+    pub const TERMINAL_WIN: Self = Self(0b0000_0010);
+    pub const TERMINAL_DRAW: Self = Self(0b0000_0011);
+    pub const TABLEBASE_LOSS: Self = Self(0b0000_0101);
+    pub const TABLEBASE_WIN: Self = Self(0b0000_0110);
+    pub const TABLEBASE_DRAW: Self = Self(0b0000_0111);
+
     #[must_use]
-    pub fn is_terminal(self) -> bool {
-        matches!(
-            self,
-            Flag::TerminalWin | Flag::TerminalDraw | Flag::TerminalLoss
-        )
+    #[inline]
+    pub const fn is_standard(self) -> bool {
+        self.0 == 0
     }
 
     #[must_use]
-    pub fn is_tablebase(self) -> bool {
-        matches!(
-            self,
-            Flag::TablebaseWin | Flag::TablebaseDraw | Flag::TablebaseLoss
-        )
+    #[inline]
+    pub const fn is_valid(self) -> bool {
+        (self.0 & Self::RESERVED_MASK) == 0
     }
 
     #[must_use]
-    pub fn adjust_eval(self, eval: i64) -> i64 {
+    #[inline]
+    pub const fn is_terminal(self) -> bool {
+        (self.0 & Self::OUTCOME_MASK) != 0 && (self.0 & Self::TABLEBASE_MASK) == 0
+    }
+
+    #[must_use]
+    #[inline]
+    pub const fn is_tablebase(self) -> bool {
+        (self.0 & Self::OUTCOME_MASK) != 0 && (self.0 & Self::TABLEBASE_MASK) != 0
+    }
+
+    #[must_use]
+    pub const fn adjust_eval(self, eval: i64) -> i64 {
         match self {
-            Flag::TerminalWin => 2 * SCALE as i64,
-            Flag::TerminalLoss => -2 * SCALE as i64,
-            Flag::TablebaseWin => SCALE as i64,
-            Flag::TablebaseLoss => -SCALE as i64,
-            Flag::TerminalDraw | Flag::TablebaseDraw => 0,
-            Flag::Standard => eval,
+            Self::TERMINAL_WIN => 2 * SCALE as i64,
+            Self::TERMINAL_LOSS => -2 * SCALE as i64,
+            Self::TABLEBASE_WIN => SCALE as i64,
+            Self::TABLEBASE_LOSS => -SCALE as i64,
+            Self::TERMINAL_DRAW | Self::TABLEBASE_DRAW => 0,
+            _ => eval,
         }
     }
 }
@@ -76,18 +91,18 @@ pub fn policy(state: &State, moves: &MoveList, t: f32) -> Vec<f32> {
 pub fn evaluate_state_flag(state: &State, is_legal_moves: bool) -> Flag {
     if !is_legal_moves {
         if state.is_check() {
-            Flag::TerminalLoss
+            Flag::TERMINAL_LOSS
         } else {
-            Flag::TerminalDraw
+            Flag::TERMINAL_DRAW
         }
     } else if let Some(wdl) = tablebase::probe_wdl(state.board()) {
         match wdl {
-            Wdl::Win => Flag::TablebaseWin,
-            Wdl::Loss => Flag::TablebaseLoss,
-            Wdl::Draw => Flag::TablebaseDraw,
+            Wdl::Win => Flag::TABLEBASE_WIN,
+            Wdl::Loss => Flag::TABLEBASE_LOSS,
+            Wdl::Draw => Flag::TABLEBASE_DRAW,
         }
     } else {
-        Flag::Standard
+        Flag::STANDARD
     }
 }
 
