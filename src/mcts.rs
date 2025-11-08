@@ -131,12 +131,22 @@ impl Mcts {
                 return true;
             }
 
-            if node.is_terminal() || node.edges().is_empty() {
+            if node.edges().is_empty() {
                 break;
             }
-            if node.is_tablebase() && state.halfmove_clock() == 0 {
-                break;
+
+            if !node.flag().is_standard() {
+                if !node.flag().is_valid() {
+                    return true;
+                }
+                if node.is_terminal() {
+                    break;
+                }
+                if node.is_tablebase() && state.halfmove_clock() == 0 {
+                    break;
+                }
             }
+
             if path.len() >= MAX_PLAYOUT_LENGTH {
                 evaln = evaluation::value(&state);
                 break;
@@ -158,15 +168,18 @@ impl Mcts {
                 let flag = evaluation::evaluate_state_flag(&state, state.is_available_move());
 
                 node = match flag {
-                    evaluation::Flag::TerminalWin => &*WIN_NODE,
-                    evaluation::Flag::TerminalLoss => &*LOSS_NODE,
-                    evaluation::Flag::TerminalDraw => &*DRAW_NODE,
-                    evaluation::Flag::TablebaseWin => &*TABLEBASE_WIN_NODE,
-                    evaluation::Flag::TablebaseLoss => &*TABLEBASE_LOSS_NODE,
-                    evaluation::Flag::TablebaseDraw => &*TABLEBASE_DRAW_NODE,
-                    evaluation::Flag::Standard => {
+                    evaluation::Flag::TERMINAL_WIN => &*WIN_NODE,
+                    evaluation::Flag::TERMINAL_LOSS => &*LOSS_NODE,
+                    evaluation::Flag::TERMINAL_DRAW => &*DRAW_NODE,
+                    evaluation::Flag::TABLEBASE_WIN => &*TABLEBASE_WIN_NODE,
+                    evaluation::Flag::TABLEBASE_LOSS => &*TABLEBASE_LOSS_NODE,
+                    evaluation::Flag::TABLEBASE_DRAW => &*TABLEBASE_DRAW_NODE,
+                    evaluation::Flag::STANDARD => {
                         evaln = evaluation::value(&state);
                         &*UNEXPANDED_NODE
+                    }
+                    _ => {
+                        return true;
                     }
                 };
                 break;

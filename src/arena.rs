@@ -200,7 +200,7 @@ impl<'a> Allocator<'a> {
         let current_generation = self.arena.generation.load(Ordering::Acquire);
         Ok(ArenaRef {
             ptr: unsafe {
-                NonNull::new_unchecked(slice::from_raw_parts_mut(
+                NonNull::new_unchecked(ptr::slice_from_raw_parts_mut(
                     x.as_mut_ptr().cast::<MaybeUninit<T>>(),
                     sz,
                 ))
