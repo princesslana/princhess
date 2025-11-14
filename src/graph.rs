@@ -159,7 +159,7 @@ impl PositionNode {
     /// been cleared or is no longer the active one for new allocations.
     #[must_use]
     pub fn is_stale(&self, current_arena_generation: u32) -> bool {
-        self.generation != current_arena_generation
+        self.generation != 0 && self.generation != current_arena_generation
     }
 }
 
@@ -207,6 +207,14 @@ impl MoveEdge {
 
     pub fn up(&self, evaln: i64) {
         self.sum_evaluations.fetch_add(evaln, Ordering::Relaxed);
+    }
+
+    pub fn add_visits(&self, delta: u32) -> u32 {
+        self.visits.fetch_add(delta, Ordering::Relaxed) + delta
+    }
+
+    pub fn add_sum_evaluations(&self, delta: i64) -> i64 {
+        self.sum_evaluations.fetch_add(delta, Ordering::Relaxed) + delta
     }
 
     pub fn replace(&self, other: &MoveEdge) {

@@ -13,7 +13,7 @@ THREAD_CONFIG=${5:-1t}
 
 if [ -z "$TEST_TYPE" ] || [ -z "$TIME_CONTROL" ] || [ -z "$ENGINE1" ] || [ -z "$ENGINE2" ]; then
     echo "Usage: $0 <test_type> <time_control> <engine1> <engine2> [thread_config]"
-    echo "  test_type: sprt_gain, sprt_equal, elo_check"
+    echo "  test_type: sprt_gain, sprt_equal, elo_check, debug"
     echo "  time_control: stc, ltc, nodes25k"
     echo "  engine1: princhess, princhess-main, etc"
     echo "  engine2: princhess-main, stockfish, etc"

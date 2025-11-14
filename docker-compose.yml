@@ -8,6 +8,7 @@ services:
       - ./builds:/engines/builds:ro
       - ./syzygy:/syzygy:ro
       - ./target/fastchess:/state
+      - ./target/fastchess/pgn:/pgn
 
   tune:
     build:

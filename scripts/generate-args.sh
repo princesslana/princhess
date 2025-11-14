@@ -13,7 +13,7 @@ THREAD_CONFIG=${5:-1t}
 
 if [ -z "$TEST_TYPE" ] || [ -z "$TIME_CONTROL" ] || [ -z "$ENGINE1" ] || [ -z "$ENGINE2" ]; then
     echo "Usage: $0 <test_type> <time_control> <engine1> <engine2> [thread_config]"
-    echo "  test_type: sprt_gain, sprt_equal, elo_check"
+    echo "  test_type: sprt_gain, sprt_equal, elo_check, debug"
     echo "  time_control: stc, ltc, nodes25k"
     echo "  engine1: princhess, princhess-main, etc"
     echo "  engine2: princhess-main, stockfish, etc"
@@ -48,9 +48,14 @@ is_long_test() {
 # Set common values for all time controls
 HASH=128
 # Calculate concurrency to use 6 total threads (6 / threads_per_game)
-CONCURRENCY=$((6 / THREADS))
-if [ $CONCURRENCY -lt 1 ]; then
+# Debug tests always use concurrency=1 for easier troubleshooting
+if [ "$TEST_TYPE" = "debug" ]; then
     CONCURRENCY=1
+else
+    CONCURRENCY=$((6 / THREADS))
+    if [ $CONCURRENCY -lt 1 ]; then
+        CONCURRENCY=1
+    fi
 fi
 OPENING_BOOK="UHO_Lichess_4852_v1.epd"
 
@@ -116,11 +121,24 @@ case $TEST_TYPE in
         ;;
     elo_check)
         ROUNDS=500
-        # No SPRT for elo check
+        ;;
+    debug)
+        ROUNDS=50
+        echo "-log file=/pgn/debug.log engine=true"
+        echo "-pgnout /pgn/debug.pgn"
+        ;;
+    *)
+        echo "Unknown test type: $TEST_TYPE"
+        exit 1
         ;;
 esac
 
 echo "-openings file=/books/$OPENING_BOOK format=epd order=random"
 echo "-games 2 -repeat -rounds $ROUNDS"
-echo "-recover -ratinginterval 10 -concurrency $CONCURRENCY"
+echo "-ratinginterval 10 -concurrency $CONCURRENCY"
+
+if [ "$TEST_TYPE" != "debug" ]; then
+    echo "-recover"
+fi
+
 echo "-config outname=/state/current.json"
