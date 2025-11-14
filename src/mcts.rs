@@ -210,17 +210,32 @@ impl Mcts {
         Self::finish_playout(&path, evaln);
 
         let depth = path.len();
-        let num_nodes = self.num_nodes.fetch_add(depth, Ordering::Relaxed) + depth;
-        self.max_depth.fetch_max(depth, Ordering::Relaxed);
-        self.playouts.fetch_add(1, Ordering::Relaxed);
+        tld.num_nodes += depth;
+        tld.max_depth = tld.max_depth.max(depth);
         tld.playouts += 1;
 
         if node.is_tablebase() {
-            self.tb_hits.fetch_add(1, Ordering::Relaxed);
+            tld.tb_hits += 1;
         }
 
-        if num_nodes >= time_management.node_limit() {
+        if tld.is_main_thread()
+            && self.num_nodes.load(Ordering::Relaxed) + tld.num_nodes
+                >= time_management.node_limit()
+        {
             return false;
+        }
+
+        if tld.playouts.is_multiple_of(1024) {
+            self.flush_thread_stats(tld);
+
+            if tld.is_main_thread() {
+                let elapsed = time_management.elapsed().as_secs();
+                let next_info = self.next_info.fetch_max(elapsed, Ordering::Relaxed);
+
+                if next_info < elapsed && !stop_signal.load(Ordering::Relaxed) {
+                    self.print_info(time_management, tld.ttable.full());
+                }
+            }
         }
 
         if tld.playouts.is_multiple_of(128) && stop_signal.load(Ordering::Relaxed) {
@@ -242,16 +257,6 @@ impl Mcts {
                 if elapsed >= soft_limit.mul_f32(self.soft_time_multiplier(opts)) {
                     return false;
                 }
-            }
-        }
-
-        if tld.playouts.is_multiple_of(65536) {
-            let elapsed = time_management.elapsed().as_secs();
-
-            let next_info = self.next_info.fetch_max(elapsed, Ordering::Relaxed);
-
-            if next_info < elapsed && !stop_signal.load(Ordering::Relaxed) {
-                self.print_info(time_management, tld.ttable.full());
             }
         }
 
@@ -323,6 +328,18 @@ impl Mcts {
 
     pub fn root_node(&self) -> &PositionNode {
         &self.root_node
+    }
+
+    pub fn flush_thread_stats(&self, tld: &mut ThreadData) {
+        self.num_nodes.fetch_add(tld.num_nodes, Ordering::Relaxed);
+        self.max_depth.fetch_max(tld.max_depth, Ordering::Relaxed);
+        self.playouts.fetch_add(tld.playouts, Ordering::Relaxed);
+        self.tb_hits.fetch_add(tld.tb_hits, Ordering::Relaxed);
+
+        tld.num_nodes = 0;
+        tld.max_depth = 0;
+        tld.playouts = 0;
+        tld.tb_hits = 0;
     }
 
     pub fn best_move(&self) -> chess::Move {
