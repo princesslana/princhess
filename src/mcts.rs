@@ -6,8 +6,8 @@ use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU64, AtomicUsize, Ordering}
 
 use crate::arena::{ArenaRef, Error as ArenaError};
 use crate::chess;
-use crate::engine::{eval_in_cp, ThreadData, SCALE};
-use crate::evaluation;
+use crate::engine::{eval_in_cp, RootEdge, ThreadData, SCALE};
+use crate::evaluation::{self, Flag};
 use crate::graph::{
     create_node, MoveEdge, PositionNode, DRAW_NODE, LOSS_NODE, TABLEBASE_DRAW_NODE,
     TABLEBASE_LOSS_NODE, TABLEBASE_WIN_NODE, UNEXPANDED_NODE, WIN_NODE,
@@ -118,16 +118,44 @@ impl Mcts {
         stop_signal: &AtomicBool,
     ) -> bool {
         let dynamic_cpuct = self.compute_dynamic_cpuct(cpuct, tld);
+
+        let root_edge_idx = self.select_root_edge(tld, dynamic_cpuct);
+        let root_edge_ref = &self.root_node.edges()[root_edge_idx];
+
+        tld.root_edges[root_edge_idx].down();
+
         let mut state = self.root_state.clone();
-        let mut node: &'a PositionNode = &self.root_node;
-        let mut path: ArrayVec<&'a MoveEdge, MAX_PLAYOUT_LENGTH> = ArrayVec::new();
+        state.make_move(*root_edge_ref.get_move());
+
+        let mut node: &'a PositionNode;
         let mut evaln = 0;
 
+        if tld.root_edges[root_edge_idx].visits() == 1 {
+            let Some((expanded_node, eval)) = Self::expand_edge(&state) else {
+                return true;
+            };
+            node = expanded_node;
+            evaln = eval;
+        } else if state.is_repetition()
+            || state.drawn_by_fifty_move_rule()
+            || state.board().is_insufficient_material()
+        {
+            node = &*DRAW_NODE;
+        } else {
+            node = match self.descend(&state, root_edge_ref, tld) {
+                Ok(r) => r,
+                Err(ArenaError::Full) => {
+                    tld.ttable
+                        .flip_if_full(|| self.root_node.clear_children_links());
+                    return true;
+                }
+            };
+        }
+
+        let mut path: ArrayVec<&'a MoveEdge, MAX_PLAYOUT_LENGTH> = ArrayVec::new();
+
         loop {
-            // If the current node is not the root node (path is not empty) and it is stale relative
-            // to the current active arena's generation, abort the playout. The root node's arena
-            // is separate and its generation is stable.
-            if !path.is_empty() && node.is_stale(tld.ttable.current_generation()) {
+            if node.is_stale(tld.ttable.current_generation()) {
                 return true;
             }
 
@@ -165,23 +193,11 @@ impl Mcts {
             state.make_move(*choice.get_move());
 
             if choice.visits() == 1 {
-                let flag = evaluation::evaluate_state_flag(&state, state.is_available_move());
-
-                node = match flag {
-                    evaluation::Flag::TERMINAL_WIN => &*WIN_NODE,
-                    evaluation::Flag::TERMINAL_LOSS => &*LOSS_NODE,
-                    evaluation::Flag::TERMINAL_DRAW => &*DRAW_NODE,
-                    evaluation::Flag::TABLEBASE_WIN => &*TABLEBASE_WIN_NODE,
-                    evaluation::Flag::TABLEBASE_LOSS => &*TABLEBASE_LOSS_NODE,
-                    evaluation::Flag::TABLEBASE_DRAW => &*TABLEBASE_DRAW_NODE,
-                    evaluation::Flag::STANDARD => {
-                        evaln = evaluation::value(&state);
-                        &*UNEXPANDED_NODE
-                    }
-                    _ => {
-                        return true;
-                    }
+                let Some((expanded_node, eval)) = Self::expand_edge(&state) else {
+                    return true;
                 };
+                node = expanded_node;
+                evaln = eval;
                 break;
             }
 
@@ -207,9 +223,9 @@ impl Mcts {
 
         evaln = node.flag().adjust_eval(evaln);
 
-        Self::finish_playout(&path, evaln);
+        Self::finish_playout(&mut tld.root_edges[root_edge_idx], &path, evaln);
 
-        let depth = path.len();
+        let depth = path.len() + 1;
         tld.num_nodes += depth;
         tld.max_depth = tld.max_depth.max(depth);
         tld.playouts += 1;
@@ -226,6 +242,7 @@ impl Mcts {
         }
 
         if tld.playouts.is_multiple_of(1024) {
+            self.flush_root_edges(tld);
             self.flush_thread_stats(tld);
 
             if tld.is_main_thread() {
@@ -314,12 +331,13 @@ impl Mcts {
         Ok(inserted)
     }
 
-    fn finish_playout(path: &[&MoveEdge], evaln: i64) {
+    fn finish_playout(root_edge: &mut RootEdge, path: &[&MoveEdge], evaln: i64) {
         let mut evaln_value = -evaln;
         for move_info in path.iter().rev() {
             move_info.up(evaln_value);
             evaln_value = -evaln_value;
         }
+        root_edge.up(evaln_value);
     }
 
     pub fn root_state(&self) -> &State {
@@ -328,6 +346,12 @@ impl Mcts {
 
     pub fn root_node(&self) -> &PositionNode {
         &self.root_node
+    }
+
+    pub fn flush_root_edges(&self, tld: &mut ThreadData) {
+        for (root_edge, edge) in tld.root_edges.iter_mut().zip(self.root_node.edges()) {
+            root_edge.flush(edge);
+        }
     }
 
     pub fn flush_thread_stats(&self, tld: &mut ThreadData) {
@@ -385,6 +409,10 @@ impl Mcts {
     }
 
     fn soft_time_multiplier(&self, opts: &TimeManagementOptions) -> f32 {
+        if self.root_node().visits() == 0 {
+            return 1.0;
+        }
+
         let mut m = 1.0;
 
         let bm = self
@@ -484,6 +512,67 @@ impl Mcts {
 
             println!("{info_str}");
         }
+    }
+
+    /// Expands an edge that's being visited for the first time.
+    /// Returns the node and evaluation, or None if the flag is invalid.
+    fn expand_edge<'a>(state: &State) -> Option<(&'a PositionNode, i64)> {
+        let flag = evaluation::evaluate_state_flag(state, state.is_available_move());
+
+        let (node, eval) = match flag {
+            Flag::TERMINAL_WIN => (&*WIN_NODE, 0),
+            Flag::TERMINAL_LOSS => (&*LOSS_NODE, 0),
+            Flag::TERMINAL_DRAW => (&*DRAW_NODE, 0),
+            Flag::TABLEBASE_WIN => (&*TABLEBASE_WIN_NODE, 0),
+            Flag::TABLEBASE_LOSS => (&*TABLEBASE_LOSS_NODE, 0),
+            Flag::TABLEBASE_DRAW => (&*TABLEBASE_DRAW_NODE, 0),
+            Flag::STANDARD => {
+                let eval = evaluation::value(state);
+                (&*UNEXPANDED_NODE, eval)
+            }
+            _ => return None,
+        };
+
+        Some((node, eval))
+    }
+
+    /// PUCT selection for root node using thread-local buffered statistics.
+    fn select_root_edge(&self, tld: &ThreadData, cpuct: f32) -> usize {
+        let edges = self.root_node.edges();
+
+        let total_visits: u64 = tld
+            .root_edges
+            .iter()
+            .map(|re| u64::from(re.visits()))
+            .sum::<u64>()
+            + 1;
+
+        let explore_coef = (cpuct
+            * faster::exp(
+                self.engine_options.mcts_options.cpuct_tau * faster::ln(total_visits as f32),
+            )
+            * SCALE) as i64;
+
+        let mut best_idx = 0;
+        let mut best_score = i64::MIN;
+
+        for (idx, edge) in edges.iter().enumerate() {
+            let reward = tld.root_edges[idx].reward();
+
+            let q = if reward.visits > 0 { reward.average } else { 0 };
+
+            let u = explore_coef * i64::from(edge.policy())
+                / ((i64::from(reward.visits) + 1) * SCALE as i64);
+
+            let score = q + u;
+
+            if score > best_score {
+                best_score = score;
+                best_idx = idx;
+            }
+        }
+
+        best_idx
     }
 
     /// PUCT selection: choose best child using Q(action) + U(action)

@@ -1,8 +1,10 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 
+use arrayvec::ArrayVec;
+
 use crate::chess::Move;
 use crate::evaluation;
-use crate::graph::{MoveEdge, PositionNode};
+use crate::graph::{MoveEdge, PositionNode, Reward};
 use crate::math::Rng;
 use crate::mcts::Mcts;
 use crate::options::EngineOptions;
@@ -15,6 +17,70 @@ use crate::uci::{read_stdin, Tokens};
 
 pub const SCALE: f32 = 256. * 256.;
 
+/// Thread-local buffer for root edge statistics to reduce atomic contention.
+#[derive(Clone, Copy)]
+pub struct RootEdge {
+    synced_visits: u32,
+    synced_sum_evaluations: i64,
+    delta_visits: u32,
+    delta_sum_evaluations: i64,
+}
+
+impl Default for RootEdge {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl RootEdge {
+    pub const fn new() -> Self {
+        Self {
+            synced_visits: 0,
+            synced_sum_evaluations: 0,
+            delta_visits: 0,
+            delta_sum_evaluations: 0,
+        }
+    }
+
+    pub fn clear(&mut self) {
+        self.delta_visits = 0;
+        self.delta_sum_evaluations = 0;
+    }
+
+    pub fn visits(&self) -> u32 {
+        self.synced_visits + self.delta_visits
+    }
+
+    pub fn reward(&self) -> Reward {
+        let visits = self.visits();
+
+        if visits == 0 {
+            return Reward::ZERO;
+        }
+
+        let sum = self.synced_sum_evaluations + self.delta_sum_evaluations;
+
+        Reward {
+            average: sum / i64::from(visits),
+            visits,
+        }
+    }
+
+    pub fn down(&mut self) {
+        self.delta_visits += 1;
+    }
+
+    pub fn up(&mut self, evaln: i64) {
+        self.delta_sum_evaluations += evaln;
+    }
+
+    pub fn flush(&mut self, edge: &MoveEdge) {
+        self.synced_visits = edge.add_visits(self.delta_visits);
+        self.synced_sum_evaluations = edge.add_sum_evaluations(self.delta_sum_evaluations);
+        self.clear();
+    }
+}
+
 pub struct ThreadData<'a> {
     pub ttable: &'a LRTable,
     pub allocator: LRAllocator<'a>,
@@ -23,10 +89,16 @@ pub struct ThreadData<'a> {
     pub num_nodes: usize,
     pub max_depth: usize,
     pub tb_hits: usize,
+    pub root_edges: ArrayVec<RootEdge, 256>,
 }
 
 impl<'a> ThreadData<'a> {
-    fn create(ttable: &'a LRTable, thread_id: usize) -> Self {
+    fn create(ttable: &'a LRTable, thread_id: usize, num_root_edges: usize) -> Self {
+        let mut root_edges = ArrayVec::new();
+        for _ in 0..num_root_edges {
+            root_edges.push(RootEdge::new());
+        }
+
         Self {
             ttable,
             allocator: ttable.allocator(),
@@ -35,6 +107,7 @@ impl<'a> ThreadData<'a> {
             num_nodes: 0,
             max_depth: 0,
             tb_hits: 0,
+            root_edges,
         }
     }
 
@@ -143,10 +216,12 @@ impl Engine {
 
         let mut rng = Rng::default();
         let mut returned_line: Option<String> = None;
+        let num_root_edges = self.mcts.root_node().edges().len();
 
         let run_search_thread = |cpuct: f32, tm: &TimeManagement, thread_id: usize| {
-            let mut tld = ThreadData::create(&self.ttable, thread_id);
+            let mut tld = ThreadData::create(&self.ttable, thread_id, num_root_edges);
             while self.mcts.playout(&mut tld, cpuct, tm, &stop_signal) {}
+            self.mcts.flush_root_edges(&mut tld);
             self.mcts.flush_thread_stats(&mut tld);
         };
 
@@ -197,7 +272,8 @@ impl Engine {
     }
 
     pub fn playout_sync(&self, playouts: u64) {
-        let mut tld = ThreadData::create(&self.ttable, 0);
+        let num_root_edges = self.mcts.root_node().edges().len();
+        let mut tld = ThreadData::create(&self.ttable, 0, num_root_edges);
         let cpuct = self.engine_options.mcts_options.cpuct;
         let tm = TimeManagement::infinite();
         let stop_signal = AtomicBool::new(false);
@@ -208,6 +284,7 @@ impl Engine {
             }
         }
 
+        self.mcts.flush_root_edges(&mut tld);
         self.mcts.flush_thread_stats(&mut tld);
     }
 
