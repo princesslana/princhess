@@ -20,6 +20,9 @@ pub struct ThreadData<'a> {
     pub allocator: LRAllocator<'a>,
     pub playouts: usize,
     pub thread_id: usize,
+    pub num_nodes: usize,
+    pub max_depth: usize,
+    pub tb_hits: usize,
 }
 
 impl<'a> ThreadData<'a> {
@@ -29,6 +32,9 @@ impl<'a> ThreadData<'a> {
             allocator: ttable.allocator(),
             playouts: 0,
             thread_id,
+            num_nodes: 0,
+            max_depth: 0,
+            tb_hits: 0,
         }
     }
 
@@ -141,6 +147,7 @@ impl Engine {
         let run_search_thread = |cpuct: f32, tm: &TimeManagement, thread_id: usize| {
             let mut tld = ThreadData::create(&self.ttable, thread_id);
             while self.mcts.playout(&mut tld, cpuct, tm, &stop_signal) {}
+            self.mcts.flush_thread_stats(&mut tld);
         };
 
         self.threads.scope(|s: &Scope| {
@@ -200,6 +207,8 @@ impl Engine {
                 break;
             }
         }
+
+        self.mcts.flush_thread_stats(&mut tld);
     }
 
     pub fn print_move_list(&self) {
