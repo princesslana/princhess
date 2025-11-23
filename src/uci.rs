@@ -74,7 +74,7 @@ impl Uci {
                 "go" => {
                     next_line_from_go = self.handle_go(tokens, is_interactive);
                 }
-                "movelist" => self.engine.print_move_list(),
+                "movelist" => self.engine.print_move_list(tokens),
                 "sizelist" => print_size_list(),
                 "eval" => self.engine.print_eval(),
                 "bench" => self.run_bench(),

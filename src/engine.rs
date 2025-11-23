@@ -6,8 +6,8 @@ use crate::chess::Move;
 use crate::evaluation;
 use crate::graph::{MoveEdge, PositionNode, Reward};
 use crate::math::Rng;
-use crate::mcts::Mcts;
-use crate::options::EngineOptions;
+use crate::mcts::{self, Mcts};
+use crate::options::{EngineOptions, MctsOptions};
 use crate::state::State;
 use crate::tablebase;
 use crate::threadpool::{Scope, ThreadPool};
@@ -203,7 +203,6 @@ impl Engine {
         time_management: TimeManagement,
         is_interactive: bool,
     ) -> Option<String> {
-        let cpuct = self.engine_options.mcts_options.cpuct;
         let stop_signal = AtomicBool::new(false);
         let thread_count = self.threads.current_num_threads();
 
@@ -218,16 +217,18 @@ impl Engine {
         let mut returned_line: Option<String> = None;
         let num_root_edges = self.mcts.root_node().edges().len();
 
-        let run_search_thread = |cpuct: f32, tm: &TimeManagement, thread_id: usize| {
+        let run_search_thread = |options: &MctsOptions, tm: &TimeManagement, thread_id: usize| {
             let mut tld = ThreadData::create(&self.ttable, thread_id, num_root_edges);
-            while self.mcts.playout(&mut tld, cpuct, tm, &stop_signal) {}
+            while self.mcts.playout(&mut tld, options, tm, &stop_signal) {}
             self.mcts.flush_root_edges(&mut tld);
             self.mcts.flush_thread_stats(&mut tld);
         };
 
         self.threads.scope(|s: &Scope| {
+            let base_options = &self.engine_options.mcts_options;
+
             s.spawn(|| {
-                run_search_thread(cpuct, &time_management, 0);
+                run_search_thread(base_options, &time_management, 0);
                 self.mcts.print_info(&time_management, self.ttable.full());
                 stop_signal.store(true, Ordering::Relaxed);
                 println!("bestmove {}", self.to_uci(self.best_move()));
@@ -235,9 +236,13 @@ impl Engine {
 
             for thread_id in 1..thread_count {
                 let jitter = 1. + rng.next_f32_range(-0.03, 0.03);
+                let jittered_options = MctsOptions {
+                    cpuct: base_options.cpuct * jitter,
+                    ..*base_options
+                };
 
                 s.spawn(move || {
-                    run_search_thread(cpuct * jitter, &TimeManagement::infinite(), thread_id);
+                    run_search_thread(&jittered_options, &TimeManagement::infinite(), thread_id);
                 });
             }
 
@@ -274,12 +279,12 @@ impl Engine {
     pub fn playout_sync(&self, playouts: u64) {
         let num_root_edges = self.mcts.root_node().edges().len();
         let mut tld = ThreadData::create(&self.ttable, 0, num_root_edges);
-        let cpuct = self.engine_options.mcts_options.cpuct;
+        let options = &self.engine_options.mcts_options;
         let tm = TimeManagement::infinite();
         let stop_signal = AtomicBool::new(false);
 
         for _ in 0..playouts {
-            if !self.mcts.playout(&mut tld, cpuct, &tm, &stop_signal) {
+            if !self.mcts.playout(&mut tld, options, &tm, &stop_signal) {
                 break;
             }
         }
@@ -288,33 +293,75 @@ impl Engine {
         self.mcts.flush_thread_stats(&mut tld);
     }
 
-    pub fn print_move_list(&self) {
-        let root_node = self.mcts.root_node();
-        let root_state = self.mcts.root_state();
+    pub fn print_move_list(&self, tokens: crate::uci::Tokens) {
+        let mut current_node = self.mcts.root_node();
+        let mut current_state = self.mcts.root_state().clone();
 
-        let root_moves = root_node.edges();
+        // Navigate down the tree following the move sequence
+        for move_str in tokens {
+            let edge = current_node
+                .edges()
+                .iter()
+                .find(|e| self.to_uci(*e.get_move()) == move_str);
 
-        let state_moves = root_state.available_moves();
+            match edge {
+                Some(e) if e.visits() > 0 => {
+                    if let Some(child) = e.child() {
+                        current_node = child;
+                        current_state.make_move(*e.get_move());
+                    } else {
+                        println!("info string error: move {move_str} has no child node");
+                        return;
+                    }
+                }
+                Some(_) => {
+                    println!("info string error: move {move_str} not explored in search tree");
+                    return;
+                }
+                None => {
+                    println!("info string error: move {move_str} not found");
+                    return;
+                }
+            }
+        }
+
+        let node_moves = current_node.edges();
+
+        let state_moves = current_state.available_moves();
         let state_moves_eval = evaluation::policy(
-            root_state,
+            &current_state,
             &state_moves,
             self.engine_options.mcts_options.policy_temperature,
         );
 
-        let mut moves: Vec<(&MoveEdge, f32)> = root_moves.iter().zip(state_moves_eval).collect();
+        // Calculate exploration coefficient for Q+U display
+        let total_visits: u64 = node_moves
+            .iter()
+            .map(|e| u64::from(e.visits()))
+            .sum::<u64>()
+            + 1;
+        let explore_coef = self.mcts.exploration_coefficient(
+            &self.engine_options.mcts_options,
+            total_visits,
+            false,
+        );
+
+        let mut moves: Vec<(&MoveEdge, f32)> = node_moves.iter().zip(state_moves_eval).collect();
         moves.sort_by_key(|(h, e)| (h.reward().average, (e * SCALE) as i64));
         for (mov, e) in moves {
             let reward = mov.reward();
+            let u = mcts::exploration_bonus(explore_coef, mov.policy(), reward.visits);
 
             println!(
-                "info string {:7} M: {:>5.2} P: {:>5.2} V: {:7} ({:>5.2}%) E: {:>7.2} ({:>8})",
+                "info string {:7} M: {:>5.2} P: {:>5.2} V: {:7} ({:>5.2}%) Q: {:>7.2} ({:>8}) U: {:>7.2}",
                 self.to_uci(*mov.get_move()),
                 e * 100.,
                 f32::from(mov.policy()) / SCALE * 100.,
                 mov.visits(),
-                mov.visits() as f32 / root_node.visits() as f32 * 100.,
+                mov.visits() as f32 / current_node.visits() as f32 * 100.,
                 reward.average as f32 / (SCALE / 100.),
-                eval_in_cp(reward.average as f32 / SCALE)
+                eval_in_cp(reward.average as f32 / SCALE),
+                u as f32 / (SCALE / 100.),
             );
         }
     }

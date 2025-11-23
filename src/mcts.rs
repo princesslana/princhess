@@ -21,6 +21,11 @@ const MAX_PLAYOUT_LENGTH: usize = 256;
 
 const PV_EVAL_MIN_DEPTH: usize = 4;
 
+/// Calculate exploration bonus U(s,a) for PUCT
+pub fn exploration_bonus(explore_coef: i64, policy: u16, visits: u32) -> i64 {
+    explore_coef * i64::from(policy) / ((i64::from(visits) + 1) * SCALE as i64)
+}
+
 /// Monte Carlo Tree Search implementation using PUCT algorithm.
 /// Despite the name "tree search", this forms a graph due to transposition handling
 /// where the same position can be reached via different move sequences.
@@ -113,13 +118,11 @@ impl Mcts {
     pub fn playout<'a>(
         &'a self,
         tld: &mut ThreadData<'a>,
-        cpuct: f32,
+        options: &MctsOptions,
         time_management: &TimeManagement,
         stop_signal: &AtomicBool,
     ) -> bool {
-        let dynamic_cpuct = self.compute_dynamic_cpuct(cpuct, tld);
-
-        let root_edge_idx = self.select_root_edge(tld, dynamic_cpuct);
+        let root_edge_idx = self.select_root_edge(tld, options);
         let root_edge_ref = &self.root_node.edges()[root_edge_idx];
 
         tld.root_edges[root_edge_idx].down();
@@ -182,12 +185,7 @@ impl Mcts {
 
             let fpu = path.last().map_or(0, |x| -x.reward().average);
 
-            let mcts_options = MctsOptions {
-                cpuct: dynamic_cpuct,
-                ..self.engine_options.mcts_options
-            };
-
-            let choice = Mcts::select(node.edges(), fpu, &mcts_options);
+            let choice = self.select(node.edges(), fpu, tld, options);
             choice.down();
             path.push(choice);
             state.make_move(*choice.get_move());
@@ -536,8 +534,31 @@ impl Mcts {
         Some((node, eval))
     }
 
+    /// Calculate exploration coefficient using GPUCT formula with trend adjustment
+    pub fn exploration_coefficient(
+        &self,
+        options: &MctsOptions,
+        total_visits: u64,
+        apply_trend_adjustment: bool,
+    ) -> i64 {
+        // Apply trend adjustment (main thread only)
+        let cpuct = if apply_trend_adjustment {
+            let winning_trend = self.winning_trend.load(Ordering::Relaxed);
+            let trend_factor = [
+                -options.cpuct_trend_adjustment,
+                options.cpuct_trend_adjustment,
+            ][usize::from(winning_trend)];
+            options.cpuct * (1.0 + trend_factor)
+        } else {
+            options.cpuct
+        };
+
+        // Calculate exploration coefficient
+        (cpuct * faster::exp(options.cpuct_tau * faster::ln(total_visits as f32)) * SCALE) as i64
+    }
+
     /// PUCT selection for root node using thread-local buffered statistics.
-    fn select_root_edge(&self, tld: &ThreadData, cpuct: f32) -> usize {
+    fn select_root_edge(&self, tld: &ThreadData, options: &MctsOptions) -> usize {
         let edges = self.root_node.edges();
 
         let total_visits: u64 = tld
@@ -547,23 +568,16 @@ impl Mcts {
             .sum::<u64>()
             + 1;
 
-        let explore_coef = (cpuct
-            * faster::exp(
-                self.engine_options.mcts_options.cpuct_tau * faster::ln(total_visits as f32),
-            )
-            * SCALE) as i64;
+        let explore_coef =
+            self.exploration_coefficient(options, total_visits, tld.is_main_thread());
 
         let mut best_idx = 0;
         let mut best_score = i64::MIN;
 
         for (idx, edge) in edges.iter().enumerate() {
             let reward = tld.root_edges[idx].reward();
-
             let q = if reward.visits > 0 { reward.average } else { 0 };
-
-            let u = explore_coef * i64::from(edge.policy())
-                / ((i64::from(reward.visits) + 1) * SCALE as i64);
-
+            let u = exploration_bonus(explore_coef, edge.policy(), reward.visits);
             let score = q + u;
 
             if score > best_score {
@@ -577,29 +591,28 @@ impl Mcts {
 
     /// PUCT selection: choose best child using Q(action) + U(action)
     /// where U incorporates policy priors and visit counts
-    fn select<'a>(moves: &'a [MoveEdge], fpu: i64, options: &MctsOptions) -> &'a MoveEdge {
+    fn select<'a>(
+        &self,
+        moves: &'a [MoveEdge],
+        fpu: i64,
+        tld: &ThreadData,
+        options: &MctsOptions,
+    ) -> &'a MoveEdge {
         let total_visits = moves.iter().map(|v| u64::from(v.visits())).sum::<u64>() + 1;
-
-        let explore_coef = (options.cpuct
-            * faster::exp(options.cpuct_tau * faster::ln(total_visits as f32))
-            * SCALE) as i64;
+        let explore_coef =
+            self.exploration_coefficient(options, total_visits, tld.is_main_thread());
 
         let mut best_move = &moves[0];
         let mut best_score = i64::MIN;
 
         for mov in moves {
             let reward = mov.reward();
-            let policy_evaln = mov.policy();
-
             let q = if reward.visits > 0 {
                 reward.average
             } else {
                 fpu
             };
-
-            let u = explore_coef * i64::from(policy_evaln)
-                / ((i64::from(reward.visits) + 1) * SCALE as i64);
-
+            let u = exploration_bonus(explore_coef, mov.policy(), reward.visits);
             let score = q + u;
 
             if score > best_score {
@@ -609,18 +622,6 @@ impl Mcts {
         }
 
         best_move
-    }
-
-    /// Compute dynamic CPUCT based on root reward trend
-    fn compute_dynamic_cpuct(&self, cpuct: f32, tld: &ThreadData) -> f32 {
-        if tld.is_main_thread() {
-            let adjustment = self.engine_options.mcts_options.cpuct_trend_adjustment;
-            let winning_trend = self.winning_trend.load(Ordering::Relaxed);
-            let trend_factor = [-adjustment, adjustment][usize::from(winning_trend)];
-            cpuct * (1.0 + trend_factor)
-        } else {
-            cpuct
-        }
     }
 }
 
