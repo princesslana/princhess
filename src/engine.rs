@@ -293,7 +293,7 @@ impl Engine {
         self.mcts.flush_thread_stats(&mut tld);
     }
 
-    pub fn print_move_list(&self, tokens: crate::uci::Tokens) {
+    pub fn print_move_list(&self, tokens: Tokens) {
         let mut current_node = self.mcts.root_node();
         let mut current_state = self.mcts.root_state().clone();
 
