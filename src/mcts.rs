@@ -183,7 +183,10 @@ impl Mcts {
                 break;
             }
 
-            let fpu = path.last().map_or(0, |x| -x.reward().average);
+            let fpu = match path.last() {
+                Some(x) => -x.reward().average,
+                None => -tld.root_edges[root_edge_idx].reward().average,
+            };
 
             let choice = self.select(node.edges(), fpu, tld, options);
             choice.down();
