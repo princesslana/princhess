@@ -182,6 +182,10 @@ impl MoveEdge {
         self.visits.load(Ordering::Relaxed)
     }
 
+    pub fn sum_evaluations(&self) -> i64 {
+        self.sum_evaluations.load(Ordering::Relaxed)
+    }
+
     pub fn policy(&self) -> u16 {
         self.policy
     }

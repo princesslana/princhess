@@ -42,6 +42,23 @@ impl RootEdge {
         }
     }
 
+    pub fn from_edge(edge: &MoveEdge) -> Self {
+        Self {
+            synced_visits: edge.visits(),
+            synced_sum_evaluations: edge.sum_evaluations(),
+            delta_visits: 0,
+            delta_sum_evaluations: 0,
+        }
+    }
+
+    pub fn from_edges(edges: &[MoveEdge]) -> ArrayVec<RootEdge, 256> {
+        let mut root_edges = ArrayVec::new();
+        for edge in edges {
+            root_edges.push(RootEdge::from_edge(edge));
+        }
+        root_edges
+    }
+
     pub fn clear(&mut self) {
         self.delta_visits = 0;
         self.delta_sum_evaluations = 0;
@@ -93,12 +110,7 @@ pub struct ThreadData<'a> {
 }
 
 impl<'a> ThreadData<'a> {
-    fn create(ttable: &'a LRTable, thread_id: usize, num_root_edges: usize) -> Self {
-        let mut root_edges = ArrayVec::new();
-        for _ in 0..num_root_edges {
-            root_edges.push(RootEdge::new());
-        }
-
+    fn create(ttable: &'a LRTable, thread_id: usize, root_edges: ArrayVec<RootEdge, 256>) -> Self {
         Self {
             ttable,
             allocator: ttable.allocator(),
@@ -215,10 +227,10 @@ impl Engine {
 
         let mut rng = Rng::default();
         let mut returned_line: Option<String> = None;
-        let num_root_edges = self.mcts.root_node().edges().len();
+        let root_edges = RootEdge::from_edges(self.mcts.root_node().edges());
 
         let run_search_thread = |options: &MctsOptions, tm: &TimeManagement, thread_id: usize| {
-            let mut tld = ThreadData::create(&self.ttable, thread_id, num_root_edges);
+            let mut tld = ThreadData::create(&self.ttable, thread_id, root_edges.clone());
             while self.mcts.playout(&mut tld, options, tm, &stop_signal) {}
             self.mcts.flush_root_edges(&mut tld);
             self.mcts.flush_thread_stats(&mut tld);
@@ -277,8 +289,8 @@ impl Engine {
     }
 
     pub fn playout_sync(&self, playouts: u64) {
-        let num_root_edges = self.mcts.root_node().edges().len();
-        let mut tld = ThreadData::create(&self.ttable, 0, num_root_edges);
+        let root_edges = RootEdge::from_edges(self.mcts.root_node().edges());
+        let mut tld = ThreadData::create(&self.ttable, 0, root_edges);
         let options = &self.engine_options.mcts_options;
         let tm = TimeManagement::infinite();
         let stop_signal = AtomicBool::new(false);
