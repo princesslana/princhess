@@ -1,6 +1,7 @@
 use bytemuck::{allocation, Pod, Zeroable};
 use std::path::Path;
 
+use crate::chess::Piece;
 use crate::mem::Align64;
 use crate::nets::{save_to_bin, screlu, Accumulator};
 use crate::state::{self, State};
@@ -10,6 +11,9 @@ pub const HIDDEN_SIZE: usize = 320;
 pub const QA: i32 = 256;
 pub const QB: i32 = 256;
 pub const QAB: i32 = QA * QB;
+
+const PHASE_DIVISOR: i32 = 1024;
+const PHASE_OFFSET: i32 = 752;
 
 pub type RawFeatureWeights = Align64<[[i16; HIDDEN_SIZE]; INPUT_SIZE]>;
 pub type RawFeatureBias = Align64<[i16; HIDDEN_SIZE]>;
@@ -89,6 +93,15 @@ impl QuantizedValueNetwork {
         }
 
         result = result / QA + self.output_bias;
+
+        // Material scaling
+        let board = state.board();
+        let material_phase = (board.knights().count() as i32) * Piece::KNIGHT.see_value()
+            + (board.bishops().count() as i32) * Piece::BISHOP.see_value()
+            + (board.rooks().count() as i32) * Piece::ROOK.see_value()
+            + (board.queens().count() as i32) * Piece::QUEEN.see_value();
+        let scale_factor = PHASE_OFFSET + material_phase / 32;
+        result = result * scale_factor / PHASE_DIVISOR;
 
         // Fifty move rule dampening
         let hmc = state.halfmove_clock();
