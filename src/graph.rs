@@ -43,11 +43,11 @@ impl Reward {
     };
 }
 
-// SAFETY: PositionNode contains NonNull<MoveEdge> which doesn't implement Send/Sync by default.
-// However, MoveEdge is Send and Sync (due to Atomic types and chess::Move).
-// The pointer itself is just a reference, not owning the data,
-// and the underlying data (from static nodes or Arena) is safely managed
-// and accessible across threads.
+// SAFETY: Manual Send/Sync required due to the cycle (PositionNode → MoveEdge → PositionNode).
+// This is safe because:
+// - edges_ptr always points to arena or static allocations that outlive cross-thread uses
+// - all mutation of edge data goes through atomics (visits, sum_evaluations, child pointer)
+// - edges_count == 0 permits edges_ptr to be dangling (never dereferenced)
 unsafe impl Send for PositionNode {}
 unsafe impl Sync for PositionNode {}
 
