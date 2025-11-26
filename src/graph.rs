@@ -1,5 +1,4 @@
 use std::mem;
-use std::ops::Deref;
 use std::ptr::{self, null_mut, NonNull};
 use std::sync::atomic::{AtomicI64, AtomicPtr, AtomicU32, Ordering};
 use std::sync::LazyLock;
@@ -22,34 +21,14 @@ pub struct MoveEdge {
     child: AtomicPtr<PositionNode>,
 }
 
-#[derive(Clone, Copy)]
-pub struct Edges(NonNull<[MoveEdge]>);
-
-impl Deref for Edges {
-    type Target = [MoveEdge];
-
-    fn deref(&self) -> &Self::Target {
-        // SAFETY: The NonNull guarantees the pointer is valid and non-null.
-        // The lifetime 'static is appropriate as the underlying data is either
-        // from a static empty slice or from the Arena, which outlives the Edges.
-        unsafe { self.0.as_ref() }
-    }
-}
-
-// SAFETY: Edges wraps NonNull<[MoveEdge]>.
-// MoveEdge is Send and Sync (due to Atomic types and chess::Move).
-// The pointer itself is just a reference, not owning the data,
-// and the underlying data (from static EMPTY_EDGES or Arena) is safely managed
-// and accessible across threads.
-unsafe impl Send for Edges {}
-unsafe impl Sync for Edges {}
-
 #[repr(C)]
 #[derive(Clone)]
 pub struct PositionNode {
-    edges: Edges,
+    edges_ptr: NonNull<MoveEdge>,
+    edges_count: u8,
     flag: Flag,
     generation: u32,
+    _padding: u64,
 }
 
 pub struct Reward {
@@ -64,14 +43,13 @@ impl Reward {
     };
 }
 
+// SAFETY: Manual Send/Sync required due to the cycle (PositionNode → MoveEdge → PositionNode).
+// This is safe because:
+// - edges_ptr always points to arena or static allocations that outlive cross-thread uses
+// - all mutation of edge data goes through atomics (visits, sum_evaluations, child pointer)
+// - edges_count == 0 permits edges_ptr to be dangling (never dereferenced)
+unsafe impl Send for PositionNode {}
 unsafe impl Sync for PositionNode {}
-
-// Static empty slice for nodes with no moves
-static EMPTY_EDGES: LazyLock<Edges> = LazyLock::new(|| {
-    let s: &'static [MoveEdge] = &[];
-    // SAFETY: A static empty slice is guaranteed to be non-null.
-    Edges(NonNull::from(s))
-});
 
 // Macro to define static PositionNode instances
 macro_rules! define_static_node {
@@ -94,19 +72,27 @@ define_static_node!(TABLEBASE_LOSS_NODE, Flag::TABLEBASE_LOSS);
 define_static_node!(UNEXPANDED_NODE, Flag::STANDARD);
 
 impl PositionNode {
-    fn new(edges: Edges, flag: Flag, generation: u32) -> Self {
+    fn new(edges: NonNull<[MoveEdge]>, flag: Flag, generation: u32) -> Self {
+        // SAFETY: Chess positions have < 255 legal moves, so this cast is always safe
+        #[allow(clippy::cast_possible_truncation)]
+        let edges_count = edges.len() as u8;
+
         Self {
-            edges,
+            edges_ptr: edges.cast::<MoveEdge>(),
+            edges_count,
             flag,
             generation,
+            _padding: 0,
         }
     }
 
     pub fn new_static(flag: Flag) -> Self {
         Self {
-            edges: *EMPTY_EDGES,
+            edges_ptr: NonNull::dangling(),
+            edges_count: 0,
             flag,
             generation: 0,
+            _padding: 0,
         }
     }
 
@@ -127,7 +113,10 @@ impl PositionNode {
     }
 
     pub fn edges(&self) -> &[MoveEdge] {
-        &self.edges
+        // SAFETY: The NonNull guarantees the pointer is valid and non-null.
+        // The count is guaranteed to be <= the actual allocation size.
+        // For empty edges (count = 0), we use a dangling pointer which is safe.
+        unsafe { std::slice::from_raw_parts(self.edges_ptr.as_ptr(), self.edges_count as usize) }
     }
 
     pub fn visits(&self) -> u64 {
@@ -272,13 +261,16 @@ where
     // SAFETY: `node_uninit_ref` points to valid, uninitialized memory for a single PositionNode.
     // We are writing it exactly once.
     let node_arena_ref = node_uninit_ref.write(PositionNode::new(
-        Edges(edges_arena_ref.into_non_null()),
+        edges_arena_ref.into_non_null(),
         state_flag,
         node_generation,
     ));
 
     Ok(node_arena_ref)
 }
+
+const _: () = assert!(mem::size_of::<PositionNode>() == 24);
+const _: () = assert!(mem::size_of::<MoveEdge>() == 24);
 
 pub fn print_size_list() {
     println!(
