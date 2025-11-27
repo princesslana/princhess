@@ -27,8 +27,9 @@ pub struct PositionNode {
     edges_ptr: NonNull<MoveEdge>,
     edges_count: u8,
     flag: Flag,
+    gini: u16,
     generation: u32,
-    _padding: u64,
+    _padding: [u8; 8],
 }
 
 pub struct Reward {
@@ -72,7 +73,7 @@ define_static_node!(TABLEBASE_LOSS_NODE, Flag::TABLEBASE_LOSS);
 define_static_node!(UNEXPANDED_NODE, Flag::STANDARD);
 
 impl PositionNode {
-    fn new(edges: NonNull<[MoveEdge]>, flag: Flag, generation: u32) -> Self {
+    fn new(edges: NonNull<[MoveEdge]>, flag: Flag, gini: u16, generation: u32) -> Self {
         // SAFETY: Chess positions have < 255 legal moves, so this cast is always safe
         #[allow(clippy::cast_possible_truncation)]
         let edges_count = edges.len() as u8;
@@ -81,8 +82,9 @@ impl PositionNode {
             edges_ptr: edges.cast::<MoveEdge>(),
             edges_count,
             flag,
+            gini,
             generation,
-            _padding: 0,
+            _padding: [0; 8],
         }
     }
 
@@ -91,8 +93,9 @@ impl PositionNode {
             edges_ptr: NonNull::dangling(),
             edges_count: 0,
             flag,
+            gini: 0,
             generation: 0,
-            _padding: 0,
+            _padding: [0; 8],
         }
     }
 
@@ -149,6 +152,10 @@ impl PositionNode {
     #[must_use]
     pub fn is_stale(&self, current_arena_generation: u32) -> bool {
         self.generation != 0 && self.generation != current_arena_generation
+    }
+
+    pub fn gini(&self) -> u16 {
+        self.gini
     }
 }
 
@@ -249,11 +256,18 @@ where
 
     let (node_uninit_ref, edges_uninit_ref) = alloc(move_eval.len())?;
 
+    let mut sum_squares = 0.0_f32;
     #[allow(clippy::cast_sign_loss)]
     let edges_arena_ref = edges_uninit_ref.init_each(|i| {
-        let policy_val = (move_eval[i] * SCALE) as u16;
+        let p = move_eval[i];
+        sum_squares += p * p;
+        let policy_val = (p * SCALE) as u16;
         MoveEdge::new(policy_val, moves[i])
     });
+
+    let gini_f32 = (1.0 - sum_squares).clamp(0.0, 1.0);
+    #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
+    let gini = (gini_f32 * SCALE) as u16;
 
     // Capture the generation before `node_uninit_ref` is moved by `write`.
     let node_generation = node_uninit_ref.generation();
@@ -263,6 +277,7 @@ where
     let node_arena_ref = node_uninit_ref.write(PositionNode::new(
         edges_arena_ref.into_non_null(),
         state_flag,
+        gini,
         node_generation,
     ));
 

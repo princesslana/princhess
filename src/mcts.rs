@@ -185,7 +185,7 @@ impl Mcts {
 
             let fpu = path.last().map_or(0, |x| -x.reward().average);
 
-            let choice = self.select(node.edges(), fpu, tld, options);
+            let choice = self.select(node, fpu, tld, options);
             choice.down();
             path.push(choice);
             state.make_move(*choice.get_move());
@@ -534,15 +534,16 @@ impl Mcts {
         Some((node, eval))
     }
 
-    /// Calculate exploration coefficient using GPUCT formula with trend adjustment
+    /// Calculate exploration coefficient using GPUCT formula with trend adjustment and Gini scaling
     pub fn exploration_coefficient(
         &self,
         options: &MctsOptions,
         total_visits: u64,
         apply_trend_adjustment: bool,
+        gini: u16,
     ) -> i64 {
         // Apply trend adjustment (main thread only)
-        let cpuct = if apply_trend_adjustment {
+        let mut cpuct = if apply_trend_adjustment {
             let winning_trend = self.winning_trend.load(Ordering::Relaxed);
             let trend_factor = [
                 -options.cpuct_trend_adjustment,
@@ -552,6 +553,15 @@ impl Mcts {
         } else {
             options.cpuct
         };
+
+        // Apply Gini impurity scaling (if enabled)
+        if options.cpuct_gini_factor > 0.0 {
+            let gini_normalized = f32::from(gini) / SCALE;
+            let gini_scale = (options.cpuct_gini_base
+                - options.cpuct_gini_factor * faster::ln(gini_normalized + 0.001))
+            .min(options.cpuct_gini_max);
+            cpuct *= gini_scale;
+        }
 
         // Calculate exploration coefficient
         (cpuct * faster::exp(options.cpuct_tau * faster::ln(total_visits as f32)) * SCALE) as i64
@@ -568,8 +578,12 @@ impl Mcts {
             .sum::<u64>()
             + 1;
 
-        let explore_coef =
-            self.exploration_coefficient(options, total_visits, tld.is_main_thread());
+        let explore_coef = self.exploration_coefficient(
+            options,
+            total_visits,
+            tld.is_main_thread(),
+            self.root_node.gini(),
+        );
 
         let mut best_idx = 0;
         let mut best_score = i64::MIN;
@@ -593,14 +607,15 @@ impl Mcts {
     /// where U incorporates policy priors and visit counts
     fn select<'a>(
         &self,
-        moves: &'a [MoveEdge],
+        node: &'a PositionNode,
         fpu: i64,
         tld: &ThreadData,
         options: &MctsOptions,
     ) -> &'a MoveEdge {
+        let moves = node.edges();
         let total_visits = moves.iter().map(|v| u64::from(v.visits())).sum::<u64>() + 1;
         let explore_coef =
-            self.exploration_coefficient(options, total_visits, tld.is_main_thread());
+            self.exploration_coefficient(options, total_visits, tld.is_main_thread(), node.gini());
 
         let mut best_move = &moves[0];
         let mut best_score = i64::MIN;
