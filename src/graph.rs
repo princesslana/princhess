@@ -265,6 +265,7 @@ where
         MoveEdge::new(policy_val, moves[i])
     });
 
+    // Gini impurity (Gini-Simpson index)
     let gini_f32 = (1.0 - sum_squares).clamp(0.0, 1.0);
     #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
     let gini = (gini_f32 * SCALE) as u16;

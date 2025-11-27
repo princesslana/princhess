@@ -559,7 +559,7 @@ impl Mcts {
             let gini_normalized = f32::from(gini) / SCALE;
             let gini_scale = (options.cpuct_gini_base
                 - options.cpuct_gini_factor * faster::ln(gini_normalized + 0.001))
-            .min(options.cpuct_gini_max);
+            .clamp(0.0, options.cpuct_gini_max);
             cpuct *= gini_scale;
         }
 
