@@ -107,10 +107,16 @@ pub struct ThreadData<'a> {
     pub max_depth: usize,
     pub tb_hits: usize,
     pub root_edges: ArrayVec<RootEdge, 256>,
+    pub root_gini: f32,
 }
 
 impl<'a> ThreadData<'a> {
-    fn create(ttable: &'a LRTable, thread_id: usize, root_edges: ArrayVec<RootEdge, 256>) -> Self {
+    fn create(
+        ttable: &'a LRTable,
+        thread_id: usize,
+        root_edges: ArrayVec<RootEdge, 256>,
+        root_gini: f32,
+    ) -> Self {
         Self {
             ttable,
             allocator: ttable.allocator(),
@@ -120,6 +126,7 @@ impl<'a> ThreadData<'a> {
             max_depth: 0,
             tb_hits: 0,
             root_edges,
+            root_gini,
         }
     }
 
@@ -230,7 +237,8 @@ impl Engine {
         let root_edges = RootEdge::from_edges(self.mcts.root_node().edges());
 
         let run_search_thread = |options: &MctsOptions, tm: &TimeManagement, thread_id: usize| {
-            let mut tld = ThreadData::create(&self.ttable, thread_id, root_edges.clone());
+            let root_gini = f32::from(self.mcts.root_node().gini()) / SCALE;
+            let mut tld = ThreadData::create(&self.ttable, thread_id, root_edges.clone(), root_gini);
             while self.mcts.playout(&mut tld, options, tm, &stop_signal) {}
             self.mcts.flush_root_edges(&mut tld);
             self.mcts.flush_thread_stats(&mut tld);
@@ -290,7 +298,8 @@ impl Engine {
 
     pub fn playout_sync(&self, playouts: u64) {
         let root_edges = RootEdge::from_edges(self.mcts.root_node().edges());
-        let mut tld = ThreadData::create(&self.ttable, 0, root_edges);
+        let root_gini = f32::from(self.mcts.root_node().gini()) / SCALE;
+        let mut tld = ThreadData::create(&self.ttable, 0, root_edges, root_gini);
         let options = &self.engine_options.mcts_options;
         let tm = TimeManagement::infinite();
         let stop_signal = AtomicBool::new(false);
@@ -350,13 +359,13 @@ impl Engine {
         let total_visits: u64 = node_moves
             .iter()
             .map(|e| u64::from(e.visits()))
-            .sum::<u64>()
-            + 1;
+            .sum::<u64>();
+        let gini = f32::from(current_node.gini()) / SCALE;
         let explore_coef = self.mcts.exploration_coefficient(
             &self.engine_options.mcts_options,
             total_visits,
             false,
-            current_node.gini(),
+            gini,
         );
 
         let mut moves: Vec<(&MoveEdge, f32)> = node_moves.iter().zip(state_moves_eval).collect();
