@@ -235,9 +235,9 @@ impl Engine {
         let mut rng = Rng::default();
         let mut returned_line: Option<String> = None;
         let root_edges = RootEdge::from_edges(self.mcts.root_node().edges());
+        let root_gini = f32::from(self.mcts.root_node().gini()) / SCALE;
 
         let run_search_thread = |options: &MctsOptions, tm: &TimeManagement, thread_id: usize| {
-            let root_gini = f32::from(self.mcts.root_node().gini()) / SCALE;
             let mut tld = ThreadData::create(&self.ttable, thread_id, root_edges.clone(), root_gini);
             while self.mcts.playout(&mut tld, options, tm, &stop_signal) {}
             self.mcts.flush_root_edges(&mut tld);
