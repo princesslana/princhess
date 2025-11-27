@@ -356,6 +356,7 @@ impl Engine {
             &self.engine_options.mcts_options,
             total_visits,
             false,
+            current_node.gini(),
         );
 
         let mut moves: Vec<(&MoveEdge, f32)> = node_moves.iter().zip(state_moves_eval).collect();
