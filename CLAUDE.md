@@ -40,15 +40,6 @@ Before proposing changes or writing new code, explore what already exists:
 - Look for how similar problems have been solved elsewhere in the codebase
 - Use `rg -A 3 -B 3` for more context around matches
 
-## Development Notes
-- `DEVELOPMENT_NOTES.md` - Historical record of experiments, training results, and technical findings
-  - Primary purpose: Provide context for "what should we try next" decisions
-  - Update with objective observations and key metrics from tests/training
-  - Factual data only - no opinions or speculation  
-  - Include both positive and negative results with sufficient context
-  - Document conditions/parameters of failed experiments for future reference
-  - Keep entries concise but detailed enough to inform retry decisions
-
 ## Development Commands
 ```bash
 cargo build --release    # Standard build
