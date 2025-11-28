@@ -26,6 +26,21 @@ pub fn exploration_bonus(explore_coef: i64, policy: u16, visits: u32) -> i64 {
     explore_coef * i64::from(policy) / ((i64::from(visits) + 1) * SCALE as i64)
 }
 
+/// Calculate Gini coefficient from visit distribution at root
+fn calculate_gini_from_visits(root_edges: &[RootEdge], total_visits: u64) -> f32 {
+    if total_visits == 0 {
+        return 0.0;
+    }
+
+    let mut sum_squares = 0.0_f32;
+    for edge in root_edges {
+        let proportion = edge.visits() as f32 / total_visits as f32;
+        sum_squares += proportion * proportion;
+    }
+
+    (1.0 - sum_squares).clamp(0.0, 1.0)
+}
+
 /// Monte Carlo Tree Search implementation using PUCT algorithm.
 /// Despite the name "tree search", this forms a graph due to transposition handling
 /// where the same position can be reached via different move sequences.
@@ -122,7 +137,17 @@ impl Mcts {
         time_management: &TimeManagement,
         stop_signal: &AtomicBool,
     ) -> bool {
-        let root_edge_idx = self.select_root_edge(tld, options);
+        let total_visits: u64 = tld
+            .root_edges
+            .iter()
+            .map(|re| u64::from(re.visits()))
+            .sum();
+
+        if tld.playouts.is_multiple_of(1024) {
+            tld.root_gini = calculate_gini_from_visits(&tld.root_edges, total_visits);
+        }
+
+        let root_edge_idx = self.select_root_edge(tld, options, total_visits);
         let root_edge_ref = &self.root_node.edges()[root_edge_idx];
 
         tld.root_edges[root_edge_idx].down();
@@ -540,7 +565,7 @@ impl Mcts {
         options: &MctsOptions,
         total_visits: u64,
         apply_trend_adjustment: bool,
-        gini: u16,
+        gini: f32,
     ) -> i64 {
         // Apply trend adjustment (main thread only)
         let mut cpuct = if apply_trend_adjustment {
@@ -556,33 +581,26 @@ impl Mcts {
 
         // Apply Gini impurity scaling (if enabled)
         if options.cpuct_gini_factor > 0.0 {
-            let gini_normalized = f32::from(gini) / SCALE;
             let gini_scale = (options.cpuct_gini_base
-                - options.cpuct_gini_factor * faster::ln(gini_normalized + 0.001))
+                - options.cpuct_gini_factor * faster::ln(gini + 0.001))
             .clamp(0.0, options.cpuct_gini_max);
             cpuct *= gini_scale;
         }
 
         // Calculate exploration coefficient
-        (cpuct * faster::exp(options.cpuct_tau * faster::ln(total_visits as f32)) * SCALE) as i64
+        (cpuct * faster::exp(options.cpuct_tau * faster::ln((total_visits + 1) as f32)) * SCALE)
+            as i64
     }
 
     /// PUCT selection for root node using thread-local buffered statistics.
-    fn select_root_edge(&self, tld: &ThreadData, options: &MctsOptions) -> usize {
+    fn select_root_edge(&self, tld: &ThreadData, options: &MctsOptions, total_visits: u64) -> usize {
         let edges = self.root_node.edges();
-
-        let total_visits: u64 = tld
-            .root_edges
-            .iter()
-            .map(|re| u64::from(re.visits()))
-            .sum::<u64>()
-            + 1;
 
         let explore_coef = self.exploration_coefficient(
             options,
             total_visits,
             tld.is_main_thread(),
-            self.root_node.gini(),
+            tld.root_gini,
         );
 
         let mut best_idx = 0;
@@ -613,9 +631,10 @@ impl Mcts {
         options: &MctsOptions,
     ) -> &'a MoveEdge {
         let moves = node.edges();
-        let total_visits = moves.iter().map(|v| u64::from(v.visits())).sum::<u64>() + 1;
+        let total_visits = moves.iter().map(|v| u64::from(v.visits())).sum::<u64>();
+        let gini = f32::from(node.gini()) / SCALE;
         let explore_coef =
-            self.exploration_coefficient(options, total_visits, tld.is_main_thread(), node.gini());
+            self.exploration_coefficient(options, total_visits, tld.is_main_thread(), gini);
 
         let mut best_move = &moves[0];
         let mut best_score = i64::MIN;
