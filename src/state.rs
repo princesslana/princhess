@@ -1,6 +1,8 @@
 use arrayvec::ArrayVec;
 
 use crate::chess::{Board, Color, File, Move, MoveList, Piece, Square};
+use crate::evaluation;
+use crate::math::Rng;
 use crate::nets::MoveIndex;
 use crate::uci::Tokens;
 
@@ -321,3 +323,49 @@ const KING_BUCKETS: [usize; Square::COUNT] = [
     2, 2, 2, 2, 2, 2, 2, 2,
     2, 2, 2, 2, 2, 2, 2, 2,
 ];
+
+pub fn generate_random_opening(rng: &mut Rng, dfrc_pct: u64) -> (Vec<Move>, State) {
+    let startpos = if rng.next_u64() % 100 < dfrc_pct {
+        Board::dfrc(rng.next_usize() % 960, rng.next_usize() % 960)
+    } else {
+        Board::startpos()
+    };
+
+    let mut state = State::from_board(startpos);
+    let mut moves_played = Vec::new();
+
+    // 50% chance of 16 ply, 50% chance of random length between 8-16 ply
+    let num_plies = if rng.next_u64().is_multiple_of(2) {
+        16
+    } else {
+        8 + (rng.next_usize() % 9) // 8-16 inclusive
+    };
+
+    for p in 0..num_plies {
+        let base_t = 2.0 - ((p as f32) / (num_plies as f32)) * 1.5; // Starts at 2.0, ends at 0.5
+        let t = state.board().side_to_move().fold(base_t * 0.75, base_t); // White more principled
+
+        let best_move = select_weighted_random_move(&state, t, rng);
+
+        if best_move == Move::NONE {
+            break;
+        }
+
+        moves_played.push(best_move);
+        state.make_move(best_move);
+    }
+
+    (moves_played, state)
+}
+
+fn select_weighted_random_move(state: &State, t: f32, rng: &mut Rng) -> Move {
+    let moves = state.available_moves();
+
+    if moves.is_empty() {
+        return Move::NONE;
+    }
+
+    let policy = evaluation::policy(state, &moves, t);
+
+    moves[rng.weighted(&policy)]
+}

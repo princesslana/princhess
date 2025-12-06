@@ -3,8 +3,9 @@ use std::str::SplitWhitespace;
 
 use crate::engine::Engine;
 use crate::graph::print_size_list;
+use crate::math::Rng;
 use crate::options::{EngineOptions, UciOption, UciOptionMap};
-use crate::state::State;
+use crate::state::{generate_random_opening, State};
 use crate::tablebase::set_tablebase_directory;
 use crate::time_management::TimeManagement;
 
@@ -78,6 +79,7 @@ impl Uci {
                 "sizelist" => print_size_list(),
                 "eval" => self.engine.print_eval(),
                 "bench" => self.run_bench(),
+                "randomopen" => self.generate_random_opening(),
                 _ => (),
             }
         }
@@ -92,7 +94,10 @@ impl Uci {
             self.engine_options = EngineOptions::from(&self.options);
 
             if name.eq_ignore_ascii_case("syzygypath") {
-                set_tablebase_directory(&value);
+                match set_tablebase_directory(&value) {
+                    Ok(()) => println!("info string Success initializing tablebase at {value}"),
+                    Err(()) => println!("info string Error initializing tablebase at {value}"),
+                }
             }
 
             self.engine = Engine::new(root_state, self.engine_options);
@@ -147,6 +152,21 @@ impl Uci {
         UciOption::print_all();
 
         println!("uciok");
+    }
+
+    fn generate_random_opening(&mut self) {
+        let mut rng = Rng::default();
+        let (moves_played, state) = generate_random_opening(&mut rng, 0); // No DFRC
+
+        let move_strs: Vec<String> = moves_played
+            .iter()
+            .map(|mv| mv.to_uci(self.engine_options.is_chess960))
+            .collect();
+
+        // Set the engine position to the generated opening
+        self.engine.set_root_state(state);
+
+        println!("info string {}", move_strs.join(" "));
     }
 }
 

@@ -137,11 +137,7 @@ impl Mcts {
         time_management: &TimeManagement,
         stop_signal: &AtomicBool,
     ) -> bool {
-        let total_visits: u64 = tld
-            .root_edges
-            .iter()
-            .map(|re| u64::from(re.visits()))
-            .sum();
+        let total_visits: u64 = tld.root_edges.iter().map(|re| u64::from(re.visits())).sum();
 
         if tld.playouts.is_multiple_of(1024) {
             tld.root_gini = calculate_gini_from_visits(&tld.root_edges, total_visits);
@@ -579,13 +575,11 @@ impl Mcts {
             options.cpuct
         };
 
-        // Apply Gini impurity scaling (if enabled)
-        if options.cpuct_gini_factor > 0.0 {
-            let gini_scale = (options.cpuct_gini_base
-                - options.cpuct_gini_factor * faster::ln(gini + 0.001))
-            .clamp(0.0, options.cpuct_gini_max);
-            cpuct *= gini_scale;
-        }
+        // Apply Gini impurity scaling
+        let gini_scale = (options.cpuct_gini_base
+            - options.cpuct_gini_factor * faster::ln(gini + 0.001))
+        .clamp(0.0, options.cpuct_gini_max);
+        cpuct *= gini_scale;
 
         // Calculate exploration coefficient
         (cpuct * faster::exp(options.cpuct_tau * faster::ln((total_visits + 1) as f32)) * SCALE)
@@ -593,7 +587,12 @@ impl Mcts {
     }
 
     /// PUCT selection for root node using thread-local buffered statistics.
-    fn select_root_edge(&self, tld: &ThreadData, options: &MctsOptions, total_visits: u64) -> usize {
+    fn select_root_edge(
+        &self,
+        tld: &ThreadData,
+        options: &MctsOptions,
+        total_visits: u64,
+    ) -> usize {
         let edges = self.root_node.edges();
 
         let explore_coef = self.exploration_coefficient(

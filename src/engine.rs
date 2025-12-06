@@ -238,7 +238,8 @@ impl Engine {
         let root_gini = f32::from(self.mcts.root_node().gini()) / SCALE;
 
         let run_search_thread = |options: &MctsOptions, tm: &TimeManagement, thread_id: usize| {
-            let mut tld = ThreadData::create(&self.ttable, thread_id, root_edges.clone(), root_gini);
+            let mut tld =
+                ThreadData::create(&self.ttable, thread_id, root_edges.clone(), root_gini);
             while self.mcts.playout(&mut tld, options, tm, &stop_signal) {}
             self.mcts.flush_root_edges(&mut tld);
             self.mcts.flush_thread_stats(&mut tld);
