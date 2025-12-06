@@ -65,7 +65,7 @@ fn to_bucket(value: f32, thresholds: &[f32]) -> usize {
         .unwrap_or(thresholds.len())
 }
 
-fn bucket_labels(thresholds: &[f32]) -> [String; 6] {
+fn bucket_labels(thresholds: &[f32; 5]) -> [String; 6] {
     [
         format!("    -{:>4.1}", thresholds[0]),
         format!("{:>4.1}-{:>4.1}", thresholds[0], thresholds[1]),
@@ -111,7 +111,6 @@ struct Stats {
     variation_count: AtomicU64,
     recent_rates: Queue<u64>,
     last_sample_positions: AtomicU64,
-    last_sample_time: AtomicU64,
     thread_buffers: [AtomicUsize; THREADS as usize],
     policy_gini_buckets: [AtomicU64; 6],
     eval_distribution_buckets: [AtomicU64; 6],
@@ -156,15 +155,14 @@ impl Stats {
             variation_count: AtomicU64::new(0),
             recent_rates: Queue::default(),
             last_sample_positions: AtomicU64::new(0),
-            last_sample_time: AtomicU64::new(0),
             thread_buffers: Default::default(),
             policy_gini_buckets: Default::default(),
             eval_distribution_buckets: Default::default(),
             eval_delta_buckets: Default::default(),
             eval_result_agreement_buckets: Default::default(),
             piece_count_distribution: array::from_fn(|_| AtomicU64::new(0)),
-            phase_distribution: array::from_fn(|_| AtomicU64::new(0)),
-            variation_phase_distribution: array::from_fn(|_| AtomicU64::new(0)),
+            phase_distribution: Default::default(),
+            variation_phase_distribution: Default::default(),
         }
     }
 
@@ -283,92 +281,72 @@ struct StatsView {
 }
 
 impl StatsView {
-    fn white_win_pct(&self) -> u64 {
+    fn per_game<T: Into<f32>>(&self, value: T) -> f32 {
         if self.games > 0 {
-            self.white_wins * 100 / self.games
+            value.into() / self.games as f32
+        } else {
+            0.0
+        }
+    }
+
+    fn per_position<T: Into<f32>>(&self, value: T) -> f32 {
+        if self.positions > 0 {
+            value.into() / self.positions as f32
+        } else {
+            0.0
+        }
+    }
+
+    fn positions_per_game(&self) -> u64 {
+        if self.games > 0 {
+            self.positions / self.games
         } else {
             0
         }
+    }
+
+    fn white_win_pct(&self) -> u64 {
+        (self.per_game(self.white_wins as f32) * 100.0) as u64
     }
 
     fn draw_pct(&self) -> u64 {
-        if self.games > 0 {
-            self.draws * 100 / self.games
-        } else {
-            0
-        }
+        (self.per_game(self.draws as f32) * 100.0) as u64
     }
 
     fn black_win_pct(&self) -> u64 {
-        if self.games > 0 {
-            self.black_wins * 100 / self.games
-        } else {
-            0
-        }
+        (self.per_game(self.black_wins as f32) * 100.0) as u64
     }
 
     fn blunder_pct(&self) -> f32 {
-        if self.games > 0 {
-            self.blunders as f32 * 100.0 / self.games as f32
-        } else {
-            0.0
-        }
+        self.per_game(self.blunders as f32) * 100.0
     }
 
     fn variation_pct(&self) -> f32 {
-        if self.positions > 0 {
-            self.variations as f32 * 100.0 / self.positions as f32
-        } else {
-            0.0
-        }
+        self.per_position(self.variations as f32) * 100.0
     }
 
     fn skipped_pct(&self) -> f32 {
-        if self.positions > 0 {
-            self.skipped as f32 * 100.0 / self.positions as f32
-        } else {
-            0.0
-        }
+        self.per_position(self.skipped as f32) * 100.0
     }
 
     fn aborted_pct(&self) -> f32 {
-        if self.games > 0 {
-            self.aborted as f32 * 100.0 / self.games as f32
-        } else {
-            0.0
-        }
+        self.per_game(self.aborted as f32) * 100.0
     }
 
     fn avg_nodes(&self) -> usize {
-        if self.positions > 0 {
-            self.nodes / self.positions as usize
-        } else {
-            0
-        }
+        self.per_position(self.nodes as f32) as usize
     }
 
     fn avg_playouts(&self) -> usize {
-        if self.positions > 0 {
-            self.playouts / self.positions as usize
-        } else {
-            0
-        }
+        self.per_position(self.playouts as f32) as usize
     }
 
     fn avg_depth(&self) -> usize {
-        if self.positions > 0 {
-            self.depth / self.positions as usize
-        } else {
-            0
-        }
+        self.per_position(self.depth as f32) as usize
     }
 
     fn avg_seldepth(&self) -> usize {
-        if self.positions > 0 {
-            self.seldepth / self.positions as usize
-        } else {
-            0
-        }
+        self.per_position(self.seldepth as f32) as usize
     }
 
     fn avg_opening_eval(&self) -> f32 {
@@ -389,14 +367,6 @@ impl StatsView {
 
     fn positions_millions(&self) -> f32 {
         self.positions as f32 / 1_000_000.0
-    }
-
-    fn positions_per_game(&self) -> u64 {
-        if self.games > 0 {
-            self.positions / self.games
-        } else {
-            0
-        }
     }
 
     fn positions_per_hour_millions(&self) -> f32 {
@@ -1172,7 +1142,6 @@ fn run_tui(stats: &Stats, stop_signal: Arc<AtomicBool>) -> io::Result<()> {
 
             if elapsed >= SAMPLE_INTERVAL_SECS {
                 last_sample_time = now;
-                stats.last_sample_time.store(elapsed, Ordering::Relaxed);
 
                 let current_positions = stats.positions.load(Ordering::Relaxed);
                 let last_positions = stats.last_sample_positions.load(Ordering::Relaxed);
@@ -1229,7 +1198,12 @@ fn main() {
     thread::scope(|s| {
         let tui_stats = stats.clone();
         let tui_stop = stop_signal.clone();
-        s.spawn(move || run_tui(&tui_stats, tui_stop));
+        s.spawn(move || {
+            if let Err(e) = run_tui(&tui_stats, tui_stop.clone()) {
+                eprintln!("TUI failed: {e}");
+                tui_stop.store(true, Ordering::Relaxed);
+            }
+        });
 
         for t in 0..THREADS {
             thread::sleep(Duration::from_millis(10 * t));

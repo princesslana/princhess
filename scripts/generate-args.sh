@@ -32,6 +32,12 @@ fi
 # Extract thread count (e.g., "2t" -> 2)
 THREADS=$(echo "$THREAD_CONFIG" | sed 's/t$//')
 
+# Validate syzygy parameter
+if [ "$USE_SYZYGY" != "true" ] && [ "$USE_SYZYGY" != "false" ]; then
+    echo "Invalid syzygy parameter: $USE_SYZYGY (must be 'true' or 'false')"
+    exit 1
+fi
+
 # Determine if this is a "long" test (needs adjudication and relaxed SPRT)
 is_long_test() {
     case $TIME_CONTROL in
