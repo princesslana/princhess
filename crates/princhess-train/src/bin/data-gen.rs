@@ -54,6 +54,11 @@ const EVAL_DISTRIBUTION_THRESHOLDS: [f32; 5] = [-0.6, -0.3, 0.0, 0.3, 0.6];
 const EVAL_DELTA_THRESHOLDS: [f32; 5] = [0.1, 0.2, 0.3, 0.4, 0.5];
 const EVAL_RESULT_AGREEMENT_THRESHOLDS: [f32; 5] = [0.2, 0.4, 0.6, 1.0, 1.5];
 
+const TUI_PROGRESS_BOX_HEIGHT: u16 = 3 + THREADS as u16 + 2;
+const TUI_GRID_HEIGHT: u16 = 9;
+const TUI_HISTOGRAM_HEIGHT: u16 = 8;
+const TUI_TOTAL_HEIGHT: u16 = TUI_PROGRESS_BOX_HEIGHT + TUI_GRID_HEIGHT + TUI_HISTOGRAM_HEIGHT + 2;
+
 fn load_atomic_array<const N: usize>(arr: &[AtomicU64; N]) -> [u64; N] {
     array::from_fn(|i| arr[i].load(Ordering::Relaxed))
 }
@@ -76,6 +81,11 @@ fn bucket_labels(thresholds: &[f32; 5]) -> [String; 6] {
     ]
 }
 
+/// Computes Gini impurity (1 - Σp²) of the visit distribution.
+///
+/// Returns a value in [0.0, 1.0] where:
+/// - 0.0 = concentrated policy (all visits on one move)
+/// - 1.0 = uniform policy (visits evenly distributed)
 fn compute_policy_gini(visits: &[u8]) -> f32 {
     let total_visits: u64 = visits.iter().map(|&v| u64::from(v)).sum();
     if total_visits == 0 {
@@ -198,12 +208,16 @@ impl Stats {
         self.aborted.fetch_add(1, Ordering::Relaxed);
     }
 
+    /// Tracks opening position balance.
+    /// Opening = initial seed position before game starts
     pub fn add_opening_eval(&self, eval: i64) {
         let abs_eval = eval.abs();
         self.opening_eval_sum.fetch_add(abs_eval, Ordering::Relaxed);
         self.opening_count.fetch_add(1, Ordering::Relaxed);
     }
 
+    /// Tracks variation position balance.
+    /// Variation = alternative move branches explored during play
     pub fn add_variation_eval(&self, eval: i64) {
         let abs_eval = eval.abs();
         self.variation_eval_sum
@@ -369,14 +383,18 @@ impl StatsView {
         self.positions as f32 / 1_000_000.0
     }
 
-    fn positions_per_hour_millions(&self) -> f32 {
+    fn avg_positions_per_hour(&self) -> u64 {
         if !self.recent_rates.is_empty() {
             let window = self.recent_rates.len().min(RATE_WINDOW_SAMPLES);
             let sum: u64 = self.recent_rates.iter().rev().take(window).sum();
-            sum as f32 / window as f32 / 1_000_000.0
+            sum / window as u64
         } else {
-            (self.positions * 3600 / self.elapsed_seconds) as f32 / 1_000_000.0
+            self.positions * 3600 / self.elapsed_seconds
         }
+    }
+
+    fn positions_per_hour_millions(&self) -> f32 {
+        self.avg_positions_per_hour() as f32 / 1_000_000.0
     }
 
     fn elapsed_formatted(&self) -> String {
@@ -392,14 +410,7 @@ impl StatsView {
         }
         let positions_remaining = max_positions.saturating_sub(self.positions);
 
-        let positions_per_second = if !self.recent_rates.is_empty() {
-            let window = self.recent_rates.len().min(RATE_WINDOW_SAMPLES);
-            let sum: u64 = self.recent_rates.iter().rev().take(window).sum();
-            let avg_per_hour = sum / window as u64;
-            avg_per_hour / 3600
-        } else {
-            self.positions / self.elapsed_seconds
-        };
+        let positions_per_second = self.avg_positions_per_hour() / 3600;
 
         if positions_per_second == 0 {
             return "--:--:--".to_string();
@@ -521,6 +532,9 @@ fn run_game(
             if legal_moves > 1 {
                 let mut previous_visits = vec![0u32; legal_moves];
 
+                // Early stopping based on KL divergence convergence
+                // Compare visit distributions between successive batches and stop when the
+                // per-playout KL gain falls below threshold, indicating search has converged
                 for _playout in 0..MAX_PLAYOUTS_PER_POSITION {
                     engine.playout_sync(1);
 
@@ -676,6 +690,15 @@ fn random_start(rng: &mut Rng) -> State {
     state
 }
 
+/// Computes KL divergence per additional playout between old and new visit distributions.
+///
+/// Uses Laplace smoothing (ε=1.0) to handle zero visits:
+/// - p = (old_visits + ε) / (old_total + num_moves * ε)
+/// - q = (new_visits + ε) / (new_total + num_moves * ε)
+/// - KL(p||q) = Σ p * ln(p/q)
+///
+/// Returns KL divergence divided by the visit difference to normalize gain per playout.
+/// Returns None if old_visits is zero or new_visits ≤ old_visits.
 fn kld_gain(new_visits: &[u32], old_visits: &[u32]) -> Option<f64> {
     let new_parent_visits: u64 = new_visits.iter().map(|&x| u64::from(x)).sum();
     let old_parent_visits: u64 = old_visits.iter().map(|&x| u64::from(x)).sum();
@@ -1122,7 +1145,7 @@ fn run_tui(stats: &Stats, stop_signal: Arc<AtomicBool>) -> io::Result<()> {
     let mut terminal = Terminal::with_options(
         backend,
         TerminalOptions {
-            viewport: Viewport::Inline((3 + THREADS + 2 + 9 + 8 + 2) as u16),
+            viewport: Viewport::Inline(TUI_TOTAL_HEIGHT),
         },
     )?;
 
