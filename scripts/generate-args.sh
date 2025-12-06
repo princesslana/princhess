@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Generate fastchess command line arguments
-# Usage: generate-args.sh <test_type> <time_control> <engine1> <engine2> [thread_config]
+# Usage: generate-args.sh <test_type> <time_control> <engine1> <engine2> [thread_config] [syzygy]
 
 set -e
 
@@ -10,14 +10,16 @@ TIME_CONTROL=$2
 ENGINE1=$3
 ENGINE2=$4
 THREAD_CONFIG=${5:-1t}
+USE_SYZYGY=${6:-true}
 
 if [ -z "$TEST_TYPE" ] || [ -z "$TIME_CONTROL" ] || [ -z "$ENGINE1" ] || [ -z "$ENGINE2" ]; then
-    echo "Usage: $0 <test_type> <time_control> <engine1> <engine2> [thread_config]"
+    echo "Usage: $0 <test_type> <time_control> <engine1> <engine2> [thread_config] [syzygy]"
     echo "  test_type: sprt_gain, sprt_equal, elo_check, debug"
     echo "  time_control: stc, ltc, nodes25k"
     echo "  engine1: princhess, princhess-main, etc"
     echo "  engine2: princhess-main, stockfish, etc"
     echo "  thread_config: 1t, 2t, 4t, etc (default: 1t)"
+    echo "  syzygy: true or false (default: true)"
     exit 1
 fi
 
@@ -29,6 +31,12 @@ fi
 
 # Extract thread count (e.g., "2t" -> 2)
 THREADS=$(echo "$THREAD_CONFIG" | sed 's/t$//')
+
+# Validate syzygy parameter
+if [ "$USE_SYZYGY" != "true" ] && [ "$USE_SYZYGY" != "false" ]; then
+    echo "Invalid syzygy parameter: $USE_SYZYGY (must be 'true' or 'false')"
+    exit 1
+fi
 
 # Determine if this is a "long" test (needs adjudication and relaxed SPRT)
 is_long_test() {
@@ -93,7 +101,11 @@ echo "-engine cmd=$(get_engine_path $ENGINE1) name=$ENGINE1"
 echo "-engine cmd=$(get_engine_path $ENGINE2) name=$ENGINE2"
 echo ""
 echo "-each proto=uci tc=$TC"
-echo "      option.SyzygyPath=/syzygy option.Hash=$HASH option.Threads=$THREADS"
+if [ "$USE_SYZYGY" = "true" ]; then
+    echo "      option.SyzygyPath=/syzygy option.Hash=$HASH option.Threads=$THREADS"
+else
+    echo "      option.SyzygyPath=<empty> option.Hash=$HASH option.Threads=$THREADS"
+fi
 
 # Add adjudication for long tests
 if is_long_test; then

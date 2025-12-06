@@ -8,3 +8,6 @@ publish = false
 arrayvec = { workspace = true }
 bytemuck = { workspace = true }
 princhess = { path = "../../", default-features = false }
+ratatui = "=0.29.0"
+crossterm = "=0.28.1"
+scc = { workspace = true }

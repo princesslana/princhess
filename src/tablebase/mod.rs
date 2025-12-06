@@ -36,21 +36,21 @@ fn max_pieces() -> usize {
 }
 
 #[cfg(feature = "fathom")]
-pub fn set_tablebase_directory(paths: &str) {
+pub fn set_tablebase_directory(paths: &str) -> Result<(), ()> {
     let c_paths = CString::new(paths).unwrap();
 
     unsafe {
         if bindings::tb_init(c_paths.as_ptr()) {
-            println!("info string Success initializing tablebase at {}", paths);
+            Ok(())
         } else {
-            println!("info string Error initializing tablebase at {}", paths);
+            Err(())
         }
     }
 }
 
 #[cfg(not(feature = "fathom"))]
-pub fn set_tablebase_directory(_paths: &str) {
-    println!("info string Fathom feature not enabled, skipping initialization.");
+pub fn set_tablebase_directory(_paths: &str) -> Result<(), ()> {
+    Err(())
 }
 
 #[cfg(feature = "fathom")]

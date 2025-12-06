@@ -5,6 +5,7 @@
 #![allow(clippy::must_use_candidate)]
 #![allow(clippy::explicit_iter_loop)]
 #![allow(clippy::return_self_not_must_use)]
+#![allow(clippy::multiple_crate_versions)]
 
 pub mod analysis_utils;
 pub mod data;
