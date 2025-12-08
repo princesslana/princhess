@@ -160,7 +160,7 @@ impl Mcts {
             };
             node = expanded_node;
             evaln = eval;
-        } else if state.is_repetition()
+        } else if state.is_threefold_repetition()
             || state.drawn_by_fifty_move_rule()
             || state.board().is_insufficient_material()
         {
@@ -725,6 +725,13 @@ pub fn principal_variation<'a>(
 ) -> Vec<&'a MoveEdge> {
     let mut result: Vec<&'a MoveEdge> = Vec::with_capacity(num_moves);
     let mut crnt = from;
+
+    if state.is_threefold_repetition()
+        || state.drawn_by_fifty_move_rule()
+        || state.board().is_insufficient_material()
+    {
+        return result;
+    }
 
     while !crnt.edges().is_empty() && result.len() < num_moves {
         let choice_option = crnt.select_child_by_rewards();

@@ -167,6 +167,18 @@ impl State {
     }
 
     #[must_use]
+    pub fn is_threefold_repetition(&self) -> bool {
+        let crnt_hash = self.hash();
+
+        self.prev_state_hashes
+            .iter()
+            .rev()
+            .filter(|h| **h == crnt_hash)
+            .count()
+            >= 2
+    }
+
+    #[must_use]
     pub fn is_endgame(&self) -> bool {
         let b = &self.board;
         let major_pieces_count = (b.queens() | b.rooks() | b.bishops() | b.knights()).count();
