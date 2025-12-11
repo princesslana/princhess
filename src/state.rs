@@ -337,21 +337,20 @@ const KING_BUCKETS: [usize; Square::COUNT] = [
 ];
 
 pub fn generate_random_opening(rng: &mut Rng, dfrc_pct: u64) -> (Vec<Move>, State) {
-    let startpos = if rng.next_u64() % 100 < dfrc_pct {
-        Board::dfrc(rng.next_usize() % 960, rng.next_usize() % 960)
+    let (startpos, num_plies) = if rng.next_u64() % 100 < dfrc_pct {
+        (
+            Board::dfrc(rng.next_usize() % 960, rng.next_usize() % 960),
+            rng.next_usize() % 5, // 0-4 inclusive
+        )
     } else {
-        Board::startpos()
+        (
+            Board::startpos(),
+            8 + (rng.next_usize() % 9), // 8-16 inclusive
+        )
     };
 
     let mut state = State::from_board(startpos);
     let mut moves_played = Vec::new();
-
-    // 50% chance of 16 ply, 50% chance of random length between 8-16 ply
-    let num_plies = if rng.next_u64().is_multiple_of(2) {
-        16
-    } else {
-        8 + (rng.next_usize() % 9) // 8-16 inclusive
-    };
 
     for p in 0..num_plies {
         let base_t = 2.0 - ((p as f32) / (num_plies as f32)) * 1.5; // Starts at 2.0, ends at 0.5
