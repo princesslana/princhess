@@ -490,7 +490,7 @@ fn run_game(
         cpuct: 2.82,
         cpuct_tau: 0.5,
         policy_temperature: 1.0,
-        policy_temperature_root: 1.25,
+        policy_temperature_root: 1.4,
         cpuct_trend_adjustment: 0.0,
         cpuct_gini_base: 1.0,
         cpuct_gini_factor: 0.0,
