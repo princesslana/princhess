@@ -6,7 +6,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use crate::arena::{Allocator, Arena, ArenaRef, Error as ArenaError};
-use crate::graph::{MoveEdge, PositionNode};
+use crate::graph::{copy_edge_stats, MoveEdge, PositionNode};
 use crate::state::State;
 
 struct Entry {
@@ -40,11 +40,6 @@ impl TranspositionTable {
         let arena = Box::new(Arena::new(hash_size_mb));
 
         Self::new(table, arena)
-    }
-
-    #[must_use]
-    pub fn for_root() -> Self {
-        Self::new(Table::default(), Box::new(Arena::new(2)))
     }
 
     fn new(table: Table, arena: Box<Arena>) -> Self {
@@ -132,13 +127,7 @@ impl TranspositionTable {
     pub fn lookup_into(&self, state: &State, dest: &mut PositionNode) -> bool {
         if let Some(src) = self.lookup(state) {
             dest.set_flag(src.flag());
-
-            let lhs = dest.edges();
-            let rhs = src.edges();
-
-            for i in 0..lhs.len().min(rhs.len()) {
-                lhs[i].replace(&rhs[i]);
-            }
+            copy_edge_stats(dest.edges(), src.edges());
             true
         } else {
             false

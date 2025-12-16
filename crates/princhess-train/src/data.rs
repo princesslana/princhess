@@ -112,7 +112,7 @@ impl From<&Mcts> for TrainingPosition {
         let mut nodes = [(Move::NONE, 0); Self::MAX_MOVES];
         let mut max_visits = 0;
 
-        for (node, edge) in nodes.iter_mut().zip(tree.root_node().edges().iter()) {
+        for (node, edge) in nodes.iter_mut().zip(tree.root_edges().iter()) {
             let vs = edge.visits();
             max_visits = max_visits.max(vs);
             *node = (*edge.get_move(), vs);
