@@ -65,7 +65,7 @@ impl Mcts {
         }
 
         // Warm-start: copy statistics from transposition table if available
-        if let Some(cached) = table.lookup(&state) {
+        if let Some(cached) = table.lookup_from_all(&state) {
             copy_edge_stats(&root_edges, cached.edges());
         }
 

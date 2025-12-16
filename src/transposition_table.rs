@@ -187,14 +187,14 @@ impl LRTable {
         self.current_table().lookup(key)
     }
 
-    pub fn lookup_into(&self, state: &State, dest: &mut PositionNode) {
-        self.previous_table().lookup_into(state, dest);
+    pub fn lookup_from_all<'a>(&'a self, key: &State) -> Option<&'a PositionNode> {
+        self.current_table()
+            .lookup(key)
+            .or_else(|| self.previous_table().lookup(key))
     }
 
-    pub fn lookup_into_from_all(&self, state: &State, dest: &mut PositionNode) {
-        if !self.current_table().lookup_into(state, dest) {
-            self.previous_table().lookup_into(state, dest);
-        }
+    pub fn lookup_into(&self, state: &State, dest: &mut PositionNode) {
+        self.previous_table().lookup_into(state, dest);
     }
 
     pub fn current_table(&self) -> &TranspositionTable {
