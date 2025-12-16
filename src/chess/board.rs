@@ -440,10 +440,19 @@ impl Board {
                     || from_rank == Rank::_7 && to_rank == Rank::_5;
 
                 if is_double_push {
-                    color.fold(
+                    let ep_sq = color.fold(
                         mov.from().with_rank(Rank::_3),
                         mov.from().with_rank(Rank::_6),
-                    )
+                    );
+
+                    let attacking_pawns =
+                        attacks::pawn(!self.stm, ep_sq) & self.pawns() & self.colors[self.stm];
+
+                    if attacking_pawns.any() {
+                        ep_sq
+                    } else {
+                        Square::NONE
+                    }
                 } else {
                     Square::NONE
                 }
@@ -763,5 +772,67 @@ mod test {
         let result = Board::from_fen(fen).see(mv, -108);
 
         assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn test_ep_not_set_when_no_attacking_pawn() {
+        let mut board =
+            Board::from_fen("2r2bk1/pp3p1p/5p2/2n1pN2/7B/P3P2P/1PPr1PP1/1K1B3R b - - 9 24");
+
+        let b7_b5 = Move::new(Square::from_uci("b7"), Square::from_uci("b5"));
+        board.make_move(b7_b5);
+
+        assert_eq!(
+            board.ep_square(),
+            Square::NONE,
+            "En passant square should not be set when no attacking pawn exists"
+        );
+    }
+
+    #[test]
+    fn test_ep_set_when_attacking_pawn_exists() {
+        let mut board =
+            Board::from_fen("rnbqkbnr/pppppppp/8/8/4p3/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+
+        let d2_d4 = Move::new(Square::from_uci("d2"), Square::from_uci("d4"));
+        board.make_move(d2_d4);
+
+        assert_eq!(
+            board.ep_square(),
+            Square::from_uci("d3"),
+            "En passant square should be set when attacking pawn exists"
+        );
+    }
+
+    #[test]
+    fn test_ep_cleared_correctly() {
+        let mut board =
+            Board::from_fen("rnbqkbnr/pppppppp/8/8/4p3/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+
+        let d2_d4 = Move::new(Square::from_uci("d2"), Square::from_uci("d4"));
+        board.make_move(d2_d4);
+        assert_eq!(board.ep_square(), Square::from_uci("d3"));
+
+        let g8_f6 = Move::new(Square::from_uci("g8"), Square::from_uci("f6"));
+        board.make_move(g8_f6);
+        assert_eq!(
+            board.ep_square(),
+            Square::NONE,
+            "EP square should be cleared after non-pawn-push move"
+        );
+    }
+
+    #[test]
+    fn test_ep_set_with_pawn_on_adjacent_file() {
+        let mut board = Board::from_fen("8/7R/5p2/3P1kp1/4r2p/5K1P/6P1/8 w - - 0 40");
+
+        let g2_g4 = Move::new(Square::from_uci("g2"), Square::from_uci("g4"));
+        board.make_move(g2_g4);
+
+        assert_eq!(
+            board.ep_square(),
+            Square::from_uci("g3"),
+            "EP square should be set when adjacent pawn can capture"
+        );
     }
 }
