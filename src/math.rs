@@ -12,11 +12,12 @@ where
 
     let mut sum_squares = 0.0_f32;
     for count in counts {
-        let proportion = count as f32 / total as f32;
-        sum_squares += proportion * proportion;
+        let v = count as f32;
+        sum_squares += v * v;
     }
 
-    (1.0 - sum_squares).clamp(0.0, 1.0)
+    let total_f = total as f32;
+    (1.0 - (sum_squares / (total_f * total_f))).clamp(0.0, 1.0)
 }
 
 pub fn softmax(arr: &mut [f32], t: f32) {
