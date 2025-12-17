@@ -227,7 +227,7 @@ impl MoveEdge {
     }
 
     pub fn clear_child_ptr(&self) {
-        self.child.store(ptr::null_mut(), Ordering::Relaxed);
+        self.child.store(ptr::null_mut(), Ordering::Release);
     }
 }
 
