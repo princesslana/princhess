@@ -1,6 +1,6 @@
 use std::mem;
 use std::ptr::{self, NonNull};
-use std::sync::atomic::{fence, AtomicI64, AtomicPtr, AtomicU32, Ordering};
+use std::sync::atomic::{AtomicI64, AtomicPtr, AtomicU32, Ordering};
 use std::sync::LazyLock;
 
 use crate::arena::{ArenaRef, Error as ArenaError};
@@ -251,7 +251,6 @@ pub fn clear_edge_children(edges: &[MoveEdge]) {
     for edge in edges {
         edge.child.store(ptr::null_mut(), Ordering::Relaxed);
     }
-    fence(Ordering::Release);
 }
 
 pub fn create_node<F>(
