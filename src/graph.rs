@@ -232,11 +232,13 @@ impl MoveEdge {
 }
 
 /// Select the edge with the most visits
+#[inline]
 pub fn select_edge_by_visits(edges: &[MoveEdge]) -> Option<&MoveEdge> {
     edges.iter().max_by_key(|x| x.visits())
 }
 
 /// Select the edge with the highest average reward
+#[inline]
 pub fn select_edge_by_rewards(edges: &[MoveEdge]) -> Option<&MoveEdge> {
     edges.iter().max_by_key(|x| x.reward().average)
 }

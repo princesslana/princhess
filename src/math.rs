@@ -1,6 +1,7 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Calculate Gini impurity from a distribution of counts
+#[inline]
 pub fn gini<I>(counts: I, total: u64) -> f32
 where
     I: IntoIterator<Item = u32>,
