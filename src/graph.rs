@@ -1,6 +1,6 @@
 use std::mem;
 use std::ptr::{self, NonNull};
-use std::sync::atomic::{AtomicI64, AtomicPtr, AtomicU32, Ordering};
+use std::sync::atomic::{fence, AtomicI64, AtomicPtr, AtomicU32, Ordering};
 use std::sync::LazyLock;
 
 use crate::arena::{ArenaRef, Error as ArenaError};
@@ -225,10 +225,6 @@ impl MoveEdge {
         self.child
             .store(ptr::from_ref(node).cast_mut(), Ordering::Release);
     }
-
-    pub fn clear_child_ptr(&self) {
-        self.child.store(ptr::null_mut(), Ordering::Release);
-    }
 }
 
 /// Select the edge with the most visits
@@ -248,6 +244,14 @@ pub fn copy_edge_stats(dest: &[MoveEdge], src: &[MoveEdge]) {
     for i in 0..dest.len().min(src.len()) {
         dest[i].replace(&src[i]);
     }
+}
+
+/// Clear all child pointers for the given edges
+pub fn clear_edge_children(edges: &[MoveEdge]) {
+    for edge in edges {
+        edge.child.store(ptr::null_mut(), Ordering::Relaxed);
+    }
+    fence(Ordering::Release);
 }
 
 pub fn create_node<F>(

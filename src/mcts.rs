@@ -9,9 +9,9 @@ use crate::chess;
 use crate::engine::{eval_in_cp, RootEdge, ThreadData, SCALE};
 use crate::evaluation::{self, Flag};
 use crate::graph::{
-    copy_edge_stats, create_node, select_edge_by_rewards, MoveEdge, PositionNode, DRAW_NODE,
-    LOSS_NODE, TABLEBASE_DRAW_NODE, TABLEBASE_LOSS_NODE, TABLEBASE_WIN_NODE, UNEXPANDED_NODE,
-    WIN_NODE,
+    clear_edge_children, copy_edge_stats, create_node, select_edge_by_rewards, MoveEdge,
+    PositionNode, DRAW_NODE, LOSS_NODE, TABLEBASE_DRAW_NODE, TABLEBASE_LOSS_NODE,
+    TABLEBASE_WIN_NODE, UNEXPANDED_NODE, WIN_NODE,
 };
 use crate::math;
 use crate::options::{EngineOptions, MctsOptions, TimeManagementOptions};
@@ -349,9 +349,7 @@ impl Mcts {
     }
 
     pub fn clear_root_children_links(&self) {
-        for edge in &self.root_edges {
-            edge.clear_child_ptr();
-        }
+        clear_edge_children(&self.root_edges);
     }
 
     pub fn flush_root_edges(&self, tld: &mut ThreadData) {
