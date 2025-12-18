@@ -1,5 +1,5 @@
 use std::mem;
-use std::ptr::{self, null_mut, NonNull};
+use std::ptr::{self, NonNull};
 use std::sync::atomic::{AtomicI64, AtomicPtr, AtomicU32, Ordering};
 use std::sync::LazyLock;
 
@@ -126,20 +126,6 @@ impl PositionNode {
         self.edges().iter().map(|x| u64::from(x.visits())).sum()
     }
 
-    pub fn clear_children_links(&self) {
-        for h in self.edges() {
-            h.child.store(null_mut(), Ordering::Relaxed);
-        }
-    }
-
-    pub fn select_child_by_rewards(&self) -> Option<&MoveEdge> {
-        self.edges().iter().max_by_key(|x| x.reward().average)
-    }
-
-    pub fn select_child_by_visits(&self) -> Option<&MoveEdge> {
-        self.edges().iter().max_by_key(|x| x.visits())
-    }
-
     pub fn generation(&self) -> u32 {
         self.generation
     }
@@ -160,7 +146,7 @@ impl PositionNode {
 }
 
 impl MoveEdge {
-    fn new(policy: u16, mov: chess::Move) -> Self {
+    pub fn new(policy: u16, mov: chess::Move) -> Self {
         Self {
             policy,
             sum_evaluations: AtomicI64::default(),
@@ -238,6 +224,32 @@ impl MoveEdge {
     pub fn set_child_ptr(&self, node: &PositionNode) {
         self.child
             .store(ptr::from_ref(node).cast_mut(), Ordering::Release);
+    }
+}
+
+/// Select the edge with the most visits
+#[inline]
+pub fn select_edge_by_visits(edges: &[MoveEdge]) -> Option<&MoveEdge> {
+    edges.iter().max_by_key(|x| x.visits())
+}
+
+/// Select the edge with the highest average reward
+#[inline]
+pub fn select_edge_by_rewards(edges: &[MoveEdge]) -> Option<&MoveEdge> {
+    edges.iter().max_by_key(|x| x.reward().average)
+}
+
+/// Copy visit and evaluation statistics from src edges to dest edges
+pub fn copy_edge_stats(dest: &[MoveEdge], src: &[MoveEdge]) {
+    for i in 0..dest.len().min(src.len()) {
+        dest[i].replace(&src[i]);
+    }
+}
+
+/// Clear all child pointers for the given edges
+pub fn clear_edge_children(edges: &[MoveEdge]) {
+    for edge in edges {
+        edge.child.store(ptr::null_mut(), Ordering::Relaxed);
     }
 }
 

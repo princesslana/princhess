@@ -4,8 +4,8 @@ use arrayvec::ArrayVec;
 
 use crate::chess::Move;
 use crate::evaluation;
-use crate::graph::{MoveEdge, PositionNode, Reward};
-use crate::math::Rng;
+use crate::graph::{select_edge_by_visits, MoveEdge, PositionNode, Reward};
+use crate::math::{self, Rng};
 use crate::mcts::{self, Mcts};
 use crate::options::{EngineOptions, MctsOptions};
 use crate::state::State;
@@ -161,8 +161,8 @@ impl Engine {
         self.mcts = Mcts::new(state, &self.ttable, self.engine_options);
     }
 
-    pub fn root_node(&self) -> &PositionNode {
-        self.mcts.root_node()
+    pub fn root_edges(&self) -> &[MoveEdge] {
+        self.mcts.root_edges()
     }
 
     pub fn root_state(&self) -> &State {
@@ -182,7 +182,7 @@ impl Engine {
     }
 
     pub fn flip_table(&self) {
-        self.ttable.flip(|| self.root_node().clear_children_links());
+        self.ttable.flip(|| self.mcts.clear_root_children_links());
     }
 
     pub fn go(&self, tokens: Tokens, is_interactive: bool) -> Option<String> {
@@ -234,12 +234,10 @@ impl Engine {
 
         let mut rng = Rng::default();
         let mut returned_line: Option<String> = None;
-        let root_edges = RootEdge::from_edges(self.mcts.root_node().edges());
-        let root_gini = f32::from(self.mcts.root_node().gini()) / SCALE;
+        let root_edges = RootEdge::from_edges(self.mcts.root_edges());
 
         let run_search_thread = |options: &MctsOptions, tm: &TimeManagement, thread_id: usize| {
-            let mut tld =
-                ThreadData::create(&self.ttable, thread_id, root_edges.clone(), root_gini);
+            let mut tld = ThreadData::create(&self.ttable, thread_id, root_edges.clone(), 0.0);
             while self.mcts.playout(&mut tld, options, tm, &stop_signal) {}
             self.mcts.flush_root_edges(&mut tld);
             self.mcts.flush_thread_stats(&mut tld);
@@ -298,9 +296,8 @@ impl Engine {
     }
 
     pub fn playout_sync(&self, playouts: u64) {
-        let root_edges = RootEdge::from_edges(self.mcts.root_node().edges());
-        let root_gini = f32::from(self.mcts.root_node().gini()) / SCALE;
-        let mut tld = ThreadData::create(&self.ttable, 0, root_edges, root_gini);
+        let root_edges = RootEdge::from_edges(self.mcts.root_edges());
+        let mut tld = ThreadData::create(&self.ttable, 0, root_edges, 0.0);
         let options = &self.engine_options.mcts_options;
         let tm = TimeManagement::infinite();
         let stop_signal = AtomicBool::new(false);
@@ -316,20 +313,21 @@ impl Engine {
     }
 
     pub fn print_move_list(&self, tokens: Tokens) {
-        let mut current_node = self.mcts.root_node();
+        let mut current_node: Option<&PositionNode> = None;
+        let mut current_edges = self.mcts.root_edges();
         let mut current_state = self.mcts.root_state().clone();
 
         // Navigate down the tree following the move sequence
         for move_str in tokens {
-            let edge = current_node
-                .edges()
+            let edge = current_edges
                 .iter()
                 .find(|e| self.to_uci(*e.get_move()) == move_str);
 
             match edge {
                 Some(e) if e.visits() > 0 => {
                     if let Some(child) = e.child() {
-                        current_node = child;
+                        current_node = Some(child);
+                        current_edges = child.edges();
                         current_state.make_move(*e.get_move());
                     } else {
                         println!("info string error: move {move_str} has no child node");
@@ -347,7 +345,7 @@ impl Engine {
             }
         }
 
-        let node_moves = current_node.edges();
+        let node_moves = current_edges;
 
         let state_moves = current_state.available_moves();
         let state_moves_eval = evaluation::policy(
@@ -361,7 +359,12 @@ impl Engine {
             .iter()
             .map(|e| u64::from(e.visits()))
             .sum::<u64>();
-        let gini = f32::from(current_node.gini()) / SCALE;
+        let gini = if let Some(node) = current_node {
+            f32::from(node.gini()) / SCALE
+        } else {
+            // At root, calculate gini from visit distribution
+            math::gini(node_moves.iter().map(MoveEdge::visits), total_visits)
+        };
         let explore_coef = self.mcts.exploration_coefficient(
             &self.engine_options.mcts_options,
             total_visits,
@@ -381,7 +384,7 @@ impl Engine {
                 e * 100.,
                 f32::from(mov.policy()) / SCALE * 100.,
                 mov.visits(),
-                mov.visits() as f32 / current_node.visits() as f32 * 100.,
+                mov.visits() as f32 / total_visits as f32 * 100.,
                 reward.average as f32 / (SCALE / 100.),
                 eval_in_cp(reward.average as f32 / SCALE),
                 u as f32 / (SCALE / 100.),
@@ -410,10 +413,7 @@ impl Engine {
     ///
     /// Panics if the root node has no child moves (e.g., checkmate or stalemate positions).
     pub fn most_visited_move(&self) -> Move {
-        *self
-            .mcts
-            .root_node()
-            .select_child_by_visits()
+        *select_edge_by_visits(self.mcts.root_edges())
             .expect("Root node must have moves to determine most visited move")
             .get_move()
     }

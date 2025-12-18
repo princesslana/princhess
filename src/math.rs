@@ -1,5 +1,25 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
+/// Calculate Gini impurity from a distribution of counts
+#[inline]
+pub fn gini<I>(counts: I, total: u64) -> f32
+where
+    I: IntoIterator<Item = u32>,
+{
+    if total == 0 {
+        return 0.0;
+    }
+
+    let mut sum_squares = 0.0_f32;
+    for count in counts {
+        let v = count as f32;
+        sum_squares += v * v;
+    }
+
+    let total_f = total as f32;
+    (1.0 - (sum_squares / (total_f * total_f))).clamp(0.0, 1.0)
+}
+
 pub fn softmax(arr: &mut [f32], t: f32) {
     let max = max(arr);
     let mut s = 0.;

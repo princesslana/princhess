@@ -6,7 +6,7 @@ use crossterm::{
     ExecutableCommand,
 };
 use princhess::engine::{Engine, SCALE};
-use princhess::math::Rng;
+use princhess::math::{self, Rng};
 use princhess::options::{EngineOptions, MctsOptions};
 use princhess::state::State;
 use ratatui::{
@@ -88,16 +88,7 @@ fn bucket_labels(thresholds: &[f32; 5]) -> [String; 6] {
 /// - 1.0 = uniform policy (visits evenly distributed)
 fn compute_policy_gini(visits: &[u8]) -> f32 {
     let total_visits: u64 = visits.iter().map(|&v| u64::from(v)).sum();
-    if total_visits == 0 {
-        return 0.0;
-    }
-
-    let mut sum_squares = 0.0f32;
-    for &v in visits {
-        let proportion = f32::from(v) / total_visits as f32;
-        sum_squares += proportion * proportion;
-    }
-    (1.0 - sum_squares).clamp(0.0, 1.0)
+    math::gini(visits.iter().map(|&v| u32::from(v)), total_visits)
 }
 
 struct Stats {
@@ -527,7 +518,7 @@ fn run_game(
         let mut previous_eval = 0.0;
         let result = loop {
             engine.set_root_state(state.clone());
-            let legal_moves = engine.root_node().edges().len();
+            let legal_moves = engine.root_edges().len();
 
             if legal_moves > 1 {
                 let mut previous_visits = vec![0u32; legal_moves];
@@ -539,8 +530,7 @@ fn run_game(
                     engine.playout_sync(1);
 
                     let current_visits: Vec<u32> = engine
-                        .root_node()
-                        .edges()
+                        .root_edges()
                         .iter()
                         .map(|edge| edge.visits())
                         .collect();

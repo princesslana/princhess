@@ -4,18 +4,20 @@ use std::f32;
 use std::fmt::{Display, Write};
 use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU64, AtomicUsize, Ordering};
 
-use crate::arena::{ArenaRef, Error as ArenaError};
+use crate::arena::Error as ArenaError;
 use crate::chess;
 use crate::engine::{eval_in_cp, RootEdge, ThreadData, SCALE};
 use crate::evaluation::{self, Flag};
 use crate::graph::{
-    create_node, MoveEdge, PositionNode, DRAW_NODE, LOSS_NODE, TABLEBASE_DRAW_NODE,
-    TABLEBASE_LOSS_NODE, TABLEBASE_WIN_NODE, UNEXPANDED_NODE, WIN_NODE,
+    clear_edge_children, copy_edge_stats, create_node, select_edge_by_rewards, MoveEdge,
+    PositionNode, DRAW_NODE, LOSS_NODE, TABLEBASE_DRAW_NODE, TABLEBASE_LOSS_NODE,
+    TABLEBASE_WIN_NODE, UNEXPANDED_NODE, WIN_NODE,
 };
+use crate::math;
 use crate::options::{EngineOptions, MctsOptions, TimeManagementOptions};
 use crate::state::State;
 use crate::time_management::TimeManagement;
-use crate::transposition_table::{LRTable, TranspositionTable};
+use crate::transposition_table::LRTable;
 
 const MAX_PLAYOUT_LENGTH: usize = 256;
 
@@ -26,32 +28,14 @@ pub fn exploration_bonus(explore_coef: i64, policy: u16, visits: u32) -> i64 {
     explore_coef * i64::from(policy) / ((i64::from(visits) + 1) * SCALE as i64)
 }
 
-/// Calculate Gini coefficient from visit distribution at root
-fn calculate_gini_from_visits(root_edges: &[RootEdge], total_visits: u64) -> f32 {
-    if total_visits == 0 {
-        return 0.0;
-    }
-
-    let mut sum_squares = 0.0_f32;
-    for edge in root_edges {
-        let proportion = edge.visits() as f32 / total_visits as f32;
-        sum_squares += proportion * proportion;
-    }
-
-    (1.0 - sum_squares).clamp(0.0, 1.0)
-}
-
 /// Monte Carlo Tree Search implementation using PUCT algorithm.
 /// Despite the name "tree search", this forms a graph due to transposition handling
 /// where the same position can be reached via different move sequences.
 pub struct Mcts {
-    root_node: ArenaRef<PositionNode>,
+    root_edges: Box<[MoveEdge]>,
     root_state: State,
 
     engine_options: EngineOptions,
-
-    #[allow(dead_code)]
-    root_table: TranspositionTable,
 
     num_nodes: AtomicUsize,
     playouts: AtomicUsize,
@@ -65,35 +49,30 @@ pub struct Mcts {
 
 impl Mcts {
     /// Creates a new MCTS instance with the given root state.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the initial memory allocation for the root node fails.
     pub fn new(state: State, table: &LRTable, engine_options: EngineOptions) -> Self {
-        let root_table = TranspositionTable::for_root();
-
-        let root_alloc = root_table
-            .arena()
-            .allocator()
-            .expect("Failed to allocate initial chunk for root node");
-        let root_allocator = move |sz| -> Result<_, ArenaError> {
-            Ok((root_alloc.alloc_one()?, root_alloc.alloc_slice(sz)?))
-        };
-
-        let mut root_node_arena_ref = create_node(
+        let moves = state.available_moves();
+        let move_eval = evaluation::policy(
             &state,
-            root_allocator,
+            &moves,
             engine_options.mcts_options.policy_temperature_root,
-        )
-        .expect("Unable to create root node");
+        );
 
-        table.lookup_into_from_all(&state, &mut root_node_arena_ref);
+        let mut root_edges = Vec::with_capacity(moves.len());
+        #[allow(clippy::cast_sign_loss)]
+        for i in 0..move_eval.len() {
+            let policy_val = (move_eval[i] * SCALE) as u16;
+            root_edges.push(MoveEdge::new(policy_val, moves[i]));
+        }
+
+        // Warm-start: copy statistics from transposition table if available
+        if let Some(cached) = table.lookup_from_all(&state) {
+            copy_edge_stats(&root_edges, cached.edges());
+        }
 
         Self {
             root_state: state,
-            root_node: root_node_arena_ref,
+            root_edges: root_edges.into_boxed_slice(),
             engine_options,
-            root_table,
             num_nodes: 1.into(),
             playouts: 0.into(),
             max_depth: 0.into(),
@@ -140,11 +119,11 @@ impl Mcts {
         let total_visits: u64 = tld.root_edges.iter().map(|re| u64::from(re.visits())).sum();
 
         if tld.playouts.is_multiple_of(1024) {
-            tld.root_gini = calculate_gini_from_visits(&tld.root_edges, total_visits);
+            tld.root_gini = math::gini(tld.root_edges.iter().map(RootEdge::visits), total_visits);
         }
 
         let root_edge_idx = self.select_root_edge(tld, options, total_visits);
-        let root_edge_ref = &self.root_node.edges()[root_edge_idx];
+        let root_edge_ref = &self.root_edges[root_edge_idx];
 
         tld.root_edges[root_edge_idx].down();
 
@@ -169,8 +148,7 @@ impl Mcts {
             node = match self.descend(&state, root_edge_ref, tld) {
                 Ok(r) => r,
                 Err(ArenaError::Full) => {
-                    tld.ttable
-                        .flip_if_full(|| self.root_node.clear_children_links());
+                    tld.ttable.flip_if_full(|| self.clear_root_children_links());
                     return true;
                 }
             };
@@ -231,8 +209,7 @@ impl Mcts {
             let new_node = match self.descend(&state, choice, tld) {
                 Ok(r) => r,
                 Err(ArenaError::Full) => {
-                    tld.ttable
-                        .flip_if_full(|| self.root_node.clear_children_links());
+                    tld.ttable.flip_if_full(|| self.clear_root_children_links());
                     return true;
                 }
             };
@@ -363,12 +340,20 @@ impl Mcts {
         &self.root_state
     }
 
-    pub fn root_node(&self) -> &PositionNode {
-        &self.root_node
+    pub fn root_edges(&self) -> &[MoveEdge] {
+        &self.root_edges
+    }
+
+    pub fn root_visits(&self) -> u64 {
+        self.root_edges.iter().map(|x| u64::from(x.visits())).sum()
+    }
+
+    pub fn clear_root_children_links(&self) {
+        clear_edge_children(&self.root_edges);
     }
 
     pub fn flush_root_edges(&self, tld: &mut ThreadData) {
-        for (root_edge, edge) in tld.root_edges.iter_mut().zip(self.root_node.edges()) {
+        for (root_edge, edge) in tld.root_edges.iter_mut().zip(&self.root_edges) {
             root_edge.flush(edge);
         }
     }
@@ -395,7 +380,7 @@ impl Mcts {
     ///
     /// Panics if the root node has no moves (e.g., checkmate or stalemate positions).
     pub fn best_edge(&self) -> &MoveEdge {
-        self.sort_moves(self.root_node.edges())
+        self.sort_moves(&self.root_edges)
             .into_iter()
             .next()
             .expect("Root node must have moves to determine best edge")
@@ -428,19 +413,17 @@ impl Mcts {
     }
 
     fn soft_time_multiplier(&self, opts: &TimeManagementOptions) -> f32 {
-        if self.root_node().visits() == 0 {
+        if self.root_visits() == 0 {
             return 1.0;
         }
 
         let mut m = 1.0;
 
-        let bm = self
-            .root_node()
-            .select_child_by_rewards()
+        let bm = select_edge_by_rewards(&self.root_edges)
             .expect("Root node must have moves during active search for time management");
         let bm_reward = bm.reward();
 
-        let bm_frac = bm_reward.visits as f32 / self.root_node().visits() as f32;
+        let bm_frac = bm_reward.visits as f32 / self.root_visits() as f32;
 
         m *= (opts.visits_base - bm_frac) * opts.visits_m;
 
@@ -479,7 +462,7 @@ impl Mcts {
             nodes * 1000 / search_time_ms as usize
         };
 
-        let moves = self.sort_moves(self.root_node.edges());
+        let moves = self.sort_moves(&self.root_edges);
 
         let is_chess960 = self.engine_options.is_chess960;
 
@@ -593,7 +576,7 @@ impl Mcts {
         options: &MctsOptions,
         total_visits: u64,
     ) -> usize {
-        let edges = self.root_node.edges();
+        let edges = &self.root_edges;
 
         let explore_coef = self.exploration_coefficient(
             options,
@@ -716,7 +699,7 @@ impl UciWdl {
 ///
 /// # Panics
 ///
-/// Panics if there's a logic error where a node has edges but `select_child_by_rewards` returns None.
+/// Panics if there's a logic error where a node has edges but selecting by rewards returns None.
 #[must_use]
 pub fn principal_variation<'a>(
     mut state: State,
@@ -734,10 +717,8 @@ pub fn principal_variation<'a>(
     }
 
     while !crnt.edges().is_empty() && result.len() < num_moves {
-        let choice_option = crnt.select_child_by_rewards();
-
-        // Unwrap the option here, as the loop condition implies it won't be None
-        let choice = choice_option.expect("Expected a child move, but node had no edges.");
+        let choice = select_edge_by_rewards(crnt.edges())
+            .expect("Expected a child move, but node had no edges.");
 
         result.push(choice);
 
