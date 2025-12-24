@@ -254,7 +254,7 @@ impl Engine {
             });
 
             for thread_id in 1..thread_count {
-                let jitter = 1. + rng.next_f32_range(-0.03, 0.03);
+                let jitter = 1. + rng.next_f32_range(-0.035, 0.035);
                 let jittered_options = MctsOptions {
                     cpuct: base_options.cpuct * jitter,
                     ..*base_options

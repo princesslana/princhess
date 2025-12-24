@@ -154,7 +154,7 @@ impl Mcts {
             };
         }
 
-        let mut path: ArrayVec<&'a MoveEdge, MAX_PLAYOUT_LENGTH> = ArrayVec::new();
+        let mut path: ArrayVec<(&'a MoveEdge, i64), MAX_PLAYOUT_LENGTH> = ArrayVec::new();
 
         loop {
             if node.is_stale(tld.ttable.current_generation()) {
@@ -182,11 +182,11 @@ impl Mcts {
                 break;
             }
 
-            let fpu = path.last().map_or(0, |x| -x.reward().average);
+            let parent_q = path.last().map_or(0, |(x, _)| -x.reward().average);
 
-            let choice = self.select(node, fpu, tld, options);
-            choice.down();
-            path.push(choice);
+            let choice = self.select(node, parent_q, tld, options);
+            choice.down(parent_q);
+            path.push((choice, parent_q));
             state.make_move(*choice.get_move());
 
             if choice.visits() == 1 {
@@ -327,10 +327,10 @@ impl Mcts {
         Ok(inserted)
     }
 
-    fn finish_playout(root_edge: &mut RootEdge, path: &[&MoveEdge], evaln: i64) {
+    fn finish_playout(root_edge: &mut RootEdge, path: &[(&MoveEdge, i64)], evaln: i64) {
         let mut evaln_value = -evaln;
-        for move_info in path.iter().rev() {
-            move_info.up(evaln_value);
+        for (move_info, virtual_loss) in path.iter().rev() {
+            move_info.up(evaln_value, *virtual_loss);
             evaln_value = -evaln_value;
         }
         root_edge.up(evaln_value);
