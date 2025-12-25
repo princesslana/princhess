@@ -187,12 +187,15 @@ impl MoveEdge {
         }
     }
 
-    pub fn down(&self) {
+    pub fn down(&self, virtual_loss: i64) {
         self.visits.fetch_add(1, Ordering::Relaxed);
+        self.sum_evaluations
+            .fetch_add(virtual_loss, Ordering::Relaxed);
     }
 
-    pub fn up(&self, evaln: i64) {
-        self.sum_evaluations.fetch_add(evaln, Ordering::Relaxed);
+    pub fn up(&self, evaln: i64, virtual_loss: i64) {
+        self.sum_evaluations
+            .fetch_add(evaln - virtual_loss, Ordering::Relaxed);
     }
 
     pub fn add_visits(&self, delta: u32) -> u32 {
