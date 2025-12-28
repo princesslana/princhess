@@ -480,12 +480,13 @@ fn run_game(
     let mcts_options = MctsOptions {
         cpuct: 2.82,
         cpuct_tau: 0.5,
-        policy_temperature: 1.0,
-        policy_temperature_root: 1.4,
+        cpuct_jitter: 0.0,
         cpuct_trend_adjustment: 0.0,
         cpuct_gini_base: 1.0,
         cpuct_gini_factor: 0.0,
         cpuct_gini_max: 1.0,
+        policy_temperature: 1.0,
+        policy_temperature_root: 1.4,
     };
 
     let engine_options = EngineOptions {
