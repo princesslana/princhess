@@ -91,6 +91,7 @@ static SYZYGY_PATH: UciOption = UciOption::string("SyzygyPath", "<empty>");
 
 static CPUCT: UciOption = UciOption::spin("CPuct", 16, 1, 2 << 16);
 static CPUCT_TAU: UciOption = UciOption::spin("CPuctTau", 84, 0, 100);
+static CPUCT_JITTER: UciOption = UciOption::spin("CPuctJitter", 5, 0, 100);
 static CPUCT_TREND_ADJUSTMENT: UciOption = UciOption::spin("CPuctTrendAdjustment", 15, -100, 100);
 static CPUCT_GINI_BASE: UciOption = UciOption::spin("CPuctGiniBase", 68, 0, 2 << 16);
 static CPUCT_GINI_FACTOR: UciOption = UciOption::spin("CPuctGiniFactor", 163, 0, 2 << 16);
@@ -119,6 +120,7 @@ static ALL_OPTIONS: &[UciOption] = &[
     SYZYGY_PATH,
     CPUCT,
     CPUCT_TAU,
+    CPUCT_JITTER,
     CPUCT_TREND_ADJUSTMENT,
     CPUCT_GINI_BASE,
     CPUCT_GINI_FACTOR,
@@ -202,12 +204,13 @@ impl UciOptionMap {
 pub struct MctsOptions {
     pub cpuct: f32,
     pub cpuct_tau: f32,
-    pub policy_temperature: f32,
-    pub policy_temperature_root: f32,
+    pub cpuct_jitter: f32,
     pub cpuct_trend_adjustment: f32,
     pub cpuct_gini_base: f32,
     pub cpuct_gini_factor: f32,
     pub cpuct_gini_max: f32,
+    pub policy_temperature: f32,
+    pub policy_temperature_root: f32,
 }
 
 #[allow(clippy::module_name_repetitions, clippy::struct_excessive_bools)]
@@ -247,12 +250,13 @@ impl From<&UciOptionMap> for MctsOptions {
         Self {
             cpuct: map.get_f32(&CPUCT),
             cpuct_tau: map.get_f32(&CPUCT_TAU),
-            policy_temperature: map.get_f32(&POLICY_TEMPERATURE),
-            policy_temperature_root: map.get_f32(&POLICY_TEMPERATURE_ROOT),
+            cpuct_jitter: map.get_f32(&CPUCT_JITTER),
             cpuct_trend_adjustment: map.get_f32(&CPUCT_TREND_ADJUSTMENT),
             cpuct_gini_base: map.get_f32(&CPUCT_GINI_BASE),
             cpuct_gini_factor: map.get_f32(&CPUCT_GINI_FACTOR),
             cpuct_gini_max: map.get_f32(&CPUCT_GINI_MAX),
+            policy_temperature: map.get_f32(&POLICY_TEMPERATURE),
+            policy_temperature_root: map.get_f32(&POLICY_TEMPERATURE_ROOT),
         }
     }
 }
