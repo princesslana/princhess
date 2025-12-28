@@ -8,7 +8,9 @@ Princhess is a chess engine written in Rust. It implements a Monte Carlo Tree Se
 *   **UCI Protocol Support:** Compatible with the Universal Chess Interface (UCI).
 *   **Bitboard Representation:** Uses bitboards for board representation and move generation.
 *   **Multi-threading:** Supports multi-threaded operation.
-*   **Custom Memory Allocator:** Includes an arena memory allocator for managing the MCTS graph within a fixed memory size.
+*   **DAG-Based MCTS:** Uses a directed acyclic graph rather than a tree to support transpositions. Rewards and visit counts are stored on edges instead of nodes.
+*   **Dynamic CPUCT Adjustments:** Multiple mechanisms for adjusting exploration including Gini impurity, per-thread jitter for search diversity, and trend-based adjustments for winning/losing positions.
+*   **Custom Memory Allocator:** Includes an arena memory allocator with half flipping for managing the MCTS graph within a fixed memory size, allowing unbounded search depth with bounded memory usage.
 *   **Phase-Aware Policy Networks:** Dynamically loads separate policy networks for middle-game and endgame phases.
 *   **Endgame Tablebase Integration:** Integrates with Fathom tablebases for endgame evaluation.
 *   **Self-Play & Training Infrastructure:** The `princhess-train` crate provides tools for self-play data generation. The policy and value networks are trained on this self-play data and are designed to be small enough to run efficiently on the CPU.
@@ -56,7 +58,11 @@ The engine responds to standard UCI commands.
 ### MCTS Search Parameters
 - **CPuct** (default: 16): PUCT exploration constant
 - **CPuctTau** (default: 84): Tau from the generalized PUCT formula
+- **CPuctJitter** (default: 5): Random jitter applied to CPuct for helper threads to increase search diversity
 - **CPuctTrendAdjustment** (default: 15): Dynamic CPUCT adjustment based on position trend (winning/losing)
+- **CPuctGiniBase** (default: 68): Base value for Gini impurity scaling of exploration
+- **CPuctGiniFactor** (default: 163): Logarithmic factor for Gini impurity scaling
+- **CPuctGiniMax** (default: 210): Maximum value for Gini-scaled exploration coefficient
 - **CVisitsSelection** (default: 1): How much to consider visits vs Q-value in final move selection
 - **PolicyTemperature** (default: 100): Softmax temperature for policy network during node expansion
 - **PolicyTemperatureRoot** (default: 1450): Separate policy temperature specifically for root node
