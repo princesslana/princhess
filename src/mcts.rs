@@ -125,15 +125,13 @@ impl Mcts {
         let root_edge_idx = self.select_root_edge(tld, options, total_visits);
         let root_edge_ref = &self.root_edges[root_edge_idx];
 
-        tld.root_edges[root_edge_idx].down();
-
         let mut state = self.root_state.clone();
         state.make_move(*root_edge_ref.get_move());
 
         let mut node: &'a PositionNode;
         let mut evaln = 0;
 
-        if tld.root_edges[root_edge_idx].visits() == 1 {
+        if tld.root_edges[root_edge_idx].visits() == 0 {
             let Some((expanded_node, eval)) = Self::expand_edge(&state) else {
                 return true;
             };

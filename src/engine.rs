@@ -83,11 +83,8 @@ impl RootEdge {
         }
     }
 
-    pub fn down(&mut self) {
-        self.delta_visits += 1;
-    }
-
     pub fn up(&mut self, evaln: i64) {
+        self.delta_visits += 1;
         self.delta_sum_evaluations += evaln;
     }
 
