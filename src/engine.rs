@@ -391,7 +391,10 @@ impl Engine {
     }
 
     pub fn print_eval(&self) {
-        let eval = evaluation::value(self.mcts.root_state());
+        let eval = evaluation::value(
+            self.mcts.root_state(),
+            self.engine_options.evaluation_options,
+        );
         let scaled = eval as f32 / SCALE;
         println!(
             "info string eval {} scaled {} {}",

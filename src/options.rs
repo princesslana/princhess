@@ -108,6 +108,9 @@ static TM_VISITS_M: UciOption = UciOption::spin("TMVisitsM", 139, 0, 2 << 16);
 static TM_PV_DIFF_C: UciOption = UciOption::spin("TMPvDiffC", 0, 0, 100);
 static TM_PV_DIFF_M: UciOption = UciOption::spin("TMPvDiffM", 121, 0, 2 << 16);
 
+static ENABLE_MATERIAL_SCALING: UciOption = UciOption::check("EnableMaterialScaling", true);
+static ENABLE_50MR_SCALING: UciOption = UciOption::check("Enable50mrScaling", true);
+
 static CHESS960: UciOption = UciOption::check("UCI_Chess960", false);
 static POLICY_ONLY: UciOption = UciOption::check("PolicyOnly", false);
 static SHOW_MOVESLEFT: UciOption = UciOption::check("UCI_ShowMovesLeft", false);
@@ -134,6 +137,8 @@ static ALL_OPTIONS: &[UciOption] = &[
     TM_VISITS_M,
     TM_PV_DIFF_C,
     TM_PV_DIFF_M,
+    ENABLE_MATERIAL_SCALING,
+    ENABLE_50MR_SCALING,
     CHESS960,
     POLICY_ONLY,
     SHOW_MOVESLEFT,
@@ -201,6 +206,13 @@ impl UciOptionMap {
 
 #[allow(clippy::module_name_repetitions)]
 #[derive(Debug, Clone, Copy)]
+pub struct EvaluationOptions {
+    pub enable_material_scaling: bool,
+    pub enable_50mr_scaling: bool,
+}
+
+#[allow(clippy::module_name_repetitions)]
+#[derive(Debug, Clone, Copy)]
 pub struct MctsOptions {
     pub cpuct: f32,
     pub cpuct_tau: f32,
@@ -226,6 +238,7 @@ pub struct EngineOptions {
     pub show_wdl: bool,
     pub mcts_options: MctsOptions,
     pub time_management_options: TimeManagementOptions,
+    pub evaluation_options: EvaluationOptions,
 }
 
 #[allow(clippy::module_name_repetitions)]
@@ -237,6 +250,21 @@ pub struct TimeManagementOptions {
     pub visits_m: f32,
     pub pv_diff_c: f32,
     pub pv_diff_m: f32,
+}
+
+impl Default for EvaluationOptions {
+    fn default() -> Self {
+        EvaluationOptions::from(&UciOptionMap::default())
+    }
+}
+
+impl From<&UciOptionMap> for EvaluationOptions {
+    fn from(map: &UciOptionMap) -> Self {
+        Self {
+            enable_material_scaling: map.get_and(&ENABLE_MATERIAL_SCALING, |s| s.parse().ok()),
+            enable_50mr_scaling: map.get_and(&ENABLE_50MR_SCALING, |s| s.parse().ok()),
+        }
+    }
 }
 
 impl Default for MctsOptions {
@@ -293,6 +321,7 @@ impl From<&UciOptionMap> for EngineOptions {
             show_wdl: map.get_and(&SHOW_WDL, |s| s.parse().ok()),
             mcts_options: MctsOptions::from(map),
             time_management_options: TimeManagementOptions::from(map),
+            evaluation_options: EvaluationOptions::from(map),
         }
     }
 }

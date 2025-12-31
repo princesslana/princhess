@@ -2,6 +2,7 @@ use crate::chess::MoveList;
 use crate::engine::SCALE;
 #[cfg(feature = "policy-net")]
 use crate::math::softmax;
+use crate::options::EvaluationOptions;
 #[cfg(feature = "policy-net")]
 use crate::quantized_policy::QuantizedPolicyNetwork;
 #[cfg(feature = "value-net")]
@@ -72,13 +73,13 @@ static VALUE_NETWORK: QuantizedValueNetwork =
 
 #[must_use]
 #[cfg(feature = "value-net")]
-pub fn value(state: &State) -> i64 {
-    (VALUE_NETWORK.get(state) * SCALE) as i64
+pub fn value(state: &State, eval_options: EvaluationOptions) -> i64 {
+    (VALUE_NETWORK.get(state, eval_options) * SCALE) as i64
 }
 
 #[must_use]
 #[cfg(not(feature = "value-net"))]
-pub fn value(_state: &State) -> i64 {
+pub fn value(_state: &State, _eval_options: EvaluationOptions) -> i64 {
     0
 }
 

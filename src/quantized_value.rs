@@ -4,6 +4,7 @@ use std::path::Path;
 use crate::chess::Piece;
 use crate::mem::Align64;
 use crate::nets::{save_to_bin, screlu, Accumulator};
+use crate::options::EvaluationOptions;
 use crate::state::{self, State};
 
 pub const INPUT_SIZE: usize = state::VALUE_NUMBER_FEATURES;
@@ -70,7 +71,7 @@ impl QuantizedValueNetwork {
 
     #[must_use]
     #[allow(clippy::cast_possible_wrap)]
-    pub fn get(&self, state: &State) -> f32 {
+    pub fn get(&self, state: &State, eval_options: EvaluationOptions) -> f32 {
         let mut stm = self.stm_bias;
         let mut nstm = self.nstm_bias;
 
@@ -101,11 +102,14 @@ impl QuantizedValueNetwork {
             + (board.rooks().count() as i32) * Piece::ROOK.see_value()
             + (board.queens().count() as i32) * Piece::QUEEN.see_value();
         let scale_factor = PHASE_OFFSET + material_phase / 32;
-        result = result * scale_factor / PHASE_DIVISOR;
+        result = [result, result * scale_factor / PHASE_DIVISOR]
+            [usize::from(eval_options.enable_material_scaling)];
 
         // Fifty move rule dampening
         let hmc = state.halfmove_clock();
-        result = result * (256 - i32::from(hmc.saturating_sub(20) + hmc.saturating_sub(52))) / 256;
+        let dampen_factor = 256 - i32::from(hmc.saturating_sub(20) + hmc.saturating_sub(52));
+        result =
+            [result, result * dampen_factor / 256][usize::from(eval_options.enable_50mr_scaling)];
 
         (result as f32 / QAB as f32).tanh()
     }
