@@ -132,7 +132,7 @@ impl Mcts {
         let mut evaln = 0;
 
         if tld.root_edges[root_edge_idx].visits() == 0 {
-            let Some((expanded_node, eval)) = Self::expand_edge(&state) else {
+            let Some((expanded_node, eval)) = self.expand_edge(&state) else {
                 return true;
             };
             node = expanded_node;
@@ -176,7 +176,7 @@ impl Mcts {
             }
 
             if path.len() >= MAX_PLAYOUT_LENGTH {
-                evaln = evaluation::value(&state);
+                evaln = evaluation::value(&state, self.engine_options.evaluation_options);
                 break;
             }
 
@@ -188,7 +188,7 @@ impl Mcts {
             state.make_move(*choice.get_move());
 
             if choice.visits() == 1 {
-                let Some((expanded_node, eval)) = Self::expand_edge(&state) else {
+                let Some((expanded_node, eval)) = self.expand_edge(&state) else {
                     return true;
                 };
                 node = expanded_node;
@@ -516,7 +516,7 @@ impl Mcts {
 
     /// Expands an edge that's being visited for the first time.
     /// Returns the node and evaluation, or None if the flag is invalid.
-    fn expand_edge<'a>(state: &State) -> Option<(&'a PositionNode, i64)> {
+    fn expand_edge<'a>(&self, state: &State) -> Option<(&'a PositionNode, i64)> {
         let flag = evaluation::evaluate_state_flag(state, state.is_available_move());
 
         let (node, eval) = match flag {
@@ -527,7 +527,7 @@ impl Mcts {
             Flag::TABLEBASE_LOSS => (&*TABLEBASE_LOSS_NODE, 0),
             Flag::TABLEBASE_DRAW => (&*TABLEBASE_DRAW_NODE, 0),
             Flag::STANDARD => {
-                let eval = evaluation::value(state);
+                let eval = evaluation::value(state, self.engine_options.evaluation_options);
                 (&*UNEXPANDED_NODE, eval)
             }
             _ => return None,
