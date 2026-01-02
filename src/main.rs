@@ -1,5 +1,6 @@
-use princhess::uci::Uci;
 use std::env;
+
+use princhess::uci::Uci;
 
 fn main() {
     let args: Vec<String> = env::args().collect();

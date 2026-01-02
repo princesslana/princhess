@@ -1,12 +1,13 @@
-use nohash_hasher::BuildNoHashHasher;
-use scc::hash_map::HashMap;
 use std::mem::MaybeUninit;
 use std::ptr::NonNull;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
-use crate::arena::{Allocator, Arena, ArenaRef, Error as ArenaError};
-use crate::graph::{copy_edge_stats, MoveEdge, PositionNode};
+use nohash_hasher::BuildNoHashHasher;
+use scc::hash_map::HashMap;
+
+use crate::arena::{self, Allocator, Arena, ArenaRef};
+use crate::graph::{self, MoveEdge, PositionNode};
 use crate::state::State;
 
 struct Entry {
@@ -127,7 +128,7 @@ impl TranspositionTable {
     pub fn lookup_into(&self, state: &State, dest: &mut PositionNode) -> bool {
         if let Some(src) = self.lookup(state) {
             dest.set_flag(src.flag());
-            copy_edge_stats(dest.edges(), src.edges());
+            graph::copy_edge_stats(dest.edges(), src.edges());
             true
         } else {
             false
@@ -256,7 +257,7 @@ pub type AllocNodeResult = Result<
         ArenaRef<MaybeUninit<PositionNode>>,
         ArenaRef<[MaybeUninit<MoveEdge>]>,
     ),
-    ArenaError,
+    arena::Error,
 >;
 
 pub struct LRAllocator<'a> {

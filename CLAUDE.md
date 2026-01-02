@@ -57,6 +57,14 @@ cargo clippy            # Lint code
 - Minimal unsafe blocks with explanatory comments
 - Comments clarify algorithms/architecture, not obvious operations
 
+**Use Statements:**
+- Import types/traits explicitly if no name conflict: `use std::sync::{Arc, Mutex};`
+- Use module prefix only for name conflicts: `fmt::Result` not `Result as FmtResult`
+- Functions via module prefix: `use crate::evaluation::{self, Flag};` then `evaluation::policy()`
+- Avoid fully qualified paths: `fmt::Result` not `std::fmt::Result`
+- No glob imports except in test modules: `use super::*;` only in `#[cfg(test)]`
+- Order: std, external crates, crate/self/super - blank line between groups
+
 ## Commit Messages (Emoji Log)
 - 📦 NEW: Add entirely new or Elo-gaining features
 - 👌 IMP: Refactor existing code

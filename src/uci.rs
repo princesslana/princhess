@@ -1,12 +1,12 @@
-use std::io::stdin;
+use std::io;
 use std::str::SplitWhitespace;
 
 use crate::engine::Engine;
-use crate::graph::print_size_list;
+use crate::graph;
 use crate::math::Rng;
 use crate::options::{EngineOptions, UciOption, UciOptionMap};
-use crate::state::{generate_random_opening, State};
-use crate::tablebase::set_tablebase_directory;
+use crate::state::{self, State};
+use crate::tablebase;
 use crate::time_management::TimeManagement;
 
 pub type Tokens<'a> = SplitWhitespace<'a>;
@@ -76,7 +76,7 @@ impl Uci {
                     next_line_from_go = self.handle_go(tokens, is_interactive);
                 }
                 "movelist" => self.engine.print_move_list(tokens),
-                "sizelist" => print_size_list(),
+                "sizelist" => graph::print_size_list(),
                 "eval" => self.engine.print_eval(),
                 "bench" => self.run_bench(),
                 "randomopen" => self.generate_random_opening(),
@@ -94,7 +94,7 @@ impl Uci {
             self.engine_options = EngineOptions::from(&self.options);
 
             if name.eq_ignore_ascii_case("syzygypath") {
-                match set_tablebase_directory(&value) {
+                match tablebase::set_tablebase_directory(&value) {
                     Ok(()) => println!("info string Success initializing tablebase at {value}"),
                     Err(()) => println!("info string Error initializing tablebase at {value}"),
                 }
@@ -156,7 +156,7 @@ impl Uci {
 
     fn generate_random_opening(&mut self) {
         let mut rng = Rng::default();
-        let (moves_played, state) = generate_random_opening(&mut rng, 0); // No DFRC
+        let (moves_played, state) = state::generate_random_opening(&mut rng, 0); // No DFRC
 
         let move_strs: Vec<String> = moves_played
             .iter()
@@ -184,7 +184,7 @@ impl Default for Uci {
 #[must_use]
 pub fn read_stdin() -> String {
     let mut input = String::new();
-    stdin().read_line(&mut input).unwrap();
+    io::stdin().read_line(&mut input).unwrap();
     input
 }
 

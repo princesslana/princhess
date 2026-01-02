@@ -3,7 +3,7 @@ use std::ptr::{self, NonNull};
 use std::sync::atomic::{AtomicI64, AtomicPtr, AtomicU32, Ordering};
 use std::sync::LazyLock;
 
-use crate::arena::{ArenaRef, Error as ArenaError};
+use crate::arena::{self, ArenaRef};
 use crate::chess;
 use crate::engine::SCALE;
 use crate::evaluation::{self, Flag};
@@ -260,7 +260,7 @@ pub fn create_node<F>(
     state: &State,
     alloc: F,
     policy_t: f32,
-) -> Result<ArenaRef<PositionNode>, ArenaError>
+) -> Result<ArenaRef<PositionNode>, arena::Error>
 where
     F: FnOnce(usize) -> AllocNodeResult,
 {

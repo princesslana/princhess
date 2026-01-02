@@ -1,5 +1,6 @@
-use bytemuck::{Pod, Zeroable};
 use std::ops::{Deref, DerefMut};
+
+use bytemuck::{Pod, Zeroable};
 
 #[derive(Debug, Clone, Copy, Zeroable)]
 #[repr(C, align(64))]

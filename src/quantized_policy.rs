@@ -1,9 +1,10 @@
-use arrayvec::ArrayVec;
-use bytemuck::{allocation, Pod, Zeroable};
 use std::path::Path;
 
+use arrayvec::ArrayVec;
+use bytemuck::{allocation, Pod, Zeroable};
+
 use crate::mem::Align16;
-use crate::nets::{save_to_bin, Accumulator, MoveIndex};
+use crate::nets::{self, Accumulator, MoveIndex};
 use crate::state::{self, State};
 
 pub const INPUT_SIZE: usize = state::POLICY_NUMBER_FEATURES;
@@ -55,7 +56,7 @@ impl QuantizedPolicyNetwork {
     }
 
     pub fn save_to_bin(&self, dir: &Path, name: &str) {
-        save_to_bin(dir, name, self);
+        nets::save_to_bin(dir, name, self);
     }
 
     #[must_use]
