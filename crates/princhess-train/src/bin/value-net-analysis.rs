@@ -1,12 +1,15 @@
 use princhess::chess::Square;
 use princhess::quantized_value::{QuantizedValueNetwork, HIDDEN_SIZE, INPUT_SIZE};
 use princhess::state::{NUMBER_KING_BUCKETS, NUMBER_POSITIONS};
-use princhess_train::analysis_utils::{king_bucket_name, piece_name, threat_bucket_name};
-use std::alloc::{alloc, Layout};
+use princhess_train::analysis_utils;
+use std::alloc::{self, Layout};
+use std::cmp::Reverse;
 use std::collections::HashMap;
 use std::env;
 use std::fs;
 use std::mem;
+use std::ptr;
+use std::slice;
 
 type FeatureBucketMap = HashMap<(usize, usize, bool), Vec<(usize, i64)>>;
 
@@ -47,14 +50,14 @@ fn main() {
             Layout::from_size_align(mem::size_of::<QuantizedValueNetwork>(), required_align)
                 .expect("Invalid layout");
 
-        let aligned_ptr = unsafe { alloc(layout) };
+        let aligned_ptr = unsafe { alloc::alloc(layout) };
         if aligned_ptr.is_null() {
             panic!("Failed to allocate aligned memory for network");
         }
 
         unsafe {
-            std::ptr::copy_nonoverlapping(ptr, aligned_ptr, network_bytes.len());
-            let aligned_slice = std::slice::from_raw_parts(aligned_ptr, network_bytes.len());
+            ptr::copy_nonoverlapping(ptr, aligned_ptr, network_bytes.len());
+            let aligned_slice = slice::from_raw_parts(aligned_ptr, network_bytes.len());
             bytemuck::from_bytes(aligned_slice)
         }
     };
@@ -327,7 +330,7 @@ fn analyze_feature_importance(network: &QuantizedValueNetwork) {
     // Sort by importance
     let mut indexed_features: Vec<(usize, i64)> =
         feature_importance.into_iter().enumerate().collect();
-    indexed_features.sort_by_key(|(_, importance)| std::cmp::Reverse(*importance));
+    indexed_features.sort_by_key(|(_, importance)| Reverse(*importance));
 
     println!("Top 10 most important features:");
     for (i, (feat_idx, importance)) in indexed_features.iter().take(10).enumerate() {
@@ -355,8 +358,8 @@ fn analyze_bucket_differentiation(network: &QuantizedValueNetwork) {
     // Each "logical feature" appears in multiple buckets (king + threat combinations)
 
     // Map from (piece, square, side) -> Vec<(bucket_combo, importance)>
-    let mut feature_buckets: std::collections::HashMap<(usize, usize, bool), Vec<(usize, i64)>> =
-        std::collections::HashMap::new();
+    let mut feature_buckets: HashMap<(usize, usize, bool), Vec<(usize, i64)>> =
+        HashMap::new();
 
     for feat_idx in 0..INPUT_SIZE {
         let bucket = feat_idx / NUMBER_POSITIONS;
@@ -496,7 +499,7 @@ fn analyze_bucket_differentiation(network: &QuantizedValueNetwork) {
     for (i, ((piece_idx, square_idx, is_opponent), ratio, bucket_values)) in
         differentiation_ratios.iter().take(10).enumerate()
     {
-        let piece_name = piece_name(*piece_idx);
+        let piece_name = analysis_utils::piece_name(*piece_idx);
         let square = Square::from(*square_idx as u8).to_string();
         let side = if *is_opponent { "opp" } else { "our" };
 
@@ -511,7 +514,7 @@ fn analyze_bucket_differentiation(network: &QuantizedValueNetwork) {
 
         // Show the bucket breakdown
         let mut sorted_buckets = bucket_values.clone();
-        sorted_buckets.sort_by_key(|(_, importance)| std::cmp::Reverse(*importance));
+        sorted_buckets.sort_by_key(|(_, importance)| Reverse(*importance));
         let bucket_info: Vec<String> = sorted_buckets
             .iter()
             .map(|(bucket, importance)| {
@@ -531,7 +534,7 @@ fn analyze_bucket_differentiation(network: &QuantizedValueNetwork) {
             continue;
         }
 
-        let piece_name = piece_name(*piece_idx);
+        let piece_name = analysis_utils::piece_name(*piece_idx);
         let square = Square::from(*square_idx as u8).to_string();
         let side = if *is_opponent { "opp" } else { "our" };
 
@@ -558,7 +561,7 @@ fn decode_feature_index(feat_idx: usize) -> String {
     let piece_idx = piece_pos / 64;
     let square_idx = piece_pos % 64;
 
-    let piece_name = piece_name(piece_idx);
+    let piece_name = analysis_utils::piece_name(piece_idx);
 
     let square = Square::from(square_idx as u8).to_string();
 
@@ -617,7 +620,7 @@ fn analyze_hidden_layer_size(network: &QuantizedValueNetwork) {
     // Sort nodes by total magnitude
     let mut indexed_nodes: Vec<(usize, i64)> =
         node_total_magnitude.into_iter().enumerate().collect();
-    indexed_nodes.sort_by_key(|(_, magnitude)| std::cmp::Reverse(*magnitude));
+    indexed_nodes.sort_by_key(|(_, magnitude)| Reverse(*magnitude));
 
     // Calculate statistics
     let magnitudes: Vec<i64> = indexed_nodes.iter().map(|(_, mag)| *mag).collect();
@@ -763,8 +766,8 @@ fn analyze_per_bucket_stats(feature_buckets: &FeatureBucketMap) {
     println!("\nPer-bucket analysis:");
 
     // Collect stats for each bucket combination
-    let mut bucket_stats: std::collections::HashMap<usize, Vec<i64>> =
-        std::collections::HashMap::new();
+    let mut bucket_stats: HashMap<usize, Vec<i64>> =
+        HashMap::new();
 
     for bucket_values in feature_buckets.values() {
         for &(bucket, importance) in bucket_values {
@@ -780,8 +783,8 @@ fn analyze_per_bucket_stats(feature_buckets: &FeatureBucketMap) {
         let king_bucket = bucket_id % NUMBER_KING_BUCKETS;
         let threat_bucket = bucket_id / NUMBER_KING_BUCKETS;
 
-        let king_desc = format!("King {}", king_bucket_name(king_bucket));
-        let threat_desc = threat_bucket_name(threat_bucket);
+        let king_desc = format!("King {}", analysis_utils::king_bucket_name(king_bucket));
+        let threat_desc = analysis_utils::threat_bucket_name(threat_bucket);
 
         let total_features = importances.len();
         let zero_features = importances.iter().filter(|&&imp| imp == 0).count();
@@ -842,7 +845,7 @@ fn analyze_per_bucket_stats(feature_buckets: &FeatureBucketMap) {
         } else {
             0.0
         };
-        let king_desc = format!("King {}", king_bucket_name(i));
+        let king_desc = format!("King {}", analysis_utils::king_bucket_name(i));
         println!("  {king_desc}: {zero_pct:.1}% zero features, avg importance: {avg_imp:.0}");
     }
 
@@ -878,7 +881,7 @@ fn analyze_per_bucket_stats(feature_buckets: &FeatureBucketMap) {
         } else {
             0.0
         };
-        let threat_desc = threat_bucket_name(i);
+        let threat_desc = analysis_utils::threat_bucket_name(i);
         println!("  {threat_desc}: {zero_pct:.1}% zero features, avg importance: {avg_imp:.0}");
     }
 }
@@ -1005,7 +1008,7 @@ fn analyze_bucket_similarity_matrix(network: &QuantizedValueNetwork) {
     for (k, sims) in king_bucket_sims.iter().enumerate() {
         if !sims.is_empty() {
             let avg = sims.iter().sum::<f64>() / sims.len() as f64;
-            let king_desc = king_bucket_name(k);
+            let king_desc = analysis_utils::king_bucket_name(k);
             println!(
                 "  King bucket {k} ({king_desc}): {avg:.3} avg similarity across threat buckets"
             );
@@ -1013,7 +1016,7 @@ fn analyze_bucket_similarity_matrix(network: &QuantizedValueNetwork) {
     }
 
     for (t, sims) in threat_bucket_sims.iter().enumerate() {
-        let threat_desc = threat_bucket_name(t);
+        let threat_desc = analysis_utils::threat_bucket_name(t);
         if !sims.is_empty() {
             let avg = sims.iter().sum::<f64>() / sims.len() as f64;
             println!(
