@@ -1,5 +1,6 @@
 use crate::neural::activation::Activation;
 use bytemuck::Zeroable;
+use std::ops::{Add, AddAssign, Deref, Div, DivAssign, Index, IndexMut, Mul, MulAssign, SubAssign};
 
 #[repr(C)]
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -7,7 +8,7 @@ pub struct SparseVector {
     inner: Vec<usize>,
 }
 
-impl std::ops::Add<SparseVector> for SparseVector {
+impl Add<SparseVector> for SparseVector {
     type Output = SparseVector;
     fn add(mut self, mut rhs: SparseVector) -> Self::Output {
         self.inner.append(&mut rhs.inner);
@@ -15,7 +16,7 @@ impl std::ops::Add<SparseVector> for SparseVector {
     }
 }
 
-impl std::ops::Deref for SparseVector {
+impl Deref for SparseVector {
     type Target = [usize];
     fn deref(&self) -> &Self::Target {
         &self.inner
@@ -40,20 +41,20 @@ pub struct Vector<const N: usize> {
     inner: [f32; N],
 }
 
-impl<const N: usize> std::ops::Index<usize> for Vector<N> {
+impl<const N: usize> Index<usize> for Vector<N> {
     type Output = f32;
     fn index(&self, index: usize) -> &Self::Output {
         &self.inner[index]
     }
 }
 
-impl<const N: usize> std::ops::IndexMut<usize> for Vector<N> {
+impl<const N: usize> IndexMut<usize> for Vector<N> {
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
         &mut self.inner[index]
     }
 }
 
-impl<const N: usize> std::ops::Add<Vector<N>> for Vector<N> {
+impl<const N: usize> Add<Vector<N>> for Vector<N> {
     type Output = Vector<N>;
     fn add(mut self, rhs: Vector<N>) -> Self::Output {
         for (i, j) in self.inner.iter_mut().zip(rhs.inner.iter()) {
@@ -64,7 +65,7 @@ impl<const N: usize> std::ops::Add<Vector<N>> for Vector<N> {
     }
 }
 
-impl<const N: usize> std::ops::Add<f32> for Vector<N> {
+impl<const N: usize> Add<f32> for Vector<N> {
     type Output = Vector<N>;
     fn add(mut self, rhs: f32) -> Self::Output {
         for i in self.inner.iter_mut() {
@@ -75,7 +76,7 @@ impl<const N: usize> std::ops::Add<f32> for Vector<N> {
     }
 }
 
-impl<const N: usize> std::ops::AddAssign<Vector<N>> for Vector<N> {
+impl<const N: usize> AddAssign<Vector<N>> for Vector<N> {
     fn add_assign(&mut self, rhs: Vector<N>) {
         for (i, j) in self.inner.iter_mut().zip(rhs.inner.iter()) {
             *i += *j;
@@ -83,7 +84,7 @@ impl<const N: usize> std::ops::AddAssign<Vector<N>> for Vector<N> {
     }
 }
 
-impl<const N: usize> std::ops::DivAssign<f32> for Vector<N> {
+impl<const N: usize> DivAssign<f32> for Vector<N> {
     fn div_assign(&mut self, rhs: f32) {
         for x in self.inner.iter_mut() {
             *x /= rhs;
@@ -91,7 +92,7 @@ impl<const N: usize> std::ops::DivAssign<f32> for Vector<N> {
     }
 }
 
-impl<const N: usize> std::ops::MulAssign<f32> for Vector<N> {
+impl<const N: usize> MulAssign<f32> for Vector<N> {
     fn mul_assign(&mut self, rhs: f32) {
         for x in self.inner.iter_mut() {
             *x *= rhs;
@@ -99,7 +100,7 @@ impl<const N: usize> std::ops::MulAssign<f32> for Vector<N> {
     }
 }
 
-impl<const N: usize> std::ops::Div<Vector<N>> for Vector<N> {
+impl<const N: usize> Div<Vector<N>> for Vector<N> {
     type Output = Vector<N>;
     fn div(mut self, rhs: Vector<N>) -> Self::Output {
         for (i, j) in self.inner.iter_mut().zip(rhs.inner.iter()) {
@@ -110,7 +111,7 @@ impl<const N: usize> std::ops::Div<Vector<N>> for Vector<N> {
     }
 }
 
-impl<const N: usize> std::ops::Mul<Vector<N>> for Vector<N> {
+impl<const N: usize> Mul<Vector<N>> for Vector<N> {
     type Output = Vector<N>;
     fn mul(mut self, rhs: Vector<N>) -> Self::Output {
         for (i, j) in self.inner.iter_mut().zip(rhs.inner.iter()) {
@@ -121,7 +122,7 @@ impl<const N: usize> std::ops::Mul<Vector<N>> for Vector<N> {
     }
 }
 
-impl<const N: usize> std::ops::Mul<Vector<N>> for f32 {
+impl<const N: usize> Mul<Vector<N>> for f32 {
     type Output = Vector<N>;
     fn mul(self, mut rhs: Vector<N>) -> Self::Output {
         for i in rhs.inner.iter_mut() {
@@ -132,7 +133,7 @@ impl<const N: usize> std::ops::Mul<Vector<N>> for f32 {
     }
 }
 
-impl<const N: usize> std::ops::SubAssign<Vector<N>> for Vector<N> {
+impl<const N: usize> SubAssign<Vector<N>> for Vector<N> {
     fn sub_assign(&mut self, rhs: Vector<N>) {
         for (i, j) in self.inner.iter_mut().zip(rhs.inner.iter()) {
             *i -= *j;
@@ -208,7 +209,7 @@ impl<const N: usize> Vector<N> {
     }
 }
 
-impl<const N: usize> std::ops::Div<f32> for Vector<N> {
+impl<const N: usize> Div<f32> for Vector<N> {
     type Output = Self;
 
     fn div(mut self, rhs: f32) -> Self::Output {

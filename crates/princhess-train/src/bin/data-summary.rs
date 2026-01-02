@@ -3,7 +3,7 @@ use princhess::chess::{Color, File};
 use princhess::nets::MoveIndex;
 use princhess::state::{self, State, NUMBER_KING_BUCKETS, VALUE_NUMBER_FEATURES};
 use std::env;
-use std::fs::File as FsFile;
+use std::fs;
 use std::io::{self, BufRead, BufReader, Write};
 
 use princhess_train::analysis_utils::{king_bucket_name, piece_name, threat_bucket_name};
@@ -16,7 +16,7 @@ fn main() {
 
     let path = args.next().expect("no path given");
 
-    let file = FsFile::open(path).expect("could not open file");
+    let file = fs::File::open(path).expect("could not open file");
     let records = file.metadata().unwrap().len() as usize / TrainingPosition::SIZE;
 
     let mut buffer = BufReader::with_capacity(TrainingPosition::BUFFER_SIZE, file);

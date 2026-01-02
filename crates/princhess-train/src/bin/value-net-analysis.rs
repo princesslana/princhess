@@ -3,10 +3,12 @@ use princhess::quantized_value::{QuantizedValueNetwork, HIDDEN_SIZE, INPUT_SIZE}
 use princhess::state::{NUMBER_KING_BUCKETS, NUMBER_POSITIONS};
 use princhess_train::analysis_utils::{king_bucket_name, piece_name, threat_bucket_name};
 use std::alloc::{alloc, Layout};
-
-type FeatureBucketMap = std::collections::HashMap<(usize, usize, bool), Vec<(usize, i64)>>;
+use std::collections::HashMap;
 use std::env;
 use std::fs;
+use std::mem;
+
+type FeatureBucketMap = HashMap<(usize, usize, bool), Vec<(usize, i64)>>;
 
 const DEAD_FEATURE_THRESHOLD: i32 = 100;
 const SIGNIFICANT_WEIGHT_THRESHOLD: i16 = 5;
@@ -27,22 +29,22 @@ fn main() {
         .unwrap_or_else(|e| panic!("Failed to read network file {network_path}: {e}"));
 
     // Validate file size matches expected struct size
-    if network_bytes.len() != std::mem::size_of::<QuantizedValueNetwork>() {
+    if network_bytes.len() != mem::size_of::<QuantizedValueNetwork>() {
         panic!(
             "File size mismatch: expected {} bytes, got {} bytes",
-            std::mem::size_of::<QuantizedValueNetwork>(),
+            mem::size_of::<QuantizedValueNetwork>(),
             network_bytes.len()
         );
     }
 
-    let required_align = std::mem::align_of::<QuantizedValueNetwork>();
+    let required_align = mem::align_of::<QuantizedValueNetwork>();
     let ptr = network_bytes.as_ptr();
 
     let network: &QuantizedValueNetwork = if ptr.align_offset(required_align) == 0 {
         bytemuck::from_bytes(&network_bytes)
     } else {
         let layout =
-            Layout::from_size_align(std::mem::size_of::<QuantizedValueNetwork>(), required_align)
+            Layout::from_size_align(mem::size_of::<QuantizedValueNetwork>(), required_align)
                 .expect("Invalid layout");
 
         let aligned_ptr = unsafe { alloc(layout) };

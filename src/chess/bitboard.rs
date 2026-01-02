@@ -1,6 +1,7 @@
-use bytemuck::{Pod, Zeroable};
 use std::iter::FusedIterator;
 use std::ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, Not};
+
+use bytemuck::{Pod, Zeroable};
 
 use crate::chess::Square;
 

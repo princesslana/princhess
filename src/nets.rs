@@ -1,8 +1,9 @@
-use bytemuck::{self, Pod, Zeroable};
 use std::fs;
 use std::io::Write;
 use std::ops::AddAssign;
 use std::path::Path;
+
+use bytemuck::{self, Pod, Zeroable};
 
 use crate::chess::{Piece, Rank, Square};
 

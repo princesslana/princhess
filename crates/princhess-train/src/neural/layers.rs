@@ -1,4 +1,5 @@
 use std::marker::PhantomData;
+use std::ops::{AddAssign, DivAssign, MulAssign};
 
 use crate::neural::{
     activation::Activation, initialization::WeightInitializer, AdamWOptimizer, FeedForwardNetwork,
@@ -15,7 +16,7 @@ pub struct DenseConnected<T, const M: usize, const N: usize> {
     phantom: PhantomData<T>,
 }
 
-impl<T: Activation, const M: usize, const N: usize> std::ops::AddAssign<&DenseConnected<T, M, N>>
+impl<T: Activation, const M: usize, const N: usize> AddAssign<&DenseConnected<T, M, N>>
     for DenseConnected<T, M, N>
 {
     fn add_assign(&mut self, rhs: &DenseConnected<T, M, N>) {
@@ -24,18 +25,14 @@ impl<T: Activation, const M: usize, const N: usize> std::ops::AddAssign<&DenseCo
     }
 }
 
-impl<T: Activation, const M: usize, const N: usize> std::ops::DivAssign<f32>
-    for DenseConnected<T, M, N>
-{
+impl<T: Activation, const M: usize, const N: usize> DivAssign<f32> for DenseConnected<T, M, N> {
     fn div_assign(&mut self, rhs: f32) {
         self.weights /= rhs;
         self.bias /= rhs;
     }
 }
 
-impl<T: Activation, const M: usize, const N: usize> std::ops::MulAssign<f32>
-    for DenseConnected<T, M, N>
-{
+impl<T: Activation, const M: usize, const N: usize> MulAssign<f32> for DenseConnected<T, M, N> {
     fn mul_assign(&mut self, rhs: f32) {
         self.weights *= rhs;
         self.bias *= rhs;
@@ -177,7 +174,7 @@ pub struct SparseConnected<T, const M: usize, const N: usize> {
     phantom: PhantomData<T>,
 }
 
-impl<T: Activation, const M: usize, const N: usize> std::ops::AddAssign<&SparseConnected<T, M, N>>
+impl<T: Activation, const M: usize, const N: usize> AddAssign<&SparseConnected<T, M, N>>
     for SparseConnected<T, M, N>
 {
     fn add_assign(&mut self, rhs: &SparseConnected<T, M, N>) {
@@ -186,18 +183,14 @@ impl<T: Activation, const M: usize, const N: usize> std::ops::AddAssign<&SparseC
     }
 }
 
-impl<T: Activation, const M: usize, const N: usize> std::ops::DivAssign<f32>
-    for SparseConnected<T, M, N>
-{
+impl<T: Activation, const M: usize, const N: usize> DivAssign<f32> for SparseConnected<T, M, N> {
     fn div_assign(&mut self, rhs: f32) {
         self.weights /= rhs;
         self.bias /= rhs;
     }
 }
 
-impl<T: Activation, const M: usize, const N: usize> std::ops::MulAssign<f32>
-    for SparseConnected<T, M, N>
-{
+impl<T: Activation, const M: usize, const N: usize> MulAssign<f32> for SparseConnected<T, M, N> {
     fn mul_assign(&mut self, rhs: f32) {
         self.weights *= rhs;
         self.bias *= rhs;

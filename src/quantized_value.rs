@@ -1,9 +1,10 @@
-use bytemuck::{allocation, Pod, Zeroable};
 use std::path::Path;
+
+use bytemuck::{allocation, Pod, Zeroable};
 
 use crate::chess::Piece;
 use crate::mem::Align64;
-use crate::nets::{save_to_bin, screlu, Accumulator};
+use crate::nets::{self, Accumulator};
 use crate::options::EvaluationOptions;
 use crate::state::{self, State};
 
@@ -66,7 +67,7 @@ impl QuantizedValueNetwork {
     }
 
     pub fn save_to_bin(&self, dir: &Path) {
-        save_to_bin(dir, "value.bin", self);
+        nets::save_to_bin(dir, "value.bin", self);
     }
 
     #[must_use]
@@ -86,11 +87,11 @@ impl QuantizedValueNetwork {
         let mut result: i32 = 0;
 
         for (&x, w) in stm.vals.iter().zip(self.output_weights[0].vals) {
-            result += screlu(x, QA) * i32::from(w);
+            result += nets::screlu(x, QA) * i32::from(w);
         }
 
         for (&x, w) in nstm.vals.iter().zip(self.output_weights[1].vals) {
-            result += screlu(x, QA) * i32::from(w);
+            result += nets::screlu(x, QA) * i32::from(w);
         }
 
         result = result / QA + self.output_bias;

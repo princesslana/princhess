@@ -1,6 +1,6 @@
 use crate::neural::{
     AdamWOptimizer, FeedForwardNetwork, LRScheduler, OutputLayer, ReLU, SparseConnected,
-    SparseVector,
+    SparseVector, Vector,
 };
 use bytemuck::{allocation, Zeroable};
 use princhess::chess::Square;
@@ -11,10 +11,10 @@ use princhess::quantized_policy::{
     RawPolicySqWeights, ATTENTION_SIZE, INPUT_SIZE, QA,
 };
 use princhess::state::State;
-use std::fmt::{self, Display};
-use std::ops::AddAssign;
+use std::fmt::{self, Display, Formatter};
+use std::ops::{AddAssign, DivAssign};
 
-use crate::nets::q_i16;
+use crate::nets;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Phase {
@@ -46,7 +46,7 @@ impl Phase {
 }
 
 impl Display for Phase {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Self::MiddleGame => write!(f, "mg"),
             Self::Endgame => write!(f, "eg"),
@@ -230,14 +230,14 @@ impl PolicyNetwork {
             for (row_idx, weights) in raw.iter_mut().enumerate() {
                 let row = subnet.output.weights_row(row_idx);
                 for weight_idx in 0..ATTENTION_SIZE {
-                    weights[weight_idx] = q_i16(row[weight_idx], QA);
+                    weights[weight_idx] = nets::q_i16(row[weight_idx], QA);
                 }
             }
         }
 
         for (subnet, raw) in self.sq.iter().zip(sq_bias.iter_mut()) {
             for (weight_idx, bias) in raw.iter_mut().enumerate() {
-                *bias = q_i16(subnet.output.bias()[weight_idx], QA);
+                *bias = nets::q_i16(subnet.output.bias()[weight_idx], QA);
             }
         }
 
@@ -245,14 +245,14 @@ impl PolicyNetwork {
             for (row_idx, weights) in raw.iter_mut().enumerate() {
                 let row = subnet.output.weights_row(row_idx);
                 for weight_idx in 0..ATTENTION_SIZE {
-                    weights[weight_idx] = q_i16(row[weight_idx], QA);
+                    weights[weight_idx] = nets::q_i16(row[weight_idx], QA);
                 }
             }
         }
 
         for (subnet, raw) in self.piece_sq.iter().zip(piece_sq_bias.iter_mut()) {
             for (weight_idx, bias) in raw.iter_mut().enumerate() {
-                *bias = q_i16(subnet.output.bias()[weight_idx], QA);
+                *bias = nets::q_i16(subnet.output.bias()[weight_idx], QA);
             }
         }
 
@@ -295,13 +295,13 @@ pub struct LinearNetwork {
 
 unsafe impl Zeroable for LinearNetwork {}
 
-impl std::ops::AddAssign<&LinearNetwork> for LinearNetwork {
+impl AddAssign<&LinearNetwork> for LinearNetwork {
     fn add_assign(&mut self, rhs: &LinearNetwork) {
         self.output += &rhs.output;
     }
 }
 
-impl std::ops::DivAssign<f32> for LinearNetwork {
+impl DivAssign<f32> for LinearNetwork {
     fn div_assign(&mut self, rhs: f32) {
         self.output /= rhs;
     }
@@ -334,7 +334,7 @@ impl Display for LinearNetwork {
 
 impl FeedForwardNetwork for LinearNetwork {
     type InputType = SparseVector;
-    type OutputType = crate::neural::Vector<ATTENTION_SIZE>;
+    type OutputType = Vector<ATTENTION_SIZE>;
     type Layers = <Linear as FeedForwardNetwork>::Layers;
 
     fn out_with_layers(&self, input: &Self::InputType) -> Self::Layers {

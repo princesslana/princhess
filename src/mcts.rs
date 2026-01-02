@@ -1,16 +1,16 @@
-use arrayvec::ArrayVec;
-use fastapprox::faster;
 use std::f32;
-use std::fmt::{Display, Write};
+use std::fmt::{self, Display, Formatter, Write};
 use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU64, AtomicUsize, Ordering};
 
-use crate::arena::Error as ArenaError;
+use arrayvec::ArrayVec;
+use fastapprox::faster;
+
+use crate::arena;
 use crate::chess;
-use crate::engine::{eval_in_cp, RootEdge, ThreadData, SCALE};
+use crate::engine::{self, RootEdge, ThreadData, SCALE};
 use crate::evaluation::{self, Flag};
 use crate::graph::{
-    clear_edge_children, copy_edge_stats, create_node, select_edge_by_rewards, MoveEdge,
-    PositionNode, DRAW_NODE, LOSS_NODE, TABLEBASE_DRAW_NODE, TABLEBASE_LOSS_NODE,
+    self, MoveEdge, PositionNode, DRAW_NODE, LOSS_NODE, TABLEBASE_DRAW_NODE, TABLEBASE_LOSS_NODE,
     TABLEBASE_WIN_NODE, UNEXPANDED_NODE, WIN_NODE,
 };
 use crate::math;
@@ -66,7 +66,7 @@ impl Mcts {
 
         // Warm-start: copy statistics from transposition table if available
         if let Some(cached) = table.lookup_from_all(&state) {
-            copy_edge_stats(&root_edges, cached.edges());
+            graph::copy_edge_stats(&root_edges, cached.edges());
         }
 
         Self {
@@ -145,7 +145,7 @@ impl Mcts {
         } else {
             node = match self.descend(&state, root_edge_ref, tld) {
                 Ok(r) => r,
-                Err(ArenaError::Full) => {
+                Err(arena::Error::Full) => {
                     tld.ttable.flip_if_full(|| self.clear_root_children_links());
                     return true;
                 }
@@ -206,7 +206,7 @@ impl Mcts {
 
             let new_node = match self.descend(&state, choice, tld) {
                 Ok(r) => r,
-                Err(ArenaError::Full) => {
+                Err(arena::Error::Full) => {
                     tld.ttable.flip_if_full(|| self.clear_root_children_links());
                     return true;
                 }
@@ -288,7 +288,7 @@ impl Mcts {
         state: &State,
         choice: &'a MoveEdge,
         tld: &mut ThreadData<'a>,
-    ) -> Result<&'a PositionNode, ArenaError> {
+    ) -> Result<&'a PositionNode, arena::Error> {
         let current_arena_generation = tld.ttable.current_generation();
 
         // If the child is already there, check its generation.
@@ -309,7 +309,7 @@ impl Mcts {
         }
 
         // Create the child
-        let mut created_node_arena_ref = create_node(
+        let mut created_node_arena_ref = graph::create_node(
             state,
             |sz| tld.allocator.alloc_node(sz),
             self.engine_options.mcts_options.policy_temperature,
@@ -347,7 +347,7 @@ impl Mcts {
     }
 
     pub fn clear_root_children_links(&self) {
-        clear_edge_children(&self.root_edges);
+        graph::clear_edge_children(&self.root_edges);
     }
 
     pub fn flush_root_edges(&self, tld: &mut ThreadData) {
@@ -417,7 +417,7 @@ impl Mcts {
 
         let mut m = 1.0;
 
-        let bm = select_edge_by_rewards(&self.root_edges)
+        let bm = graph::select_edge_by_rewards(&self.root_edges)
             .expect("Root node must have moves during active search for time management");
         let bm_reward = bm.reward();
 
@@ -489,7 +489,7 @@ impl Mcts {
             write!(
                 info_str,
                 "score {} ",
-                eval_in_cp(edge.reward().average as f32 / SCALE)
+                engine::eval_in_cp(edge.reward().average as f32 / SCALE)
             )
             .unwrap();
             write!(info_str, "time {search_time_ms} ").unwrap();
@@ -647,7 +647,7 @@ struct UciWdl {
 }
 
 impl Display for UciWdl {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "{} {} {}", self.white, self.draw, self.black)
     }
 }
@@ -715,7 +715,7 @@ pub fn principal_variation<'a>(
     }
 
     while !crnt.edges().is_empty() && result.len() < num_moves {
-        let choice = select_edge_by_rewards(crnt.edges())
+        let choice = graph::select_edge_by_rewards(crnt.edges())
             .expect("Expected a child move, but node had no edges.");
 
         result.push(choice);

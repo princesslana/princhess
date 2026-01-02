@@ -4,7 +4,7 @@ use arrayvec::ArrayVec;
 
 use crate::chess::Move;
 use crate::evaluation;
-use crate::graph::{select_edge_by_visits, MoveEdge, PositionNode, Reward};
+use crate::graph::{self, MoveEdge, PositionNode, Reward};
 use crate::math::{self, Rng};
 use crate::mcts::{self, Mcts};
 use crate::options::{EngineOptions, MctsOptions};
@@ -13,7 +13,7 @@ use crate::tablebase;
 use crate::threadpool::{Scope, ThreadPool};
 use crate::time_management::TimeManagement;
 use crate::transposition_table::{LRAllocator, LRTable};
-use crate::uci::{read_stdin, Tokens};
+use crate::uci::{self, Tokens};
 
 pub const SCALE: f32 = 256. * 256.;
 
@@ -265,7 +265,7 @@ impl Engine {
 
             if is_interactive {
                 while !stop_signal.load(Ordering::Relaxed) {
-                    let line = read_stdin();
+                    let line = uci::read_stdin();
 
                     returned_line = match line.trim() {
                         "stop" => {
@@ -414,7 +414,7 @@ impl Engine {
     ///
     /// Panics if the root node has no child moves (e.g., checkmate or stalemate positions).
     pub fn most_visited_move(&self) -> Move {
-        *select_edge_by_visits(self.mcts.root_edges())
+        *graph::select_edge_by_visits(self.mcts.root_edges())
             .expect("Root node must have moves to determine most visited move")
             .get_move()
     }

@@ -1,5 +1,6 @@
 use crate::neural::Vector;
 use bytemuck::Zeroable;
+use std::ops::{AddAssign, Deref, DerefMut, DivAssign, MulAssign};
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Zeroable)]
@@ -7,7 +8,7 @@ pub struct Matrix<const M: usize, const N: usize> {
     inner: [Vector<N>; M],
 }
 
-impl<const M: usize, const N: usize> std::ops::AddAssign<&Matrix<M, N>> for Matrix<M, N> {
+impl<const M: usize, const N: usize> AddAssign<&Matrix<M, N>> for Matrix<M, N> {
     fn add_assign(&mut self, rhs: &Matrix<M, N>) {
         for (u, v) in self.inner.iter_mut().zip(rhs.inner.iter()) {
             *u += *v;
@@ -15,7 +16,7 @@ impl<const M: usize, const N: usize> std::ops::AddAssign<&Matrix<M, N>> for Matr
     }
 }
 
-impl<const M: usize, const N: usize> std::ops::DivAssign<f32> for Matrix<M, N> {
+impl<const M: usize, const N: usize> DivAssign<f32> for Matrix<M, N> {
     fn div_assign(&mut self, rhs: f32) {
         for row in self.inner.iter_mut() {
             *row /= rhs;
@@ -23,7 +24,7 @@ impl<const M: usize, const N: usize> std::ops::DivAssign<f32> for Matrix<M, N> {
     }
 }
 
-impl<const M: usize, const N: usize> std::ops::MulAssign<f32> for Matrix<M, N> {
+impl<const M: usize, const N: usize> MulAssign<f32> for Matrix<M, N> {
     fn mul_assign(&mut self, rhs: f32) {
         for row in self.inner.iter_mut() {
             *row *= rhs;
@@ -31,14 +32,14 @@ impl<const M: usize, const N: usize> std::ops::MulAssign<f32> for Matrix<M, N> {
     }
 }
 
-impl<const M: usize, const N: usize> std::ops::Deref for Matrix<M, N> {
+impl<const M: usize, const N: usize> Deref for Matrix<M, N> {
     type Target = [Vector<N>; M];
     fn deref(&self) -> &Self::Target {
         &self.inner
     }
 }
 
-impl<const M: usize, const N: usize> std::ops::DerefMut for Matrix<M, N> {
+impl<const M: usize, const N: usize> DerefMut for Matrix<M, N> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.inner
     }

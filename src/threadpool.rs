@@ -1,6 +1,6 @@
 use std::marker::PhantomData;
-use std::panic::{catch_unwind, AssertUnwindSafe};
-use std::sync::mpsc::{channel, Receiver, SendError, Sender};
+use std::panic::{self, AssertUnwindSafe};
+use std::sync::mpsc::{self, Receiver, SendError, Sender};
 use std::sync::{Arc, Condvar, Mutex};
 use std::thread::{self, JoinHandle};
 
@@ -138,7 +138,7 @@ impl Worker {
                     };
 
                     // Catch panics from the user-provided task to ensure the counter is decremented.
-                    let result = catch_unwind(AssertUnwindSafe(task));
+                    let result = panic::catch_unwind(AssertUnwindSafe(task));
 
                     // If the task panicked, log the error but keep the worker thread alive.
                     if let Err(e) = result {
@@ -178,7 +178,7 @@ impl ThreadPool {
     pub fn new(num_threads: usize) -> Self {
         assert!(num_threads > 0, "ThreadPool must have at least one thread.");
 
-        let (sender, receiver) = channel();
+        let (sender, receiver) = mpsc::channel();
         let receiver = Arc::new(Mutex::new(receiver));
 
         let active_tasks = Arc::new(Mutex::new(0));

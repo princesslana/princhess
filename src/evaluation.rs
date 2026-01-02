@@ -1,7 +1,7 @@
 use crate::chess::MoveList;
 use crate::engine::SCALE;
 #[cfg(feature = "policy-net")]
-use crate::math::softmax;
+use crate::math;
 use crate::options::EvaluationOptions;
 #[cfg(feature = "policy-net")]
 use crate::quantized_policy::QuantizedPolicyNetwork;
@@ -137,7 +137,7 @@ fn run_policy_net(state: &State, moves: &MoveList, t: f32) -> Vec<f32> {
     let network = [&MG_POLICY_NETWORK, &EG_POLICY_NETWORK][usize::from(state.is_endgame())];
     network.get_all(state, state.moves_to_indexes(moves), &mut evalns);
 
-    softmax(&mut evalns, t);
+    math::softmax(&mut evalns, t);
 
     evalns
 }
