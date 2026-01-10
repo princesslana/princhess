@@ -324,7 +324,7 @@ fn interleave_files(
         }
 
         if *count == 0 {
-            inputs.remove(idx);
+            inputs.swap_remove(idx);
         }
     }
 
@@ -532,8 +532,8 @@ fn main() {
         })
         .collect();
 
-    const SHUFFLE_LIMIT: usize = 25_000_000; // 25M positions
-    const CLEANUP_SAFETY_THRESHOLD: usize = 150_000_000; // 150M positions
+    const SHUFFLE_LIMIT: usize = 25_000_000;
+    const CLEANUP_SAFETY_THRESHOLD: usize = 150_000_000;
 
     // Safety check: files must have valid position counts
     for file in &files {

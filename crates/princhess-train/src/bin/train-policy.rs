@@ -4,7 +4,7 @@ use std::io::{self, BufRead, BufReader};
 use std::ops::AddAssign;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU32, AtomicU64, AtomicUsize, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -22,6 +22,7 @@ use ratatui::widgets::{
     Axis, Block, Borders, Chart, Dataset, Gauge, GraphType, Paragraph, Sparkline,
 };
 use ratatui::{Frame, Terminal, TerminalOptions, Viewport};
+use scc::{Guard, Queue};
 
 use princhess::engine::SCALE;
 use princhess::math;
@@ -73,9 +74,6 @@ impl AddAssign for BatchMetrics {
         self.processed_count += rhs.processed_count;
     }
 }
-
-use scc::{Guard, Queue};
-use std::sync::Mutex;
 
 struct TrainingConfig {
     input_file: String,
@@ -300,7 +298,7 @@ fn run_training_loop<S: LRScheduler>(
         // Save network periodically
         if (sb + 1) % SAVE_EVERY_N_SUPER_BATCHES == 0 || sb + 1 == TOTAL_SUPER_BATCHES {
             let dir_name = format!("nets/policy-{phase}-{timestamp}-sb{:03}", sb + 1);
-            fs::create_dir(&dir_name).unwrap();
+            fs::create_dir(&dir_name).expect("Failed to create network save directory");
             let dir = Path::new(&dir_name);
             network
                 .to_boxed_and_quantized()
@@ -632,10 +630,8 @@ fn render_loss_chart(frame: &mut Frame, area: ratatui::layout::Rect, stats: &Tra
     let guard = Guard::new();
     let mut loss_data: Vec<(f64, f64)> = Vec::new();
 
-    let mut idx = 1;
-    for loss_entry in stats.loss_history.iter(&guard) {
-        loss_data.push((idx as f64, *loss_entry as f64));
-        idx += 1;
+    for (idx, loss_entry) in stats.loss_history.iter(&guard).enumerate() {
+        loss_data.push(((idx + 1) as f64, *loss_entry as f64));
     }
 
     let (min_loss, max_loss) = if loss_data.is_empty() {
@@ -675,10 +671,8 @@ fn render_accuracy_chart(frame: &mut Frame, area: ratatui::layout::Rect, stats: 
     let guard = Guard::new();
     let mut acc_data: Vec<(f64, f64)> = Vec::new();
 
-    let mut idx = 1;
-    for acc_entry in stats.accuracy_history.iter(&guard) {
-        acc_data.push((idx as f64, (*acc_entry * 100.0) as f64));
-        idx += 1;
+    for (idx, acc_entry) in stats.accuracy_history.iter(&guard).enumerate() {
+        acc_data.push(((idx + 1) as f64, (*acc_entry * 100.0) as f64));
     }
 
     let (min_acc, max_acc) = if acc_data.is_empty() {
