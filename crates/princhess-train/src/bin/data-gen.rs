@@ -3,7 +3,6 @@ use chrono::Utc;
 use crossterm::{
     cursor,
     event::{poll, read, Event, KeyCode},
-    terminal::{disable_raw_mode, enable_raw_mode},
     ExecutableCommand,
 };
 use princhess::engine::{Engine, SCALE};
@@ -29,7 +28,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use princhess_train::data::TrainingPosition;
-use princhess_train::tui;
+use princhess_train::tui::{self, RawModeGuard};
 use scc::{self, Guard, Queue};
 
 const HASH_SIZE_MB: usize = 128;
@@ -1234,7 +1233,6 @@ fn render_tui(frame: &mut Frame, view: &StatsView) {
 
 fn run_tui(stats: &Stats, stop_signal: Arc<AtomicBool>) -> io::Result<()> {
     let stdout = io::stdout();
-    enable_raw_mode()?;
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::with_options(
         backend,
@@ -1242,6 +1240,8 @@ fn run_tui(stats: &Stats, stop_signal: Arc<AtomicBool>) -> io::Result<()> {
             viewport: Viewport::Inline(TUI_TOTAL_HEIGHT),
         },
     )?;
+
+    let _guard = RawModeGuard::enable()?;
 
     let result = (|| -> io::Result<()> {
         let mut last_sample_time = Instant::now();
@@ -1298,7 +1298,6 @@ fn run_tui(stats: &Stats, stop_signal: Arc<AtomicBool>) -> io::Result<()> {
     // Position cursor at the end of the viewport
     let viewport_area = terminal.get_frame().area();
     io::stdout().execute(cursor::MoveTo(0, viewport_area.bottom()))?;
-    disable_raw_mode()?;
 
     result
 }
@@ -1351,7 +1350,7 @@ fn main() {
                             positions.drain(..TrainingPosition::BUFFER_COUNT).as_slice(),
                         );
 
-                        TrainingPosition::write_buffer(&mut writer, &buffer[..]);
+                        TrainingPosition::write_buffer(&mut writer, &buffer[..]).unwrap();
                         stats.thread_buffers[t as usize].store(positions.len(), Ordering::Relaxed);
                     }
                 }

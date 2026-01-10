@@ -1,3 +1,22 @@
+use std::io::Result;
+
+use crossterm::terminal;
+
+pub struct RawModeGuard;
+
+impl RawModeGuard {
+    pub fn enable() -> Result<Self> {
+        terminal::enable_raw_mode()?;
+        Ok(Self)
+    }
+}
+
+impl Drop for RawModeGuard {
+    fn drop(&mut self) {
+        terminal::disable_raw_mode().ok();
+    }
+}
+
 #[must_use]
 pub fn format_elapsed(seconds: u64) -> String {
     let hours = seconds / 3600;

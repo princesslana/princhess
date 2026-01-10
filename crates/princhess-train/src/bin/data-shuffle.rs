@@ -1,17 +1,15 @@
 use std::env;
 use std::fs::{self, File};
-use std::io::{self, BufRead, BufReader, BufWriter, Read, Write};
+use std::io::{self, BufRead, BufReader, BufWriter, ErrorKind, Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
 
-use bytemuck::allocation;
 use chrono::Utc;
 use crossterm::cursor;
 use crossterm::event::{poll, read, Event, KeyCode};
-use crossterm::terminal::{disable_raw_mode, enable_raw_mode};
 use crossterm::ExecutableCommand;
 use ratatui::backend::CrosstermBackend;
 use ratatui::layout::{Alignment, Constraint, Direction, Layout};
@@ -22,7 +20,7 @@ use ratatui::{Frame, Terminal, TerminalOptions, Viewport};
 
 use princhess::math::Rng;
 use princhess_train::data::TrainingPosition;
-use princhess_train::tui;
+use princhess_train::tui::{self, RawModeGuard};
 
 #[derive(Clone)]
 struct FileInfo {
@@ -39,7 +37,38 @@ impl FileInfo {
             .unwrap_or(false);
 
         let metadata = fs::metadata(&path)?;
-        let position_count = metadata.len() as usize / TrainingPosition::SIZE;
+        let file_size = metadata.len() as usize;
+
+        if !file_size.is_multiple_of(TrainingPosition::SIZE) {
+            return Err(io::Error::new(
+                ErrorKind::InvalidData,
+                format!(
+                    "File size {} is not a multiple of position size {}",
+                    file_size,
+                    TrainingPosition::SIZE
+                ),
+            ));
+        }
+
+        let position_count = file_size / TrainingPosition::SIZE;
+
+        if position_count == 0 {
+            return Err(io::Error::new(
+                ErrorKind::InvalidData,
+                "File contains no positions",
+            ));
+        }
+
+        if !position_count.is_multiple_of(TrainingPosition::BUFFER_COUNT) {
+            return Err(io::Error::new(
+                ErrorKind::InvalidData,
+                format!(
+                    "Position count {} is not a multiple of buffer count {}",
+                    position_count,
+                    TrainingPosition::BUFFER_COUNT
+                ),
+            ));
+        }
 
         Ok(Self {
             path,
@@ -223,6 +252,17 @@ fn shuffle_file(
             break;
         }
 
+        if bytes.len() != TrainingPosition::BUFFER_SIZE {
+            return Err(io::Error::new(
+                ErrorKind::UnexpectedEof,
+                format!(
+                    "Expected {} bytes, got {}",
+                    TrainingPosition::BUFFER_SIZE,
+                    bytes.len()
+                ),
+            ));
+        }
+
         let data = TrainingPosition::read_buffer(bytes);
         loaded += data.len();
         positions.extend_from_slice(data);
@@ -255,21 +295,15 @@ fn shuffle_file(
 
     // Phase 3: Write
     let mut writer = BufWriter::new(File::create(output_path)?);
-    let mut write_buffer: Box<[TrainingPosition; TrainingPosition::BUFFER_COUNT]> =
-        allocation::zeroed_box();
 
-    let mut written = 0;
-    while !positions.is_empty() {
-        let chunk_size = positions.len().min(TrainingPosition::BUFFER_COUNT);
-        write_buffer[..chunk_size].copy_from_slice(&positions[..chunk_size]);
-        positions.drain(..chunk_size);
-        TrainingPosition::write_buffer(&mut writer, &write_buffer[..chunk_size]);
-
-        written += chunk_size;
+    let mut written = 0usize;
+    for chunk in positions.chunks(TrainingPosition::BUFFER_COUNT) {
+        TrainingPosition::write_buffer(&mut writer, chunk)?;
+        written += chunk.len();
         let pct = ((written as f64 / total_positions as f64) * 100.0) as usize;
         progress
             .shuffle_write_progress
-            .store(pct, Ordering::Relaxed);
+            .store(pct.min(100), Ordering::Relaxed);
     }
 
     progress
@@ -517,7 +551,7 @@ fn main() {
         eprintln!();
         eprintln!("Options:");
         eprintln!("  --cleanup  Delete input files after successful shuffle");
-        eprintln!("  --force    Required with --cleanup if any file >= 200M positions");
+        eprintln!("  --force    Required with --cleanup if any file >= 150M positions");
         std::process::exit(1);
     }
 
@@ -534,26 +568,6 @@ fn main() {
 
     const SHUFFLE_LIMIT: usize = 25_000_000;
     const CLEANUP_SAFETY_THRESHOLD: usize = 150_000_000;
-
-    // Safety check: files must have valid position counts
-    for file in &files {
-        if file.position_count == 0 {
-            eprintln!("ERROR: Cannot shuffle empty file {}", file.path.display());
-            std::process::exit(1);
-        }
-        if file.position_count % TrainingPosition::BUFFER_COUNT != 0 {
-            eprintln!(
-                "ERROR: File {} has invalid position count {}",
-                file.path.display(),
-                file.position_count
-            );
-            eprintln!(
-                "       Position count must be a multiple of {}",
-                TrainingPosition::BUFFER_COUNT
-            );
-            std::process::exit(1);
-        }
-    }
 
     // Safety check: files too large to shuffle
     for file in &files {
@@ -682,7 +696,6 @@ fn main() {
 
 fn run_tui(files: &[FileInfo], progress: &ProgressState) -> io::Result<()> {
     let stdout = io::stdout();
-    enable_raw_mode()?;
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::with_options(
         backend,
@@ -690,6 +703,8 @@ fn run_tui(files: &[FileInfo], progress: &ProgressState) -> io::Result<()> {
             viewport: Viewport::Inline(13),
         },
     )?;
+
+    let _guard = RawModeGuard::enable()?;
 
     let result = (|| -> io::Result<()> {
         loop {
@@ -719,7 +734,6 @@ fn run_tui(files: &[FileInfo], progress: &ProgressState) -> io::Result<()> {
 
     let viewport_area = terminal.get_frame().area();
     io::stdout().execute(cursor::MoveTo(0, viewport_area.bottom()))?;
-    disable_raw_mode()?;
 
     result
 }

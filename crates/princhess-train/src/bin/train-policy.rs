@@ -12,7 +12,6 @@ use arrayvec::ArrayVec;
 use bytemuck::Zeroable;
 use crossterm::cursor;
 use crossterm::event::{poll, read, Event, KeyCode};
-use crossterm::terminal::{disable_raw_mode, enable_raw_mode};
 use crossterm::ExecutableCommand;
 use ratatui::backend::CrosstermBackend;
 use ratatui::layout::{Alignment, Constraint, Direction, Layout};
@@ -30,7 +29,7 @@ use princhess::state::State;
 use princhess_train::data::TrainingPosition;
 use princhess_train::neural::{AdamWOptimizer, LRScheduler, SparseVector, StepLRScheduler};
 use princhess_train::policy::{Phase, PolicyCount, PolicyNetwork};
-use princhess_train::tui;
+use princhess_train::tui::{self, RawModeGuard};
 
 const BATCHES_PER_SUPER_BATCH: usize = 3_052;
 const TOTAL_SUPER_BATCHES: usize = 100;
@@ -319,7 +318,6 @@ fn run_tui(
     config: TrainingConfig,
 ) -> io::Result<()> {
     let stdout = io::stdout();
-    enable_raw_mode()?;
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::with_options(
         backend,
@@ -327,6 +325,8 @@ fn run_tui(
             viewport: Viewport::Inline(TUI_TOTAL_HEIGHT),
         },
     )?;
+
+    let _guard = RawModeGuard::enable()?;
 
     let result = (|| -> io::Result<()> {
         let mut last_sample_time = Instant::now();
@@ -382,7 +382,6 @@ fn run_tui(
     // Position cursor at the end of the viewport
     let viewport_area = terminal.get_frame().area();
     io::stdout().execute(cursor::MoveTo(0, viewport_area.bottom()))?;
-    disable_raw_mode()?;
     io::stdout().execute(cursor::Show)?;
     result
 }
