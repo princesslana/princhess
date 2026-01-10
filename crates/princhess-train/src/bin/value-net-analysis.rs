@@ -358,8 +358,7 @@ fn analyze_bucket_differentiation(network: &QuantizedValueNetwork) {
     // Each "logical feature" appears in multiple buckets (king + threat combinations)
 
     // Map from (piece, square, side) -> Vec<(bucket_combo, importance)>
-    let mut feature_buckets: HashMap<(usize, usize, bool), Vec<(usize, i64)>> =
-        HashMap::new();
+    let mut feature_buckets: HashMap<(usize, usize, bool), Vec<(usize, i64)>> = HashMap::new();
 
     for feat_idx in 0..INPUT_SIZE {
         let bucket = feat_idx / NUMBER_POSITIONS;
@@ -766,8 +765,7 @@ fn analyze_per_bucket_stats(feature_buckets: &FeatureBucketMap) {
     println!("\nPer-bucket analysis:");
 
     // Collect stats for each bucket combination
-    let mut bucket_stats: HashMap<usize, Vec<i64>> =
-        HashMap::new();
+    let mut bucket_stats: HashMap<usize, Vec<i64>> = HashMap::new();
 
     for bucket_values in feature_buckets.values() {
         for &(bucket, importance) in bucket_values {

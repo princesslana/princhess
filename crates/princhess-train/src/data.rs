@@ -4,8 +4,7 @@ use princhess::chess::{Bitboard, Board, Castling, Color, Move, Piece, Square};
 use princhess::engine::SCALE;
 use princhess::mcts::Mcts;
 use princhess::state::State;
-use std::fs::File;
-use std::io::{BufWriter, Write};
+use std::io::{self, Write};
 use std::mem;
 
 #[derive(Clone, Copy, Debug, Pod, Zeroable)]
@@ -33,13 +32,8 @@ impl TrainingPosition {
     pub const BUFFER_COUNT: usize = 1 << 16;
     pub const BUFFER_SIZE: usize = Self::BUFFER_COUNT * Self::SIZE;
 
-    /// Writes training position data to a buffer.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the write operation fails.
-    pub fn write_buffer(out: &mut BufWriter<File>, data: &[TrainingPosition]) {
-        out.write_all(bytemuck::cast_slice(data)).unwrap();
+    pub fn write_buffer<W: Write>(out: &mut W, data: &[TrainingPosition]) -> io::Result<()> {
+        out.write_all(bytemuck::cast_slice(data))
     }
 
     #[must_use]
@@ -74,6 +68,29 @@ impl TrainingPosition {
     #[must_use]
     pub fn white_relative_result(&self) -> i8 {
         self.result
+    }
+
+    #[must_use]
+    pub fn piece_count(&self) -> usize {
+        self.occupied.count()
+    }
+
+    #[must_use]
+    pub fn phase(&self) -> usize {
+        let mut phase = 0;
+
+        for idx in 0..self.occupied.count() {
+            let packed_piece = self.pieces[idx / 2] >> (4 * (idx & 1));
+            let piece_type = packed_piece & 7;
+            match Piece::from(piece_type) {
+                Piece::KNIGHT | Piece::BISHOP => phase += 1,
+                Piece::ROOK => phase += 2,
+                Piece::QUEEN => phase += 4,
+                _ => {}
+            }
+        }
+
+        phase.clamp(0, 24)
     }
 
     #[must_use]
