@@ -261,8 +261,8 @@ fn shuffle_file(
     let mut written = 0;
     while !positions.is_empty() {
         let chunk_size = positions.len().min(TrainingPosition::BUFFER_COUNT);
-        write_buffer[..chunk_size]
-            .copy_from_slice(&positions.drain(..chunk_size).collect::<Vec<_>>());
+        write_buffer[..chunk_size].copy_from_slice(&positions[..chunk_size]);
+        positions.drain(..chunk_size);
         TrainingPosition::write_buffer(&mut writer, &write_buffer[..chunk_size]);
 
         written += chunk_size;
@@ -535,6 +535,26 @@ fn main() {
     const SHUFFLE_LIMIT: usize = 25_000_000; // 25M positions
     const CLEANUP_SAFETY_THRESHOLD: usize = 150_000_000; // 150M positions
 
+    // Safety check: files must have valid position counts
+    for file in &files {
+        if file.position_count == 0 {
+            eprintln!("ERROR: Cannot shuffle empty file {}", file.path.display());
+            std::process::exit(1);
+        }
+        if file.position_count % TrainingPosition::BUFFER_COUNT != 0 {
+            eprintln!(
+                "ERROR: File {} has invalid position count {}",
+                file.path.display(),
+                file.position_count
+            );
+            eprintln!(
+                "       Position count must be a multiple of {}",
+                TrainingPosition::BUFFER_COUNT
+            );
+            std::process::exit(1);
+        }
+    }
+
     // Safety check: files too large to shuffle
     for file in &files {
         if !file.is_shuffled && file.position_count > SHUFFLE_LIMIT {
@@ -565,6 +585,12 @@ fn main() {
             );
             std::process::exit(1);
         }
+    }
+
+    // Safety check: output directory exists
+    if !Path::new("data").is_dir() {
+        eprintln!("ERROR: 'data' directory does not exist");
+        std::process::exit(1);
     }
 
     // Calculate totals for progress tracking

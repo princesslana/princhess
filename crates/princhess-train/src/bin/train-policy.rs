@@ -377,8 +377,6 @@ fn run_tui(
                     }
                 }
             }
-
-            thread::sleep(Duration::from_millis(100));
         }
         Ok(())
     })();
