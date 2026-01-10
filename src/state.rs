@@ -342,7 +342,10 @@ pub fn generate_random_opening(rng: &mut Rng, dfrc_pct: u64) -> (Vec<Move>, Stat
 
     for p in 0..num_plies {
         let base_t = 2.0 - ((p as f32) / (num_plies as f32)) * 1.5; // Starts at 2.0, ends at 0.5
-        let t = state.board().side_to_move().fold(base_t * 0.75, base_t); // White more principled
+        let t = state
+            .board()
+            .side_to_move()
+            .fold(base_t * 0.75, base_t * 1.25); // White principled, Black exploratory
 
         let best_move = select_weighted_random_move(&state, t, rng);
 

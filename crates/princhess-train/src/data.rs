@@ -77,6 +77,29 @@ impl TrainingPosition {
     }
 
     #[must_use]
+    pub fn piece_count(&self) -> usize {
+        self.occupied.count()
+    }
+
+    #[must_use]
+    pub fn phase(&self) -> usize {
+        let mut phase = 0;
+
+        for idx in 0..self.occupied.count() {
+            let packed_piece = self.pieces[idx / 2] >> (4 * (idx & 1));
+            let piece_type = packed_piece & 7;
+            match Piece::from(piece_type) {
+                Piece::KNIGHT | Piece::BISHOP => phase += 1,
+                Piece::ROOK => phase += 2,
+                Piece::QUEEN => phase += 4,
+                _ => {}
+            }
+        }
+
+        phase.clamp(0, 24)
+    }
+
+    #[must_use]
     pub fn moves(&self) -> ArrayVec<(Move, u8), { Self::MAX_MOVES }> {
         self.legal_moves
             .iter()

@@ -1,4 +1,5 @@
 use bytemuck::allocation;
+use chrono::Utc;
 use crossterm::{
     cursor,
     event::{poll, read, Event, KeyCode},
@@ -7,7 +8,7 @@ use crossterm::{
 };
 use princhess::engine::{Engine, SCALE};
 use princhess::math::{self, Rng};
-use princhess::options::{EngineOptions, MctsOptions};
+use princhess::options::{EngineOptions, EvaluationOptions, MctsOptions};
 use princhess::state::State;
 use ratatui::{
     backend::CrosstermBackend,
@@ -25,10 +26,11 @@ use std::ops::Neg;
 use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::thread;
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant};
 
 use princhess_train::data::TrainingPosition;
-use scc::{Guard, Queue};
+use princhess_train::tui;
+use scc::{self, Guard, Queue};
 
 const HASH_SIZE_MB: usize = 128;
 
@@ -39,7 +41,13 @@ const DFRC_PCT: u64 = 10;
 
 const VARIATION_MIN_EVAL: f32 = 0.25;
 const VARIATION_MAX_EVAL: f32 = 0.75;
-const VARIATION_MIN_PHASE: usize = 8;
+const VARIATION_MIN_PHASE: usize = 16;
+
+const ADJUDICATE_MAX_PIECE_COUNT: usize = 6;
+const ADJUDICATE_DRAW_EVAL: f32 = 0.10;
+const ADJUDICATE_DRAW_MOVES: usize = 8;
+const ADJUDICATE_WIN_EVAL: f32 = 0.90;
+const ADJUDICATE_WIN_MOVES: usize = 3;
 
 const MAX_POSITIONS_PER_FILE: u64 = 20_000_000;
 const MAX_POSITIONS_TOTAL: u64 = MAX_POSITIONS_PER_FILE * THREADS;
@@ -61,6 +69,14 @@ const TUI_TOTAL_HEIGHT: u16 = TUI_PROGRESS_BOX_HEIGHT + TUI_GRID_HEIGHT + TUI_HI
 
 fn load_atomic_array<const N: usize>(arr: &[AtomicU64; N]) -> [u64; N] {
     array::from_fn(|i| arr[i].load(Ordering::Relaxed))
+}
+
+fn zeroed_atomic_u64_array<const N: usize>() -> [AtomicU64; N] {
+    array::from_fn(|_| AtomicU64::new(0))
+}
+
+fn zeroed_atomic_usize_array<const N: usize>() -> [AtomicUsize; N] {
+    array::from_fn(|_| AtomicUsize::new(0))
 }
 
 fn to_bucket(value: f32, thresholds: &[f32]) -> usize {
@@ -120,6 +136,8 @@ struct Stats {
     piece_count_distribution: [AtomicU64; 33],
     phase_distribution: [AtomicU64; 25],
     variation_phase_distribution: [AtomicU64; 25],
+    duplicate_set: scc::HashSet<u64>,
+    duplicate_piece_count_distribution: [AtomicU64; 33],
 }
 
 struct GameStats {
@@ -156,14 +174,16 @@ impl Stats {
             variation_count: AtomicU64::new(0),
             recent_rates: Queue::default(),
             last_sample_positions: AtomicU64::new(0),
-            thread_buffers: Default::default(),
-            policy_gini_buckets: Default::default(),
-            eval_distribution_buckets: Default::default(),
-            eval_delta_buckets: Default::default(),
-            eval_result_agreement_buckets: Default::default(),
-            piece_count_distribution: array::from_fn(|_| AtomicU64::new(0)),
-            phase_distribution: Default::default(),
-            variation_phase_distribution: Default::default(),
+            thread_buffers: zeroed_atomic_usize_array(),
+            policy_gini_buckets: zeroed_atomic_u64_array(),
+            eval_distribution_buckets: zeroed_atomic_u64_array(),
+            eval_delta_buckets: zeroed_atomic_u64_array(),
+            eval_result_agreement_buckets: zeroed_atomic_u64_array(),
+            piece_count_distribution: zeroed_atomic_u64_array(),
+            phase_distribution: zeroed_atomic_u64_array(),
+            variation_phase_distribution: zeroed_atomic_u64_array(),
+            duplicate_set: scc::HashSet::new(),
+            duplicate_piece_count_distribution: zeroed_atomic_u64_array(),
         }
     }
 
@@ -251,6 +271,11 @@ impl Stats {
             piece_count_distribution: load_atomic_array(&self.piece_count_distribution),
             phase_distribution: load_atomic_array(&self.phase_distribution),
             variation_phase_distribution: load_atomic_array(&self.variation_phase_distribution),
+            duplicate_count: self.positions.load(Ordering::Relaxed)
+                - self.duplicate_set.len() as u64,
+            duplicate_piece_count_distribution: load_atomic_array(
+                &self.duplicate_piece_count_distribution,
+            ),
         }
     }
 }
@@ -283,6 +308,8 @@ struct StatsView {
     piece_count_distribution: [u64; 33],
     phase_distribution: [u64; 25],
     variation_phase_distribution: [u64; 25],
+    duplicate_count: u64,
+    duplicate_piece_count_distribution: [u64; 33],
 }
 
 impl StatsView {
@@ -388,31 +415,6 @@ impl StatsView {
         self.avg_positions_per_hour() as f32 / 1_000_000.0
     }
 
-    fn elapsed_formatted(&self) -> String {
-        let hours = self.elapsed_seconds / 3600;
-        let minutes = (self.elapsed_seconds % 3600) / 60;
-        let secs = self.elapsed_seconds % 60;
-        format!("{:02}:{:02}:{:02}", hours, minutes, secs)
-    }
-
-    fn eta_formatted(&self, max_positions: u64) -> String {
-        if self.positions == 0 {
-            return "--:--:--".to_string();
-        }
-        let positions_remaining = max_positions.saturating_sub(self.positions);
-
-        let positions_per_second = self.avg_positions_per_hour() / 3600;
-
-        if positions_per_second == 0 {
-            return "--:--:--".to_string();
-        }
-        let eta_seconds = positions_remaining / positions_per_second;
-        let hours = eta_seconds / 3600;
-        let minutes = (eta_seconds % 3600) / 60;
-        let secs = eta_seconds % 60;
-        format!("{:02}:{:02}:{:02}", hours, minutes, secs)
-    }
-
     fn progress_ratio(&self, max_positions: u64) -> f64 {
         self.positions as f64 / max_positions as f64
     }
@@ -489,8 +491,14 @@ fn run_game(
         policy_temperature_root: 1.4,
     };
 
+    let evaluation_options = EvaluationOptions {
+        enable_material_scaling: false,
+        enable_50mr_scaling: false,
+    };
+
     let engine_options = EngineOptions {
         mcts_options,
+        evaluation_options,
         hash_size_mb: HASH_SIZE_MB,
         ..EngineOptions::default()
     };
@@ -517,6 +525,8 @@ fn run_game(
         let mut game_positions = Vec::with_capacity(256);
         let mut is_first_move = true;
         let mut previous_eval = 0.0;
+        let mut consecutive_draw_moves = 0;
+        let mut consecutive_win_moves = 0;
         let result = loop {
             engine.set_root_state(state.clone());
             let legal_moves = engine.root_edges().len();
@@ -589,13 +599,24 @@ fn run_game(
                 }
                 previous_eval = eval;
 
-                game_positions.push((position, state.board().occupied().count(), state.phase()));
+                game_positions.push((position, state.hash()));
 
                 game_stats.positions += 1;
                 game_stats.nodes += engine.mcts().num_nodes();
                 game_stats.playouts += engine.mcts().playouts();
                 game_stats.depth += engine.mcts().depth();
                 game_stats.seldepth += engine.mcts().max_depth();
+
+                if eval.abs() <= ADJUDICATE_DRAW_EVAL {
+                    consecutive_draw_moves += 1;
+                    consecutive_win_moves = 0;
+                } else if eval.abs() >= ADJUDICATE_WIN_EVAL {
+                    consecutive_win_moves += 1;
+                    consecutive_draw_moves = 0;
+                } else {
+                    consecutive_draw_moves = 0;
+                    consecutive_win_moves = 0;
+                }
             }
 
             is_first_move = false;
@@ -620,6 +641,25 @@ fn run_game(
                 break GameResult::Draw;
             }
 
+            let piece_count = state.board().occupied().count();
+            let base = ((ADJUDICATE_MAX_PIECE_COUNT + 1) as f32 - piece_count as f32)
+                / (ADJUDICATE_MAX_PIECE_COUNT - 1) as f32;
+            let adjudication_probability = base.powi(3);
+
+            if adjudication_probability > 0.0 && rng.next_f32() < adjudication_probability {
+                if consecutive_draw_moves >= ADJUDICATE_DRAW_MOVES {
+                    break GameResult::Draw;
+                }
+
+                if consecutive_win_moves >= ADJUDICATE_WIN_MOVES {
+                    break if previous_eval > 0.0 {
+                        GameResult::WhiteWin
+                    } else {
+                        GameResult::BlackWin
+                    };
+                }
+            }
+
             if !seen_positions.insert(state.hash()) {
                 game_positions.clear();
                 break GameResult::Aborted;
@@ -628,12 +668,14 @@ fn run_game(
 
         let mut blunder = false;
 
-        for (position, piece_count, phase) in game_positions.iter_mut() {
+        for (position, hash) in game_positions.iter_mut() {
             position.set_result(i8::from(result));
 
-            let eval = position.evaluation();
+            let eval_white = position.evaluation();
+            let eval_stm = position.stm_relative_evaluation();
+
             stats.eval_result_agreement_buckets[to_bucket(
-                (eval - f32::from(i8::from(result))).abs(),
+                (eval_white - f32::from(i8::from(result))).abs(),
                 &EVAL_RESULT_AGREEMENT_THRESHOLDS,
             )]
             .fetch_add(1, Ordering::Relaxed);
@@ -645,22 +687,28 @@ fn run_game(
             let gini_bucket = to_bucket(gini, &POLICY_GINI_THRESHOLDS);
             stats.policy_gini_buckets[gini_bucket].fetch_add(1, Ordering::Relaxed);
 
-            let eval_bucket = to_bucket(eval, &EVAL_DISTRIBUTION_THRESHOLDS);
+            let eval_bucket = to_bucket(eval_stm, &EVAL_DISTRIBUTION_THRESHOLDS);
             stats.eval_distribution_buckets[eval_bucket].fetch_add(1, Ordering::Relaxed);
 
-            stats.piece_count_distribution[*piece_count].fetch_add(1, Ordering::Relaxed);
-            stats.phase_distribution[*phase].fetch_add(1, Ordering::Relaxed);
+            let piece_count = position.piece_count();
+            stats.piece_count_distribution[piece_count].fetch_add(1, Ordering::Relaxed);
+            stats.phase_distribution[position.phase()].fetch_add(1, Ordering::Relaxed);
+
+            if stats.duplicate_set.insert_sync(*hash).is_err() {
+                stats.duplicate_piece_count_distribution[piece_count]
+                    .fetch_add(1, Ordering::Relaxed);
+            }
 
             blunder |= match result {
-                GameResult::WhiteWin => eval < -0.5,
-                GameResult::BlackWin => eval > 0.5,
-                GameResult::Draw => eval.abs() > 0.75,
+                GameResult::WhiteWin => eval_white < -0.5,
+                GameResult::BlackWin => eval_white > 0.5,
+                GameResult::Draw => eval_white.abs() > 0.75,
                 GameResult::Aborted => false,
             }
         }
 
         let saved_positions: Vec<TrainingPosition> =
-            game_positions.into_iter().map(|(pos, _, _)| pos).collect();
+            game_positions.into_iter().map(|(pos, _)| pos).collect();
         positions.extend(saved_positions);
 
         if blunder {
@@ -784,7 +832,12 @@ fn render_histogram(
         let label_widget = Paragraph::new(label.as_str()).style(Style::default().fg(Color::Gray));
         frame.render_widget(label_widget, row_layout[0]);
 
-        let gauge_label = Span::styled(format!("{:>3}%", pct), Style::default().fg(Color::White));
+        let label_text = if count > 0 && pct == 0 {
+            ">0%".to_string()
+        } else {
+            format!("{:>3}%", pct)
+        };
+        let gauge_label = Span::styled(label_text, Style::default().fg(Color::White));
         let gauge = Gauge::default()
             .gauge_style(Style::default().fg(Color::Cyan))
             .ratio(pct as f64 / 100.0)
@@ -833,14 +886,22 @@ fn render_tui(frame: &mut Frame, view: &StatsView) {
         ])
         .split(progress_layout[0]);
 
-    let elapsed = Paragraph::new(view.elapsed_formatted()).alignment(Alignment::Left);
+    let elapsed =
+        Paragraph::new(tui::format_elapsed(view.elapsed_seconds)).alignment(Alignment::Left);
     frame.render_widget(elapsed, time_chunks[0]);
 
     let rate = Paragraph::new(format!("{:.1}M/h", view.positions_per_hour_millions()))
         .alignment(Alignment::Center);
     frame.render_widget(rate, time_chunks[1]);
 
-    let eta = Paragraph::new(view.eta_formatted(MAX_POSITIONS_TOTAL)).alignment(Alignment::Right);
+    let positions_remaining = MAX_POSITIONS_TOTAL.saturating_sub(view.positions);
+    let positions_per_second = view.avg_positions_per_hour() / 3600;
+    let eta_seconds = if positions_per_second == 0 {
+        0
+    } else {
+        positions_remaining / positions_per_second
+    };
+    let eta = Paragraph::new(tui::format_eta(eta_seconds)).alignment(Alignment::Right);
     frame.render_widget(eta, time_chunks[2]);
 
     // Progress gauge
@@ -1045,7 +1106,7 @@ fn render_tui(frame: &mut Frame, view: &StatsView) {
     render_histogram(
         frame,
         histogram_row[1],
-        "Eval Distribution",
+        "Eval Distribution (STM)",
         &view.eval_distribution_buckets,
         &bucket_labels(&EVAL_DISTRIBUTION_THRESHOLDS),
     );
@@ -1075,10 +1136,15 @@ fn render_tui(frame: &mut Frame, view: &StatsView) {
         vertical: 1,
     });
 
+    let main_split = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+        .split(distribution_inner);
+
     let sparkline_layout = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Length(13), Constraint::Min(0)])
-        .split(distribution_inner);
+        .split(main_split[0]);
 
     let rows = Layout::default()
         .direction(Direction::Vertical)
@@ -1127,6 +1193,43 @@ fn render_tui(frame: &mut Frame, view: &StatsView) {
         .data(&var_phase_data)
         .style(Style::default().fg(Color::Yellow));
     frame.render_widget(var_phase_sparkline, rows[2]);
+
+    let duplicate_layout = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Length(13), Constraint::Min(0)])
+        .split(main_split[1]);
+
+    let duplicate_rows = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Length(1), Constraint::Length(1)])
+        .split(duplicate_layout[1]);
+
+    let duplicate_labels = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Length(1), Constraint::Length(1)])
+        .split(duplicate_layout[0]);
+
+    let duplicate_pct = if view.positions > 0 {
+        (view.duplicate_count as f64 / view.positions as f64) * 100.0
+    } else {
+        0.0
+    };
+
+    let dup_label = Paragraph::new("Duplicates:").style(Style::default().fg(Color::Gray));
+    frame.render_widget(dup_label, duplicate_labels[0]);
+
+    let dup_pct =
+        Paragraph::new(format!("{:>5.1}%", duplicate_pct)).style(Style::default().fg(Color::Gray));
+    frame.render_widget(dup_pct, duplicate_rows[0]);
+
+    let dup_sparkline_label = Paragraph::new("Dup by PC:").style(Style::default().fg(Color::Gray));
+    frame.render_widget(dup_sparkline_label, duplicate_labels[1]);
+
+    let dup_data: Vec<u64> = view.duplicate_piece_count_distribution[2..33].to_vec();
+    let dup_sparkline = Sparkline::default()
+        .data(&dup_data)
+        .style(Style::default().fg(Color::Red));
+    frame.render_widget(dup_sparkline, duplicate_rows[1]);
 }
 
 fn run_tui(stats: &Stats, stop_signal: Arc<AtomicBool>) -> io::Result<()> {
@@ -1204,10 +1307,7 @@ fn main() {
     let stats = Arc::new(Stats::zero());
     let stop_signal = Arc::new(AtomicBool::new(false));
 
-    let timestamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_secs();
+    let timestamp = Utc::now().format("%Y%m%d-%H%M").to_string();
 
     thread::scope(|s| {
         let tui_stats = stats.clone();
