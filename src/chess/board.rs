@@ -835,4 +835,27 @@ mod test {
             "EP square should be set when adjacent pawn can capture"
         );
     }
+
+    #[test]
+    fn test_castling_rights_startpos() {
+        let board = Board::from_fen(STARTPOS_FEN);
+        let castling = board.castling_rights();
+
+        assert_eq!(castling.by_color(Color::WHITE).0, Square::H1);
+        assert_eq!(castling.by_color(Color::WHITE).1, Square::A1);
+        assert_eq!(castling.by_color(Color::BLACK).0, Square::H8);
+        assert_eq!(castling.by_color(Color::BLACK).1, Square::A8);
+    }
+
+    #[test]
+    fn test_xfen_castling_mixed_notation() {
+        let board =
+            Board::from_fen("rn2k1r1/ppp1pp1p/3p2p1/5bn1/P7/2N2B2/1PPPPP2/2BNK1RR w Gkq - 4 11");
+        let castling = board.castling_rights();
+
+        assert_eq!(castling.by_color(Color::WHITE).0, Square::G1);
+        assert_eq!(castling.by_color(Color::WHITE).1, Square::NONE);
+        assert_eq!(castling.by_color(Color::BLACK).0, Square::G8);
+        assert_eq!(castling.by_color(Color::BLACK).1, Square::A8);
+    }
 }

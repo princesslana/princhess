@@ -1,5 +1,5 @@
 use std::fmt::{self, Display, Formatter};
-use std::ops::{Add, Index, IndexMut, Sub};
+use std::ops::{Add, BitAnd, Index, IndexMut, Sub};
 
 use crate::chess::Bitboard;
 
@@ -150,6 +150,28 @@ impl From<Square> for u16 {
 impl From<Bitboard> for Square {
     fn from(square: Bitboard) -> Self {
         Square(square.0.trailing_zeros() as u8)
+    }
+}
+
+impl From<Rank> for Bitboard {
+    fn from(rank: Rank) -> Self {
+        Bitboard(0xFF << (rank.0 * 8))
+    }
+}
+
+impl BitAnd<Rank> for Bitboard {
+    type Output = Bitboard;
+
+    fn bitand(self, rhs: Rank) -> Self::Output {
+        self & Bitboard::from(rhs)
+    }
+}
+
+impl BitAnd<Bitboard> for Rank {
+    type Output = Bitboard;
+
+    fn bitand(self, rhs: Bitboard) -> Self::Output {
+        Bitboard::from(self) & rhs
     }
 }
 
