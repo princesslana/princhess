@@ -1,4 +1,4 @@
-use crate::chess::{zobrist, Board, Color, File, Rank, Square};
+use crate::chess::{zobrist, Bitboard, Board, Color, File, Rank, Square};
 
 #[must_use]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -40,10 +40,22 @@ impl Castling {
 
         for c in chars {
             match c {
-                b'K' => castling.white_king = Square::H1,
-                b'Q' => castling.white_queen = Square::A1,
-                b'k' => castling.black_king = Square::H8,
-                b'q' => castling.black_queen = Square::A8,
+                b'K' => {
+                    castling.white_king =
+                        (board.white() & board.rooks() & Bitboard::from(Rank::_1)).last_square();
+                }
+                b'Q' => {
+                    castling.white_queen =
+                        (board.white() & board.rooks() & Bitboard::from(Rank::_1)).first_square();
+                }
+                b'k' => {
+                    castling.black_king =
+                        (board.black() & board.rooks() & Bitboard::from(Rank::_8)).last_square();
+                }
+                b'q' => {
+                    castling.black_queen =
+                        (board.black() & board.rooks() & Bitboard::from(Rank::_8)).first_square();
+                }
                 b'A'..=b'H' => {
                     let king_file = board.king_of(Color::WHITE).file();
                     let rook_file = File::from(c - b'A');

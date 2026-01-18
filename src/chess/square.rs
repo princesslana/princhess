@@ -153,6 +153,12 @@ impl From<Bitboard> for Square {
     }
 }
 
+impl From<Rank> for Bitboard {
+    fn from(rank: Rank) -> Self {
+        Bitboard(0xFF << (rank.0 * 8))
+    }
+}
+
 impl Add<u8> for Square {
     type Output = Square;
 

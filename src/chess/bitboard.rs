@@ -49,6 +49,24 @@ impl Bitboard {
     pub fn xor_square(self, square: Square) -> Self {
         Self(self.0 ^ (1 << square.index()))
     }
+
+    #[must_use]
+    pub fn first_square(self) -> Square {
+        if self.0 == 0 {
+            Square::NONE
+        } else {
+            Square::from(self.0.trailing_zeros() as u8)
+        }
+    }
+
+    #[must_use]
+    pub fn last_square(self) -> Square {
+        if self.0 == 0 {
+            Square::NONE
+        } else {
+            Square::from((63 - self.0.leading_zeros()) as u8)
+        }
+    }
 }
 
 impl BitAnd for Bitboard {
