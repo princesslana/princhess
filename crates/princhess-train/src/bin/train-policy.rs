@@ -6,10 +6,11 @@ use std::path::Path;
 use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU32, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant};
 
 use arrayvec::ArrayVec;
 use bytemuck::Zeroable;
+use chrono::Utc;
 use crossterm::cursor;
 use crossterm::event::{poll, read, Event, KeyCode};
 use crossterm::ExecutableCommand;
@@ -257,10 +258,7 @@ fn run_training_loop<S: LRScheduler>(
     input: &str,
     config: TrainingConfig,
 ) {
-    let timestamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_secs();
+    let timestamp = Utc::now().format("%Y%m%d-%H%M").to_string();
 
     let start_time = Instant::now();
     let stats = Arc::new(TrainingStats::new(start_time));

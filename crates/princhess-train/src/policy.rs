@@ -23,6 +23,7 @@ pub enum Phase {
 }
 
 impl Phase {
+    #[must_use]
     pub fn from_arg(arg: &str) -> Option<Self> {
         if arg.eq_ignore_ascii_case("mg") {
             Some(Self::MiddleGame)
@@ -33,6 +34,7 @@ impl Phase {
         }
     }
 
+    #[must_use]
     pub fn matches(&self, state: &State) -> bool {
         let board = state.board();
         let major_pieces_count =

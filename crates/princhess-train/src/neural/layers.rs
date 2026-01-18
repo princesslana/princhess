@@ -43,6 +43,7 @@ impl<T: Activation + Zeroable, const M: usize, const N: usize> DenseConnected<T,
     pub const INPUT_SIZE: usize = M;
     pub const OUTPUT_SIZE: usize = N;
 
+    #[must_use]
     pub fn weights_col(&self, idx: usize) -> &Vector<N> {
         &self.weights[idx]
     }
@@ -51,10 +52,12 @@ impl<T: Activation + Zeroable, const M: usize, const N: usize> DenseConnected<T,
         &mut self.weights[idx]
     }
 
+    #[must_use]
     pub fn bias(&self) -> Vector<N> {
         self.bias
     }
 
+    #[must_use]
     pub fn weights_norm(&self) -> f32 {
         let mut norm_sq = 0.0f32;
         for row in 0..M {
@@ -95,6 +98,7 @@ impl<T: Activation + Zeroable, const M: usize, const N: usize> DenseConnected<T,
         &mut self.bias
     }
 
+    #[must_use]
     pub const fn zeroed() -> Self {
         Self::from_raw(Matrix::zeroed(), Vector::zeroed())
     }
@@ -105,6 +109,7 @@ impl<T: Activation + Zeroable, const M: usize, const N: usize> DenseConnected<T,
         layer
     }
 
+    #[must_use]
     pub const fn from_raw(weights: Matrix<M, N>, bias: Vector<N>) -> Self {
         Self {
             weights,
@@ -198,6 +203,7 @@ impl<T: Activation, const M: usize, const N: usize> MulAssign<f32> for SparseCon
 }
 
 impl<T: Activation + Zeroable, const M: usize, const N: usize> SparseConnected<T, M, N> {
+    #[must_use]
     pub fn weights_row(&self, idx: usize) -> Vector<N> {
         self.weights[idx]
     }
@@ -206,10 +212,12 @@ impl<T: Activation + Zeroable, const M: usize, const N: usize> SparseConnected<T
         &mut self.weights[idx]
     }
 
+    #[must_use]
     pub fn bias(&self) -> Vector<N> {
         self.bias
     }
 
+    #[must_use]
     pub fn weights_norm(&self) -> f32 {
         let mut norm_sq = 0.0f32;
         for row in 0..M {
@@ -250,6 +258,7 @@ impl<T: Activation + Zeroable, const M: usize, const N: usize> SparseConnected<T
         &mut self.bias
     }
 
+    #[must_use]
     pub const fn zeroed() -> Self {
         Self::from_raw(Matrix::zeroed(), Vector::zeroed())
     }
@@ -260,6 +269,7 @@ impl<T: Activation + Zeroable, const M: usize, const N: usize> SparseConnected<T
         layer
     }
 
+    #[must_use]
     pub const fn from_raw(weights: Matrix<M, N>, bias: Vector<N>) -> Self {
         Self {
             weights,

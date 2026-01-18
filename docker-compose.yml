@@ -18,6 +18,6 @@ services:
       - ./target/release/princhess:/engines/princhess
       - ./builds:/engines/builds:ro
       - ./syzygy:/syzygy:ro
-      - ./bin/tuning_config.json:/config/tuning_config.json:ro
+      - ./target/tuning/tuning_config.json:/config/tuning_config.json:ro
       - ./target/tuning/data:/data
       - ./target/tuning/plots:/plots

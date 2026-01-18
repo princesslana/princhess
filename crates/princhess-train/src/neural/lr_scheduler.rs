@@ -10,6 +10,7 @@ pub struct StepLRScheduler {
 }
 
 impl StepLRScheduler {
+    #[must_use]
     pub fn new(initial_lr: f32, drop_factor: f32, drop_at_fraction: f32, total_steps: u32) -> Self {
         let drop_interval = (total_steps as f32 * drop_at_fraction).ceil() as u32;
         Self {
@@ -33,6 +34,7 @@ pub struct ConstantLRScheduler {
 }
 
 impl ConstantLRScheduler {
+    #[must_use]
     pub fn new(lr: f32) -> Self {
         Self { lr }
     }
@@ -52,6 +54,7 @@ pub struct CosineAnnealingLRScheduler {
 }
 
 impl CosineAnnealingLRScheduler {
+    #[must_use]
     pub fn new(initial_lr: f32, min_lr: f32, total_steps: u32) -> Self {
         Self {
             initial_lr,

@@ -18,7 +18,7 @@ impl<const M: usize, const N: usize> AddAssign<&Matrix<M, N>> for Matrix<M, N> {
 
 impl<const M: usize, const N: usize> DivAssign<f32> for Matrix<M, N> {
     fn div_assign(&mut self, rhs: f32) {
-        for row in self.inner.iter_mut() {
+        for row in &mut self.inner {
             *row /= rhs;
         }
     }
@@ -26,7 +26,7 @@ impl<const M: usize, const N: usize> DivAssign<f32> for Matrix<M, N> {
 
 impl<const M: usize, const N: usize> MulAssign<f32> for Matrix<M, N> {
     fn mul_assign(&mut self, rhs: f32) {
-        for row in self.inner.iter_mut() {
+        for row in &mut self.inner {
             *row *= rhs;
         }
     }
@@ -46,10 +46,12 @@ impl<const M: usize, const N: usize> DerefMut for Matrix<M, N> {
 }
 
 impl<const M: usize, const N: usize> Matrix<M, N> {
+    #[must_use]
     pub const fn zeroed() -> Self {
         Self::from_raw([Vector::zeroed(); M])
     }
 
+    #[must_use]
     pub const fn from_raw(inner: [Vector<N>; M]) -> Self {
         Self { inner }
     }
@@ -65,6 +67,7 @@ impl<const M: usize, const N: usize> Matrix<M, N> {
         Self::from_raw(rows)
     }
 
+    #[must_use]
     pub fn mul(&self, inp: &Vector<M>) -> Vector<N> {
         let mut result = Vector::zeroed();
 
@@ -75,6 +78,7 @@ impl<const M: usize, const N: usize> Matrix<M, N> {
         result
     }
 
+    #[must_use]
     pub fn transpose_mul(&self, out: &Vector<N>) -> Vector<M> {
         Vector::from_fn(|i| {
             let mut v = 0.0;

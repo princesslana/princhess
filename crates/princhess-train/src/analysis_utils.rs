@@ -1,3 +1,4 @@
+#[must_use]
 pub fn king_bucket_name(bucket: usize) -> &'static str {
     match bucket {
         0 => "Corner",
@@ -7,6 +8,7 @@ pub fn king_bucket_name(bucket: usize) -> &'static str {
     }
 }
 
+#[must_use]
 pub fn threat_bucket_name(bucket: usize) -> &'static str {
     match bucket {
         0 => "Safe",
@@ -17,6 +19,7 @@ pub fn threat_bucket_name(bucket: usize) -> &'static str {
     }
 }
 
+#[must_use]
 pub fn piece_name(piece_idx: usize) -> &'static str {
     match piece_idx {
         0 => "pawn",

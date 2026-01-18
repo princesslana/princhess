@@ -7,6 +7,7 @@
 pub mod chess;
 pub mod engine;
 pub mod evaluation;
+pub mod graph;
 pub mod math;
 pub mod mcts;
 pub mod nets;
@@ -20,6 +21,5 @@ pub mod transposition_table;
 pub mod uci;
 
 mod arena;
-mod graph;
 mod mem;
 mod threadpool;
