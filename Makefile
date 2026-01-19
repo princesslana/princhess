@@ -75,31 +75,31 @@ endif
 # Test targets
 .PHONY: sprt-gain
 sprt-gain:
-	@scripts/start-test.sh sprt_gain stc princhess princhess-main
+	@$(MAKE) start-test TYPE=sprt_gain TC=stc ENGINE1=princhess ENGINE2=princhess-main
 
 .PHONY: sprt-gain-ltc
 sprt-gain-ltc:
-	@scripts/start-test.sh sprt_gain ltc princhess princhess-main
+	@$(MAKE) start-test TYPE=sprt_gain TC=ltc ENGINE1=princhess ENGINE2=princhess-main
 
 .PHONY: sprt-gain-2t
 sprt-gain-2t:
-	@scripts/start-test.sh sprt_gain stc princhess princhess-main 2t
+	@$(MAKE) start-test TYPE=sprt_gain TC=stc ENGINE1=princhess ENGINE2=princhess-main THREADS=2
 
 .PHONY: sprt-equal
 sprt-equal:
-	@scripts/start-test.sh sprt_equal stc princhess princhess-main
+	@$(MAKE) start-test TYPE=sprt_equal TC=stc ENGINE1=princhess ENGINE2=princhess-main
 
 .PHONY: sprt-equal-2t
 sprt-equal-2t:
-	@scripts/start-test.sh sprt_equal stc princhess princhess-main 2t
+	@$(MAKE) start-test TYPE=sprt_equal TC=stc ENGINE1=princhess ENGINE2=princhess-main THREADS=2
 
 .PHONY: elo-check
 elo-check:
-	@scripts/start-test.sh elo_check stc princhess princhess-main
+	@$(MAKE) start-test TYPE=elo_check TC=stc ENGINE1=princhess ENGINE2=princhess-main
 
 .PHONY: elo-check-25k
 elo-check-25k:
-	@scripts/start-test.sh elo_check nodes25k princhess princhess-main
+	@$(MAKE) start-test TYPE=elo_check TC=nodes25k ENGINE1=princhess ENGINE2=princhess-main
 
 .PHONY: resume-test
 resume-test:
@@ -108,13 +108,15 @@ resume-test:
 .PHONY: start-test
 start-test:
 	@if [ -z "$(TYPE)" ] || [ -z "$(TC)" ] || [ -z "$(ENGINE1)" ] || [ -z "$(ENGINE2)" ]; then \
-		echo "Usage: make start-test TYPE=<type> TC=<tc> ENGINE1=<engine1> ENGINE2=<engine2>"; \
+		echo "Usage: make start-test TYPE=<type> TC=<tc> ENGINE1=<engine1> ENGINE2=<engine2> [THREADS=<n>] [MAX_CORES=<n>]"; \
 		echo "  TYPE: sprt_gain, sprt_equal, elo_check"; \
 		echo "  TC: stc, ltc, nodes25k"; \
 		echo "  ENGINE1, ENGINE2: princhess, princhess-main, etc"; \
+		echo "  THREADS: threads per game (optional, default: 1)"; \
+		echo "  MAX_CORES: max cores available (optional, auto-detected)"; \
 		exit 1; \
 	fi
-	@scripts/start-test.sh $(TYPE) $(TC) $(ENGINE1) $(ENGINE2)
+	@scripts/start-test.sh --test-type $(TYPE) --tc $(TC) --engine1 $(ENGINE1) --engine2 $(ENGINE2) $(if $(THREADS),--threads $(THREADS)) $(if $(MAX_CORES),--max-cores $(MAX_CORES))
 
 # Tuning targets
 define check_params

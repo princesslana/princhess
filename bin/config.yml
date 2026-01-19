@@ -38,7 +38,7 @@ challenge:
 matchmaking:
   allow_matchmaking: true
   challenge_variant: random
-  challenge_timeout: 30
+  challenge_timeout: 5
   challenge_initial_time:
     - 60
     - 120

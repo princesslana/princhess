@@ -1,33 +1,41 @@
 #!/bin/bash
 
 # Start a new fastchess test
-# Usage: start-test.sh <test_type> <time_control> <engine1> <engine2> [thread_config] [syzygy]
 
 set -e
 
-TEST_TYPE=$1
-TIME_CONTROL=$2
-ENGINE1=$3
-ENGINE2=$4
-THREAD_CONFIG=${5:-1t}
-USE_SYZYGY=${6:-true}
+show_help() {
+    cat << 'EOF'
+Usage: $0 --test-type <type> --tc <control> --engine1 <name> --engine2 <name> [options]
 
-if [ -z "$TEST_TYPE" ] || [ -z "$TIME_CONTROL" ] || [ -z "$ENGINE1" ] || [ -z "$ENGINE2" ]; then
-    echo "Usage: $0 <test_type> <time_control> <engine1> <engine2> [thread_config] [syzygy]"
-    echo "  test_type: sprt_gain, sprt_equal, elo_check, debug"
-    echo "  time_control: stc, ltc, nodes25k"
-    echo "  engine1: princhess, princhess-main, etc"
-    echo "  engine2: princhess-main, stockfish, etc"
-    echo "  thread_config: 1t, 2t, 4t, etc (default: 1t)"
-    echo "  syzygy: true or false (default: true)"
-    exit 1
-fi
+Required:
+  --test-type <type>     Test type: sprt_gain, sprt_equal, elo_check, debug
+  --tc <control>         Time control: stc, ltc, nodes25k
+  --engine1 <name>       First engine name
+  --engine2 <name>       Second engine name
 
-# Validate syzygy parameter
-if [ "$USE_SYZYGY" != "true" ] && [ "$USE_SYZYGY" != "false" ]; then
-    echo "Invalid syzygy parameter: $USE_SYZYGY (must be 'true' or 'false')"
-    exit 1
-fi
+Optional:
+  --threads <n>          Threads per game (default: 1)
+  --syzygy <bool>        Use Syzygy tablebases: true/false (default: true)
+  --max-cores <n>        Max cores available (overrides auto-detection)
+  -h, --help             Show this help
+EOF
+    exit 0
+}
+
+# Parse arguments and forward to generate-args.sh
+ARGS=()
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        -h|--help)
+            show_help
+            ;;
+        *)
+            ARGS+=("$1")
+            shift
+            ;;
+    esac
+done
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
@@ -36,8 +44,8 @@ PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 mkdir -p "$PROJECT_ROOT/target/fastchess"
 
 # Generate fastchess arguments
-echo "Generating command for $TEST_TYPE test ($TIME_CONTROL, $THREAD_CONFIG, syzygy=$USE_SYZYGY): $ENGINE1 vs $ENGINE2"
-FASTCHESS_ARGS=$("$SCRIPT_DIR/generate-args.sh" "$TEST_TYPE" "$TIME_CONTROL" "$ENGINE1" "$ENGINE2" "$THREAD_CONFIG" "$USE_SYZYGY")
+echo "Starting fastchess test..."
+FASTCHESS_ARGS=$("$SCRIPT_DIR/generate-args.sh" "${ARGS[@]}")
 
 echo "Starting fastchess with args:"
 echo "$FASTCHESS_ARGS"
