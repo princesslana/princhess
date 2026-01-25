@@ -154,18 +154,22 @@ get_default_concurrency() {
         total=$(nproc --all 2>/dev/null || echo "$cores")
     fi
 
-    # Cap at total - 2, minimum 1
-    local cap=$((total - 2))
-    if [ $cap -lt 1 ]; then
-        cap=1
+    # Take min(physical_cores - 1, total_cores - 2), minimum 1
+    local physical_max=$((cores - 1))
+    local total_max=$((total - 2))
+
+    # Take the smaller of the two maximums
+    local result=$physical_max
+    if [ $total_max -lt $result ]; then
+        result=$total_max
     fi
-    if [ $cores -gt $cap ]; then
-        cores=$cap
+
+    # Ensure minimum of 1
+    if [ $result -lt 1 ]; then
+        result=1
     fi
-    if [ $cores -lt 1 ]; then
-        cores=1
-    fi
-    echo $cores
+
+    echo $result
 }
 
 # Set common values for all time controls

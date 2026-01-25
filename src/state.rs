@@ -324,7 +324,11 @@ const KING_BUCKETS: [usize; Square::COUNT] = [
     2, 2, 2, 2, 2, 2, 2, 2,
 ];
 
-pub fn generate_random_opening(rng: &mut Rng, dfrc_pct: u64) -> (Vec<Move>, State) {
+pub fn generate_random_opening(
+    rng: &mut Rng,
+    dfrc_pct: u64,
+    opening_randomness: f32,
+) -> (Vec<Move>, State) {
     let (startpos, num_plies) = if rng.next_u64() % 100 < dfrc_pct {
         (
             Board::dfrc(rng.next_usize() % 960, rng.next_usize() % 960),
@@ -342,10 +346,10 @@ pub fn generate_random_opening(rng: &mut Rng, dfrc_pct: u64) -> (Vec<Move>, Stat
 
     for p in 0..num_plies {
         let base_t = 2.0 - ((p as f32) / (num_plies as f32)) * 1.5; // Starts at 2.0, ends at 0.5
-        let t = state
-            .board()
-            .side_to_move()
-            .fold(base_t * 0.75, base_t * 1.25); // White principled, Black exploratory
+        let t = state.board().side_to_move().fold(
+            base_t * (1.0 - opening_randomness),
+            base_t * (1.0 + opening_randomness),
+        );
 
         let best_move = select_weighted_random_move(&state, t, rng);
 

@@ -156,7 +156,7 @@ impl Uci {
 
     fn generate_random_opening(&mut self) {
         let mut rng = Rng::default();
-        let (moves_played, state) = state::generate_random_opening(&mut rng, 0); // No DFRC
+        let (moves_played, state) = state::generate_random_opening(&mut rng, 0, 0.25); // No DFRC, 0.25 opening randomness
 
         let move_strs: Vec<String> = moves_played
             .iter()

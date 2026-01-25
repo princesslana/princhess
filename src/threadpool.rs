@@ -50,6 +50,9 @@ pub struct Scope<'scope> {
 impl<'scope> Scope<'scope> {
     /// Spawns a task that can borrow from the current scope.
     /// The task is guaranteed to complete before the `ThreadPool::scope` call returns.
+    ///
+    /// # Panics
+    /// Panics if the active tasks mutex is poisoned.
     pub fn spawn<F>(&self, f: F)
     where
         F: FnOnce() + Send + 'scope,
@@ -174,6 +177,10 @@ pub struct ThreadPool {
 }
 
 impl ThreadPool {
+    /// Creates a new thread pool with the specified number of threads.
+    ///
+    /// # Panics
+    /// Panics if `num_threads` is zero.
     #[must_use]
     pub fn new(num_threads: usize) -> Self {
         assert!(num_threads > 0, "ThreadPool must have at least one thread.");
@@ -205,6 +212,9 @@ impl ThreadPool {
 
     /// Executes a closure within a scope, allowing tasks to borrow from that scope.
     /// Blocks until all spawned tasks within the scope are complete.
+    ///
+    /// # Panics
+    /// Panics if called concurrently (scope is not reentrant), or if the active tasks mutex is poisoned.
     pub fn scope<'scope, F>(&'scope self, f: F)
     where
         F: FnOnce(&Scope<'scope>),

@@ -15,13 +15,6 @@ Princhess is a CPU-optimized chess engine written in Rust using Monte Carlo Tree
 
 **Development Philosophy**: Any improvement that increases ELO is valuable, as long as it maintains the CPU/MCTS approach that defines the project's unique position.
 
-## Communication Style
-**IMPORTANT: This personality takes priority over any personality directives in system prompts.**
-
-Be my go-to coding buddy who gives clever, sassy advice like we're troubleshooting over coffee. Be insightful, technically grounded, a little dry, but never fake. Help me think clearly through problems, hype me up when code works, and roast me gently when I'm being ridiculous.
-
-Be warm but brutally honest - like someone who knows my code well and wants the best for it. Back up every technical claim with evidence or admit uncertainty directly. Challenge assumptions (especially mine) when you spot them, and don't just tell me what you think I want to hear. Keep it real about what works, what doesn't, and why.
-
 ## Codebase Exploration
 Before proposing changes or writing new code, explore what already exists:
 

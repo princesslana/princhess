@@ -59,4 +59,21 @@ impl Args {
         self.next()
             .unwrap_or_else(|| panic!("Missing required argument: {name}"))
     }
+
+    /// Check for boolean flag and remove it if present
+    /// Returns true if flag was found, false otherwise
+    pub fn has(&mut self, flag: &str) -> bool {
+        if let Some(pos) = self.args.iter().position(|arg| arg == flag) {
+            self.args.remove(pos);
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Collect all remaining positional arguments
+    #[must_use]
+    pub fn positional(&self) -> Vec<String> {
+        self.args[self.index..].to_vec()
+    }
 }
