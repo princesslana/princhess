@@ -67,10 +67,7 @@ const TARGET_PLAYOUTS: f32 = 500.0;
 const PLAYOUTS_TOLERANCE: f32 = 25.0;
 const CPUCT_ADJUSTMENT_STEP: u32 = 1;
 
-const TARGET_POLICY_KL: f32 = 0.85;
-const POLICY_KL_TOLERANCE: f32 = 0.04; // 5% of target
-const MIN_TEMP: u32 = 100; // Minimum temperature of 1.00 (quantized)
-const TEMP_ADJUSTMENT_STEP: u32 = 5;
+const POLICY_TEMPERATURE: f32 = 1.4;
 
 const TARGET_OPENING_UNBALANCED: f32 = 0.4;
 const UNBALANCED_TOLERANCE: f32 = 0.02;
@@ -354,7 +351,6 @@ impl Stats {
     fn view(
         &self,
         cpuct_quantized: &AtomicU32,
-        temp_quantized: &AtomicU32,
         opening_randomness_quantized: &AtomicU32,
         threads: u16,
         max_positions: u64,
@@ -404,7 +400,6 @@ impl Stats {
                 &self.duplicate_piece_count_distribution,
             ),
             cpuct: cpuct_quantized.load(Ordering::Relaxed) as f32 / 100.0,
-            temp: temp_quantized.load(Ordering::Relaxed) as f32 / 100.0,
             opening_randomness: opening_randomness_quantized.load(Ordering::Relaxed) as f32 / 100.0,
             eval_result_disagreement_sum: self.eval_result_disagreement_sum.load(Ordering::Relaxed),
         }
@@ -447,7 +442,6 @@ struct StatsView {
     duplicate_count: u64,
     duplicate_piece_count_distribution: [u64; 33],
     cpuct: f32,
-    temp: f32,
     opening_randomness: f32,
     eval_result_disagreement_sum: u64,
 }
@@ -637,7 +631,6 @@ impl Neg for GameResult {
 fn run_game(
     stats: &Stats,
     cpuct_quantized: &AtomicU32,
-    temp_quantized: &AtomicU32,
     opening_randomness_quantized: &AtomicU32,
     positions: &mut Vec<TrainingPosition>,
     rng: &mut Rng,
@@ -650,7 +643,6 @@ fn run_game(
     variations.push(random_start(rng, opening_randomness_quantized));
 
     let cpuct = cpuct_quantized.load(Ordering::Relaxed) as f32 / 100.0;
-    let temp = temp_quantized.load(Ordering::Relaxed) as f32 / 100.0;
 
     let mcts_options = MctsOptions {
         cpuct,
@@ -661,12 +653,12 @@ fn run_game(
         cpuct_gini_factor: 0.0,
         cpuct_gini_max: 1.0,
         policy_temperature: 1.0,
-        policy_temperature_root: temp,
+        policy_temperature_root: POLICY_TEMPERATURE,
     };
 
     let evaluation_options = EvaluationOptions {
         enable_material_scaling: false,
-        enable_50mr_scaling: false,
+        enable_50mr_scaling: true,
     };
 
     let engine_options = EngineOptions {
@@ -935,12 +927,7 @@ fn run_game(
             stats
                 .window_positions
                 .fetch_add(game_stats.positions, Ordering::Relaxed);
-            adjust_parameters(
-                stats,
-                cpuct_quantized,
-                temp_quantized,
-                opening_randomness_quantized,
-            );
+            adjust_parameters(stats, cpuct_quantized, opening_randomness_quantized);
         }
     }
 }
@@ -1337,17 +1324,15 @@ fn render_tui(frame: &mut Frame, view: &StatsView) {
         top_row[1],
         "Search Stats (avg per position)",
         format!(
-            "Nodes: {:>5}\nDepth: {:>2}/{:<2}",
+            "Nodes:    {:>5}\nDepth:    {:>2}/{:<2}",
             view.avg_nodes(),
             view.avg_depth(),
             view.avg_seldepth(),
         ),
         format!(
-            "Playouts:  {:>5} [CPuct: {:.2}]\nPolicy KL: {:>5.2} [Temp:  {:.2}]",
+            "Playouts: {:>5} [CPuct: {:.2}]\n",
             view.avg_playouts(),
             view.cpuct,
-            view.avg_policy_kl(),
-            view.temp,
         ),
     );
 
@@ -1529,7 +1514,6 @@ fn render_tui(frame: &mut Frame, view: &StatsView) {
 fn run_tui(
     stats: &Stats,
     cpuct_quantized: &AtomicU32,
-    temp_quantized: &AtomicU32,
     opening_randomness_quantized: &AtomicU32,
     stop_signal: &Arc<AtomicBool>,
     threads: u16,
@@ -1552,7 +1536,6 @@ fn run_tui(
         loop {
             let view = stats.view(
                 cpuct_quantized,
-                temp_quantized,
                 opening_randomness_quantized,
                 threads,
                 max_positions,
@@ -1623,21 +1606,6 @@ fn adjust_cpuct(avg_playouts: f32, cpuct_quantized: &AtomicU32) {
     }
 }
 
-/// Adjusts temperature based on policy KL target.
-fn adjust_temperature(avg_policy_kl: f32, temp_quantized: &AtomicU32) {
-    if avg_policy_kl > TARGET_POLICY_KL + POLICY_KL_TOLERANCE {
-        // KL too high, decrease temp to reduce diversity
-        temp_quantized
-            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |current| {
-                Some(current.saturating_sub(TEMP_ADJUSTMENT_STEP).max(MIN_TEMP))
-            })
-            .ok();
-    } else if avg_policy_kl < TARGET_POLICY_KL - POLICY_KL_TOLERANCE {
-        // KL too low, increase temp to increase diversity
-        temp_quantized.fetch_add(TEMP_ADJUSTMENT_STEP, Ordering::Relaxed);
-    }
-}
-
 /// Adjusts opening randomness based on opening position balance.
 fn adjust_opening_randomness(
     avg_opening_unbalanced: f32,
@@ -1655,7 +1623,6 @@ fn adjust_opening_randomness(
 fn adjust_parameters(
     stats: &Stats,
     cpuct_quantized: &AtomicU32,
-    temp_quantized: &AtomicU32,
     opening_randomness_quantized: &AtomicU32,
 ) {
     let window_positions = stats.window_positions.load(Ordering::Relaxed);
@@ -1674,23 +1641,20 @@ fn adjust_parameters(
 
     // Swap out accumulated values
     let window_playouts = stats.window_playouts.swap(0, Ordering::Relaxed);
-    let window_policy_kl = stats.window_policy_kl.swap(0, Ordering::Relaxed);
     let window_opening_eval = stats.window_opening_eval.swap(0, Ordering::Relaxed);
     let window_opening_count = stats.window_opening_count.swap(0, Ordering::Relaxed);
 
     // Calculate averages
     let avg_playouts = window_playouts as f32 / window_positions as f32;
-    let avg_policy_kl = window_policy_kl as f32 / window_positions as f32 / SCALE;
     let avg_opening_unbalanced = if window_opening_count > 0 {
         window_opening_eval as f32 / window_opening_count as f32 / SCALE
     } else {
         0.0
     };
 
-    // Always adjust all parameters
+    // Adjust parameters
     adjust_opening_randomness(avg_opening_unbalanced, opening_randomness_quantized);
     adjust_cpuct(avg_playouts, cpuct_quantized);
-    adjust_temperature(avg_policy_kl, temp_quantized);
 }
 
 fn main() {
@@ -1725,7 +1689,6 @@ fn main() {
     let initial_cpuct = effective_cpuct_at_target / visits_at_target.powf(data_gen_tau);
 
     let cpuct_quantized = Arc::new(AtomicU32::new((initial_cpuct * 100.0) as u32));
-    let temp_quantized = Arc::new(AtomicU32::new(100));
     let opening_randomness_quantized = Arc::new(AtomicU32::new(0)); // Initial opening randomness 0.00
 
     let timestamp = Utc::now().format("%Y%m%d-%H%M").to_string();
@@ -1734,13 +1697,11 @@ fn main() {
         let tui_stats = stats.clone();
         let tui_stop = stop_signal.clone();
         let tui_cpuct = cpuct_quantized.clone();
-        let tui_temp = temp_quantized.clone();
         let tui_opening_randomness = opening_randomness_quantized.clone();
         s.spawn(move || {
             if let Err(e) = run_tui(
                 &tui_stats,
                 &tui_cpuct,
-                &tui_temp,
                 &tui_opening_randomness,
                 &tui_stop,
                 threads,
@@ -1765,7 +1726,6 @@ fn main() {
             let stats = stats.clone();
             let stop = stop_signal.clone();
             let cpuct = cpuct_quantized.clone();
-            let temp = temp_quantized.clone();
             let opening_randomness = opening_randomness_quantized.clone();
             let mut rng = Rng::default();
 
@@ -1784,7 +1744,6 @@ fn main() {
                         run_game(
                             &stats,
                             &cpuct,
-                            &temp,
                             &opening_randomness,
                             &mut positions,
                             &mut rng,
