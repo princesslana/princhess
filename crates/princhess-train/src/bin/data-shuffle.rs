@@ -189,8 +189,8 @@ impl ProgressState {
     }
 
     fn interleave_elapsed_secs(&self) -> u64 {
-        let start = self.interleave_start.load(Ordering::Relaxed);
-        if start > 0 {
+        if self.shuffle_complete() {
+            let start = self.interleave_start.load(Ordering::Relaxed);
             let total_elapsed = self.shuffle_start.elapsed().as_secs();
             total_elapsed.saturating_sub(start).max(1)
         } else {
