@@ -1,4 +1,3 @@
-use std::env;
 use std::fs::{self, File};
 use std::io::{self, BufRead, BufReader};
 use std::ops::AddAssign;
@@ -6,10 +5,11 @@ use std::path::Path;
 use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU32, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant};
 
 use arrayvec::ArrayVec;
 use bytemuck::Zeroable;
+use chrono::Utc;
 use crossterm::cursor;
 use crossterm::event::{poll, read, Event, KeyCode};
 use crossterm::ExecutableCommand;
@@ -26,15 +26,17 @@ use scc::{Guard, Queue};
 use princhess::engine::SCALE;
 use princhess::math;
 use princhess::state::State;
+
+use princhess_train::args::Args;
 use princhess_train::data::TrainingPosition;
 use princhess_train::neural::{AdamWOptimizer, LRScheduler, SparseVector, StepLRScheduler};
 use princhess_train::policy::{Phase, PolicyCount, PolicyNetwork};
+use princhess_train::system;
 use princhess_train::tui::{self, RawModeGuard};
 
 const BATCHES_PER_SUPER_BATCH: usize = 3_052;
 const TOTAL_SUPER_BATCHES: usize = 100;
 const BATCH_SIZE: usize = 32768;
-const THREADS: usize = 6;
 
 const TUI_TOTAL_HEIGHT: u16 = 35;
 const SAMPLE_INTERVAL_SECS: u64 = 5;
@@ -74,11 +76,13 @@ impl AddAssign for BatchMetrics {
     }
 }
 
+#[derive(Clone)]
 struct TrainingConfig {
     input_file: String,
     phase: Phase,
     network_info: String,
     data_positions: usize,
+    threads: usize,
 }
 
 struct TrainingStats {
@@ -219,13 +223,13 @@ impl TrainingStats {
 }
 
 fn main() {
-    let mut args = env::args();
-    args.next();
+    let mut args = Args::from_env();
+    let threads = args
+        .flag("-t", "--threads")
+        .unwrap_or_else(system::default_thread_count) as usize;
 
-    let input = args.next().expect("Missing input file");
-    let phase_arg = args
-        .next()
-        .expect("Missing phase argument (--phase <mg|eg>)");
+    let input = args.expect("input file");
+    let phase_arg = args.expect("phase (mg|eg)");
 
     let phase = Phase::from_arg(&phase_arg)
         .unwrap_or_else(|| panic!("Invalid phase argument: {phase_arg}. Use 'mg' or 'eg'."));
@@ -242,6 +246,7 @@ fn main() {
         phase,
         network_info: format!("{network}"),
         data_positions,
+        threads,
     };
 
     let total_steps = (TOTAL_SUPER_BATCHES * BATCHES_PER_SUPER_BATCH) as u32;
@@ -251,17 +256,13 @@ fn main() {
             let scheduler =
                 StepLRScheduler::new(MG_LR, MG_LR_DROP_FACTOR, MG_LR_DROP_AT, total_steps);
             let optimizer = AdamWOptimizer::with_scheduler(scheduler).weight_decay(0.01);
-            run_training_loop(
-                phase, network, momentum, velocity, optimizer, &input, config,
-            );
+            run_training_loop(phase, network, momentum, velocity, optimizer, config);
         }
         Phase::Endgame => {
             let scheduler =
                 StepLRScheduler::new(EG_LR, EG_LR_DROP_FACTOR, EG_LR_DROP_AT, total_steps);
             let optimizer = AdamWOptimizer::with_scheduler(scheduler).weight_decay(0.0);
-            run_training_loop(
-                phase, network, momentum, velocity, optimizer, &input, config,
-            );
+            run_training_loop(phase, network, momentum, velocity, optimizer, config);
         }
     }
 }
@@ -272,13 +273,9 @@ fn run_training_loop<S: LRScheduler>(
     mut momentum: Box<PolicyNetwork>,
     mut velocity: Box<PolicyNetwork>,
     mut optimizer: AdamWOptimizer<S>,
-    input: &str,
     config: TrainingConfig,
 ) {
-    let timestamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_secs();
+    let timestamp = Utc::now().format("%Y%m%d-%H%M").to_string();
 
     let start_time = Instant::now();
     let stats = Arc::new(TrainingStats::new(start_time));
@@ -287,8 +284,9 @@ fn run_training_loop<S: LRScheduler>(
     // Spawn TUI update thread
     let stats_clone = Arc::clone(&stats);
     let stop_clone = Arc::clone(&stop_signal);
+    let config_clone = config.clone();
     let tui_thread = thread::spawn(move || {
-        if let Err(e) = run_tui(&stats_clone, stop_clone.clone(), config) {
+        if let Err(e) = run_tui(&stats_clone, stop_clone.clone(), config_clone) {
             eprintln!("TUI failed: {e}");
             stop_clone.store(true, Ordering::Relaxed);
         }
@@ -305,8 +303,7 @@ fn run_training_loop<S: LRScheduler>(
             &mut momentum,
             &mut velocity,
             &mut optimizer,
-            input,
-            phase,
+            &config,
             &stats,
         );
 
@@ -730,11 +727,10 @@ fn train_super_batch<S: LRScheduler>(
     momentum: &mut PolicyNetwork,
     velocity: &mut PolicyNetwork,
     optimizer: &mut AdamWOptimizer<S>,
-    input: &str,
-    phase: Phase,
+    config: &TrainingConfig,
     stats: &TrainingStats,
 ) {
-    let file = File::open(input).unwrap();
+    let file = File::open(&config.input_file).unwrap();
     let mut buffer = BufReader::with_capacity(TrainingPosition::BUFFER_SIZE, file);
 
     let mut batches_processed = 0;
@@ -747,7 +743,7 @@ fn train_super_batch<S: LRScheduler>(
         if bytes.is_empty() {
             // Reached end of file, restart from beginning
             drop(buffer);
-            let file = File::open(input).unwrap();
+            let file = File::open(&config.input_file).unwrap();
             buffer = BufReader::with_capacity(TrainingPosition::BUFFER_SIZE, file);
             continue;
         }
@@ -762,7 +758,7 @@ fn train_super_batch<S: LRScheduler>(
             let mut gradients = PolicyNetwork::zeroed();
             let mut count = PolicyCount::zeroed();
 
-            let batch_metrics = gradients_batch(network, &mut gradients, &mut count, batch, phase);
+            let batch_metrics = gradients_batch(network, &mut gradients, &mut count, batch, config);
 
             gradients.scale_by_counts(&count);
 
@@ -799,9 +795,10 @@ fn gradients_batch(
     gradients: &mut PolicyNetwork,
     count: &mut PolicyCount,
     batch: &[TrainingPosition],
-    phase: Phase,
+    config: &TrainingConfig,
 ) -> BatchMetrics {
-    let size = (batch.len() / THREADS) + 1;
+    let size = (batch.len() / config.threads) + 1;
+    let phase = config.phase;
     let mut total_metrics = BatchMetrics::default();
 
     thread::scope(|s| {
