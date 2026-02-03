@@ -65,9 +65,7 @@ const ADJUSTMENT_WINDOW_SIZE: u64 = 8192;
 
 const TARGET_PLAYOUTS: f32 = 500.0;
 const PLAYOUTS_TOLERANCE: f32 = 25.0;
-const CPUCT_ADJUSTMENT_STEP: u32 = 1;
-
-const POLICY_TEMPERATURE: f32 = 1.4;
+const KLD_ADJUSTMENT_STEP: i64 = 2048; // exp(2048/SCALE) ≈ 1.032 per window
 
 const TARGET_OPENING_UNBALANCED: f32 = 0.4;
 const UNBALANCED_TOLERANCE: f32 = 0.02;
@@ -77,8 +75,8 @@ const OPENING_RANDOMNESS_ADJUSTMENT_STEP: u32 = 1;
 const POLICY_GINI_CENTER: f32 = 0.5;
 const POLICY_GINI_WIDTH: f32 = 0.1;
 
-const POLICY_KL_CENTER: f32 = 1.0;
-const POLICY_KL_WIDTH: f32 = 0.2;
+const POLICY_KL_CENTER: f32 = 1.8;
+const POLICY_KL_WIDTH: f32 = 0.3;
 
 const EVAL_DISTRIBUTION_CENTER: f32 = 0.0;
 const EVAL_DISTRIBUTION_WIDTH: f32 = 0.2;
@@ -350,8 +348,10 @@ impl Stats {
 
     fn view(
         &self,
-        cpuct_quantized: &AtomicU32,
+        kld_threshold_quantized: &AtomicI64,
         opening_randomness_quantized: &AtomicU32,
+        cpuct: f32,
+        policy_temperature: f32,
         threads: u16,
         max_positions: u64,
     ) -> StatsView {
@@ -399,7 +399,9 @@ impl Stats {
             duplicate_piece_count_distribution: load_atomic_array(
                 &self.duplicate_piece_count_distribution,
             ),
-            cpuct: cpuct_quantized.load(Ordering::Relaxed) as f32 / 100.0,
+            kld_threshold: (kld_threshold_quantized.load(Ordering::Relaxed) as f32 / SCALE).exp(),
+            cpuct,
+            policy_temperature,
             opening_randomness: opening_randomness_quantized.load(Ordering::Relaxed) as f32 / 100.0,
             eval_result_disagreement_sum: self.eval_result_disagreement_sum.load(Ordering::Relaxed),
         }
@@ -441,7 +443,9 @@ struct StatsView {
     variation_phase_distribution: [u64; 25],
     duplicate_count: u64,
     duplicate_piece_count_distribution: [u64; 33],
+    kld_threshold: f32,
     cpuct: f32,
+    policy_temperature: f32,
     opening_randomness: f32,
     eval_result_disagreement_sum: u64,
 }
@@ -627,11 +631,13 @@ impl Neg for GameResult {
     }
 }
 
-#[allow(clippy::too_many_lines)]
+#[allow(clippy::too_many_lines, clippy::too_many_arguments)]
 fn run_game(
     stats: &Stats,
-    cpuct_quantized: &AtomicU32,
+    cpuct: f32,
     opening_randomness_quantized: &AtomicU32,
+    policy_temperature: f32,
+    kld_threshold_quantized: &AtomicI64,
     positions: &mut Vec<TrainingPosition>,
     rng: &mut Rng,
     stop_signal: &AtomicBool,
@@ -642,7 +648,7 @@ fn run_game(
 
     variations.push(random_start(rng, opening_randomness_quantized));
 
-    let cpuct = cpuct_quantized.load(Ordering::Relaxed) as f32 / 100.0;
+    let kld_threshold = (kld_threshold_quantized.load(Ordering::Relaxed) as f32 / SCALE).exp();
 
     let mcts_options = MctsOptions {
         cpuct,
@@ -653,7 +659,7 @@ fn run_game(
         cpuct_gini_factor: 0.0,
         cpuct_gini_max: 1.0,
         policy_temperature: 1.0,
-        policy_temperature_root: POLICY_TEMPERATURE,
+        policy_temperature_root: policy_temperature,
     };
 
     let evaluation_options = EvaluationOptions {
@@ -709,7 +715,7 @@ fn run_game(
                         engine.root_edges().iter().map(MoveEdge::visits).collect();
 
                     if let Some(gain) = kld_gain(&current_visits, &previous_visits) {
-                        if gain < KL_DIVERGENCE_THRESHOLD {
+                        if gain < kld_threshold {
                             break;
                         }
                     }
@@ -927,7 +933,7 @@ fn run_game(
             stats
                 .window_positions
                 .fetch_add(game_stats.positions, Ordering::Relaxed);
-            adjust_parameters(stats, cpuct_quantized, opening_randomness_quantized);
+            adjust_parameters(stats, kld_threshold_quantized, opening_randomness_quantized);
         }
     }
 }
@@ -1330,9 +1336,11 @@ fn render_tui(frame: &mut Frame, view: &StatsView) {
             view.avg_seldepth(),
         ),
         format!(
-            "Playouts: {:>5} [CPuct: {:.2}]\n",
+            "Playouts: {:>5} [KLD: {:.2e}]\nCPuct/T:  {:.2}/{:.2}",
             view.avg_playouts(),
+            view.kld_threshold,
             view.cpuct,
+            view.policy_temperature,
         ),
     );
 
@@ -1511,10 +1519,13 @@ fn render_tui(frame: &mut Frame, view: &StatsView) {
     frame.render_widget(eval_delta_sparkline, duplicate_rows[2]);
 }
 
+#[allow(clippy::too_many_arguments)]
 fn run_tui(
     stats: &Stats,
-    cpuct_quantized: &AtomicU32,
+    kld_threshold_quantized: &AtomicI64,
     opening_randomness_quantized: &AtomicU32,
+    cpuct: f32,
+    policy_temperature: f32,
     stop_signal: &Arc<AtomicBool>,
     threads: u16,
     max_positions: u64,
@@ -1535,8 +1546,10 @@ fn run_tui(
 
         loop {
             let view = stats.view(
-                cpuct_quantized,
+                kld_threshold_quantized,
                 opening_randomness_quantized,
+                cpuct,
+                policy_temperature,
                 threads,
                 max_positions,
             );
@@ -1596,13 +1609,13 @@ fn run_tui(
     result
 }
 
-/// Adjusts `CPuct` based on average playouts (primary) and disagreement (secondary when playouts stable).
-fn adjust_cpuct(avg_playouts: f32, cpuct_quantized: &AtomicU32) {
-    // Adjust based on playouts
+/// Adjusts KLD threshold (log-quantized) to target average playouts.
+/// Higher threshold → fewer playouts; lower threshold → more playouts.
+fn adjust_kld_threshold(avg_playouts: f32, kld_threshold_quantized: &AtomicI64) {
     if avg_playouts > TARGET_PLAYOUTS + PLAYOUTS_TOLERANCE {
-        cpuct_quantized.fetch_sub(CPUCT_ADJUSTMENT_STEP, Ordering::Relaxed);
+        kld_threshold_quantized.fetch_add(KLD_ADJUSTMENT_STEP, Ordering::Relaxed);
     } else if avg_playouts < TARGET_PLAYOUTS - PLAYOUTS_TOLERANCE {
-        cpuct_quantized.fetch_add(CPUCT_ADJUSTMENT_STEP, Ordering::Relaxed);
+        kld_threshold_quantized.fetch_sub(KLD_ADJUSTMENT_STEP, Ordering::Relaxed);
     }
 }
 
@@ -1612,8 +1625,11 @@ fn adjust_opening_randomness(
     opening_randomness_quantized: &AtomicU32,
 ) {
     if avg_opening_unbalanced > TARGET_OPENING_UNBALANCED + UNBALANCED_TOLERANCE {
-        opening_randomness_quantized
-            .fetch_sub(OPENING_RANDOMNESS_ADJUSTMENT_STEP, Ordering::Relaxed);
+        let current = opening_randomness_quantized.load(Ordering::Relaxed);
+        if current >= OPENING_RANDOMNESS_ADJUSTMENT_STEP {
+            opening_randomness_quantized
+                .fetch_sub(OPENING_RANDOMNESS_ADJUSTMENT_STEP, Ordering::Relaxed);
+        }
     } else if avg_opening_unbalanced < TARGET_OPENING_UNBALANCED - UNBALANCED_TOLERANCE {
         opening_randomness_quantized
             .fetch_add(OPENING_RANDOMNESS_ADJUSTMENT_STEP, Ordering::Relaxed);
@@ -1622,7 +1638,7 @@ fn adjust_opening_randomness(
 
 fn adjust_parameters(
     stats: &Stats,
-    cpuct_quantized: &AtomicU32,
+    kld_threshold_quantized: &AtomicI64,
     opening_randomness_quantized: &AtomicU32,
 ) {
     let window_positions = stats.window_positions.load(Ordering::Relaxed);
@@ -1654,7 +1670,7 @@ fn adjust_parameters(
 
     // Adjust parameters
     adjust_opening_randomness(avg_opening_unbalanced, opening_randomness_quantized);
-    adjust_cpuct(avg_playouts, cpuct_quantized);
+    adjust_kld_threshold(avg_playouts, kld_threshold_quantized);
 }
 
 fn main() {
@@ -1680,29 +1696,36 @@ fn main() {
     let stats = Arc::new(Stats::zero());
     let stop_signal = Arc::new(AtomicBool::new(false));
 
-    // Calculate initial CPuct based on matching effective exploration at 500 visits
+    // Derive CPuct and temperature as nudges from the default UCI values
     let default_options = MctsOptions::default();
-    let visits_at_target = TARGET_PLAYOUTS + 1.0;
-    let effective_cpuct_at_target =
-        default_options.cpuct * visits_at_target.powf(default_options.cpuct_tau);
-    let data_gen_tau = 0.5;
-    let initial_cpuct = effective_cpuct_at_target / visits_at_target.powf(data_gen_tau);
+    let visits_midpoint = TARGET_PLAYOUTS / 2.0 + 1.0;
+    let effective_cpuct = default_options.cpuct * visits_midpoint.powf(default_options.cpuct_tau);
+    let cpuct = effective_cpuct / visits_midpoint.powf(0.5);
 
-    let cpuct_quantized = Arc::new(AtomicU32::new((initial_cpuct * 100.0) as u32));
+    let policy_temperature = default_options
+        .policy_temperature_root
+        .midpoint(1.0)
+        .max(1.05);
+
     let opening_randomness_quantized = Arc::new(AtomicU32::new(0)); // Initial opening randomness 0.00
+    let kld_threshold_quantized = Arc::new(AtomicI64::new(
+        (KL_DIVERGENCE_THRESHOLD.ln() * SCALE) as i64,
+    ));
 
     let timestamp = Utc::now().format("%Y%m%d-%H%M").to_string();
 
     thread::scope(|s| {
         let tui_stats = stats.clone();
         let tui_stop = stop_signal.clone();
-        let tui_cpuct = cpuct_quantized.clone();
+        let tui_kld = kld_threshold_quantized.clone();
         let tui_opening_randomness = opening_randomness_quantized.clone();
         s.spawn(move || {
             if let Err(e) = run_tui(
                 &tui_stats,
-                &tui_cpuct,
+                &tui_kld,
                 &tui_opening_randomness,
+                cpuct,
+                policy_temperature,
                 &tui_stop,
                 threads,
                 max_positions,
@@ -1725,7 +1748,7 @@ fn main() {
 
             let stats = stats.clone();
             let stop = stop_signal.clone();
-            let cpuct = cpuct_quantized.clone();
+            let kld = kld_threshold_quantized.clone();
             let opening_randomness = opening_randomness_quantized.clone();
             let mut rng = Rng::default();
 
@@ -1743,8 +1766,10 @@ fn main() {
                     {
                         run_game(
                             &stats,
-                            &cpuct,
+                            cpuct,
                             &opening_randomness,
+                            policy_temperature,
+                            &kld,
                             &mut positions,
                             &mut rng,
                             &stop,
