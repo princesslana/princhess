@@ -23,23 +23,10 @@ help:
 	@echo "  resume-test   - Resume previous test"
 	@echo "  start-test    - Start custom test (requires TYPE, TC, ENGINE1, ENGINE2)"
 	@echo ""
-	@echo "Tuning:"
-	@echo "  tune-25k-small      - 25k tune (±25%, requires PARAMS)"
-	@echo "  tune-25k-medium     - 25k tune (±50%, requires PARAMS)"
-	@echo "  tune-25k-large      - 25k tune (±100%, requires PARAMS)"
-	@echo "  tune-stc-small      - STC tune (±25%, requires PARAMS)"
-	@echo "  tune-stc-medium     - STC tune (±50%, requires PARAMS)"
-	@echo "  resume-tune         - Resume previous tuning session"
-	@echo "  start-tune          - Start custom tune (requires TUNE_TYPE, SIZE, PARAMS)"
-	@echo ""
 	@echo "Examples:"
 	@echo "  make lichess-bot LICHESS_TOKEN=lip_xxxxxxxxxx"
 	@echo "  make sprt-gain"
 	@echo "  make start-test TYPE=sprt_gain TC=ltc ENGINE1=princhess ENGINE2=princhess-main"
-	@echo "  make tune-25k-small PARAMS=\"CPuct CPuctTau PolicyTemperatureRoot\""
-	@echo "  make tune-stc-medium PARAMS=\"CPuctJitter\""
-	@echo "  make start-tune TUNE_TYPE=25k SIZE=large PARAMS=\"CPuct CPuctTau\""
-	@echo "  make resume-tune"
 
 # Build targets
 .PHONY: build
@@ -117,53 +104,3 @@ start-test:
 		exit 1; \
 	fi
 	@scripts/start-test.sh --test-type $(TYPE) --tc $(TC) --engine1 $(ENGINE1) --engine2 $(ENGINE2) $(if $(THREADS),--threads $(THREADS)) $(if $(MAX_CORES),--max-cores $(MAX_CORES))
-
-# Tuning targets
-define check_params
-	@if [ -z "$(PARAMS)" ]; then \
-		echo "Usage: make $(1) PARAMS=\"<params>\""; \
-		echo "  PARAMS: Space-separated UCI option names"; \
-		echo "  Example: make $(1) PARAMS=\"CPuct CPuctTau PolicyTemperatureRoot\""; \
-		exit 1; \
-	fi
-endef
-
-.PHONY: tune-25k-small
-tune-25k-small:
-	$(call check_params,$@)
-	@scripts/start-tune.sh 25k small $(PARAMS)
-
-.PHONY: tune-25k-medium
-tune-25k-medium:
-	$(call check_params,$@)
-	@scripts/start-tune.sh 25k medium $(PARAMS)
-
-.PHONY: tune-25k-large
-tune-25k-large:
-	$(call check_params,$@)
-	@scripts/start-tune.sh 25k large $(PARAMS)
-
-.PHONY: tune-stc-small
-tune-stc-small:
-	$(call check_params,$@)
-	@scripts/start-tune.sh stc small $(PARAMS)
-
-.PHONY: tune-stc-medium
-tune-stc-medium:
-	$(call check_params,$@)
-	@scripts/start-tune.sh stc medium $(PARAMS)
-
-.PHONY: resume-tune
-resume-tune:
-	@scripts/resume-tune.sh
-
-.PHONY: start-tune
-start-tune:
-	@if [ -z "$(TUNE_TYPE)" ] || [ -z "$(SIZE)" ] || [ -z "$(PARAMS)" ]; then \
-		echo "Usage: make start-tune TUNE_TYPE=<type> SIZE=<size> PARAMS=\"<params>\""; \
-		echo "  TUNE_TYPE: 25k, stc"; \
-		echo "  SIZE: small (±25%), medium (±50%), large (±100%)"; \
-		echo "  PARAMS: Space-separated UCI option names"; \
-		exit 1; \
-	fi
-	@scripts/start-tune.sh $(TUNE_TYPE) $(SIZE) $(PARAMS)
