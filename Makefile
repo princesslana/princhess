@@ -45,17 +45,13 @@ clean:
 # Lichess bot targets
 .PHONY: lichess-bot
 lichess-bot:
-ifndef LICHESS_TOKEN
-	$(error LICHESS_TOKEN is required. Usage: make lichess-bot LICHESS_TOKEN=your_token)
-endif
+	@if [ -z "$(LICHESS_TOKEN)" ]; then echo "LICHESS_TOKEN is required. Usage: make lichess-bot LICHESS_TOKEN=your_token"; exit 1; fi
 	docker build -f bin/Dockerfile.lichess -t princhess-lichess .
 	docker run -e LICHESS_TOKEN=$(LICHESS_TOKEN) -v $$(pwd)/bin/config.yml:/src/config.yml:ro princhess-lichess
 
 .PHONY: lichess-bot-policy
 lichess-bot-policy:
-ifndef LICHESS_TOKEN
-	$(error LICHESS_TOKEN is required. Usage: make lichess-bot-policy LICHESS_TOKEN=your_token)
-endif
+	@if [ -z "$(LICHESS_TOKEN)" ]; then echo "LICHESS_TOKEN is required. Usage: make lichess-bot-policy LICHESS_TOKEN=your_token"; exit 1; fi
 	docker build -f bin/Dockerfile.lichess -t princhess-lichess .
 	docker run -e LICHESS_TOKEN=$(LICHESS_TOKEN) -v $$(pwd)/bin/config.policy.yml:/src/config.yml:ro princhess-lichess
 
