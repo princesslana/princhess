@@ -385,7 +385,7 @@ impl Mcts {
     fn select_edge_by_score<'b>(&self, edges: &'b [MoveEdge]) -> Option<&'b MoveEdge> {
         edges
             .iter()
-            .max_by(|a, b| self.move_score(a).partial_cmp(&self.move_score(b)).unwrap())
+            .max_by(|a, b| self.move_score(a).total_cmp(&self.move_score(b)))
     }
 
     fn move_score(&self, edge: &MoveEdge) -> f32 {
@@ -403,7 +403,7 @@ impl Mcts {
 
     fn sort_edges_by_score<'b>(&self, edges: &'b [MoveEdge]) -> Vec<&'b MoveEdge> {
         let mut result: Vec<&MoveEdge> = edges.iter().collect();
-        result.sort_by(|a, b| self.move_score(b).partial_cmp(&self.move_score(a)).unwrap());
+        result.sort_by(|a, b| self.move_score(b).total_cmp(&self.move_score(a)));
         result
     }
 

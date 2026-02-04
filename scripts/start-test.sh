@@ -5,7 +5,7 @@
 set -e
 
 show_help() {
-    cat << 'EOF'
+    cat << EOF
 Usage: $0 --test-type <type> --tc <control> --engine1 <name> --engine2 <name> [options]
 
 Required:

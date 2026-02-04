@@ -50,7 +50,6 @@ impl Bitboard {
         Self(self.0 ^ (1 << square.index()))
     }
 
-    #[must_use]
     pub fn first_square(self) -> Square {
         if self.0 == 0 {
             Square::NONE
@@ -59,7 +58,6 @@ impl Bitboard {
         }
     }
 
-    #[must_use]
     pub fn last_square(self) -> Square {
         if self.0 == 0 {
             Square::NONE
