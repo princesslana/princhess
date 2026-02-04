@@ -1,40 +1,111 @@
 #!/bin/bash
 
 # Generate fastchess command line arguments
-# Usage: generate-args.sh <test_type> <time_control> <engine1> <engine2> [thread_config] [syzygy]
 
 set -e
 
-TEST_TYPE=$1
-TIME_CONTROL=$2
-ENGINE1=$3
-ENGINE2=$4
-THREAD_CONFIG=${5:-1t}
-USE_SYZYGY=${6:-true}
+show_help() {
+    cat << EOF
+Usage: $0 --test-type <type> --tc <control> --engine1 <name> --engine2 <name> [options]
 
+Required:
+  --test-type <type>     Test type: sprt_gain, sprt_equal, elo_check, debug
+  --tc <control>         Time control: stc, ltc, nodes25k
+  --engine1 <name>       First engine name
+  --engine2 <name>       Second engine name
+
+Optional:
+  --threads <n>          Threads per game (default: 1)
+  --syzygy <bool>        Use Syzygy tablebases: true/false (default: true)
+  --max-cores <n>        Max cores available (overrides auto-detection)
+  -h, --help             Show this help
+
+Examples:
+  $0 --test-type sprt_gain --tc stc --engine1 princhess --engine2 princhess-main
+  $0 --test-type elo_check --tc ltc --engine1 princhess --engine2 princhess-main --threads 2
+  $0 --test-type debug --tc nodes25k --engine1 princhess --engine2 princhess-main --max-cores 4
+EOF
+    exit 0
+}
+
+# Defaults
+THREADS=1
+USE_SYZYGY=true
+MAX_CORES=""
+TEST_TYPE=""
+TIME_CONTROL=""
+ENGINE1=""
+ENGINE2=""
+NATIVE_MODE=false
+
+# Parse arguments
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --test-type)
+            TEST_TYPE="$2"
+            shift 2
+            ;;
+        --tc)
+            TIME_CONTROL="$2"
+            shift 2
+            ;;
+        --engine1)
+            ENGINE1="$2"
+            shift 2
+            ;;
+        --engine2)
+            ENGINE2="$2"
+            shift 2
+            ;;
+        --threads)
+            THREADS="$2"
+            shift 2
+            ;;
+        --syzygy)
+            USE_SYZYGY="$2"
+            shift 2
+            ;;
+        --max-cores)
+            MAX_CORES="$2"
+            shift 2
+            ;;
+        --native)
+            NATIVE_MODE=true
+            shift
+            ;;
+        -h|--help)
+            show_help
+            ;;
+        *)
+            echo "Unknown option: $1"
+            echo "Run '$0 --help' for usage"
+            exit 1
+            ;;
+    esac
+done
+
+# Validate required parameters
 if [ -z "$TEST_TYPE" ] || [ -z "$TIME_CONTROL" ] || [ -z "$ENGINE1" ] || [ -z "$ENGINE2" ]; then
-    echo "Usage: $0 <test_type> <time_control> <engine1> <engine2> [thread_config] [syzygy]"
-    echo "  test_type: sprt_gain, sprt_equal, elo_check, debug"
-    echo "  time_control: stc, ltc, nodes25k"
-    echo "  engine1: princhess, princhess-main, etc"
-    echo "  engine2: princhess-main, stockfish, etc"
-    echo "  thread_config: 1t, 2t, 4t, etc (default: 1t)"
-    echo "  syzygy: true or false (default: true)"
+    echo "Error: Missing required arguments"
+    echo "Run '$0 --help' for usage"
     exit 1
 fi
 
-# Parse and validate thread config (must be positive integer followed by 't')
-if ! [[ "$THREAD_CONFIG" =~ ^[1-9][0-9]*t$ ]]; then
-    echo "Invalid thread config: $THREAD_CONFIG (must be positive integer followed by 't', like '2t', '4t', etc)"
+# Validate threads
+if ! [[ "$THREADS" =~ ^[1-9][0-9]*$ ]]; then
+    echo "Invalid threads: $THREADS (must be positive integer)"
     exit 1
 fi
 
-# Extract thread count (e.g., "2t" -> 2)
-THREADS=$(echo "$THREAD_CONFIG" | sed 's/t$//')
-
-# Validate syzygy parameter
+# Validate syzygy
 if [ "$USE_SYZYGY" != "true" ] && [ "$USE_SYZYGY" != "false" ]; then
     echo "Invalid syzygy parameter: $USE_SYZYGY (must be 'true' or 'false')"
+    exit 1
+fi
+
+# Validate max-cores if provided
+if [ -n "$MAX_CORES" ] && ! [[ "$MAX_CORES" =~ ^[1-9][0-9]*$ ]]; then
+    echo "Invalid max-cores: $MAX_CORES (must be positive integer)"
     exit 1
 fi
 
@@ -53,14 +124,67 @@ is_long_test() {
     esac
 }
 
+# Get default concurrency: physical cores capped at (total - 2), minimum 1
+get_default_concurrency() {
+    local cores total
+
+    # Use explicit max-cores override if provided
+    if [ -n "$MAX_CORES" ]; then
+        echo "$MAX_CORES"
+        return
+    fi
+
+    # macOS: try P-cores, fall back to all physical cores
+    cores=$(sysctl -n hw.perflevel0.physicalcpu 2>/dev/null)
+    if [ -z "$cores" ] || [ "$cores" -eq 0 ]; then
+        cores=$(sysctl -n hw.physicalcpu 2>/dev/null)
+    fi
+    # Linux: try /sys first (works on minimal containers), fall back to lscpu
+    if [ -z "$cores" ] || [ "$cores" -eq 0 ]; then
+        if [ -d "/sys/devices/system/cpu/cpu0/topology" ]; then
+            cores=$(cat /sys/devices/system/cpu/cpu*/topology/core_id 2>/dev/null | sort -u | wc -l)
+        fi
+    fi
+    if [ -z "$cores" ] || [ "$cores" -eq 0 ]; then
+        cores=$(lscpu -p=Core 2>/dev/null | grep -v '^#' | sort -u | wc -l)
+    fi
+    # Fall back to nproc
+    if [ -z "$cores" ] || [ "$cores" -eq 0 ]; then
+        cores=$(nproc --all 2>/dev/null || echo 1)
+    fi
+
+    # Get total logical CPUs
+    total=$(sysctl -n hw.logicalcpu 2>/dev/null)
+    if [ -z "$total" ] || [ "$total" -eq 0 ]; then
+        total=$(nproc --all 2>/dev/null || echo "$cores")
+    fi
+
+    # Take min(physical_cores - 1, total_cores - 2), minimum 1
+    local physical_max=$((cores - 1))
+    local total_max=$((total - 2))
+
+    # Take the smaller of the two maximums
+    local result=$physical_max
+    if [ $total_max -lt $result ]; then
+        result=$total_max
+    fi
+
+    # Ensure minimum of 1
+    if [ $result -lt 1 ]; then
+        result=1
+    fi
+
+    echo $result
+}
+
 # Set common values for all time controls
 HASH=128
-# Calculate concurrency to use 6 total threads (6 / threads_per_game)
-# Debug tests always use concurrency=1 for easier troubleshooting
+# Calculate concurrency: default_cores / threads_per_game, minimum 1
 if [ "$TEST_TYPE" = "debug" ]; then
     CONCURRENCY=1
 else
-    CONCURRENCY=$((6 / THREADS))
+    DEFAULT_CORES=$(get_default_concurrency)
+    CONCURRENCY=$((DEFAULT_CORES / THREADS))
     if [ $CONCURRENCY -lt 1 ]; then
         CONCURRENCY=1
     fi
@@ -85,15 +209,33 @@ case $TIME_CONTROL in
 esac
 
 # Generate command line arguments
+# Set path prefixes based on native mode
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+
+if [ "$NATIVE_MODE" = true ]; then
+    ENGINES_DIR="$PROJECT_ROOT/target/release"
+    BUILDS_DIR="$PROJECT_ROOT/builds"
+    SYZYGY_PATH="$PROJECT_ROOT/syzygy"
+    BOOKS_DIR="$PROJECT_ROOT/books"
+    STATE_DIR="$PROJECT_ROOT/target/fastchess"
+    PGN_DIR="$PROJECT_ROOT/target/fastchess/pgn"
+else
+    ENGINES_DIR="/engines"
+    BUILDS_DIR="/engines/builds"
+    SYZYGY_PATH="/syzygy"
+    BOOKS_DIR="/books"
+    STATE_DIR="/state"
+    PGN_DIR="/pgn"
+fi
+
 # Function to find engine path
 get_engine_path() {
     local engine=$1
-    if [ -f "./builds/$engine" ]; then
-        # Engine exists in local builds directory, will be available at /engines/builds/ in container
-        echo "/engines/builds/$engine"
+    if [ -f "$PROJECT_ROOT/builds/$engine" ]; then
+        echo "$BUILDS_DIR/$engine"
     else
-        # Use direct engine mount (e.g., princhess from target/release)
-        echo "/engines/$engine"
+        echo "$ENGINES_DIR/$engine"
     fi
 }
 
@@ -102,7 +244,7 @@ echo "-engine cmd=$(get_engine_path $ENGINE2) name=$ENGINE2"
 echo ""
 echo "-each proto=uci tc=$TC"
 if [ "$USE_SYZYGY" = "true" ]; then
-    echo "      option.SyzygyPath=/syzygy option.Hash=$HASH option.Threads=$THREADS"
+    echo "      option.SyzygyPath=$SYZYGY_PATH option.Hash=$HASH option.Threads=$THREADS"
 else
     echo "      option.SyzygyPath=<empty> option.Hash=$HASH option.Threads=$THREADS"
 fi
@@ -136,8 +278,8 @@ case $TEST_TYPE in
         ;;
     debug)
         ROUNDS=50
-        echo "-log file=/pgn/debug.log engine=true"
-        echo "-pgnout /pgn/debug.pgn"
+        echo "-log file=$PGN_DIR/debug.log engine=true"
+        echo "-pgnout $PGN_DIR/debug.pgn"
         ;;
     *)
         echo "Unknown test type: $TEST_TYPE"
@@ -145,7 +287,7 @@ case $TEST_TYPE in
         ;;
 esac
 
-echo "-openings file=/books/$OPENING_BOOK format=epd order=random"
+echo "-openings file=$BOOKS_DIR/$OPENING_BOOK format=epd order=random"
 echo "-games 2 -repeat -rounds $ROUNDS"
 echo "-ratinginterval 10 -concurrency $CONCURRENCY"
 
@@ -153,4 +295,4 @@ if [ "$TEST_TYPE" != "debug" ]; then
     echo "-recover"
 fi
 
-echo "-config outname=/state/current.json"
+echo "-config outname=$STATE_DIR/current.json"
