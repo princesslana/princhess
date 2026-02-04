@@ -13,6 +13,7 @@ fn build_fathom() {
     cc.file("./deps/fathom/src/tbprobe.c");
     cc.include("./deps/fathom/src");
     cc.define("_CRT_SECURE_NO_WARNINGS", None);
+    cc.flag("-Wno-sign-compare");
 
     let target_cpu = env::var("TARGET_CPU").unwrap_or("native".to_string());
 

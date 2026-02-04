@@ -7,6 +7,12 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 
+# Auto-detect native fastchess vs Docker
+USE_NATIVE=false
+if command -v fastchess &>/dev/null; then
+    USE_NATIVE=true
+fi
+
 CONFIG_FILE="$PROJECT_ROOT/target/fastchess/current.json"
 
 if [ ! -f "$CONFIG_FILE" ]; then
@@ -18,6 +24,12 @@ fi
 echo "Resuming previous test..."
 echo "Config: $CONFIG_FILE"
 
-# Start docker compose with resume command
+# Run fastchess
 cd "$PROJECT_ROOT"
-docker compose run --rm fastchess -config file=/state/current.json
+if [ "$USE_NATIVE" = true ]; then
+    echo "Using native fastchess..."
+    fastchess -config file="$CONFIG_FILE"
+else
+    echo "Using Docker fastchess..."
+    docker compose run --rm fastchess -config file=/state/current.json
+fi

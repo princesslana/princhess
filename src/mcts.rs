@@ -378,36 +378,33 @@ impl Mcts {
     ///
     /// Panics if the root node has no moves (e.g., checkmate or stalemate positions).
     pub fn best_edge(&self) -> &MoveEdge {
-        self.sort_moves(&self.root_edges)
-            .into_iter()
-            .next()
+        self.select_edge_by_score(&self.root_edges)
             .expect("Root node must have moves to determine best edge")
     }
 
-    fn sort_moves<'b>(&self, children: &'b [MoveEdge]) -> Vec<&'b MoveEdge> {
-        let reward = |child: &MoveEdge| {
-            let reward = child.reward();
+    fn select_edge_by_score<'b>(&self, edges: &'b [MoveEdge]) -> Option<&'b MoveEdge> {
+        edges
+            .iter()
+            .max_by(|a, b| self.move_score(a).total_cmp(&self.move_score(b)))
+    }
 
-            if reward.visits == 0 {
-                return -(2. * SCALE) + f32::from(child.policy());
-            }
+    fn move_score(&self, edge: &MoveEdge) -> f32 {
+        let reward = edge.reward();
 
-            let visits_adj = (self.engine_options.c_visits_selection * 2. * SCALE)
-                / (reward.visits as f32).sqrt();
-
-            reward.average as f32 - visits_adj
-        };
-
-        let mut result = Vec::with_capacity(children.len());
-
-        for child in children {
-            result.push((child, reward(child)));
+        if reward.visits == 0 {
+            return -(2. * SCALE) + f32::from(edge.policy());
         }
 
-        result.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
-        result.reverse();
+        let visits_adj =
+            (self.engine_options.c_visits_selection * 2. * SCALE) / (reward.visits as f32).sqrt();
 
-        result.into_iter().map(|x| x.0).collect()
+        reward.average as f32 - visits_adj
+    }
+
+    fn sort_edges_by_score<'b>(&self, edges: &'b [MoveEdge]) -> Vec<&'b MoveEdge> {
+        let mut result: Vec<&MoveEdge> = edges.iter().collect();
+        result.sort_by(|a, b| self.move_score(b).total_cmp(&self.move_score(a)));
+        result
     }
 
     fn soft_time_multiplier(&self, opts: &TimeManagementOptions) -> f32 {
@@ -460,7 +457,7 @@ impl Mcts {
             nodes * 1000 / search_time_ms as usize
         };
 
-        let moves = self.sort_moves(&self.root_edges);
+        let moves = self.sort_edges_by_score(&self.root_edges);
 
         let is_chess960 = self.engine_options.is_chess960;
 
