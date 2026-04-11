@@ -4,7 +4,7 @@
 .PHONY: help
 help:
 	@echo "Available targets:"
-	@echo "  build         - Build release binary"
+	@echo "  build         - Build release binary (x86-64-v3)"
 	@echo "  native        - Build with native CPU optimizations"
 	@echo "  clean         - Clean all build artifacts"
 	@echo ""
@@ -31,7 +31,7 @@ help:
 # Build targets
 .PHONY: build
 build:
-	cargo build --release
+	cargo rustc --release --bin princhess -- -C target-cpu=x86-64-v3
 
 .PHONY: native
 native:
