@@ -1,15 +1,14 @@
-use std::env;
 use std::fs::{self, File};
-use std::io::{self, BufRead, BufReader};
+use std::io::{self, Read, Seek, SeekFrom};
 use std::ops::AddAssign;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU32, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant};
 
 use arrayvec::ArrayVec;
-use bytemuck::Zeroable;
+use chrono::Utc;
 use crossterm::cursor;
 use crossterm::event::{poll, read, Event, KeyCode};
 use crossterm::ExecutableCommand;
@@ -23,35 +22,33 @@ use ratatui::widgets::{
 use ratatui::{Frame, Terminal, TerminalOptions, Viewport};
 use scc::{Guard, Queue};
 
+use princhess::chess::Piece;
 use princhess::engine::SCALE;
 use princhess::math;
 use princhess::state::State;
+
+use princhess_train::args::Args;
 use princhess_train::data::TrainingPosition;
-use princhess_train::neural::{AdamWOptimizer, LRScheduler, SparseVector, StepLRScheduler};
-use princhess_train::policy::{Phase, PolicyCount, PolicyNetwork};
+use princhess_train::neural::{
+    AdamWOptimizer, LRScheduler, LinearWarmupDecayLRScheduler, SparseVector,
+};
+use princhess_train::policy::{Phase, PolicyNetwork};
+use princhess_train::system;
 use princhess_train::tui::{self, RawModeGuard};
 
-const BATCHES_PER_SUPER_BATCH: usize = 3_052;
-const TOTAL_SUPER_BATCHES: usize = 100;
+const BATCHES_PER_SUPER_BATCH: usize = 6_104;
+const TOTAL_SUPER_BATCHES: usize = 50;
 const BATCH_SIZE: usize = 32768;
-const THREADS: usize = 6;
 
-const TUI_TOTAL_HEIGHT: u16 = 35;
+const TUI_TOTAL_HEIGHT: u16 = 40;
 const SAMPLE_INTERVAL_SECS: u64 = 5;
 const MAX_RATE_SAMPLES: usize = 512;
 const MAX_LR_SAMPLES: usize = 512;
 const LR_SAMPLES_PER_SUPER_BATCH: usize = 5;
 
-const MG_LR: f32 = 0.001;
-const MG_LR_DROP_AT: f32 = 0.35;
-const MG_LR_DROP_FACTOR: f32 = 0.5;
+const LR: f32 = 1e-3;
 
-const EG_LR: f32 = 0.001;
-const EG_LR_DROP_AT: f32 = 0.35;
-const EG_LR_DROP_FACTOR: f32 = 0.5;
-
-const MG_SOFT_TARGET_WEIGHT: f32 = 0.1;
-const EG_SOFT_TARGET_WEIGHT: f32 = 0.1;
+const SOFT_TARGET_WEIGHT: f32 = 0.1;
 const SOFT_TARGET_TEMPERATURE: f32 = 4.0;
 
 const EPSILON: f32 = 1e-9;
@@ -63,22 +60,40 @@ const _BUFFER_SIZE_CHECK: () = assert!(TrainingPosition::BUFFER_SIZE.is_multiple
 struct BatchMetrics {
     loss: f32,
     accuracy: f32,
+    baseline_loss: f32,
     processed_count: usize,
+    piece_correct: [usize; Piece::COUNT],
+    piece_total: [usize; Piece::COUNT],
+    piece_loss: [f32; Piece::COUNT],
+    piece_baseline_loss: [f32; Piece::COUNT],
+    wrong_piece: [usize; Piece::COUNT],
+    wrong_square: [usize; Piece::COUNT],
 }
 
 impl AddAssign for BatchMetrics {
     fn add_assign(&mut self, rhs: Self) {
         self.loss += rhs.loss;
         self.accuracy += rhs.accuracy;
+        self.baseline_loss += rhs.baseline_loss;
         self.processed_count += rhs.processed_count;
+        for i in 0..Piece::COUNT {
+            self.piece_correct[i] += rhs.piece_correct[i];
+            self.piece_total[i] += rhs.piece_total[i];
+            self.piece_loss[i] += rhs.piece_loss[i];
+            self.piece_baseline_loss[i] += rhs.piece_baseline_loss[i];
+            self.wrong_piece[i] += rhs.wrong_piece[i];
+            self.wrong_square[i] += rhs.wrong_square[i];
+        }
     }
 }
 
+#[derive(Clone)]
 struct TrainingConfig {
     input_file: String,
-    phase: Phase,
     network_info: String,
     data_positions: usize,
+    threads: usize,
+    phase: Phase,
 }
 
 struct TrainingStats {
@@ -96,12 +111,6 @@ struct TrainingStats {
     loss_history: Queue<f32>,
     accuracy_history: Queue<f32>,
 
-    // Best metrics (updated at end of super batch, single-threaded, stored as quantized i64)
-    best_loss: AtomicI64, // loss * SCALE
-    best_loss_sb: AtomicUsize,
-    best_accuracy: AtomicI64, // accuracy * SCALE
-    best_accuracy_sb: AtomicUsize,
-
     // Rate tracking
     recent_rates: Queue<u64>,
     last_sample_positions: AtomicU64,
@@ -110,6 +119,22 @@ struct TrainingStats {
     current_lr: AtomicU32, // stored as f32.to_bits() (updated each batch)
     lr_history: Queue<f32>,
 
+    // File read progress (bytes consumed from current pass through the file)
+    file_bytes_consumed: AtomicU64,
+
+    // Previous super batch metrics (stored as quantized i64)
+    prev_loss: AtomicI64,     // loss * SCALE
+    prev_accuracy: AtomicI64, // accuracy * SCALE
+    prev_baseline: AtomicI64, // baseline * SCALE
+
+    current_baseline_sum: AtomicI64, // sum of ln(num_moves) * SCALE
+
+    piece_correct: [AtomicU64; Piece::COUNT],
+    piece_total: [AtomicU64; Piece::COUNT],
+    piece_loss_sum: [AtomicI64; Piece::COUNT],
+    piece_baseline_sum: [AtomicI64; Piece::COUNT],
+    wrong_piece: [AtomicU64; Piece::COUNT],
+    wrong_square: [AtomicU64; Piece::COUNT],
     last_saved_net: Mutex<Option<String>>,
 }
 
@@ -125,14 +150,21 @@ impl TrainingStats {
             current_count: AtomicUsize::new(0),
             loss_history: Queue::default(),
             accuracy_history: Queue::default(),
-            best_loss: AtomicI64::new(i64::MAX),
-            best_loss_sb: AtomicUsize::new(0),
-            best_accuracy: AtomicI64::new(0),
-            best_accuracy_sb: AtomicUsize::new(0),
             recent_rates: Queue::default(),
             last_sample_positions: AtomicU64::new(0),
             current_lr: AtomicU32::new(0),
             lr_history: Queue::default(),
+            file_bytes_consumed: AtomicU64::new(0),
+            prev_loss: AtomicI64::new(0),
+            prev_accuracy: AtomicI64::new(0),
+            prev_baseline: AtomicI64::new(0),
+            current_baseline_sum: AtomicI64::new(0),
+            piece_correct: std::array::from_fn(|_| AtomicU64::new(0)),
+            piece_total: std::array::from_fn(|_| AtomicU64::new(0)),
+            piece_loss_sum: std::array::from_fn(|_| AtomicI64::new(0)),
+            piece_baseline_sum: std::array::from_fn(|_| AtomicI64::new(0)),
+            wrong_piece: std::array::from_fn(|_| AtomicU64::new(0)),
+            wrong_square: std::array::from_fn(|_| AtomicU64::new(0)),
             last_saved_net: Mutex::new(None),
         }
     }
@@ -140,49 +172,110 @@ impl TrainingStats {
     fn record_batch(&self, metrics: BatchMetrics) {
         let loss_scaled = (metrics.loss * SCALE) as i64;
         let acc_scaled = (metrics.accuracy * SCALE) as i64;
+        let baseline_scaled = (metrics.baseline_loss * SCALE) as i64;
 
         self.current_loss_sum
             .fetch_add(loss_scaled, Ordering::Relaxed);
         self.current_accuracy_sum
             .fetch_add(acc_scaled, Ordering::Relaxed);
+        self.current_baseline_sum
+            .fetch_add(baseline_scaled, Ordering::Relaxed);
         self.current_count
             .fetch_add(metrics.processed_count, Ordering::Relaxed);
         self.total_positions_processed
             .fetch_add(metrics.processed_count as u64, Ordering::Relaxed);
         self.current_batch_in_super.fetch_add(1, Ordering::Relaxed);
+        for i in 0..Piece::COUNT {
+            self.piece_correct[i].fetch_add(metrics.piece_correct[i] as u64, Ordering::Relaxed);
+            self.piece_total[i].fetch_add(metrics.piece_total[i] as u64, Ordering::Relaxed);
+            self.piece_loss_sum[i].fetch_add((metrics.piece_loss[i] * SCALE) as i64, Ordering::Relaxed);
+            self.piece_baseline_sum[i].fetch_add((metrics.piece_baseline_loss[i] * SCALE) as i64, Ordering::Relaxed);
+            self.wrong_piece[i].fetch_add(metrics.wrong_piece[i] as u64, Ordering::Relaxed);
+            self.wrong_square[i].fetch_add(metrics.wrong_square[i] as u64, Ordering::Relaxed);
+        }
     }
 
     fn finish_super_batch(&self) {
-        let loss_sum_scaled = self.current_loss_sum.swap(0, Ordering::Relaxed);
-        let acc_sum_scaled = self.current_accuracy_sum.swap(0, Ordering::Relaxed);
-        let count = self.current_count.swap(0, Ordering::Relaxed);
+        let sb_num = self.current_super_batch.load(Ordering::Relaxed);
+        let is_final_batch = sb_num + 1 >= TOTAL_SUPER_BATCHES;
+
+        // Read metrics (use swap for non-final batches, load for final batch to preserve values)
+        let (loss_sum_scaled, acc_sum_scaled, baseline_sum_scaled, count) = if is_final_batch {
+            (
+                self.current_loss_sum.load(Ordering::Relaxed),
+                self.current_accuracy_sum.load(Ordering::Relaxed),
+                self.current_baseline_sum.load(Ordering::Relaxed),
+                self.current_count.load(Ordering::Relaxed),
+            )
+        } else {
+            (
+                self.current_loss_sum.swap(0, Ordering::Relaxed),
+                self.current_accuracy_sum.swap(0, Ordering::Relaxed),
+                self.current_baseline_sum.swap(0, Ordering::Relaxed),
+                self.current_count.swap(0, Ordering::Relaxed),
+            )
+        };
 
         if count > 0 {
             let avg_loss = loss_sum_scaled as f32 / SCALE / count as f32;
             let avg_accuracy = acc_sum_scaled as f32 / SCALE / count as f32;
-            let sb_num = self.current_super_batch.load(Ordering::Relaxed);
+            let avg_baseline = baseline_sum_scaled as f32 / SCALE / count as f32;
 
             self.loss_history.push(avg_loss);
             self.accuracy_history.push(avg_accuracy);
 
-            // Update best metrics
-            let avg_loss_scaled = (avg_loss * SCALE) as i64;
-            let best_loss_scaled = self.best_loss.load(Ordering::Relaxed);
-            if avg_loss_scaled < best_loss_scaled {
-                self.best_loss.store(avg_loss_scaled, Ordering::Relaxed);
-                self.best_loss_sb.store(sb_num, Ordering::Relaxed);
-            }
-
-            let avg_acc_scaled = (avg_accuracy * SCALE) as i64;
-            let best_acc_scaled = self.best_accuracy.load(Ordering::Relaxed);
-            if avg_acc_scaled > best_acc_scaled {
-                self.best_accuracy.store(avg_acc_scaled, Ordering::Relaxed);
-                self.best_accuracy_sb.store(sb_num, Ordering::Relaxed);
-            }
+            // Store as previous super batch metrics
+            self.prev_loss.store((avg_loss * SCALE) as i64, Ordering::Relaxed);
+            self.prev_accuracy.store((avg_accuracy * SCALE) as i64, Ordering::Relaxed);
+            self.prev_baseline.store((avg_baseline * SCALE) as i64, Ordering::Relaxed);
         }
 
         self.current_super_batch.fetch_add(1, Ordering::Relaxed);
-        self.current_batch_in_super.store(0, Ordering::Relaxed);
+
+        // Don't reset progress counters if we've completed all super batches
+        // This preserves the final display state
+        if !is_final_batch {
+            self.current_batch_in_super.store(0, Ordering::Relaxed);
+            for i in 0..Piece::COUNT {
+                self.piece_correct[i].store(0, Ordering::Relaxed);
+                self.piece_total[i].store(0, Ordering::Relaxed);
+                self.piece_loss_sum[i].store(0, Ordering::Relaxed);
+                self.piece_baseline_sum[i].store(0, Ordering::Relaxed);
+                self.wrong_piece[i].store(0, Ordering::Relaxed);
+                self.wrong_square[i].store(0, Ordering::Relaxed);
+            }
+        }
+    }
+
+    fn get_piece_accuracy(&self) -> [f32; Piece::COUNT] {
+        std::array::from_fn(|i| {
+            let total = self.piece_total[i].load(Ordering::Relaxed);
+            if total > 0 {
+                self.piece_correct[i].load(Ordering::Relaxed) as f32 / total as f32
+            } else {
+                0.0
+            }
+        })
+    }
+
+    fn get_piece_error_breakdown(&self) -> ([f32; Piece::COUNT], [f32; Piece::COUNT]) {
+        let wrong_piece = std::array::from_fn(|i| {
+            let total = self.piece_total[i].load(Ordering::Relaxed);
+            if total > 0 {
+                self.wrong_piece[i].load(Ordering::Relaxed) as f32 / total as f32
+            } else {
+                0.0
+            }
+        });
+        let wrong_square = std::array::from_fn(|i| {
+            let total = self.piece_total[i].load(Ordering::Relaxed);
+            if total > 0 {
+                self.wrong_square[i].load(Ordering::Relaxed) as f32 / total as f32
+            } else {
+                0.0
+            }
+        });
+        (wrong_piece, wrong_square)
     }
 
     fn get_current_avg_metrics(&self) -> (f32, f32) {
@@ -198,19 +291,57 @@ impl TrainingStats {
             (0.0, 0.0)
         }
     }
+
+    fn get_prev_avg_metrics(&self) -> (f32, f32) {
+        let loss_scaled = self.prev_loss.load(Ordering::Relaxed);
+        let acc_scaled = self.prev_accuracy.load(Ordering::Relaxed);
+        (loss_scaled as f32 / SCALE, acc_scaled as f32 / SCALE)
+    }
+
+    fn get_current_info_gain(&self) -> f32 {
+        let baseline = self.current_baseline_sum.load(Ordering::Relaxed);
+        let loss = self.current_loss_sum.load(Ordering::Relaxed);
+        let count = self.current_count.load(Ordering::Relaxed);
+        if count > 0 {
+            (baseline - loss) as f32 / SCALE / count as f32
+        } else {
+            0.0
+        }
+    }
+
+    fn get_prev_info_gain(&self) -> f32 {
+        let baseline = self.prev_baseline.load(Ordering::Relaxed) as f32 / SCALE;
+        let loss = self.prev_loss.load(Ordering::Relaxed) as f32 / SCALE;
+        baseline - loss
+    }
+
+    fn get_piece_info_gain(&self) -> [f32; Piece::COUNT] {
+        std::array::from_fn(|i| {
+            let total = self.piece_total[i].load(Ordering::Relaxed);
+            if total > 0 {
+                let baseline = self.piece_baseline_sum[i].load(Ordering::Relaxed) as f32 / SCALE;
+                let loss = self.piece_loss_sum[i].load(Ordering::Relaxed) as f32 / SCALE;
+                (baseline - loss) / total as f32
+            } else {
+                0.0
+            }
+        })
+    }
 }
 
 fn main() {
-    let mut args = env::args();
-    args.next();
+    let mut args = Args::from_env();
+    let threads = args
+        .flag("-t", "--threads")
+        .unwrap_or_else(system::default_thread_count) as usize;
 
-    let input = args.next().expect("Missing input file");
-    let phase_arg = args
-        .next()
-        .expect("Missing phase argument (--phase <mg|eg>)");
-
+    let phase_arg: String = args
+        .flag("-p", "--phase")
+        .unwrap_or_else(|| panic!("Missing required flag: -p <mg|eg>"));
     let phase = Phase::from_arg(&phase_arg)
-        .unwrap_or_else(|| panic!("Invalid phase argument: {phase_arg}. Use 'mg' or 'eg'."));
+        .unwrap_or_else(|| panic!("Invalid phase: {phase_arg}. Use 'mg' or 'eg'."));
+
+    let input = args.expect("input file");
 
     let file = File::open(&input).unwrap();
     let data_positions = file.metadata().unwrap().len() as usize / TrainingPosition::SIZE;
@@ -221,46 +352,27 @@ fn main() {
 
     let config = TrainingConfig {
         input_file: input.clone(),
-        phase,
         network_info: format!("{network}"),
         data_positions,
+        threads,
+        phase,
     };
 
     let total_steps = (TOTAL_SUPER_BATCHES * BATCHES_PER_SUPER_BATCH) as u32;
-
-    match phase {
-        Phase::MiddleGame => {
-            let scheduler =
-                StepLRScheduler::new(MG_LR, MG_LR_DROP_FACTOR, MG_LR_DROP_AT, total_steps);
-            let optimizer = AdamWOptimizer::with_scheduler(scheduler).weight_decay(0.01);
-            run_training_loop(
-                phase, network, momentum, velocity, optimizer, &input, config,
-            );
-        }
-        Phase::Endgame => {
-            let scheduler =
-                StepLRScheduler::new(EG_LR, EG_LR_DROP_FACTOR, EG_LR_DROP_AT, total_steps);
-            let optimizer = AdamWOptimizer::with_scheduler(scheduler).weight_decay(0.0);
-            run_training_loop(
-                phase, network, momentum, velocity, optimizer, &input, config,
-            );
-        }
-    }
+    let scheduler = LinearWarmupDecayLRScheduler::new(LR, 0.05, total_steps);
+    let weight_decay = if phase == Phase::MiddleGame { 0.01 } else { 0.0 };
+    let optimizer = AdamWOptimizer::with_scheduler(scheduler).weight_decay(weight_decay);
+    run_training_loop(network, momentum, velocity, optimizer, config);
 }
 
-fn run_training_loop<S: LRScheduler>(
-    phase: Phase,
+fn run_training_loop<S: LRScheduler + Sync>(
     mut network: Box<PolicyNetwork>,
     mut momentum: Box<PolicyNetwork>,
     mut velocity: Box<PolicyNetwork>,
     mut optimizer: AdamWOptimizer<S>,
-    input: &str,
     config: TrainingConfig,
 ) {
-    let timestamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_secs();
+    let timestamp = Utc::now().format("%Y%m%d-%H%M").to_string();
 
     let start_time = Instant::now();
     let stats = Arc::new(TrainingStats::new(start_time));
@@ -269,12 +381,15 @@ fn run_training_loop<S: LRScheduler>(
     // Spawn TUI update thread
     let stats_clone = Arc::clone(&stats);
     let stop_clone = Arc::clone(&stop_signal);
+    let config_clone = config.clone();
     let tui_thread = thread::spawn(move || {
-        if let Err(e) = run_tui(&stats_clone, stop_clone.clone(), config) {
+        if let Err(e) = run_tui(&stats_clone, stop_clone.clone(), config_clone) {
             eprintln!("TUI failed: {e}");
             stop_clone.store(true, Ordering::Relaxed);
         }
     });
+
+    let mut file = File::open(&config.input_file).unwrap();
 
     // Training loop
     for sb in 0..TOTAL_SUPER_BATCHES {
@@ -287,21 +402,23 @@ fn run_training_loop<S: LRScheduler>(
             &mut momentum,
             &mut velocity,
             &mut optimizer,
-            input,
-            phase,
+            &config,
             &stats,
+            &mut file,
+            config.phase,
         );
 
         stats.finish_super_batch();
 
-        // Save network periodically
-        if (sb + 1) % SAVE_EVERY_N_SUPER_BATCHES == 0 || sb + 1 == TOTAL_SUPER_BATCHES {
-            let dir_name = format!("nets/policy-{phase}-{timestamp}-sb{:03}", sb + 1);
-            fs::create_dir(&dir_name).expect("Failed to create network save directory");
+        // Save network periodically (always save after first super batch for sanity checks)
+        if (sb + 1) % SAVE_EVERY_N_SUPER_BATCHES == 0 || sb + 1 == TOTAL_SUPER_BATCHES || sb == 0 {
+            let phase = config.phase;
+            let dir_name = format!("nets/{phase}-policy-{timestamp}-sb{:03}", sb + 1);
+            fs::create_dir_all(&dir_name).expect("Failed to create network save directory");
             let dir = Path::new(&dir_name);
             network
                 .to_boxed_and_quantized()
-                .save_to_bin(dir, format!("{phase}-policy.bin").as_str());
+                .save_to_bin(dir, &format!("{phase}-policy.bin"));
 
             *stats.last_saved_net.lock().unwrap() = Some(dir_name);
         }
@@ -376,6 +493,10 @@ fn run_tui(
                 }
             }
         }
+
+        // Final draw to show completed state
+        terminal.draw(|f| render_tui(f, stats, &config))?;
+
         Ok(())
     })();
 
@@ -391,41 +512,69 @@ fn render_tui(frame: &mut Frame, stats: &TrainingStats, config: &TrainingConfig)
         .direction(Direction::Vertical)
         .margin(1)
         .constraints([
-            Constraint::Length(7),  // Progress section (with 2 sparklines)
-            Constraint::Length(5),  // Info boxes
+            Constraint::Length(8),  // Progress section (with 2 sparklines)
+            Constraint::Length(4),  // Dataset / Network info boxes
+            Constraint::Length(6),  // Metrics / Piece Accuracy boxes
             Constraint::Length(10), // Loss chart
             Constraint::Length(10), // Accuracy chart
-            Constraint::Length(1),  // Network info footer
         ])
         .split(frame.area());
 
-    render_progress(frame, chunks[0], stats);
-    render_info(frame, chunks[1], config, stats);
-    render_loss_chart(frame, chunks[2], stats);
-    render_accuracy_chart(frame, chunks[3], stats);
+    render_progress(frame, chunks[0], stats, config);
+    render_dataset_boxes(frame, chunks[1], stats, config);
+    render_info(frame, chunks[2], stats);
+    render_loss_chart(frame, chunks[3], stats);
+    render_accuracy_chart(frame, chunks[4], stats);
+}
 
-    // Footer: Network info (left) and Last saved (right)
-    let footer_layout = Layout::default()
+fn render_dataset_boxes(
+    frame: &mut Frame,
+    area: ratatui::layout::Rect,
+    stats: &TrainingStats,
+    config: &TrainingConfig,
+) {
+    let cols = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
-        .split(chunks[4]);
+        .split(area);
 
-    let network_info =
-        Paragraph::new(format!("Network: {}", config.network_info)).alignment(Alignment::Left);
-    frame.render_widget(network_info, footer_layout[0]);
+    let dataset_block = Block::default().borders(Borders::ALL).title("Dataset");
+    let dataset_inner = dataset_block.inner(cols[0]);
+    frame.render_widget(dataset_block, cols[0]);
+    frame.render_widget(
+        Paragraph::new(format!(
+            "Input: {}\nPositions: {:.1}M  Phase: {}",
+            config.input_file,
+            config.data_positions as f64 / 1_000_000.0,
+            config.phase,
+        )),
+        dataset_inner,
+    );
 
+    let network_block = Block::default().borders(Borders::ALL).title("Network");
+    let network_inner = network_block.inner(cols[1]);
+    frame.render_widget(network_block, cols[1]);
     let last_saved = stats
         .last_saved_net
         .lock()
         .unwrap()
         .clone()
         .unwrap_or_else(|| "None".to_string());
-    let saved_info =
-        Paragraph::new(format!("Last saved: {}", last_saved)).alignment(Alignment::Right);
-    frame.render_widget(saved_info, footer_layout[1]);
+    frame.render_widget(
+        Paragraph::new(format!(
+            "{}\nLast saved: {}",
+            config.network_info, last_saved
+        )),
+        network_inner,
+    );
 }
 
-fn render_progress(frame: &mut Frame, area: ratatui::layout::Rect, stats: &TrainingStats) {
+fn render_progress(
+    frame: &mut Frame,
+    area: ratatui::layout::Rect,
+    stats: &TrainingStats,
+    config: &TrainingConfig,
+) {
     let block = Block::default().borders(Borders::ALL).title("Progress");
     let inner = block.inner(area);
     frame.render_widget(block, area);
@@ -436,6 +585,7 @@ fn render_progress(frame: &mut Frame, area: ratatui::layout::Rect, stats: &Train
             Constraint::Length(1), // Time/rate/ETA info
             Constraint::Length(1), // Overall progress bar
             Constraint::Length(1), // Current super batch progress bar
+            Constraint::Length(1), // File read progress bar
             Constraint::Length(1), // Sparkline for processing rate
             Constraint::Length(1), // Sparkline for learning rate
         ])
@@ -456,8 +606,9 @@ fn render_progress(frame: &mut Frame, area: ratatui::layout::Rect, stats: &Train
 
     let samples_per_sec = batches_per_sec * BATCH_SIZE as f64;
 
+    let batches_remaining = (total_batches as f32 - total_batches_done as f32).max(0.0);
     let eta_secs = if batches_per_sec > 0.0 {
-        ((total_batches - total_batches_done) as f64 / batches_per_sec) as u64
+        (batches_remaining / batches_per_sec as f32) as u64
     } else {
         0
     };
@@ -492,7 +643,7 @@ fn render_progress(frame: &mut Frame, area: ratatui::layout::Rect, stats: &Train
     let overall_ratio = current_sb as f64 / TOTAL_SUPER_BATCHES as f64;
     let overall_label = Span::styled(
         format!(
-            "{:>4} / {:>4} ({:>5.1}%)",
+            "{:>6} / {:>6}  ({:>5.1}%)",
             current_sb,
             TOTAL_SUPER_BATCHES,
             overall_ratio * 100.0,
@@ -512,7 +663,7 @@ fn render_progress(frame: &mut Frame, area: ratatui::layout::Rect, stats: &Train
     let sb_ratio = batch_in_sb as f64 / BATCHES_PER_SUPER_BATCH as f64;
     let sb_label = Span::styled(
         format!(
-            "{:>4} / {:>4} ({:>5.1}%)",
+            "{:>6} / {:>6}  ({:>5.1}%)",
             batch_in_sb,
             BATCHES_PER_SUPER_BATCH,
             sb_ratio * 100.0,
@@ -527,11 +678,36 @@ fn render_progress(frame: &mut Frame, area: ratatui::layout::Rect, stats: &Train
         layout[2],
     );
 
+    // File read progress
+    let file_total_bytes = config.data_positions as u64 * TrainingPosition::SIZE as u64;
+    let file_bytes = stats.file_bytes_consumed.load(Ordering::Relaxed);
+    let file_ratio = if file_total_bytes > 0 {
+        (file_bytes as f64 / file_total_bytes as f64).min(1.0)
+    } else {
+        0.0
+    };
+    let file_label = Span::styled(
+        format!(
+            "{:>6.1} / {:>6.1}M ({:>5.1}%)",
+            file_bytes as f64 / TrainingPosition::SIZE as f64 / 1_000_000.0,
+            config.data_positions as f64 / 1_000_000.0,
+            file_ratio * 100.0,
+        ),
+        Style::default().fg(Color::White),
+    );
+    frame.render_widget(
+        Gauge::default()
+            .gauge_style(Style::default().fg(Color::Yellow))
+            .ratio(file_ratio)
+            .label(file_label),
+        layout[3],
+    );
+
     // Sparkline for processing rate
     let guard = Guard::new();
     let recent_rates: Vec<u64> = stats.recent_rates.iter(&guard).copied().collect();
     if !recent_rates.is_empty() {
-        let max_bars = layout[3].width as usize;
+        let max_bars = layout[4].width as usize;
         let data: Vec<u64> = if recent_rates.len() <= max_bars {
             recent_rates
         } else {
@@ -546,13 +722,13 @@ fn render_progress(frame: &mut Frame, area: ratatui::layout::Rect, stats: &Train
         let sparkline = Sparkline::default()
             .data(&data)
             .style(Style::default().fg(Color::Cyan));
-        frame.render_widget(sparkline, layout[3]);
+        frame.render_widget(sparkline, layout[4]);
     }
 
     // Sparkline for learning rate
     let lr_samples: Vec<f32> = stats.lr_history.iter(&guard).copied().collect();
     if !lr_samples.is_empty() {
-        let sparkline_width = layout[4].width as usize;
+        let sparkline_width = layout[5].width as usize;
         let total_expected_samples = TOTAL_SUPER_BATCHES * LR_SAMPLES_PER_SUPER_BATCH;
 
         // Map full training span to widget width
@@ -569,24 +745,19 @@ fn render_progress(frame: &mut Frame, area: ratatui::layout::Rect, stats: &Train
 
         let lr_sparkline = Sparkline::default()
             .data(&data)
-            .style(Style::default().fg(Color::Yellow));
-        frame.render_widget(lr_sparkline, layout[4]);
+            .style(Style::default().fg(Color::Magenta));
+        frame.render_widget(lr_sparkline, layout[5]);
     }
 }
 
-fn render_info(
-    frame: &mut Frame,
-    area: ratatui::layout::Rect,
-    config: &TrainingConfig,
-    stats: &TrainingStats,
-) {
+fn render_info(frame: &mut Frame, area: ratatui::layout::Rect, stats: &TrainingStats) {
     let columns = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
         .split(area);
 
-    // Left box: Dataset
-    let left_block = Block::default().borders(Borders::ALL).title("Dataset");
+    // Left box: Metrics
+    let left_block = Block::default().borders(Borders::ALL).title("Metrics");
     frame.render_widget(left_block, columns[0]);
 
     let left_inner = columns[0].inner(ratatui::layout::Margin {
@@ -594,17 +765,35 @@ fn render_info(
         vertical: 1,
     });
 
-    let left_content = format!(
-        "Phase:     {}\nInput:     {}\nPositions: {:.1}M",
-        config.phase,
-        config.input_file,
-        config.data_positions as f64 / 1_000_000.0,
-    );
-    let left_para = Paragraph::new(left_content);
-    frame.render_widget(left_para, left_inner);
+    let metrics_columns = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Percentage(60), Constraint::Percentage(40)])
+        .split(left_inner);
 
-    // Right box: Metrics
-    let right_block = Block::default().borders(Borders::ALL).title("Metrics");
+    let (current_loss, current_acc) = stats.get_current_avg_metrics();
+    let (prev_loss, prev_acc) = stats.get_prev_avg_metrics();
+    let current_info_gain = stats.get_current_info_gain();
+    let prev_info_gain = stats.get_prev_info_gain();
+    let current_lr = f32::from_bits(stats.current_lr.load(Ordering::Relaxed));
+    let current_content = format!(
+        "LR:        {:9.6}\nLoss:      {:7.4}\nAccuracy:  {:5.2}%\nInfo gain: {:7.4}",
+        current_lr,
+        current_loss,
+        current_acc * 100.0,
+        current_info_gain,
+    );
+    frame.render_widget(Paragraph::new(current_content), metrics_columns[0]);
+
+    let prev_content = format!(
+        "Prev SB\n{:7.4}\n{:5.2}%\n{:7.4}",
+        prev_loss, prev_acc * 100.0, prev_info_gain
+    );
+    frame.render_widget(Paragraph::new(prev_content), metrics_columns[1]);
+
+    // Right box: Piece Accuracy
+    let right_block = Block::default()
+        .borders(Borders::ALL)
+        .title("Piece Accuracy");
     frame.render_widget(right_block, columns[1]);
 
     let right_inner = columns[1].inner(ratatui::layout::Margin {
@@ -612,17 +801,58 @@ fn render_info(
         vertical: 1,
     });
 
-    let (current_loss, current_acc) = stats.get_current_avg_metrics();
-    let current_lr = f32::from_bits(stats.current_lr.load(Ordering::Relaxed));
+    let piece_rows = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(1),
+            Constraint::Length(1),
+            Constraint::Length(1),
+            Constraint::Length(1),
+        ])
+        .split(right_inner);
 
-    let right_content = format!(
-        "Loss:     {:.4}\nAccuracy: {:.2}%\nLR:       {:.6}",
-        current_loss,
-        current_acc * 100.0,
-        current_lr
+    let piece_names = ["P", "N", "B", "R", "Q", "K"];
+    let fmt_labeled = |vals: &[f32; Piece::COUNT]| -> String {
+        piece_names
+            .iter()
+            .zip(vals.iter())
+            .map(|(name, v)| format!("{name} {:5.2}%", v * 100.0))
+            .collect::<Vec<_>>()
+            .join("  ")
+    };
+    let fmt_values = |vals: &[f32; Piece::COUNT]| -> String {
+        vals.iter()
+            .map(|v| format!("  {:5.2}%", v * 100.0))
+            .collect::<Vec<_>>()
+            .join("  ")
+    };
+    let fmt_info_gain = |vals: &[f32; Piece::COUNT]| -> String {
+        vals.iter()
+            .map(|v| format!("  {:6.3}", v))
+            .collect::<Vec<_>>()
+            .join("  ")
+    };
+
+    let piece_acc = stats.get_piece_accuracy();
+    let (wrong_piece, wrong_square) = stats.get_piece_error_breakdown();
+    let piece_info_gain = stats.get_piece_info_gain();
+
+    frame.render_widget(
+        Paragraph::new(format!("Correct:    {}", fmt_labeled(&piece_acc))),
+        piece_rows[0],
     );
-    let right_para = Paragraph::new(right_content);
-    frame.render_widget(right_para, right_inner);
+    frame.render_widget(
+        Paragraph::new(format!("Wrong piece:{}", fmt_values(&wrong_piece))),
+        piece_rows[1],
+    );
+    frame.render_widget(
+        Paragraph::new(format!("Wrong sq:   {}", fmt_values(&wrong_square))),
+        piece_rows[2],
+    );
+    frame.render_widget(
+        Paragraph::new(format!("Info gain:  {}", fmt_info_gain(&piece_info_gain))),
+        piece_rows[3],
+    );
 }
 
 fn render_loss_chart(frame: &mut Frame, area: ratatui::layout::Rect, stats: &TrainingStats) {
@@ -707,51 +937,52 @@ fn render_accuracy_chart(frame: &mut Frame, area: ratatui::layout::Rect, stats: 
     frame.render_widget(chart, area);
 }
 
-fn train_super_batch<S: LRScheduler>(
+fn train_super_batch<S: LRScheduler + Sync>(
     network: &mut PolicyNetwork,
     momentum: &mut PolicyNetwork,
     velocity: &mut PolicyNetwork,
     optimizer: &mut AdamWOptimizer<S>,
-    input: &str,
-    phase: Phase,
+    config: &TrainingConfig,
     stats: &TrainingStats,
+    file: &mut File,
+    phase: Phase,
 ) {
-    let file = File::open(input).unwrap();
-    let mut buffer = BufReader::with_capacity(TrainingPosition::BUFFER_SIZE, file);
+    let mut thread_buffers: Vec<Box<PolicyNetwork>> = (0..config.threads)
+        .map(|_| PolicyNetwork::zeroed())
+        .collect();
+    let mut gradients = PolicyNetwork::zeroed();
+    let mut raw_buf = vec![0u8; TrainingPosition::BUFFER_SIZE];
 
     let mut batches_processed = 0;
 
     while batches_processed < BATCHES_PER_SUPER_BATCH {
-        let Ok(bytes) = buffer.fill_buf() else {
-            break;
-        };
-
-        if bytes.is_empty() {
-            // Reached end of file, restart from beginning
-            drop(buffer);
-            let file = File::open(input).unwrap();
-            buffer = BufReader::with_capacity(TrainingPosition::BUFFER_SIZE, file);
-            continue;
+        loop {
+            match file.read_exact(&mut raw_buf) {
+                Ok(()) => break,
+                Err(e) if e.kind() == io::ErrorKind::UnexpectedEof => {
+                    file.seek(SeekFrom::Start(0)).unwrap();
+                    stats.file_bytes_consumed.store(0, Ordering::Relaxed);
+                }
+                Err(e) => panic!("Data read error: {e}"),
+            }
         }
 
-        let data = TrainingPosition::read_buffer(bytes);
+        let data = TrainingPosition::read_buffer(&raw_buf);
 
         for batch in data.chunks(BATCH_SIZE) {
             if batches_processed >= BATCHES_PER_SUPER_BATCH {
                 break;
             }
 
-            let mut gradients = PolicyNetwork::zeroed();
-            let mut count = PolicyCount::zeroed();
+            gradients.zero_out();
 
-            let batch_metrics = gradients_batch(network, &mut gradients, &mut count, batch, phase);
+            let batch_metrics =
+                gradients_batch(network, &mut gradients, batch, &mut thread_buffers, config, phase);
 
-            gradients.scale_by_counts(&count);
+            stats.record_batch(batch_metrics);
 
             optimizer.step();
             network.adamw(&gradients, momentum, velocity, optimizer);
-
-            stats.record_batch(batch_metrics);
 
             // Update current LR
             let current_lr = optimizer.get_learning_rate();
@@ -771,53 +1002,50 @@ fn train_super_batch<S: LRScheduler>(
             batches_processed += 1;
         }
 
-        let consumed = bytes.len();
-        buffer.consume(consumed);
+        stats
+            .file_bytes_consumed
+            .fetch_add(raw_buf.len() as u64, Ordering::Relaxed);
     }
 }
 
 fn gradients_batch(
     network: &PolicyNetwork,
     gradients: &mut PolicyNetwork,
-    count: &mut PolicyCount,
     batch: &[TrainingPosition],
+    thread_buffers: &mut [Box<PolicyNetwork>],
+    config: &TrainingConfig,
     phase: Phase,
 ) -> BatchMetrics {
-    let size = (batch.len() / THREADS) + 1;
-    let mut total_metrics = BatchMetrics::default();
+    let size = (batch.len() / config.threads) + 1;
+    let num_chunks = batch.chunks(size).count();
+    let mut thread_metrics = vec![BatchMetrics::default(); num_chunks];
+
+    for g in thread_buffers.iter_mut() {
+        g.zero_out();
+    }
 
     thread::scope(|s| {
         batch
             .chunks(size)
-            .map(|chunk| {
+            .zip(thread_buffers.iter_mut())
+            .zip(thread_metrics.iter_mut())
+            .for_each(|((chunk, inner_gradients), inner_metrics)| {
                 s.spawn(move || {
-                    let mut inner_gradients = PolicyNetwork::zeroed();
-                    let mut inner_count = PolicyCount::zeroed();
-                    let mut inner_metrics = BatchMetrics::default();
-
                     for position in chunk {
-                        update_gradient(
-                            position,
-                            network,
-                            &mut inner_gradients,
-                            &mut inner_count,
-                            &mut inner_metrics,
-                            phase,
-                        );
+                        update_gradient(position, network, inner_gradients, inner_metrics, phase);
                     }
-                    (inner_gradients, inner_count, inner_metrics)
-                })
-            })
-            .collect::<Vec<_>>()
-            .into_iter()
-            .map(|handle| handle.join().unwrap())
-            .for_each(|(inner_gradients, inner_count, inner_metrics)| {
-                *gradients += &inner_gradients;
-                *count += &inner_count;
-                total_metrics += inner_metrics;
+                });
             });
     });
 
+    let mut total_metrics = BatchMetrics::default();
+    for (inner_gradients, inner_metrics) in thread_buffers.iter().zip(thread_metrics) {
+        *gradients += inner_gradients;
+        total_metrics += inner_metrics;
+    }
+    if total_metrics.processed_count > 0 {
+        *gradients /= total_metrics.processed_count as f32;
+    }
     total_metrics
 }
 
@@ -825,7 +1053,6 @@ fn update_gradient(
     position: &TrainingPosition,
     network: &PolicyNetwork,
     gradients: &mut PolicyNetwork,
-    count: &mut PolicyCount,
     metrics: &mut BatchMetrics,
     phase: Phase,
 ) {
@@ -855,30 +1082,40 @@ fn update_gradient(
     let expected_primary = calculate_target(&raw_counts, 1.0);
     let expected_secondary = calculate_target(&raw_counts, SOFT_TARGET_TEMPERATURE);
 
+    let mut position_loss = 0.0f32;
     for idx in 0..moves.len() {
-        let move_idx = move_idxes[idx];
         let actual_val = actual_policy[idx];
         let log_actual_val = actual_val.max(EPSILON).ln();
 
         let expected_primary_val = expected_primary[idx];
-        metrics.loss -= expected_primary_val * log_actual_val;
-
-        let soft_target_weight = match phase {
-            Phase::MiddleGame => MG_SOFT_TARGET_WEIGHT,
-            Phase::Endgame => EG_SOFT_TARGET_WEIGHT,
-        };
-
         let expected_secondary_val = expected_secondary[idx];
-        metrics.loss -= expected_secondary_val * log_actual_val * soft_target_weight;
 
-        let combined_error = (actual_val - expected_primary_val)
-            + (actual_val - expected_secondary_val) * soft_target_weight;
-        network.backprop(&features, gradients, move_idx, combined_error);
-        count.increment(move_idx);
+        position_loss -= expected_primary_val * log_actual_val;
+        position_loss -= expected_secondary_val * log_actual_val * SOFT_TARGET_WEIGHT;
+
+        let error = (actual_val - expected_primary_val)
+            + (actual_val - expected_secondary_val) * SOFT_TARGET_WEIGHT;
+
+        network.backprop(&features, gradients, move_idxes[idx], error);
     }
 
-    if argmax(&expected_primary) == argmax(&actual_policy) {
+    let baseline = (moves.len() as f32).ln();
+    metrics.loss += position_loss;
+    metrics.baseline_loss += baseline;
+
+    let expected_best = argmax(&expected_primary);
+    let predicted_best = argmax(&actual_policy);
+    let piece = move_idxes[expected_best].piece();
+    metrics.piece_total[piece] += 1;
+    metrics.piece_loss[piece] += position_loss;
+    metrics.piece_baseline_loss[piece] += baseline;
+    if predicted_best == expected_best {
         metrics.accuracy += 1.;
+        metrics.piece_correct[piece] += 1;
+    } else if move_idxes[predicted_best].piece() == piece {
+        metrics.wrong_square[piece] += 1;
+    } else {
+        metrics.wrong_piece[piece] += 1;
     }
     metrics.processed_count += 1;
 }

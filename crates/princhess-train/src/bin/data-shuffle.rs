@@ -1,4 +1,3 @@
-use std::env;
 use std::fs::{self, File};
 use std::io::{self, BufRead, BufReader, BufWriter, ErrorKind, Read, Write};
 use std::path::{Path, PathBuf};
@@ -19,6 +18,7 @@ use ratatui::widgets::{Block, Borders, Gauge, Paragraph};
 use ratatui::{Frame, Terminal, TerminalOptions, Viewport};
 
 use princhess::math::Rng;
+use princhess_train::args::Args;
 use princhess_train::data::TrainingPosition;
 use princhess_train::tui::{self, RawModeGuard};
 
@@ -189,8 +189,8 @@ impl ProgressState {
     }
 
     fn interleave_elapsed_secs(&self) -> u64 {
-        let start = self.interleave_start.load(Ordering::Relaxed);
-        if start > 0 {
+        if self.shuffle_complete() {
+            let start = self.interleave_start.load(Ordering::Relaxed);
             let total_elapsed = self.shuffle_start.elapsed().as_secs();
             total_elapsed.saturating_sub(start).max(1)
         } else {
@@ -530,21 +530,11 @@ fn render_interleave_box(frame: &mut Frame, area: ratatui::layout::Rect, progres
 }
 
 fn main() {
-    let mut args = env::args();
-    args.next();
+    let mut args = Args::from_env();
 
-    let mut cleanup = false;
-    let mut force = false;
-    let mut input_files = Vec::new();
-
-    // Parse arguments
-    for arg in args {
-        match arg.as_str() {
-            "--cleanup" => cleanup = true,
-            "--force" => force = true,
-            _ => input_files.push(PathBuf::from(arg)),
-        }
-    }
+    let cleanup = args.has("--cleanup");
+    let force = args.has("--force");
+    let input_files: Vec<PathBuf> = args.positional().iter().map(PathBuf::from).collect();
 
     if input_files.is_empty() {
         eprintln!("Usage: data-shuffle <files...> [--cleanup] [--force]");

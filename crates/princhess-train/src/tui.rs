@@ -5,6 +5,9 @@ use crossterm::terminal;
 pub struct RawModeGuard;
 
 impl RawModeGuard {
+    /// # Errors
+    ///
+    /// Returns an error if enabling terminal raw mode fails.
     pub fn enable() -> Result<Self> {
         terminal::enable_raw_mode()?;
         Ok(Self)

@@ -1,6 +1,8 @@
 use crate::neural::activation::Activation;
 use bytemuck::Zeroable;
-use std::ops::{Add, AddAssign, Deref, Div, DivAssign, Index, IndexMut, Mul, MulAssign, SubAssign};
+use std::ops::{
+    Add, AddAssign, Deref, Div, DivAssign, Index, IndexMut, Mul, MulAssign, Sub, SubAssign,
+};
 
 #[repr(C)]
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -24,6 +26,7 @@ impl Deref for SparseVector {
 }
 
 impl SparseVector {
+    #[must_use]
     pub fn with_capacity(cap: usize) -> Self {
         Self {
             inner: Vec::with_capacity(cap),
@@ -68,7 +71,7 @@ impl<const N: usize> Add<Vector<N>> for Vector<N> {
 impl<const N: usize> Add<f32> for Vector<N> {
     type Output = Vector<N>;
     fn add(mut self, rhs: f32) -> Self::Output {
-        for i in self.inner.iter_mut() {
+        for i in &mut self.inner {
             *i += rhs;
         }
 
@@ -86,7 +89,7 @@ impl<const N: usize> AddAssign<Vector<N>> for Vector<N> {
 
 impl<const N: usize> DivAssign<f32> for Vector<N> {
     fn div_assign(&mut self, rhs: f32) {
-        for x in self.inner.iter_mut() {
+        for x in &mut self.inner {
             *x /= rhs;
         }
     }
@@ -94,7 +97,7 @@ impl<const N: usize> DivAssign<f32> for Vector<N> {
 
 impl<const N: usize> MulAssign<f32> for Vector<N> {
     fn mul_assign(&mut self, rhs: f32) {
-        for x in self.inner.iter_mut() {
+        for x in &mut self.inner {
             *x *= rhs;
         }
     }
@@ -125,11 +128,19 @@ impl<const N: usize> Mul<Vector<N>> for Vector<N> {
 impl<const N: usize> Mul<Vector<N>> for f32 {
     type Output = Vector<N>;
     fn mul(self, mut rhs: Vector<N>) -> Self::Output {
-        for i in rhs.inner.iter_mut() {
+        for i in &mut rhs.inner {
             *i *= self;
         }
 
         rhs
+    }
+}
+
+impl<const N: usize> Sub<Vector<N>> for Vector<N> {
+    type Output = Vector<N>;
+    fn sub(mut self, rhs: Vector<N>) -> Self::Output {
+        self -= rhs;
+        self
     }
 }
 
@@ -152,6 +163,7 @@ impl<const N: usize> Vector<N> {
         res
     }
 
+    #[must_use]
     pub fn dot(&self, other: &Vector<N>) -> f32 {
         let mut score = 0.0;
         for (&i, &j) in self.inner.iter().zip(other.inner.iter()) {
@@ -161,6 +173,7 @@ impl<const N: usize> Vector<N> {
         score
     }
 
+    #[must_use]
     pub fn out<T: Activation>(&self, other: &Vector<N>) -> f32 {
         let mut score = 0.0;
         for (i, j) in self.inner.iter().zip(other.inner.iter()) {
@@ -170,32 +183,37 @@ impl<const N: usize> Vector<N> {
         score
     }
 
+    #[must_use]
     pub fn sqrt(mut self) -> Self {
-        for i in self.inner.iter_mut() {
+        for i in &mut self.inner {
             *i = i.sqrt();
         }
 
         self
     }
 
+    #[must_use]
     pub const fn from_raw(inner: [f32; N]) -> Self {
         Self { inner }
     }
 
+    #[must_use]
     pub const fn zeroed() -> Self {
         Self::from_raw([0.0; N])
     }
 
+    #[must_use]
     pub fn activate<T: Activation>(mut self) -> Self {
-        for i in self.inner.iter_mut() {
+        for i in &mut self.inner {
             *i = T::activate(*i);
         }
 
         self
     }
 
+    #[must_use]
     pub fn derivative<T: Activation>(mut self) -> Self {
-        for i in self.inner.iter_mut() {
+        for i in &mut self.inner {
             *i = T::derivative(*i);
         }
 
@@ -207,13 +225,24 @@ impl<const N: usize> Vector<N> {
             *i += mul * *j;
         }
     }
+
+    #[must_use]
+    pub fn slice<const M: usize>(&self, offset: usize) -> Vector<M> {
+        Vector::from_fn(|i| self.inner[offset + i])
+    }
+
+    pub fn madd_slice<const M: usize>(&mut self, other: &Vector<M>, mul: f32, offset: usize) {
+        for i in 0..M {
+            self.inner[offset + i] += mul * other.inner[i];
+        }
+    }
 }
 
 impl<const N: usize> Div<f32> for Vector<N> {
     type Output = Self;
 
     fn div(mut self, rhs: f32) -> Self::Output {
-        for i in self.inner.iter_mut() {
+        for i in &mut self.inner {
             *i /= rhs;
         }
         self

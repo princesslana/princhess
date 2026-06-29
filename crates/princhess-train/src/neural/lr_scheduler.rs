@@ -1,3 +1,34 @@
+#[derive(Debug, Clone)]
+pub struct LinearWarmupDecayLRScheduler {
+    initial_lr: f32,
+    warmup_steps: u32,
+    total_steps: u32,
+}
+
+impl LinearWarmupDecayLRScheduler {
+    #[must_use]
+    pub fn new(initial_lr: f32, warmup_fraction: f32, total_steps: u32) -> Self {
+        let warmup_steps = (total_steps as f32 * warmup_fraction).ceil() as u32;
+        Self {
+            initial_lr,
+            warmup_steps,
+            total_steps,
+        }
+    }
+}
+
+impl LRScheduler for LinearWarmupDecayLRScheduler {
+    fn get_lr(&self, step: u32) -> f32 {
+        if step < self.warmup_steps {
+            self.initial_lr * step as f32 / self.warmup_steps as f32
+        } else {
+            let decay_steps = self.total_steps - self.warmup_steps;
+            let elapsed = step - self.warmup_steps;
+            self.initial_lr * (1.0 - elapsed as f32 / decay_steps as f32).max(0.0)
+        }
+    }
+}
+
 pub trait LRScheduler {
     fn get_lr(&self, step: u32) -> f32;
 }
@@ -10,6 +41,7 @@ pub struct StepLRScheduler {
 }
 
 impl StepLRScheduler {
+    #[must_use]
     pub fn new(initial_lr: f32, drop_factor: f32, drop_at_fraction: f32, total_steps: u32) -> Self {
         let drop_interval = (total_steps as f32 * drop_at_fraction).ceil() as u32;
         Self {
@@ -33,6 +65,7 @@ pub struct ConstantLRScheduler {
 }
 
 impl ConstantLRScheduler {
+    #[must_use]
     pub fn new(lr: f32) -> Self {
         Self { lr }
     }
@@ -49,27 +82,28 @@ pub struct CosineAnnealingLRScheduler {
     initial_lr: f32,
     min_lr: f32,
     total_steps: u32,
+    cycle_decay: f32,
 }
 
 impl CosineAnnealingLRScheduler {
-    pub fn new(initial_lr: f32, min_lr: f32, total_steps: u32) -> Self {
+    #[must_use]
+    pub fn new(initial_lr: f32, min_lr: f32, total_steps: u32, cycle_decay: f32) -> Self {
         Self {
             initial_lr,
             min_lr,
             total_steps,
+            cycle_decay,
         }
     }
 }
 
 impl LRScheduler for CosineAnnealingLRScheduler {
     fn get_lr(&self, step: u32) -> f32 {
-        if step >= self.total_steps {
-            return self.min_lr;
-        }
-
-        let progress = step as f32 / self.total_steps as f32;
+        let cycle = step / self.total_steps;
+        let cycle_step = step % self.total_steps;
+        let peak_lr = self.initial_lr * self.cycle_decay.powi(cycle as i32);
+        let progress = cycle_step as f32 / self.total_steps as f32;
         let cosine_factor = (1.0 + (std::f32::consts::PI * progress).cos()) * 0.5;
-
-        self.min_lr + (self.initial_lr - self.min_lr) * cosine_factor
+        self.min_lr + (peak_lr - self.min_lr) * cosine_factor
     }
 }

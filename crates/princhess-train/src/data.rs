@@ -32,6 +32,9 @@ impl TrainingPosition {
     pub const BUFFER_COUNT: usize = 1 << 16;
     pub const BUFFER_SIZE: usize = Self::BUFFER_COUNT * Self::SIZE;
 
+    /// # Errors
+    ///
+    /// Returns an error if writing to the output stream fails.
     pub fn write_buffer<W: Write>(out: &mut W, data: &[TrainingPosition]) -> io::Result<()> {
         out.write_all(bytemuck::cast_slice(data))
     }

@@ -90,6 +90,10 @@ impl MoveIndex {
         }
     }
 
+    pub fn piece(self) -> Piece {
+        self.piece
+    }
+
     pub fn from_sq(self) -> Square {
         self.from_sq
     }

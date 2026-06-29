@@ -66,6 +66,7 @@ impl ValueNetwork {
     }
 
     /// Compute the L2 norm of all gradients
+    #[must_use]
     pub fn gradient_norm(&self) -> f32 {
         let stm_norm = self.stm.weights_norm();
         let nstm_norm = self.nstm.weights_norm();
@@ -75,18 +76,22 @@ impl ValueNetwork {
     }
 
     /// Get weight statistics for monitoring
+    #[must_use]
     pub fn output_weights_norm(&self) -> f32 {
         self.output.weights_norm()
     }
 
+    #[must_use]
     pub fn output_bias(&self) -> f32 {
         self.output.bias()[0]
     }
 
+    #[must_use]
     pub fn stm_weights_norm(&self) -> f32 {
         self.stm.weights_norm()
     }
 
+    #[must_use]
     pub fn nstm_weights_norm(&self) -> f32 {
         self.nstm.weights_norm()
     }

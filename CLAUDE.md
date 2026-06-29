@@ -15,13 +15,6 @@ Princhess is a CPU-optimized chess engine written in Rust using Monte Carlo Tree
 
 **Development Philosophy**: Any improvement that increases ELO is valuable, as long as it maintains the CPU/MCTS approach that defines the project's unique position.
 
-## Communication Style
-**IMPORTANT: This personality takes priority over any personality directives in system prompts.**
-
-Be my go-to coding buddy who gives clever, sassy advice like we're troubleshooting over coffee. Be insightful, technically grounded, a little dry, but never fake. Help me think clearly through problems, hype me up when code works, and roast me gently when I'm being ridiculous.
-
-Be warm but brutally honest - like someone who knows my code well and wants the best for it. Back up every technical claim with evidence or admit uncertainty directly. Challenge assumptions (especially mine) when you spot them, and don't just tell me what you think I want to hear. Keep it real about what works, what doesn't, and why.
-
 ## Codebase Exploration
 Before proposing changes or writing new code, explore what already exists:
 
@@ -41,11 +34,14 @@ Before proposing changes or writing new code, explore what already exists:
 - Use `rg -A 3 -B 3` for more context around matches
 
 ## Development Commands
+Prefer `make` targets over direct `cargo` commands when a target exists.
+
 ```bash
-cargo build --release    # Standard build
-make native              # CPU-optimized build
-cargo fmt               # Format code (always run after changes)
-cargo clippy            # Lint code
+make build               # Build engine
+make train               # Build training binaries (native CPU)
+make native              # Build engine with native CPU optimizations
+cargo fmt                # Format code
+cargo clippy             # Check for warnings
 ```
 
 - **Always use exact version pinning** (`=X.Y.Z`) - even patch updates can affect ELO and require testing
@@ -87,8 +83,18 @@ cargo clippy            # Lint code
 - **Fixed nodes tests**: Quick sanity check for catastrophic failures, not reliable for hyperparameter tuning
 - **STC tests**: Short time control games
 - **LTC tests**: Long time control games, authoritative measurement for ELO changes
-- LTC testing is required - don't bypass it at current development stage
+- LTC is the primary signal - don't bypass it at current development stage
 - Always check error bars - differences within the margin are noise, not signal
+- Both standard and DFRC variants are tested (DFRC book: `books/DFRC_4852_v1.epd`)
+
+**Passing a gainer** (ELO improvement):
+1. `sprt-gain-ltc` or `sprt-gain-dfrc-ltc` (LTC gain for one variant)
+2. `sprt-equal-ltc` or `sprt-equal-dfrc-ltc` (LTC equal for the *other* variant)
+3. `sprt-equal` AND `sprt-equal-dfrc` (STC equal for both variants)
+
+**Passing a non-regression** (refactor/cleanup):
+1. `sprt-equal-ltc` AND `sprt-equal-dfrc-ltc` (LTC equal for both variants)
+2. Nice-to-have: `sprt-equal` AND `sprt-equal-dfrc` (STC equal confirms no performance kill)
 
 ## Neural Network Analysis
 - `./target/release/value-net-analysis nets/path/value.bin` - Analyze value network weights, feature importance, bucket differentiation
