@@ -8,12 +8,7 @@ set -e
 # Helper to write to stderr
 err() { echo "$@" >&2; }
 
-TUNE_TYPE=$1
-SIZE=$2
-shift 2
-PARAMS=("$@")
-
-if [ -z "$TUNE_TYPE" ] || [ -z "$SIZE" ] || [ ${#PARAMS[@]} -eq 0 ]; then
+if [ $# -lt 3 ]; then
     echo "Usage: $0 <tune_type> <size> <param1> [param2] [param3] ..."
     echo "  tune_type: 25k, stc"
     echo "  size: small (±25%), medium (±50%), large (±100%)"
@@ -22,6 +17,11 @@ if [ -z "$TUNE_TYPE" ] || [ -z "$SIZE" ] || [ ${#PARAMS[@]} -eq 0 ]; then
     echo "To see available parameters, run: ./target/release/princhess \"uci\" | grep \"option name\""
     exit 1
 fi
+
+TUNE_TYPE=$1
+SIZE=$2
+shift 2
+PARAMS=("$@")
 
 # Validate tune type
 case $TUNE_TYPE in

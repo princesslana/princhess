@@ -101,7 +101,7 @@ impl LRScheduler for CosineAnnealingLRScheduler {
     fn get_lr(&self, step: u32) -> f32 {
         let cycle = step / self.total_steps;
         let cycle_step = step % self.total_steps;
-        let peak_lr = self.initial_lr * self.cycle_decay.powi(cycle as i32);
+        let peak_lr = (self.initial_lr * self.cycle_decay.powi(cycle as i32)).max(self.min_lr);
         let progress = cycle_step as f32 / self.total_steps as f32;
         let cosine_factor = (1.0 + (std::f32::consts::PI * progress).cos()) * 0.5;
         self.min_lr + (peak_lr - self.min_lr) * cosine_factor

@@ -11,6 +11,11 @@ ENGINE1="${1:-princhess}"
 ENGINE2="${2:-princhess-main}"
 RUNS="${3:-10}"
 
+if ! [[ "$RUNS" =~ ^[1-9][0-9]*$ ]]; then
+    echo "Error: RUNS must be a positive integer, got '$RUNS'"
+    exit 1
+fi
+
 get_engine_path() {
     local engine=$1
     if [ -f "$PROJECT_ROOT/builds/$engine" ]; then

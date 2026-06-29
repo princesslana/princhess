@@ -188,8 +188,12 @@ impl TrainingStats {
         for i in 0..Piece::COUNT {
             self.piece_correct[i].fetch_add(metrics.piece_correct[i] as u64, Ordering::Relaxed);
             self.piece_total[i].fetch_add(metrics.piece_total[i] as u64, Ordering::Relaxed);
-            self.piece_loss_sum[i].fetch_add((metrics.piece_loss[i] * SCALE) as i64, Ordering::Relaxed);
-            self.piece_baseline_sum[i].fetch_add((metrics.piece_baseline_loss[i] * SCALE) as i64, Ordering::Relaxed);
+            self.piece_loss_sum[i]
+                .fetch_add((metrics.piece_loss[i] * SCALE) as i64, Ordering::Relaxed);
+            self.piece_baseline_sum[i].fetch_add(
+                (metrics.piece_baseline_loss[i] * SCALE) as i64,
+                Ordering::Relaxed,
+            );
             self.wrong_piece[i].fetch_add(metrics.wrong_piece[i] as u64, Ordering::Relaxed);
             self.wrong_square[i].fetch_add(metrics.wrong_square[i] as u64, Ordering::Relaxed);
         }
@@ -225,9 +229,12 @@ impl TrainingStats {
             self.accuracy_history.push(avg_accuracy);
 
             // Store as previous super batch metrics
-            self.prev_loss.store((avg_loss * SCALE) as i64, Ordering::Relaxed);
-            self.prev_accuracy.store((avg_accuracy * SCALE) as i64, Ordering::Relaxed);
-            self.prev_baseline.store((avg_baseline * SCALE) as i64, Ordering::Relaxed);
+            self.prev_loss
+                .store((avg_loss * SCALE) as i64, Ordering::Relaxed);
+            self.prev_accuracy
+                .store((avg_accuracy * SCALE) as i64, Ordering::Relaxed);
+            self.prev_baseline
+                .store((avg_baseline * SCALE) as i64, Ordering::Relaxed);
         }
 
         self.current_super_batch.fetch_add(1, Ordering::Relaxed);
@@ -335,6 +342,11 @@ fn main() {
         .flag("-t", "--threads")
         .unwrap_or_else(system::default_thread_count) as usize;
 
+    assert!(
+        threads > 0,
+        "Thread count must be at least 1, got {threads}"
+    );
+
     let phase_arg: String = args
         .flag("-p", "--phase")
         .unwrap_or_else(|| panic!("Missing required flag: -p <mg|eg>"));
@@ -345,6 +357,12 @@ fn main() {
 
     let file = File::open(&input).unwrap();
     let data_positions = file.metadata().unwrap().len() as usize / TrainingPosition::SIZE;
+
+    assert!(
+        data_positions >= TrainingPosition::BUFFER_COUNT,
+        "Input file has {data_positions} positions, need at least {} (BUFFER_COUNT)",
+        TrainingPosition::BUFFER_COUNT
+    );
 
     let network = PolicyNetwork::random();
     let momentum = PolicyNetwork::zeroed();
@@ -360,7 +378,11 @@ fn main() {
 
     let total_steps = (TOTAL_SUPER_BATCHES * BATCHES_PER_SUPER_BATCH) as u32;
     let scheduler = LinearWarmupDecayLRScheduler::new(LR, 0.05, total_steps);
-    let weight_decay = if phase == Phase::MiddleGame { 0.01 } else { 0.0 };
+    let weight_decay = if phase == Phase::MiddleGame {
+        0.01
+    } else {
+        0.0
+    };
     let optimizer = AdamWOptimizer::with_scheduler(scheduler).weight_decay(weight_decay);
     run_training_loop(network, momentum, velocity, optimizer, config);
 }
@@ -786,7 +808,9 @@ fn render_info(frame: &mut Frame, area: ratatui::layout::Rect, stats: &TrainingS
 
     let prev_content = format!(
         "Prev SB\n{:7.4}\n{:5.2}%\n{:7.4}",
-        prev_loss, prev_acc * 100.0, prev_info_gain
+        prev_loss,
+        prev_acc * 100.0,
+        prev_info_gain
     );
     frame.render_widget(Paragraph::new(prev_content), metrics_columns[1]);
 
@@ -976,8 +1000,14 @@ fn train_super_batch<S: LRScheduler + Sync>(
 
             gradients.zero_out();
 
-            let batch_metrics =
-                gradients_batch(network, &mut gradients, batch, &mut thread_buffers, config, phase);
+            let batch_metrics = gradients_batch(
+                network,
+                &mut gradients,
+                batch,
+                &mut thread_buffers,
+                config,
+                phase,
+            );
 
             stats.record_batch(batch_metrics);
 

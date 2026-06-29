@@ -26,7 +26,6 @@ use ratatui::widgets::{Block, Borders, Gauge, Paragraph, Sparkline};
 use ratatui::{Frame, Terminal, TerminalOptions, Viewport};
 use scc::{Guard, Queue};
 
-
 use princhess::engine::{Engine, SCALE};
 use princhess::math::{self, Rng};
 use princhess::options::{EngineOptions, MctsOptions};
@@ -48,9 +47,7 @@ const VARIATION_MIN_EVAL: f32 = 0.25;
 const VARIATION_MAX_EVAL: f32 = 0.75;
 const VARIATION_MIN_PHASE: usize = 16;
 
-
 const MAX_POSITIONS_PER_FILE: u64 = 20_000_000;
-const DEFAULT_POSITIONS: u64 = 100_000_000;
 const MAX_VARIATIONS: usize = 16;
 
 const SAMPLE_INTERVAL_SECS: u64 = 5;
@@ -60,7 +57,6 @@ const MAX_SAMPLES: usize = 512;
 // Histogram configuration: center point and bucket width (generates 11 thresholds for 12 buckets)
 const POLICY_GINI_CENTER: f32 = 0.5;
 const POLICY_GINI_WIDTH: f32 = 0.1;
-
 
 const POLICY_KL_CENTER: f32 = 1.2;
 const POLICY_KL_WIDTH: f32 = 0.2;
@@ -738,7 +734,6 @@ fn run_game(
                     } else {
                         stats.add_variation_eval((eval * SCALE) as i64);
                     }
-
                 }
 
                 if !is_first_move {
@@ -761,7 +756,6 @@ fn run_game(
                     .sum::<usize>();
                 game_stats.depth += engine.mcts().depth();
                 game_stats.seldepth += engine.mcts().max_depth();
-
             }
 
             is_first_move = false;
@@ -826,7 +820,8 @@ fn run_game(
             stats.eval_distribution_buckets[eval_bucket].fetch_add(1, Ordering::Relaxed);
 
             let piece_count = position.piece_count();
-            stats.piece_count_distribution[usize::from(piece_count)].fetch_add(1, Ordering::Relaxed);
+            stats.piece_count_distribution[usize::from(piece_count)]
+                .fetch_add(1, Ordering::Relaxed);
             stats.phase_distribution[position.phase()].fetch_add(1, Ordering::Relaxed);
 
             match result {
@@ -852,7 +847,6 @@ fn run_game(
             GameResult::BlackWin => stats.add_black_win(&game_stats),
             GameResult::Aborted => stats.add_aborted(),
         }
-
     }
 }
 
@@ -1307,7 +1301,7 @@ fn render_tui(frame: &mut Frame, view: &StatsView) {
         frame,
         histogram_row[3],
         &format!(
-            "Eval-Result Agreement (μ={:.2})",
+            "Eval-Result Disagreement (μ={:.2})",
             view.avg_eval_result_disagreement()
         ),
         &view.eval_result_agreement_buckets,
@@ -1519,12 +1513,15 @@ fn main() {
         .flag("-t", "--threads")
         .unwrap_or_else(system::default_thread_count)
         .min(MAX_THREADS);
-    let max_positions = args.flag("-p", "--positions").unwrap_or(DEFAULT_POSITIONS);
+    let max_positions = args
+        .flag("-p", "--positions")
+        .unwrap_or_else(|| panic!("Missing required argument: --positions"));
 
     assert!(
         threads > 0,
         "Thread count must be at least 1, got {threads}"
     );
+    assert!(max_positions > 0, "Positions must be at least 1");
     assert!(
         max_positions <= MAX_POSITIONS_PER_FILE * u64::from(threads),
         "Requested {max_positions} positions but maximum is {} ({}M positions/file * {} threads)",
@@ -1540,6 +1537,10 @@ fn main() {
 
     fs::create_dir_all("data").expect("Failed to create data directory");
 
+    stats
+        .active_threads
+        .store(threads as usize, Ordering::Relaxed);
+
     thread::scope(|s| {
         let tui_stats = stats.clone();
         let tui_stop = stop_signal.clone();
@@ -1549,10 +1550,6 @@ fn main() {
                 tui_stop.store(true, Ordering::Relaxed);
             }
         });
-
-        stats
-            .active_threads
-            .store(threads as usize, Ordering::Relaxed);
 
         for t in 0..threads {
             thread::sleep(Duration::from_millis(u64::from(10 * t)));

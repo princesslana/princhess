@@ -5,12 +5,7 @@
 
 set -e
 
-TUNE_TYPE=$1
-SIZE=$2
-shift 2
-PARAMS=("$@")
-
-if [ -z "$TUNE_TYPE" ] || [ -z "$SIZE" ] || [ ${#PARAMS[@]} -eq 0 ]; then
+if [ $# -lt 3 ]; then
     echo "Usage: $0 <tune_type> <size> <param1> [param2] [param3] ..."
     echo "  tune_type: 25k, stc"
     echo "  size: small (±5%), medium (±25%), large (±100%)"
@@ -21,6 +16,11 @@ if [ -z "$TUNE_TYPE" ] || [ -z "$SIZE" ] || [ ${#PARAMS[@]} -eq 0 ]; then
     echo "  $0 stc medium CPuctJitter"
     exit 1
 fi
+
+TUNE_TYPE=$1
+SIZE=$2
+shift 2
+PARAMS=("$@")
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"

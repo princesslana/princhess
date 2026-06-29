@@ -198,10 +198,21 @@ fn main() {
         .flag("-t", "--threads")
         .unwrap_or_else(system::default_thread_count) as usize;
 
+    assert!(
+        threads > 0,
+        "Thread count must be at least 1, got {threads}"
+    );
+
     let input = args.expect("input file");
 
     let file = File::open(&input).unwrap();
     let data_positions = file.metadata().unwrap().len() as usize / TrainingPosition::SIZE;
+
+    assert!(
+        data_positions >= TrainingPosition::BUFFER_COUNT,
+        "Input file has {data_positions} positions, need at least {} (BUFFER_COUNT)",
+        TrainingPosition::BUFFER_COUNT
+    );
 
     let network = ValueNetwork::random();
     let momentum = ValueNetwork::zeroed();
@@ -414,8 +425,9 @@ fn render_progress(
 
     let samples_per_sec = batches_per_sec * BATCH_SIZE as f64;
 
+    let batches_remaining = (total_batches as f32 - total_batches_done as f32).max(0.0);
     let eta_secs = if batches_per_sec > 0.0 {
-        ((total_batches - total_batches_done) as f64 / batches_per_sec) as u64
+        (batches_remaining / batches_per_sec as f32) as u64
     } else {
         0
     };
@@ -676,10 +688,15 @@ fn train_super_batch<S: LRScheduler>(
     let mut batches_processed = 0;
 
     while batches_processed < BATCHES_PER_SUPER_BATCH {
-        if file.read_exact(&mut raw_buf).is_err() {
-            file.seek(SeekFrom::Start(0)).unwrap();
-            stats.file_bytes_consumed.store(0, Ordering::Relaxed);
-            file.read_exact(&mut raw_buf).unwrap();
+        loop {
+            match file.read_exact(&mut raw_buf) {
+                Ok(()) => break,
+                Err(e) if e.kind() == io::ErrorKind::UnexpectedEof => {
+                    file.seek(SeekFrom::Start(0)).unwrap();
+                    stats.file_bytes_consumed.store(0, Ordering::Relaxed);
+                }
+                Err(e) => panic!("Data read error: {e}"),
+            }
         }
 
         stats
