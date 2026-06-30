@@ -128,6 +128,7 @@ impl<T> Index<Piece> for [T; Piece::COUNT] {
         let idx = piece.index();
 
         if idx >= Piece::COUNT {
+            // SAFETY: caller must not index with Piece::NONE or other out-of-range values.
             unsafe { hint::unreachable_unchecked() }
         }
 
@@ -140,6 +141,7 @@ impl<T> IndexMut<Piece> for [T; Piece::COUNT] {
         let idx = piece.index();
 
         if idx >= Piece::COUNT {
+            // SAFETY: caller must not index with Piece::NONE or other out-of-range values.
             unsafe { hint::unreachable_unchecked() }
         }
 

@@ -199,6 +199,7 @@ impl<T> Index<Square> for [T; Square::COUNT] {
         let idx = square.index();
 
         if idx >= Square::COUNT {
+            // SAFETY: caller must not index with Square::NONE or other out-of-range values.
             unsafe { hint::unreachable_unchecked() }
         }
 
@@ -211,6 +212,7 @@ impl<T> IndexMut<Square> for [T; Square::COUNT] {
         let idx = square.index();
 
         if idx >= Square::COUNT {
+            // SAFETY: caller must not index with Square::NONE or other out-of-range values.
             unsafe { hint::unreachable_unchecked() }
         }
 
