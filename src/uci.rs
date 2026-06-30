@@ -80,6 +80,7 @@ impl Uci {
                 "eval" => self.engine.print_eval(),
                 "bench" => self.run_bench(),
                 "randomopen" => self.generate_random_opening(),
+                "fingerprint" => Self::fingerprint(),
                 _ => (),
             }
         }
@@ -150,6 +151,24 @@ impl Uci {
         UciOption::print_all();
 
         println!("uciok");
+    }
+
+    fn fingerprint() {
+        println!("info string git {}", env!("PRINCHESS_GIT_DESCRIBE"));
+        println!("info string rustc {}", env!("PRINCHESS_RUSTC_VERSION"));
+        println!("info string target-cpu {}", env!("PRINCHESS_TARGET_CPU"));
+        println!(
+            "info string net-value-md5 {}",
+            env!("PRINCHESS_NET_MD5_VALUE")
+        );
+        println!(
+            "info string net-mg-policy-md5 {}",
+            env!("PRINCHESS_NET_MD5_MG_POLICY")
+        );
+        println!(
+            "info string net-eg-policy-md5 {}",
+            env!("PRINCHESS_NET_MD5_EG_POLICY")
+        );
     }
 
     fn generate_random_opening(&mut self) {

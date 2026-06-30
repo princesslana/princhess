@@ -38,13 +38,15 @@ help:
 # Build targets
 BUILD_FEATURES = $(if $(NODEFAULTFEATURES),--no-default-features,)
 
+PRINCHESS_TARGET_CPU ?= x86-64-v3
+
 .PHONY: build
 build:
-	cargo rustc --release --bin princhess $(BUILD_FEATURES) -- -C target-cpu=x86-64-v3
+	PRINCHESS_TARGET_CPU=$(PRINCHESS_TARGET_CPU) cargo rustc --release --bin princhess $(BUILD_FEATURES) -- -C target-cpu=$(PRINCHESS_TARGET_CPU)
 
 .PHONY: native
 native:
-	cargo rustc --release --bin princhess $(BUILD_FEATURES) -- -C target-cpu=native
+	$(MAKE) build PRINCHESS_TARGET_CPU=native
 
 TRAIN_FEATURES = $(if $(NODEFAULTFEATURES),--no-default-features,--features princhess/default)
 
