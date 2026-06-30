@@ -1,3 +1,6 @@
+#[cfg(any(feature = "value-net", feature = "policy-net"))]
+use std::mem;
+
 use crate::chess::MoveList;
 use crate::engine::SCALE;
 #[cfg(feature = "policy-net")]
@@ -69,7 +72,7 @@ impl Flag {
 
 #[cfg(feature = "value-net")]
 static VALUE_NETWORK: QuantizedValueNetwork =
-    unsafe { std::mem::transmute(*include_bytes!("nets/value.bin")) };
+    unsafe { mem::transmute(*include_bytes!("nets/value.bin")) };
 
 #[must_use]
 #[cfg(feature = "value-net")]
@@ -109,11 +112,11 @@ pub fn evaluate_state_flag(state: &State, is_legal_moves: bool) -> Flag {
 
 #[cfg(feature = "policy-net")]
 static MG_POLICY_NETWORK: QuantizedPolicyNetwork =
-    unsafe { std::mem::transmute(*include_bytes!("nets/mg-policy.bin")) };
+    unsafe { mem::transmute(*include_bytes!("nets/mg-policy.bin")) };
 
 #[cfg(feature = "policy-net")]
 static EG_POLICY_NETWORK: QuantizedPolicyNetwork =
-    unsafe { std::mem::transmute(*include_bytes!("nets/eg-policy.bin")) };
+    unsafe { mem::transmute(*include_bytes!("nets/eg-policy.bin")) };
 
 #[cfg(not(feature = "policy-net"))]
 fn run_policy_net(_state: &State, moves: &MoveList, _t: f32) -> Vec<f32> {

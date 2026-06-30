@@ -1,6 +1,7 @@
 use std::fs::{self, File};
 use std::io::{self, BufRead, BufReader, BufWriter, ErrorKind, Read, Write};
 use std::path::{Path, PathBuf};
+use std::process;
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::thread;
@@ -542,7 +543,7 @@ fn main() {
         eprintln!("Options:");
         eprintln!("  --cleanup  Delete input files after successful shuffle");
         eprintln!("  --force    Required with --cleanup if any file >= 150M positions");
-        std::process::exit(1);
+        process::exit(1);
     }
 
     // Gather file info
@@ -551,7 +552,7 @@ fn main() {
         .map(|path| {
             FileInfo::new(path.clone()).unwrap_or_else(|e| {
                 eprintln!("Error reading {}: {}", path.display(), e);
-                std::process::exit(1);
+                process::exit(1);
             })
         })
         .collect();
@@ -568,7 +569,7 @@ fn main() {
                 file.position_count
             );
             eprintln!("       Shuffle limit is {} positions", SHUFFLE_LIMIT);
-            std::process::exit(1);
+            process::exit(1);
         }
     }
 
@@ -587,14 +588,14 @@ fn main() {
                 "       Files >= {}M positions require --force",
                 CLEANUP_SAFETY_THRESHOLD / 1_000_000
             );
-            std::process::exit(1);
+            process::exit(1);
         }
     }
 
     // Safety check: output directory exists
     if !Path::new("data").is_dir() {
         eprintln!("ERROR: 'data' directory does not exist");
-        std::process::exit(1);
+        process::exit(1);
     }
 
     // Calculate totals for progress tracking

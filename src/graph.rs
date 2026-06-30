@@ -1,5 +1,6 @@
 use std::mem;
 use std::ptr::{self, NonNull};
+use std::slice;
 use std::sync::atomic::{AtomicI64, AtomicPtr, AtomicU32, Ordering};
 use std::sync::LazyLock;
 
@@ -119,7 +120,7 @@ impl PositionNode {
         // SAFETY: The NonNull guarantees the pointer is valid and non-null.
         // The count is guaranteed to be <= the actual allocation size.
         // For empty edges (count = 0), we use a dangling pointer which is safe.
-        unsafe { std::slice::from_raw_parts(self.edges_ptr.as_ptr(), self.edges_count as usize) }
+        unsafe { slice::from_raw_parts(self.edges_ptr.as_ptr(), self.edges_count as usize) }
     }
 
     pub fn visits(&self) -> u64 {

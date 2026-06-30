@@ -1,7 +1,7 @@
-use crate::neural::{
-    AdamWOptimizer, FeedForwardNetwork, LRScheduler, OutputLayer, ReLU, SparseConnected,
-    SparseVector, Vector,
-};
+use std::fmt::{self, Display, Formatter};
+use std::ops::{AddAssign, DivAssign};
+use std::ptr;
+
 use bytemuck::{allocation, Zeroable};
 use princhess::chess::Square;
 use princhess::math::Rng;
@@ -11,10 +11,12 @@ use princhess::quantized_policy::{
     RawPolicySqWeights, ATTENTION_SIZE, INPUT_SIZE, QA,
 };
 use princhess::state::State;
-use std::fmt::{self, Display, Formatter};
-use std::ops::{AddAssign, DivAssign};
 
 use crate::nets;
+use crate::neural::{
+    AdamWOptimizer, FeedForwardNetwork, LRScheduler, OutputLayer, ReLU, SparseConnected,
+    SparseVector, Vector,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Phase {
@@ -23,6 +25,7 @@ pub enum Phase {
 }
 
 impl Phase {
+    #[must_use]
     pub fn from_arg(arg: &str) -> Option<Self> {
         if arg.eq_ignore_ascii_case("mg") {
             Some(Self::MiddleGame)
@@ -33,6 +36,7 @@ impl Phase {
         }
     }
 
+    #[must_use]
     pub fn matches(&self, state: &State) -> bool {
         let board = state.board();
         let major_pieces_count =
@@ -71,7 +75,7 @@ pub struct PolicyCount {
 impl Display for PolicyNetwork {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let sq = format!("sq: [{}; {}]", self.sq[0], Square::COUNT);
-        let piece_sq = format!("piece_sq: [{}; {}]", self.piece_sq[0], self.piece_sq.len(),);
+        let piece_sq = format!("piece_sq: [{}; {}]", self.piece_sq[0], self.piece_sq.len());
         write!(f, "{sq} * {piece_sq}")
     }
 }
@@ -107,7 +111,7 @@ impl PolicyNetwork {
 
     pub fn zero_out(&mut self) {
         // SAFETY: PolicyNetwork: Zeroable guarantees all-zeros is a valid bit pattern
-        unsafe { std::ptr::write_bytes(std::ptr::from_mut::<Self>(self), 0, 1) }
+        unsafe { ptr::write_bytes(ptr::from_mut::<Self>(self), 0, 1) }
     }
 
     #[must_use]

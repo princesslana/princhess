@@ -1,3 +1,4 @@
+use std::array;
 use std::fs::{self, File};
 use std::io::{self, Read, Seek, SeekFrom};
 use std::ops::AddAssign;
@@ -159,12 +160,12 @@ impl TrainingStats {
             prev_accuracy: AtomicI64::new(0),
             prev_baseline: AtomicI64::new(0),
             current_baseline_sum: AtomicI64::new(0),
-            piece_correct: std::array::from_fn(|_| AtomicU64::new(0)),
-            piece_total: std::array::from_fn(|_| AtomicU64::new(0)),
-            piece_loss_sum: std::array::from_fn(|_| AtomicI64::new(0)),
-            piece_baseline_sum: std::array::from_fn(|_| AtomicI64::new(0)),
-            wrong_piece: std::array::from_fn(|_| AtomicU64::new(0)),
-            wrong_square: std::array::from_fn(|_| AtomicU64::new(0)),
+            piece_correct: array::from_fn(|_| AtomicU64::new(0)),
+            piece_total: array::from_fn(|_| AtomicU64::new(0)),
+            piece_loss_sum: array::from_fn(|_| AtomicI64::new(0)),
+            piece_baseline_sum: array::from_fn(|_| AtomicI64::new(0)),
+            wrong_piece: array::from_fn(|_| AtomicU64::new(0)),
+            wrong_square: array::from_fn(|_| AtomicU64::new(0)),
             last_saved_net: Mutex::new(None),
         }
     }
@@ -254,34 +255,26 @@ impl TrainingStats {
         }
     }
 
+    fn piece_ratio(&self, num: &AtomicU64, i: usize) -> f32 {
+        let total = self.piece_total[i].load(Ordering::Relaxed);
+        if total > 0 {
+            num.load(Ordering::Relaxed) as f32 / total as f32
+        } else {
+            0.0
+        }
+    }
+
     fn get_piece_accuracy(&self) -> [f32; Piece::COUNT] {
-        std::array::from_fn(|i| {
-            let total = self.piece_total[i].load(Ordering::Relaxed);
-            if total > 0 {
-                self.piece_correct[i].load(Ordering::Relaxed) as f32 / total as f32
-            } else {
-                0.0
-            }
-        })
+        array::from_fn(|i| self.piece_ratio(&self.piece_correct[i], i))
     }
 
     fn get_piece_error_breakdown(&self) -> ([f32; Piece::COUNT], [f32; Piece::COUNT]) {
-        let wrong_piece = std::array::from_fn(|i| {
-            let total = self.piece_total[i].load(Ordering::Relaxed);
-            if total > 0 {
-                self.wrong_piece[i].load(Ordering::Relaxed) as f32 / total as f32
-            } else {
-                0.0
-            }
-        });
-        let wrong_square = std::array::from_fn(|i| {
-            let total = self.piece_total[i].load(Ordering::Relaxed);
-            if total > 0 {
-                self.wrong_square[i].load(Ordering::Relaxed) as f32 / total as f32
-            } else {
-                0.0
-            }
-        });
+        let mut wrong_piece = [0.0f32; Piece::COUNT];
+        let mut wrong_square = [0.0f32; Piece::COUNT];
+        for i in 0..Piece::COUNT {
+            wrong_piece[i] = self.piece_ratio(&self.wrong_piece[i], i);
+            wrong_square[i] = self.piece_ratio(&self.wrong_square[i], i);
+        }
         (wrong_piece, wrong_square)
     }
 
@@ -323,15 +316,14 @@ impl TrainingStats {
     }
 
     fn get_piece_info_gain(&self) -> [f32; Piece::COUNT] {
-        std::array::from_fn(|i| {
+        array::from_fn(|i| {
             let total = self.piece_total[i].load(Ordering::Relaxed);
-            if total > 0 {
-                let baseline = self.piece_baseline_sum[i].load(Ordering::Relaxed) as f32 / SCALE;
-                let loss = self.piece_loss_sum[i].load(Ordering::Relaxed) as f32 / SCALE;
-                (baseline - loss) / total as f32
-            } else {
-                0.0
+            if total == 0 {
+                return 0.0;
             }
+            let baseline = self.piece_baseline_sum[i].load(Ordering::Relaxed) as f32 / SCALE;
+            let loss = self.piece_loss_sum[i].load(Ordering::Relaxed) as f32 / SCALE;
+            (baseline - loss) / total as f32
         })
     }
 }
@@ -961,6 +953,7 @@ fn render_accuracy_chart(frame: &mut Frame, area: ratatui::layout::Rect, stats: 
     frame.render_widget(chart, area);
 }
 
+#[allow(clippy::too_many_arguments)]
 fn train_super_batch<S: LRScheduler + Sync>(
     network: &mut PolicyNetwork,
     momentum: &mut PolicyNetwork,

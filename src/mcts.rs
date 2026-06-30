@@ -608,7 +608,7 @@ impl Mcts {
         options: &MctsOptions,
     ) -> &'a MoveEdge {
         let moves = node.edges();
-        let total_visits = moves.iter().map(|v| u64::from(v.visits())).sum::<u64>();
+        let total_visits = node.visits();
         let gini = f32::from(node.gini()) / SCALE;
         let explore_coef =
             self.exploration_coefficient(options, total_visits, tld.is_main_thread(), gini);

@@ -1,11 +1,13 @@
 #![warn(clippy::all, clippy::pedantic)]
 #![allow(clippy::cast_precision_loss, clippy::cast_possible_truncation)]
 #![allow(clippy::cast_sign_loss)]
+#![allow(clippy::redundant_closure_for_method_calls)]
 
 use std::array;
 use std::collections::HashSet;
 use std::fs::{self, File};
 use std::io::{self, BufWriter};
+use std::mem;
 use std::ops::Neg;
 use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -444,11 +446,7 @@ impl StatsView {
     }
 
     fn positions_per_game(&self) -> u64 {
-        if self.games > 0 {
-            self.positions / self.games
-        } else {
-            0
-        }
+        self.positions.checked_div(self.games).unwrap_or(0)
     }
 
     fn white_win_pct(&self) -> u16 {
@@ -676,7 +674,7 @@ fn run_game(
                         }
                     }
 
-                    std::mem::swap(&mut previous_visits, &mut current_visits);
+                    mem::swap(&mut previous_visits, &mut current_visits);
                 }
             }
 
@@ -820,8 +818,7 @@ fn run_game(
             stats.eval_distribution_buckets[eval_bucket].fetch_add(1, Ordering::Relaxed);
 
             let piece_count = position.piece_count();
-            stats.piece_count_distribution[usize::from(piece_count)]
-                .fetch_add(1, Ordering::Relaxed);
+            stats.piece_count_distribution[piece_count].fetch_add(1, Ordering::Relaxed);
             stats.phase_distribution[position.phase()].fetch_add(1, Ordering::Relaxed);
 
             match result {
@@ -892,10 +889,10 @@ fn policy_kl_divergence(engine: &Engine) -> f32 {
 
     // Scale visits to match policy scale for fair Laplace smoothing
     let total_visits: u64 = visits.iter().map(|&v| u64::from(v)).sum();
-    if total_visits > 0 {
-        for v in &mut visits {
-            *v = ((u64::from(*v) * SCALE as u64) / total_visits) as u32;
-        }
+    for v in &mut visits {
+        *v = (u64::from(*v) * SCALE as u64)
+            .checked_div(total_visits)
+            .unwrap_or(0) as u32;
     }
 
     kl_divergence(&visits, &policies)
@@ -1069,11 +1066,9 @@ fn render_tui(frame: &mut Frame, view: &StatsView) {
 
     let positions_remaining = view.max_positions.saturating_sub(view.positions);
     let positions_per_second = view.avg_positions_per_hour() / 3600;
-    let eta_seconds = if positions_per_second == 0 {
-        0
-    } else {
-        positions_remaining / positions_per_second
-    };
+    let eta_seconds = positions_remaining
+        .checked_div(positions_per_second)
+        .unwrap_or(0);
     let eta = Paragraph::new(tui::format_eta(eta_seconds)).alignment(Alignment::Right);
     frame.render_widget(eta, time_chunks[2]);
 

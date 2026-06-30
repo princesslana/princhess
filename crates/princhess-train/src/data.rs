@@ -69,11 +69,6 @@ impl TrainingPosition {
     }
 
     #[must_use]
-    pub fn white_relative_result(&self) -> i8 {
-        self.result
-    }
-
-    #[must_use]
     pub fn piece_count(&self) -> usize {
         self.occupied.count()
     }

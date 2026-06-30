@@ -62,7 +62,7 @@ impl Bitboard {
         if self.0 == 0 {
             Square::NONE
         } else {
-            Square::from((63 - self.0.leading_zeros()) as u8)
+            Square::from(self.0.ilog2() as u8)
         }
     }
 }

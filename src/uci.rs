@@ -136,11 +136,9 @@ impl Uci {
                 .print_info(&time_management, local_engine.table_full());
         }
 
-        let nps = if total_elapsed_time_ms > 0 {
-            (total_nodes * 1000) / total_elapsed_time_ms
-        } else {
-            0
-        };
+        let nps = (total_nodes * 1000)
+            .checked_div(total_elapsed_time_ms)
+            .unwrap_or(0);
 
         println!("Bench: {total_nodes} nodes {nps} nps");
     }

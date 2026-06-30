@@ -66,10 +66,6 @@ impl Rng {
         self.next_u64() as usize
     }
 
-    pub fn next_i8(&mut self) -> i8 {
-        self.next_u64() as i8
-    }
-
     // Returns a random f32 in the range [0, 1).
     pub fn next_f32(&mut self) -> f32 {
         (self.next_u32() >> 8) as f32 / (1 << 24) as f32

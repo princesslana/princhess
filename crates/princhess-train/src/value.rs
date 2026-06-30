@@ -65,63 +65,30 @@ impl ValueNetwork {
         allocation::zeroed_box()
     }
 
-    /// Compute the L2 norm of all gradients
-    #[must_use]
-    pub fn gradient_norm(&self) -> f32 {
-        let stm_norm = self.stm.weights_norm();
-        let nstm_norm = self.nstm.weights_norm();
-        let output_norm = self.output.weights_norm();
-
-        stm_norm.hypot(nstm_norm).hypot(output_norm)
-    }
-
-    /// Get weight statistics for monitoring
-    #[must_use]
-    pub fn output_weights_norm(&self) -> f32 {
-        self.output.weights_norm()
-    }
-
-    #[must_use]
-    pub fn output_bias(&self) -> f32 {
-        self.output.bias()[0]
-    }
-
-    #[must_use]
-    pub fn stm_weights_norm(&self) -> f32 {
-        self.stm.weights_norm()
-    }
-
-    #[must_use]
-    pub fn nstm_weights_norm(&self) -> f32 {
-        self.nstm.weights_norm()
-    }
-
-    /// Apply optimization step with different optimizers for feature and output layers
     pub fn train_step<S: LRScheduler>(
         &mut self,
         gradients: &Self,
         momentum: &mut Self,
         velocity: &mut Self,
-        feature_optimizer: &AdamWOptimizer<S>,
-        output_optimizer: &AdamWOptimizer<S>,
+        optimizer: &AdamWOptimizer<S>,
     ) {
         self.stm.adamw(
             &gradients.stm,
             &mut momentum.stm,
             &mut velocity.stm,
-            feature_optimizer,
+            optimizer,
         );
         self.nstm.adamw(
             &gradients.nstm,
             &mut momentum.nstm,
             &mut velocity.nstm,
-            feature_optimizer,
+            optimizer,
         );
         self.output.adamw(
             &gradients.output,
             &mut momentum.output,
             &mut velocity.output,
-            output_optimizer,
+            optimizer,
         );
     }
 
