@@ -1,3 +1,4 @@
+use std::hint;
 use std::ops::{BitOr, BitXorAssign, Index, IndexMut};
 
 #[must_use]
@@ -127,7 +128,7 @@ impl<T> Index<Piece> for [T; Piece::COUNT] {
         let idx = piece.index();
 
         if idx >= Piece::COUNT {
-            unsafe { std::hint::unreachable_unchecked() }
+            unsafe { hint::unreachable_unchecked() }
         }
 
         &self[idx]
@@ -139,7 +140,7 @@ impl<T> IndexMut<Piece> for [T; Piece::COUNT] {
         let idx = piece.index();
 
         if idx >= Piece::COUNT {
-            unsafe { std::hint::unreachable_unchecked() }
+            unsafe { hint::unreachable_unchecked() }
         }
 
         &mut self[idx]

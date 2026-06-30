@@ -3,7 +3,6 @@
 #![allow(clippy::cast_sign_loss, clippy::cast_possible_wrap)]
 #![allow(clippy::multiple_crate_versions)]
 
-pub mod analysis_utils;
 pub mod args;
 pub mod data;
 pub mod neural;

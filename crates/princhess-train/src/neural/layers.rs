@@ -48,10 +48,6 @@ impl<T: Activation, const M: usize, const N: usize> DenseConnected<T, M, N> {
         &self.weights[idx]
     }
 
-    pub fn weights_col_mut(&mut self, idx: usize) -> &mut Vector<N> {
-        &mut self.weights[idx]
-    }
-
     #[must_use]
     pub fn bias(&self) -> Vector<N> {
         self.bias
@@ -92,10 +88,6 @@ impl<T: Activation, const M: usize, const N: usize> DenseConnected<T, M, N> {
             &mut momentum.bias,
             &mut velocity.bias,
         );
-    }
-
-    pub fn bias_mut(&mut self) -> &mut Vector<N> {
-        &mut self.bias
     }
 
     #[must_use]
@@ -206,10 +198,6 @@ impl<T: Activation, const M: usize, const N: usize> SparseConnected<T, M, N> {
         self.weights[idx]
     }
 
-    pub fn weights_row_mut(&mut self, idx: usize) -> &mut Vector<N> {
-        &mut self.weights[idx]
-    }
-
     #[must_use]
     pub fn bias(&self) -> Vector<N> {
         self.bias
@@ -250,10 +238,6 @@ impl<T: Activation, const M: usize, const N: usize> SparseConnected<T, M, N> {
             &mut momentum.bias,
             &mut velocity.bias,
         );
-    }
-
-    pub fn bias_mut(&mut self) -> &mut Vector<N> {
-        &mut self.bias
     }
 
     #[must_use]

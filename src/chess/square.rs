@@ -1,4 +1,5 @@
 use std::fmt::{self, Display, Formatter};
+use std::hint;
 use std::ops::{Add, BitAnd, Index, IndexMut, Sub};
 
 use crate::chess::Bitboard;
@@ -53,7 +54,7 @@ impl Square {
     }
 
     pub fn flip_rank(self) -> Square {
-        Square(self.0 ^ 56)
+        Square(self.0 ^ 0x38)
     }
 
     pub fn flip_file(self) -> Square {
@@ -198,7 +199,7 @@ impl<T> Index<Square> for [T; Square::COUNT] {
         let idx = square.index();
 
         if idx >= Square::COUNT {
-            unsafe { std::hint::unreachable_unchecked() }
+            unsafe { hint::unreachable_unchecked() }
         }
 
         &self[idx]
@@ -210,7 +211,7 @@ impl<T> IndexMut<Square> for [T; Square::COUNT] {
         let idx = square.index();
 
         if idx >= Square::COUNT {
-            unsafe { std::hint::unreachable_unchecked() }
+            unsafe { hint::unreachable_unchecked() }
         }
 
         &mut self[idx]

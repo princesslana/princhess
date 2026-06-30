@@ -718,7 +718,7 @@ fn train_super_batch<S: LRScheduler>(
 
             optimizer.step();
 
-            network.train_step(&gradients, momentum, velocity, optimizer, optimizer);
+            network.train_step(&gradients, momentum, velocity, optimizer);
 
             stats.record_batch(batch_metrics);
 

@@ -1,4 +1,5 @@
 use std::marker::PhantomData;
+use std::mem;
 use std::panic::{self, AssertUnwindSafe};
 use std::sync::mpsc::{self, Receiver, SendError, Sender};
 use std::sync::{Arc, Condvar, Mutex};
@@ -22,7 +23,7 @@ enum WorkerMessage<'scope> {
 unsafe fn promote_task<'scope>(
     task: Box<dyn FnOnce() + Send + 'scope>,
 ) -> Box<dyn FnOnce() + Send + 'static> {
-    std::mem::transmute(task)
+    mem::transmute(task)
 }
 
 struct ScopedSender<'scope> {

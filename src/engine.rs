@@ -1,3 +1,4 @@
+use std::process;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use arrayvec::ArrayVec;
@@ -274,7 +275,7 @@ impl Engine {
                         }
                         "quit" => {
                             stop_signal.store(true, Ordering::Relaxed);
-                            std::process::exit(0);
+                            process::exit(0);
                         }
                         "isready" => {
                             println!("readyok");
@@ -353,15 +354,14 @@ impl Engine {
         );
 
         // Calculate exploration coefficient for Q+U display
-        let total_visits: u64 = node_moves
-            .iter()
-            .map(|e| u64::from(e.visits()))
-            .sum::<u64>();
-        let gini = if let Some(node) = current_node {
-            f32::from(node.gini()) / SCALE
+        let (total_visits, gini) = if let Some(node) = current_node {
+            (node.visits(), f32::from(node.gini()) / SCALE)
         } else {
-            // At root, calculate gini from visit distribution
-            math::gini(node_moves.iter().map(MoveEdge::visits), total_visits)
+            let total: u64 = node_moves.iter().map(|e| u64::from(e.visits())).sum();
+            (
+                total,
+                math::gini(node_moves.iter().map(MoveEdge::visits), total),
+            )
         };
         let explore_coef = self.mcts.exploration_coefficient(
             &self.engine_options.mcts_options,
