@@ -154,20 +154,29 @@ impl Uci {
     }
 
     fn fingerprint() {
-        println!("info string git {}", env!("PRINCHESS_GIT_DESCRIBE"));
-        println!("info string rustc {}", env!("PRINCHESS_RUSTC_VERSION"));
-        println!("info string target-cpu {}", env!("PRINCHESS_TARGET_CPU"));
         println!(
-            "info string net-value-md5 {}",
-            env!("PRINCHESS_NET_MD5_VALUE")
+            "info string git {}",
+            option_env!("PRINCHESS_GIT_DESCRIBE").unwrap_or("unknown")
         );
         println!(
-            "info string net-mg-policy-md5 {}",
-            env!("PRINCHESS_NET_MD5_MG_POLICY")
+            "info string rustc {}",
+            option_env!("PRINCHESS_RUSTC_VERSION").unwrap_or("unknown")
         );
         println!(
-            "info string net-eg-policy-md5 {}",
-            env!("PRINCHESS_NET_MD5_EG_POLICY")
+            "info string target-cpu {}",
+            option_env!("PRINCHESS_TARGET_CPU").unwrap_or("unknown")
+        );
+        println!(
+            "info string net-md5-value {}",
+            option_env!("PRINCHESS_NET_MD5_VALUE").unwrap_or("unknown")
+        );
+        println!(
+            "info string net-md5-mg-policy {}",
+            option_env!("PRINCHESS_NET_MD5_MG_POLICY").unwrap_or("unknown")
+        );
+        println!(
+            "info string net-md5-eg-policy {}",
+            option_env!("PRINCHESS_NET_MD5_EG_POLICY").unwrap_or("unknown")
         );
     }
 
