@@ -18,12 +18,14 @@ Optional:
   --threads <n>          Threads per game (default: 1)
   --syzygy <bool>        Use Syzygy tablebases: true/false (default: true)
   --max-cores <n>        Max cores available (overrides auto-detection)
+  --variant <variant>    Chess variant: standard, dfrc (default: standard)
   -h, --help             Show this help
 
 Examples:
   $0 --test-type sprt_gain --tc stc --engine1 princhess --engine2 princhess-main
   $0 --test-type elo_check --tc ltc --engine1 princhess --engine2 princhess-main --threads 2
   $0 --test-type debug --tc nodes25k --engine1 princhess --engine2 princhess-main --max-cores 4
+  $0 --test-type sprt_gain --tc stc --engine1 princhess --engine2 princhess-main --variant dfrc
 EOF
     exit 0
 }
@@ -36,6 +38,7 @@ TEST_TYPE=""
 TIME_CONTROL=""
 ENGINE1=""
 ENGINE2=""
+VARIANT="standard"
 NATIVE_MODE=false
 
 # Parse arguments
@@ -69,6 +72,10 @@ while [[ $# -gt 0 ]]; do
             MAX_CORES="$2"
             shift 2
             ;;
+        --variant)
+            VARIANT="$2"
+            shift 2
+            ;;
         --native)
             NATIVE_MODE=true
             shift
@@ -100,6 +107,12 @@ fi
 # Validate syzygy
 if [ "$USE_SYZYGY" != "true" ] && [ "$USE_SYZYGY" != "false" ]; then
     echo "Invalid syzygy parameter: $USE_SYZYGY (must be 'true' or 'false')"
+    exit 1
+fi
+
+# Validate variant
+if [ "$VARIANT" != "standard" ] && [ "$VARIANT" != "dfrc" ]; then
+    echo "Invalid variant: $VARIANT (must be 'standard' or 'dfrc')"
     exit 1
 fi
 
@@ -189,7 +202,10 @@ else
         CONCURRENCY=1
     fi
 fi
-OPENING_BOOK="UHO_Lichess_4852_v1.epd"
+case $VARIANT in
+    dfrc)    OPENING_BOOK="DFRC_4852_v1.epd" ;;
+    *)       OPENING_BOOK="UHO_Lichess_4852_v1.epd" ;;
+esac
 
 # Set time control specific values
 case $TIME_CONTROL in
@@ -242,6 +258,9 @@ get_engine_path() {
 echo "-engine cmd=$(get_engine_path $ENGINE1) name=$ENGINE1"
 echo "-engine cmd=$(get_engine_path $ENGINE2) name=$ENGINE2"
 echo ""
+if [ "$VARIANT" = "dfrc" ]; then
+    echo "-variant fischerandom"
+fi
 echo "-each proto=uci tc=$TC"
 if [ "$USE_SYZYGY" = "true" ]; then
     echo "      option.SyzygyPath=$SYZYGY_PATH option.Hash=$HASH option.Threads=$THREADS"
@@ -258,20 +277,12 @@ fi
 # Add test-specific arguments
 case $TEST_TYPE in
     sprt_gain)
-        ROUNDS=7500
-        if is_long_test; then
-            echo "-sprt elo0=0 elo1=10 alpha=0.1 beta=0.2 model=normalized"
-        else
-            echo "-sprt elo0=0 elo1=10 alpha=0.05 beta=0.1 model=normalized"
-        fi
+        ROUNDS=15000
+        echo "-sprt elo0=0 elo1=3 alpha=0.05 beta=0.1 model=logistic"
         ;;
     sprt_equal)
-        ROUNDS=7500
-        if is_long_test; then
-            echo "-sprt elo0=-10 elo1=0 alpha=0.1 beta=0.2 model=normalized"
-        else
-            echo "-sprt elo0=-10 elo1=0 alpha=0.05 beta=0.1 model=normalized"
-        fi
+        ROUNDS=15000
+        echo "-sprt elo0=-3 elo1=0 alpha=0.05 beta=0.1 model=logistic"
         ;;
     elo_check)
         ROUNDS=500

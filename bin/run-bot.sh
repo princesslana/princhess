@@ -4,7 +4,10 @@ set -e
 
 cd src
 
-echo "token: $LICHESS_TOKEN" >> config.yml
+# Copy mounted config to avoid modifying the host file
+cp config.yml config.yml.runtime
 
-python lichess-bot.py -v
+echo "token: $LICHESS_TOKEN" >> config.yml.runtime
+
+python lichess-bot.py -v --config config.yml.runtime
 

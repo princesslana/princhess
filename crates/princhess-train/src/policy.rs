@@ -88,10 +88,26 @@ impl AddAssign<&Self> for PolicyNetwork {
     }
 }
 
+impl DivAssign<f32> for PolicyNetwork {
+    fn div_assign(&mut self, rhs: f32) {
+        for subnet in &mut self.sq {
+            *subnet /= rhs;
+        }
+        for subnet in &mut self.piece_sq {
+            *subnet /= rhs;
+        }
+    }
+}
+
 impl PolicyNetwork {
     #[must_use]
     pub fn zeroed() -> Box<Self> {
         allocation::zeroed_box()
+    }
+
+    pub fn zero_out(&mut self) {
+        // SAFETY: PolicyNetwork: Zeroable guarantees all-zeros is a valid bit pattern
+        unsafe { std::ptr::write_bytes(std::ptr::from_mut::<Self>(self), 0, 1) }
     }
 
     #[must_use]

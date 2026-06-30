@@ -1,25 +1,10 @@
-use bytemuck::allocation;
-use chrono::Utc;
-use crossterm::{
-    cursor,
-    event::{poll, read, Event, KeyCode},
-    ExecutableCommand,
-};
-use princhess::engine::{Engine, SCALE};
-use princhess::math::{self, Rng};
-use princhess::options::{EngineOptions, EvaluationOptions, MctsOptions};
-use princhess::state::State;
-use ratatui::{
-    backend::CrosstermBackend,
-    layout::{Alignment, Constraint, Direction, Layout},
-    style::{Color, Style},
-    text::Span,
-    widgets::{Block, Borders, Gauge, Paragraph, Sparkline},
-    Frame, Terminal, TerminalOptions, Viewport,
-};
+#![warn(clippy::all, clippy::pedantic)]
+#![allow(clippy::cast_precision_loss, clippy::cast_possible_truncation)]
+#![allow(clippy::cast_sign_loss)]
+
 use std::array;
 use std::collections::HashSet;
-use std::fs::File;
+use std::fs::{self, File};
 use std::io::{self, BufWriter};
 use std::ops::Neg;
 use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU64, AtomicUsize, Ordering};
@@ -27,44 +12,87 @@ use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
 
-use princhess_train::data::TrainingPosition;
-use princhess_train::tui::{self, RawModeGuard};
-use scc::{self, Guard, Queue};
+use arrayvec::ArrayVec;
+use bytemuck::allocation;
+use chrono::Utc;
+use crossterm::cursor;
+use crossterm::event::{poll, read, Event, KeyCode};
+use crossterm::ExecutableCommand;
+use ratatui::backend::CrosstermBackend;
+use ratatui::layout::{Alignment, Constraint, Direction, Layout};
+use ratatui::style::{Color, Style};
+use ratatui::text::Span;
+use ratatui::widgets::{Block, Borders, Gauge, Paragraph, Sparkline};
+use ratatui::{Frame, Terminal, TerminalOptions, Viewport};
+use scc::{Guard, Queue};
 
-const HASH_SIZE_MB: usize = 128;
+use princhess::engine::{Engine, SCALE};
+use princhess::math::{self, Rng};
+use princhess::options::{EngineOptions, MctsOptions};
+use princhess::state::{self, State};
+
+use princhess_train::args::Args;
+use princhess_train::data::TrainingPosition;
+use princhess_train::system;
+use princhess_train::tui::{self, RawModeGuard};
+
+const HASH_SIZE_MB: usize = 64;
 
 const MAX_PLAYOUTS_PER_POSITION: u64 = 10000;
-const KL_DIVERGENCE_THRESHOLD: f64 = 0.000002;
-const THREADS: u64 = 5;
+const KL_DIVERGENCE_THRESHOLD: f32 = 0.000_002;
+const MAX_THREADS: u16 = 64;
 const DFRC_PCT: u64 = 10;
 
 const VARIATION_MIN_EVAL: f32 = 0.25;
 const VARIATION_MAX_EVAL: f32 = 0.75;
 const VARIATION_MIN_PHASE: usize = 16;
 
-const ADJUDICATE_MAX_PIECE_COUNT: usize = 6;
-const ADJUDICATE_DRAW_EVAL: f32 = 0.10;
-const ADJUDICATE_DRAW_MOVES: usize = 8;
-const ADJUDICATE_WIN_EVAL: f32 = 0.90;
-const ADJUDICATE_WIN_MOVES: usize = 3;
-
 const MAX_POSITIONS_PER_FILE: u64 = 20_000_000;
-const MAX_POSITIONS_TOTAL: u64 = MAX_POSITIONS_PER_FILE * THREADS;
 const MAX_VARIATIONS: usize = 16;
 
 const SAMPLE_INTERVAL_SECS: u64 = 5;
 const RATE_WINDOW_SAMPLES: usize = 60;
 const MAX_SAMPLES: usize = 512;
 
-const POLICY_GINI_THRESHOLDS: [f32; 5] = [0.3, 0.5, 0.7, 0.8, 0.9];
-const EVAL_DISTRIBUTION_THRESHOLDS: [f32; 5] = [-0.6, -0.3, 0.0, 0.3, 0.6];
-const EVAL_DELTA_THRESHOLDS: [f32; 5] = [0.1, 0.2, 0.3, 0.4, 0.5];
-const EVAL_RESULT_AGREEMENT_THRESHOLDS: [f32; 5] = [0.2, 0.4, 0.6, 1.0, 1.5];
+// Histogram configuration: center point and bucket width (generates 11 thresholds for 12 buckets)
+const POLICY_GINI_CENTER: f32 = 0.5;
+const POLICY_GINI_WIDTH: f32 = 0.1;
 
-const TUI_PROGRESS_BOX_HEIGHT: u16 = 3 + THREADS as u16 + 2;
+const POLICY_KL_CENTER: f32 = 1.2;
+const POLICY_KL_WIDTH: f32 = 0.2;
+
+const EVAL_DISTRIBUTION_CENTER: f32 = 0.0;
+const EVAL_DISTRIBUTION_WIDTH: f32 = 0.2;
+
+const EVAL_RESULT_AGREEMENT_CENTER: f32 = 0.6;
+const EVAL_RESULT_AGREEMENT_WIDTH: f32 = 0.1;
+
+const POLICY_GINI_THRESHOLDS: [f32; 11] =
+    generate_thresholds(POLICY_GINI_CENTER, POLICY_GINI_WIDTH);
+const POLICY_KL_THRESHOLDS: [f32; 11] = generate_thresholds(POLICY_KL_CENTER, POLICY_KL_WIDTH);
+const EVAL_DISTRIBUTION_THRESHOLDS: [f32; 11] =
+    generate_thresholds(EVAL_DISTRIBUTION_CENTER, EVAL_DISTRIBUTION_WIDTH);
+const EVAL_RESULT_AGREEMENT_THRESHOLDS: [f32; 11] =
+    generate_thresholds(EVAL_RESULT_AGREEMENT_CENTER, EVAL_RESULT_AGREEMENT_WIDTH);
+
+const EVAL_DELTA_BUCKETS: usize = 20;
+const EVAL_DELTA_BUCKET_WIDTH: f32 = 0.05;
+
+const OPENING_EVAL_BUCKETS: usize = 25;
+
+const GAME_LENGTH_BUCKETS: usize = 25;
+const GAME_LENGTH_BUCKET_WIDTH: usize = 8;
+
 const TUI_GRID_HEIGHT: u16 = 9;
 const TUI_HISTOGRAM_HEIGHT: u16 = 8;
-const TUI_TOTAL_HEIGHT: u16 = TUI_PROGRESS_BOX_HEIGHT + TUI_GRID_HEIGHT + TUI_HISTOGRAM_HEIGHT + 2;
+
+fn tui_progress_box_height(threads: u16) -> u16 {
+    3 + threads + 2
+}
+
+fn tui_total_height(threads: u16) -> u16 {
+    tui_progress_box_height(threads) + TUI_GRID_HEIGHT + TUI_HISTOGRAM_HEIGHT + 2
+}
 
 fn load_atomic_array<const N: usize>(arr: &[AtomicU64; N]) -> [u64; N] {
     array::from_fn(|i| arr[i].load(Ordering::Relaxed))
@@ -85,14 +113,30 @@ fn to_bucket(value: f32, thresholds: &[f32]) -> usize {
         .unwrap_or(thresholds.len())
 }
 
-fn bucket_labels(thresholds: &[f32; 5]) -> [String; 6] {
+const fn generate_thresholds(center: f32, width: f32) -> [f32; 11] {
     [
-        format!("    -{:>4.1}", thresholds[0]),
-        format!("{:>4.1}-{:>4.1}", thresholds[0], thresholds[1]),
-        format!("{:>4.1}-{:>4.1}", thresholds[1], thresholds[2]),
-        format!("{:>4.1}-{:>4.1}", thresholds[2], thresholds[3]),
-        format!("{:>4.1}-{:>4.1}", thresholds[3], thresholds[4]),
-        format!("{:>4.1}-    ", thresholds[4]),
+        center - 5.0 * width,
+        center - 4.0 * width,
+        center - 3.0 * width,
+        center - 2.0 * width,
+        center - width,
+        center,
+        center + width,
+        center + 2.0 * width,
+        center + 3.0 * width,
+        center + 4.0 * width,
+        center + 5.0 * width,
+    ]
+}
+
+fn bucket_labels(thresholds: &[f32; 11]) -> [String; 6] {
+    [
+        format!("    -{:>4.1}", thresholds[1]),
+        format!("{:>4.1}-{:>4.1}", thresholds[1], thresholds[3]),
+        format!("{:>4.1}-{:>4.1}", thresholds[3], thresholds[5]),
+        format!("{:>4.1}-{:>4.1}", thresholds[5], thresholds[7]),
+        format!("{:>4.1}-{:>4.1}", thresholds[7], thresholds[9]),
+        format!("{:>4.1}-    ", thresholds[9]),
     ]
 }
 
@@ -101,9 +145,39 @@ fn bucket_labels(thresholds: &[f32; 5]) -> [String; 6] {
 /// Returns a value in [0.0, 1.0] where:
 /// - 0.0 = concentrated policy (all visits on one move)
 /// - 1.0 = uniform policy (visits evenly distributed)
-fn compute_policy_gini(visits: &[u8]) -> f32 {
-    let total_visits: u64 = visits.iter().map(|&v| u64::from(v)).sum();
-    math::gini(visits.iter().map(|&v| u32::from(v)), total_visits)
+fn compute_policy_gini<I: Iterator<Item = u8> + Clone>(visits: I) -> f32 {
+    let total_visits: u64 = visits.clone().map(u64::from).sum();
+    math::gini(visits.map(u32::from), total_visits)
+}
+
+/// Computes KL divergence KL(P || Q) = Σ P(i) * ln(P(i) / Q(i)) between two distributions.
+///
+/// Uses Laplace smoothing (`ε=1.0`) to handle zero probabilities:
+/// - `p = (p_values[i] + ε) / (p_total + num_moves * ε)`
+/// - `q = (q_values[i] + ε) / (q_total + num_moves * ε)`
+fn kl_divergence<T, U>(p_values: &[T], q_values: &[U]) -> f32
+where
+    T: Copy + Into<u64>,
+    U: Copy + Into<u64>,
+{
+    let p_total: u64 = p_values.iter().map(|&x| x.into()).sum();
+    let q_total: u64 = q_values.iter().map(|&x| x.into()).sum();
+
+    let num_moves = p_values.len() as f32;
+    let epsilon = 1.0;
+
+    let p_sum = p_total as f32 + num_moves * epsilon;
+    let q_sum = q_total as f32 + num_moves * epsilon;
+
+    let mut kl = 0.0;
+
+    for (&p_val, &q_val) in p_values.iter().zip(q_values.iter()) {
+        let p = (p_val.into() as f32 + epsilon) / p_sum;
+        let q = (q_val.into() as f32 + epsilon) / q_sum;
+        kl += p * (p / q).ln();
+    }
+
+    kl
 }
 
 struct Stats {
@@ -115,10 +189,12 @@ struct Stats {
     white_wins: AtomicU64,
     black_wins: AtomicU64,
     draws: AtomicU64,
-    blunders: AtomicU64,
+    blunders_win_draw: AtomicU64,
+    blunders_win_loss: AtomicU64,
     variations: AtomicUsize,
     nodes: AtomicUsize,
     playouts: AtomicUsize,
+    visits: AtomicUsize,
     depth: AtomicUsize,
     seldepth: AtomicUsize,
     opening_eval_sum: AtomicI64,
@@ -127,25 +203,34 @@ struct Stats {
     variation_count: AtomicU64,
     recent_rates: Queue<u64>,
     last_sample_positions: AtomicU64,
-    thread_buffers: [AtomicUsize; THREADS as usize],
-    policy_gini_buckets: [AtomicU64; 6],
-    eval_distribution_buckets: [AtomicU64; 6],
-    eval_delta_buckets: [AtomicU64; 6],
-    eval_result_agreement_buckets: [AtomicU64; 6],
+    active_threads: AtomicUsize,
+    thread_buffers: [AtomicUsize; MAX_THREADS as usize],
+    policy_gini_buckets: [AtomicU64; 12],
+    policy_gini_sum: AtomicU64,
+    policy_kl_buckets: [AtomicU64; 12],
+    policy_kl_sum: AtomicU64,
+    eval_distribution_buckets: [AtomicU64; 12],
+    eval_delta_distribution: [AtomicU64; EVAL_DELTA_BUCKETS],
+    opening_eval_distribution: [AtomicU64; OPENING_EVAL_BUCKETS],
+    game_length_distribution: [AtomicU64; GAME_LENGTH_BUCKETS],
+    eval_result_agreement_buckets: [AtomicU64; 12],
     piece_count_distribution: [AtomicU64; 33],
     phase_distribution: [AtomicU64; 25],
     variation_phase_distribution: [AtomicU64; 25],
-    duplicate_set: scc::HashSet<u64>,
-    duplicate_piece_count_distribution: [AtomicU64; 33],
+    window_policy_kl: AtomicU64,
+    window_eval_result_disagreement: AtomicU64,
+    eval_result_disagreement_sum: AtomicU64,
 }
 
 struct GameStats {
     pub positions: u64,
     pub skipped: u64,
-    pub blunders: u64,
+    pub blunders_win_draw: u64,
+    pub blunders_win_loss: u64,
     pub variations: usize,
     pub nodes: usize,
     pub playouts: usize,
+    pub visits: usize,
     pub depth: usize,
     pub seldepth: usize,
 }
@@ -161,10 +246,12 @@ impl Stats {
             white_wins: AtomicU64::new(0),
             black_wins: AtomicU64::new(0),
             draws: AtomicU64::new(0),
-            blunders: AtomicU64::new(0),
+            blunders_win_draw: AtomicU64::new(0),
+            blunders_win_loss: AtomicU64::new(0),
             variations: AtomicUsize::new(0),
             nodes: AtomicUsize::new(0),
             playouts: AtomicUsize::new(0),
+            visits: AtomicUsize::new(0),
             depth: AtomicUsize::new(0),
             seldepth: AtomicUsize::new(0),
             opening_eval_sum: AtomicI64::new(0),
@@ -173,16 +260,23 @@ impl Stats {
             variation_count: AtomicU64::new(0),
             recent_rates: Queue::default(),
             last_sample_positions: AtomicU64::new(0),
+            active_threads: AtomicUsize::new(0),
             thread_buffers: zeroed_atomic_usize_array(),
             policy_gini_buckets: zeroed_atomic_u64_array(),
+            policy_gini_sum: AtomicU64::new(0),
+            policy_kl_buckets: zeroed_atomic_u64_array(),
+            policy_kl_sum: AtomicU64::new(0),
             eval_distribution_buckets: zeroed_atomic_u64_array(),
-            eval_delta_buckets: zeroed_atomic_u64_array(),
+            eval_delta_distribution: zeroed_atomic_u64_array(),
+            opening_eval_distribution: zeroed_atomic_u64_array(),
+            game_length_distribution: zeroed_atomic_u64_array(),
             eval_result_agreement_buckets: zeroed_atomic_u64_array(),
             piece_count_distribution: zeroed_atomic_u64_array(),
             phase_distribution: zeroed_atomic_u64_array(),
             variation_phase_distribution: zeroed_atomic_u64_array(),
-            duplicate_set: scc::HashSet::new(),
-            duplicate_piece_count_distribution: zeroed_atomic_u64_array(),
+            window_policy_kl: AtomicU64::new(0),
+            window_eval_result_disagreement: AtomicU64::new(0),
+            eval_result_disagreement_sum: AtomicU64::new(0),
         }
     }
 
@@ -190,13 +284,21 @@ impl Stats {
         self.games.fetch_add(1, Ordering::Relaxed);
         self.positions.fetch_add(game.positions, Ordering::Relaxed);
         self.skipped.fetch_add(game.skipped, Ordering::Relaxed);
-        self.blunders.fetch_add(game.blunders, Ordering::Relaxed);
+        self.blunders_win_draw
+            .fetch_add(game.blunders_win_draw, Ordering::Relaxed);
+        self.blunders_win_loss
+            .fetch_add(game.blunders_win_loss, Ordering::Relaxed);
         self.variations
             .fetch_add(game.variations, Ordering::Relaxed);
         self.nodes.fetch_add(game.nodes, Ordering::Relaxed);
         self.playouts.fetch_add(game.playouts, Ordering::Relaxed);
+        self.visits.fetch_add(game.visits, Ordering::Relaxed);
         self.depth.fetch_add(game.depth, Ordering::Relaxed);
         self.seldepth.fetch_add(game.seldepth, Ordering::Relaxed);
+
+        let length_bucket =
+            (game.positions as usize / GAME_LENGTH_BUCKET_WIDTH).min(GAME_LENGTH_BUCKETS - 1);
+        self.game_length_distribution[length_bucket].fetch_add(1, Ordering::Relaxed);
     }
 
     pub fn add_white_win(&self, game: &GameStats) {
@@ -235,7 +337,7 @@ impl Stats {
         self.variation_count.fetch_add(1, Ordering::Relaxed);
     }
 
-    fn view(&self) -> StatsView {
+    fn view(&self, threads: u16, max_positions: u64) -> StatsView {
         let mut recent_rates = Vec::new();
         let guard = Guard::new();
         for rate in self.recent_rates.iter(&guard) {
@@ -250,10 +352,12 @@ impl Stats {
             black_wins: self.black_wins.load(Ordering::Relaxed),
             skipped: self.skipped.load(Ordering::Relaxed),
             aborted: self.aborted.load(Ordering::Relaxed),
-            blunders: self.blunders.load(Ordering::Relaxed),
+            blunders_win_draw: self.blunders_win_draw.load(Ordering::Relaxed),
+            blunders_win_loss: self.blunders_win_loss.load(Ordering::Relaxed),
             variations: self.variations.load(Ordering::Relaxed),
             nodes: self.nodes.load(Ordering::Relaxed),
             playouts: self.playouts.load(Ordering::Relaxed),
+            visits: self.visits.load(Ordering::Relaxed),
             depth: self.depth.load(Ordering::Relaxed),
             seldepth: self.seldepth.load(Ordering::Relaxed),
             opening_eval_sum: self.opening_eval_sum.load(Ordering::Relaxed),
@@ -262,19 +366,22 @@ impl Stats {
             variation_count: self.variation_count.load(Ordering::Relaxed),
             elapsed_seconds: self.start.elapsed().as_secs().max(1),
             recent_rates,
+            threads,
+            max_positions,
             thread_buffers: array::from_fn(|i| self.thread_buffers[i].load(Ordering::Relaxed)),
             policy_gini_buckets: load_atomic_array(&self.policy_gini_buckets),
+            policy_gini_sum: self.policy_gini_sum.load(Ordering::Relaxed),
+            policy_kl_buckets: load_atomic_array(&self.policy_kl_buckets),
+            policy_kl_sum: self.policy_kl_sum.load(Ordering::Relaxed),
             eval_distribution_buckets: load_atomic_array(&self.eval_distribution_buckets),
-            eval_delta_buckets: load_atomic_array(&self.eval_delta_buckets),
+            eval_delta_distribution: load_atomic_array(&self.eval_delta_distribution),
+            opening_eval_distribution: load_atomic_array(&self.opening_eval_distribution),
+            game_length_distribution: load_atomic_array(&self.game_length_distribution),
             eval_result_agreement_buckets: load_atomic_array(&self.eval_result_agreement_buckets),
             piece_count_distribution: load_atomic_array(&self.piece_count_distribution),
             phase_distribution: load_atomic_array(&self.phase_distribution),
             variation_phase_distribution: load_atomic_array(&self.variation_phase_distribution),
-            duplicate_count: self.positions.load(Ordering::Relaxed)
-                - self.duplicate_set.len() as u64,
-            duplicate_piece_count_distribution: load_atomic_array(
-                &self.duplicate_piece_count_distribution,
-            ),
+            eval_result_disagreement_sum: self.eval_result_disagreement_sum.load(Ordering::Relaxed),
         }
     }
 }
@@ -287,10 +394,12 @@ struct StatsView {
     black_wins: u64,
     skipped: u64,
     aborted: u64,
-    blunders: u64,
+    blunders_win_draw: u64,
+    blunders_win_loss: u64,
     variations: usize,
     nodes: usize,
     playouts: usize,
+    visits: usize,
     depth: usize,
     seldepth: usize,
     opening_eval_sum: i64,
@@ -299,16 +408,22 @@ struct StatsView {
     variation_count: u64,
     elapsed_seconds: u64,
     recent_rates: Vec<u64>,
-    thread_buffers: [usize; THREADS as usize],
-    policy_gini_buckets: [u64; 6],
-    eval_distribution_buckets: [u64; 6],
-    eval_delta_buckets: [u64; 6],
-    eval_result_agreement_buckets: [u64; 6],
+    threads: u16,
+    max_positions: u64,
+    thread_buffers: [usize; MAX_THREADS as usize],
+    policy_gini_buckets: [u64; 12],
+    policy_gini_sum: u64,
+    policy_kl_buckets: [u64; 12],
+    policy_kl_sum: u64,
+    eval_distribution_buckets: [u64; 12],
+    eval_delta_distribution: [u64; EVAL_DELTA_BUCKETS],
+    opening_eval_distribution: [u64; OPENING_EVAL_BUCKETS],
+    game_length_distribution: [u64; GAME_LENGTH_BUCKETS],
+    eval_result_agreement_buckets: [u64; 12],
     piece_count_distribution: [u64; 33],
     phase_distribution: [u64; 25],
     variation_phase_distribution: [u64; 25],
-    duplicate_count: u64,
-    duplicate_piece_count_distribution: [u64; 33],
+    eval_result_disagreement_sum: u64,
 }
 
 impl StatsView {
@@ -336,20 +451,24 @@ impl StatsView {
         }
     }
 
-    fn white_win_pct(&self) -> u64 {
-        (self.per_game(self.white_wins as f32) * 100.0) as u64
+    fn white_win_pct(&self) -> u16 {
+        (self.per_game(self.white_wins as f32) * 100.0).round() as u16
     }
 
-    fn draw_pct(&self) -> u64 {
-        (self.per_game(self.draws as f32) * 100.0) as u64
+    fn draw_pct(&self) -> u16 {
+        (self.per_game(self.draws as f32) * 100.0).round() as u16
     }
 
-    fn black_win_pct(&self) -> u64 {
-        (self.per_game(self.black_wins as f32) * 100.0) as u64
+    fn black_win_pct(&self) -> u16 {
+        (self.per_game(self.black_wins as f32) * 100.0).round() as u16
     }
 
-    fn blunder_pct(&self) -> f32 {
-        self.per_game(self.blunders as f32) * 100.0
+    fn blunder_win_draw_pct(&self) -> f32 {
+        self.per_game(self.blunders_win_draw as f32) * 100.0
+    }
+
+    fn blunder_win_loss_pct(&self) -> f32 {
+        self.per_game(self.blunders_win_loss as f32) * 100.0
     }
 
     fn variation_pct(&self) -> f32 {
@@ -370,6 +489,10 @@ impl StatsView {
 
     fn avg_playouts(&self) -> usize {
         self.per_position(self.playouts as f32) as usize
+    }
+
+    fn avg_visits(&self) -> usize {
+        self.per_position(self.visits as f32) as usize
     }
 
     fn avg_depth(&self) -> usize {
@@ -401,12 +524,12 @@ impl StatsView {
     }
 
     fn avg_positions_per_hour(&self) -> u64 {
-        if !self.recent_rates.is_empty() {
+        if self.recent_rates.is_empty() {
+            self.positions * 3600 / self.elapsed_seconds
+        } else {
             let window = self.recent_rates.len().min(RATE_WINDOW_SAMPLES);
             let sum: u64 = self.recent_rates.iter().rev().take(window).sum();
             sum / window as u64
-        } else {
-            self.positions * 3600 / self.elapsed_seconds
         }
     }
 
@@ -417,6 +540,32 @@ impl StatsView {
     fn progress_ratio(&self, max_positions: u64) -> f64 {
         self.positions as f64 / max_positions as f64
     }
+
+    fn avg_policy_gini(&self) -> f32 {
+        let count: u64 = self.policy_gini_buckets.iter().sum();
+        if count > 0 {
+            self.policy_gini_sum as f32 / count as f32 / SCALE
+        } else {
+            0.0
+        }
+    }
+
+    fn avg_policy_kl(&self) -> f32 {
+        let count: u64 = self.policy_kl_buckets.iter().sum();
+        if count > 0 {
+            self.policy_kl_sum as f32 / count as f32 / SCALE
+        } else {
+            0.0
+        }
+    }
+
+    fn avg_eval_result_disagreement(&self) -> f32 {
+        if self.positions > 0 {
+            self.eval_result_disagreement_sum as f32 / self.positions as f32 / SCALE
+        } else {
+            0.0
+        }
+    }
 }
 
 impl GameStats {
@@ -424,10 +573,12 @@ impl GameStats {
         Self {
             positions: 0,
             skipped: 0,
-            blunders: 0,
+            blunders_win_draw: 0,
+            blunders_win_loss: 0,
             variations: 0,
             nodes: 0,
             playouts: 0,
+            visits: 0,
             depth: 0,
             seldepth: 0,
         }
@@ -466,8 +617,10 @@ impl Neg for GameResult {
     }
 }
 
+#[allow(clippy::too_many_lines)]
 fn run_game(
     stats: &Stats,
+    engine: &mut Engine,
     positions: &mut Vec<TrainingPosition>,
     rng: &mut Rng,
     stop_signal: &AtomicBool,
@@ -478,37 +631,10 @@ fn run_game(
 
     variations.push(random_start(rng));
 
-    let mcts_options = MctsOptions {
-        cpuct: 2.82,
-        cpuct_tau: 0.5,
-        cpuct_jitter: 0.0,
-        cpuct_trend_adjustment: 0.0,
-        cpuct_gini_base: 1.0,
-        cpuct_gini_factor: 0.0,
-        cpuct_gini_max: 1.0,
-        policy_temperature: 1.0,
-        policy_temperature_root: 1.4,
-    };
-
-    let evaluation_options = EvaluationOptions {
-        enable_material_scaling: false,
-        enable_50mr_scaling: false,
-    };
-
-    let engine_options = EngineOptions {
-        mcts_options,
-        evaluation_options,
-        hash_size_mb: HASH_SIZE_MB,
-        ..EngineOptions::default()
-    };
-
     while let Some(mut state) = variations.pop() {
         if stop_signal.load(Ordering::Relaxed) {
             return;
         }
-
-        let mut game_stats = GameStats::zero();
-        let mut engine = Engine::new(state.clone(), engine_options);
 
         if !state.is_available_move() {
             continue;
@@ -521,17 +647,19 @@ fn run_game(
             continue;
         }
 
+        let mut game_stats = GameStats::zero();
+        engine.set_root_state(state.clone());
+
         let mut game_positions = Vec::with_capacity(256);
         let mut is_first_move = true;
         let mut previous_eval = 0.0;
-        let mut consecutive_draw_moves = 0;
-        let mut consecutive_win_moves = 0;
         let result = loop {
             engine.set_root_state(state.clone());
             let legal_moves = engine.root_edges().len();
 
             if legal_moves > 1 {
                 let mut previous_visits = vec![0u32; legal_moves];
+                let mut current_visits = Vec::with_capacity(legal_moves);
 
                 // Early stopping based on KL divergence convergence
                 // Compare visit distributions between successive batches and stop when the
@@ -539,11 +667,8 @@ fn run_game(
                 for _playout in 0..MAX_PLAYOUTS_PER_POSITION {
                     engine.playout_sync(1);
 
-                    let current_visits: Vec<u32> = engine
-                        .root_edges()
-                        .iter()
-                        .map(|edge| edge.visits())
-                        .collect();
+                    current_visits.clear();
+                    current_visits.extend(engine.root_edges().iter().map(|e| e.visits()));
 
                     if let Some(gain) = kld_gain(&current_visits, &previous_visits) {
                         if gain < KL_DIVERGENCE_THRESHOLD {
@@ -551,7 +676,7 @@ fn run_game(
                         }
                     }
 
-                    previous_visits = current_visits;
+                    std::mem::swap(&mut previous_visits, &mut current_visits);
                 }
             }
 
@@ -563,27 +688,47 @@ fn run_game(
                 let position = TrainingPosition::from(engine.mcts());
                 let eval = position.evaluation();
 
+                // Track KL divergence between final visits and policy
+                let policy_kl = policy_kl_divergence(engine);
+                let kl_bucket = to_bucket(policy_kl, &POLICY_KL_THRESHOLDS);
+                stats.policy_kl_buckets[kl_bucket].fetch_add(1, Ordering::Relaxed);
+                let kl_quantized = (policy_kl * SCALE) as u64;
+                stats
+                    .policy_kl_sum
+                    .fetch_add(kl_quantized, Ordering::Relaxed);
+                stats
+                    .window_policy_kl
+                    .fetch_add(kl_quantized, Ordering::Relaxed);
+
                 if variations_count < MAX_VARIATIONS {
                     let variation = engine.most_visited_move();
 
                     if variation != best_move
-                        && (VARIATION_MIN_EVAL..=VARIATION_MAX_EVAL).contains(&eval.abs())
+                        && (VARIATION_MIN_EVAL..=VARIATION_MAX_EVAL)
+                            .contains(&position.evaluation().abs())
                         && state.phase() >= VARIATION_MIN_PHASE
                     {
                         let explore_probability = 1.0 / (variations_count + 1) as f32;
                         if rng.next_f32() < explore_probability {
                             game_stats.variations += 1;
-                            let mut state = state.clone();
-                            state.make_move(variation);
-                            stats.variation_phase_distribution[state.phase()]
+                            let mut variation_state = state.clone();
+                            variation_state.make_move(variation);
+                            stats.variation_phase_distribution[variation_state.phase()]
                                 .fetch_add(1, Ordering::Relaxed);
-                            variations.push(state);
+                            variations.push(variation_state);
                             variations_count += 1;
                         }
                     }
                 }
 
                 if is_first_move {
+                    let opening_eval_bucket = (f32::midpoint(eval, 1.0)
+                        * OPENING_EVAL_BUCKETS as f32)
+                        .clamp(0.0, OPENING_EVAL_BUCKETS as f32 - 1.0)
+                        as usize;
+                    stats.opening_eval_distribution[opening_eval_bucket]
+                        .fetch_add(1, Ordering::Relaxed);
+
                     if variations_count == 0 {
                         stats.add_opening_eval((eval * SCALE) as i64);
                     } else {
@@ -593,29 +738,24 @@ fn run_game(
 
                 if !is_first_move {
                     let delta = eval - previous_eval;
-                    let delta_bucket = to_bucket(delta.abs(), &EVAL_DELTA_THRESHOLDS);
-                    stats.eval_delta_buckets[delta_bucket].fetch_add(1, Ordering::Relaxed);
+                    let delta_bucket = ((delta.abs() / EVAL_DELTA_BUCKET_WIDTH) as usize)
+                        .min(EVAL_DELTA_BUCKETS - 1);
+                    stats.eval_delta_distribution[delta_bucket].fetch_add(1, Ordering::Relaxed);
                 }
                 previous_eval = eval;
 
-                game_positions.push((position, state.hash()));
+                game_positions.push(position);
 
                 game_stats.positions += 1;
                 game_stats.nodes += engine.mcts().num_nodes();
                 game_stats.playouts += engine.mcts().playouts();
+                game_stats.visits += engine
+                    .root_edges()
+                    .iter()
+                    .map(|e| e.visits() as usize)
+                    .sum::<usize>();
                 game_stats.depth += engine.mcts().depth();
                 game_stats.seldepth += engine.mcts().max_depth();
-
-                if eval.abs() <= ADJUDICATE_DRAW_EVAL {
-                    consecutive_draw_moves += 1;
-                    consecutive_win_moves = 0;
-                } else if eval.abs() >= ADJUDICATE_WIN_EVAL {
-                    consecutive_win_moves += 1;
-                    consecutive_draw_moves = 0;
-                } else {
-                    consecutive_draw_moves = 0;
-                    consecutive_win_moves = 0;
-                }
             }
 
             is_first_move = false;
@@ -640,78 +780,65 @@ fn run_game(
                 break GameResult::Draw;
             }
 
-            let piece_count = state.board().occupied().count();
-            let base = ((ADJUDICATE_MAX_PIECE_COUNT + 1) as f32 - piece_count as f32)
-                / (ADJUDICATE_MAX_PIECE_COUNT - 1) as f32;
-            let adjudication_probability = base.powi(3);
-
-            if adjudication_probability > 0.0 && rng.next_f32() < adjudication_probability {
-                if consecutive_draw_moves >= ADJUDICATE_DRAW_MOVES {
-                    break GameResult::Draw;
-                }
-
-                if consecutive_win_moves >= ADJUDICATE_WIN_MOVES {
-                    break if previous_eval > 0.0 {
-                        GameResult::WhiteWin
-                    } else {
-                        GameResult::BlackWin
-                    };
-                }
-            }
-
             if !seen_positions.insert(state.hash()) {
                 game_positions.clear();
                 break GameResult::Aborted;
             }
         };
 
-        let mut blunder = false;
+        let mut blunder_win_draw = false;
+        let mut blunder_win_loss = false;
 
-        for (position, hash) in game_positions.iter_mut() {
+        for position in &mut game_positions {
             position.set_result(i8::from(result));
 
             let eval_white = position.evaluation();
             let eval_stm = position.stm_relative_evaluation();
 
-            stats.eval_result_agreement_buckets[to_bucket(
-                (eval_white - f32::from(i8::from(result))).abs(),
-                &EVAL_RESULT_AGREEMENT_THRESHOLDS,
-            )]
+            let disagreement = (eval_white - f32::from(i8::from(result))).abs();
+            stats.eval_result_agreement_buckets
+                [to_bucket(disagreement, &EVAL_RESULT_AGREEMENT_THRESHOLDS)]
             .fetch_add(1, Ordering::Relaxed);
 
-            // Track data distributions for saved positions only
+            let disagreement_quantized = (disagreement * SCALE) as u64;
+            stats
+                .eval_result_disagreement_sum
+                .fetch_add(disagreement_quantized, Ordering::Relaxed);
+            stats
+                .window_eval_result_disagreement
+                .fetch_add(disagreement_quantized, Ordering::Relaxed);
+
             let moves = position.moves();
-            let visits: Vec<u8> = moves.iter().map(|(_, v)| *v).collect();
-            let gini = compute_policy_gini(&visits);
+            let gini = compute_policy_gini(moves.iter().map(|(_, v)| *v));
             let gini_bucket = to_bucket(gini, &POLICY_GINI_THRESHOLDS);
             stats.policy_gini_buckets[gini_bucket].fetch_add(1, Ordering::Relaxed);
+            stats
+                .policy_gini_sum
+                .fetch_add((gini * SCALE) as u64, Ordering::Relaxed);
 
             let eval_bucket = to_bucket(eval_stm, &EVAL_DISTRIBUTION_THRESHOLDS);
             stats.eval_distribution_buckets[eval_bucket].fetch_add(1, Ordering::Relaxed);
 
             let piece_count = position.piece_count();
-            stats.piece_count_distribution[piece_count].fetch_add(1, Ordering::Relaxed);
+            stats.piece_count_distribution[usize::from(piece_count)]
+                .fetch_add(1, Ordering::Relaxed);
             stats.phase_distribution[position.phase()].fetch_add(1, Ordering::Relaxed);
 
-            if stats.duplicate_set.insert_sync(*hash).is_err() {
-                stats.duplicate_piece_count_distribution[piece_count]
-                    .fetch_add(1, Ordering::Relaxed);
-            }
-
-            blunder |= match result {
-                GameResult::WhiteWin => eval_white < -0.5,
-                GameResult::BlackWin => eval_white > 0.5,
-                GameResult::Draw => eval_white.abs() > 0.75,
-                GameResult::Aborted => false,
+            match result {
+                GameResult::WhiteWin => blunder_win_loss |= eval_white < -0.5,
+                GameResult::BlackWin => blunder_win_loss |= eval_white > 0.5,
+                GameResult::Draw => blunder_win_draw |= eval_white.abs() > 0.75,
+                GameResult::Aborted => {}
             }
         }
 
-        let saved_positions: Vec<TrainingPosition> =
-            game_positions.into_iter().map(|(pos, _)| pos).collect();
-        positions.extend(saved_positions);
+        positions.extend(game_positions);
 
-        if blunder {
-            game_stats.blunders += 1;
+        if blunder_win_draw {
+            game_stats.blunders_win_draw += 1;
+        }
+        if blunder_win_loss {
+            game_stats.blunders_win_loss += 1;
         }
 
         match result {
@@ -724,20 +851,15 @@ fn run_game(
 }
 
 fn random_start(rng: &mut Rng) -> State {
-    let (_moves, state) = princhess::state::generate_random_opening(rng, DFRC_PCT);
+    let (_moves, state) = state::generate_random_opening(rng, DFRC_PCT);
     state
 }
 
 /// Computes KL divergence per additional playout between old and new visit distributions.
 ///
-/// Uses Laplace smoothing (ε=1.0) to handle zero visits:
-/// - p = (old_visits + ε) / (old_total + num_moves * ε)
-/// - q = (new_visits + ε) / (new_total + num_moves * ε)
-/// - KL(p||q) = Σ p * ln(p/q)
-///
 /// Returns KL divergence divided by the visit difference to normalize gain per playout.
-/// Returns None if old_visits is zero or new_visits ≤ old_visits.
-fn kld_gain(new_visits: &[u32], old_visits: &[u32]) -> Option<f64> {
+/// Returns `None` if `old_visits` is zero or `new_visits` ≤ `old_visits`.
+fn kld_gain(new_visits: &[u32], old_visits: &[u32]) -> Option<f32> {
     let new_parent_visits: u64 = new_visits.iter().map(|&x| u64::from(x)).sum();
     let old_parent_visits: u64 = old_visits.iter().map(|&x| u64::from(x)).sum();
 
@@ -745,27 +867,38 @@ fn kld_gain(new_visits: &[u32], old_visits: &[u32]) -> Option<f64> {
         return None;
     }
 
-    let num_moves = new_visits.len() as f64;
-    let epsilon = 1.0;
+    let kl = kl_divergence(old_visits, new_visits);
 
-    let new_total = new_parent_visits as f64 + num_moves * epsilon;
-    let old_total = old_parent_visits as f64 + num_moves * epsilon;
-
-    let mut gain = 0.0;
-
-    for (&new_v, &old_v) in new_visits.iter().zip(old_visits.iter()) {
-        let q = (f64::from(new_v) + epsilon) / new_total;
-        let p = (f64::from(old_v) + epsilon) / old_total;
-
-        gain += p * (p / q).ln();
-    }
-
-    let parent_visits_diff = new_parent_visits.saturating_sub(old_parent_visits) as f64;
+    let parent_visits_diff = new_parent_visits.saturating_sub(old_parent_visits) as f32;
     if parent_visits_diff > 0.0 {
-        Some(gain / parent_visits_diff)
+        Some(kl / parent_visits_diff)
     } else {
         None
     }
+}
+
+/// Computes KL divergence between final visit distribution and policy distribution.
+///
+/// Measures how much the MCTS search diverged from the neural network policy.
+/// Normalizes visits to the same scale as policies (SCALE) for fair Laplace smoothing.
+fn policy_kl_divergence(engine: &Engine) -> f32 {
+    let mut visits: ArrayVec<u32, { TrainingPosition::MAX_MOVES }> = ArrayVec::new();
+    let mut policies: ArrayVec<u16, { TrainingPosition::MAX_MOVES }> = ArrayVec::new();
+
+    for edge in engine.root_edges() {
+        visits.push(edge.visits());
+        policies.push(edge.policy());
+    }
+
+    // Scale visits to match policy scale for fair Laplace smoothing
+    let total_visits: u64 = visits.iter().map(|&v| u64::from(v)).sum();
+    if total_visits > 0 {
+        for v in &mut visits {
+            *v = ((u64::from(*v) * SCALE as u64) / total_visits) as u32;
+        }
+    }
+
+    kl_divergence(&visits, &policies)
 }
 
 fn render_two_column_box(
@@ -799,7 +932,7 @@ fn render_histogram(
     frame: &mut Frame,
     area: ratatui::layout::Rect,
     title: &str,
-    buckets: &[u64; 6],
+    buckets: &[u64; 12],
     labels: &[String; 6],
 ) {
     let total: u64 = buckets.iter().sum();
@@ -815,44 +948,85 @@ fn render_histogram(
         vertical: 1,
     });
 
-    let gauge_layout = Layout::default()
+    let row_layout = Layout::default()
         .direction(Direction::Vertical)
         .constraints([Constraint::Length(1); 6])
         .split(inner);
 
-    for (i, (&count, label)) in buckets.iter().zip(labels.iter()).enumerate() {
-        let pct = (count as f32 * 100.0 / total as f32) as u64;
+    for row in 0..6 {
+        let top_idx = row * 2;
+        let bottom_idx = row * 2 + 1;
 
-        let row_layout = Layout::default()
+        let top_ratio = buckets[top_idx] as f64 / total as f64;
+        let bottom_ratio = buckets[bottom_idx] as f64 / total as f64;
+
+        let col_layout = Layout::default()
             .direction(Direction::Horizontal)
-            .constraints([Constraint::Length(10), Constraint::Min(0)])
-            .split(gauge_layout[i]);
+            .constraints([
+                Constraint::Length(10),
+                Constraint::Length(4),
+                Constraint::Min(0),
+            ])
+            .split(row_layout[row]);
 
-        let label_widget = Paragraph::new(label.as_str()).style(Style::default().fg(Color::Gray));
-        frame.render_widget(label_widget, row_layout[0]);
+        let label_widget =
+            Paragraph::new(labels[row].as_str()).style(Style::default().fg(Color::Gray));
+        frame.render_widget(label_widget, col_layout[0]);
 
-        let label_text = if count > 0 && pct == 0 {
+        let combined_ratio = top_ratio + bottom_ratio;
+        let combined_pct = (combined_ratio * 100.0).round() as u8;
+        let pct_text = if (buckets[top_idx] > 0 || buckets[bottom_idx] > 0) && combined_pct == 0 {
             ">0%".to_string()
         } else {
-            format!("{:>3}%", pct)
+            format!("{combined_pct:>2}%")
         };
-        let gauge_label = Span::styled(label_text, Style::default().fg(Color::White));
-        let gauge = Gauge::default()
-            .gauge_style(Style::default().fg(Color::Cyan))
-            .ratio(pct as f64 / 100.0)
-            .label(gauge_label);
-        frame.render_widget(gauge, row_layout[1]);
+        let pct_widget = Paragraph::new(pct_text).style(Style::default().fg(Color::Cyan));
+        frame.render_widget(pct_widget, col_layout[1]);
+
+        render_double_bar(frame, col_layout[2], top_ratio, bottom_ratio);
     }
 }
 
+fn render_double_bar(
+    frame: &mut Frame,
+    area: ratatui::layout::Rect,
+    top_ratio: f64,
+    bottom_ratio: f64,
+) {
+    let width = area.width as usize;
+    // Scale so 50% fills the entire width (2x scale, capped at 1.0)
+    let top_scaled = (top_ratio * 2.0).min(1.0);
+    let bottom_scaled = (bottom_ratio * 2.0).min(1.0);
+    let top_width = (top_scaled * width as f64).round() as usize;
+    let bottom_width = (bottom_scaled * width as f64).round() as usize;
+
+    let mut bar = String::new();
+    for i in 0..width {
+        let top_filled = i < top_width;
+        let bottom_filled = i < bottom_width;
+
+        let ch = match (top_filled, bottom_filled) {
+            (true, true) => '█',   // Full block
+            (true, false) => '▀',  // Upper half
+            (false, true) => '▄',  // Lower half
+            (false, false) => ' ', // Empty
+        };
+        bar.push(ch);
+    }
+
+    let widget = Paragraph::new(bar).style(Style::default().fg(Color::Cyan));
+    frame.render_widget(widget, area);
+}
+
+#[allow(clippy::too_many_lines)]
 fn render_tui(frame: &mut Frame, view: &StatsView) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .margin(1)
         .constraints([
-            Constraint::Length(3 + THREADS as u16 + 2),
-            Constraint::Length(9),
-            Constraint::Length(8),
+            Constraint::Length(tui_progress_box_height(view.threads)),
+            Constraint::Length(TUI_GRID_HEIGHT),
+            Constraint::Length(TUI_HISTOGRAM_HEIGHT),
         ])
         .split(frame.area());
 
@@ -868,10 +1042,10 @@ fn render_tui(frame: &mut Frame, view: &StatsView) {
     let progress_layout = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(1),              // Time/rate line
-            Constraint::Length(1),              // Progress gauge
-            Constraint::Length(1),              // Sparkline
-            Constraint::Length(THREADS as u16), // Thread gauges
+            Constraint::Length(1),
+            Constraint::Length(1),
+            Constraint::Length(1),
+            Constraint::Length(view.threads),
         ])
         .split(progress_inner);
 
@@ -893,7 +1067,7 @@ fn render_tui(frame: &mut Frame, view: &StatsView) {
         .alignment(Alignment::Center);
     frame.render_widget(rate, time_chunks[1]);
 
-    let positions_remaining = MAX_POSITIONS_TOTAL.saturating_sub(view.positions);
+    let positions_remaining = view.max_positions.saturating_sub(view.positions);
     let positions_per_second = view.avg_positions_per_hour() / 3600;
     let eta_seconds = if positions_per_second == 0 {
         0
@@ -904,12 +1078,12 @@ fn render_tui(frame: &mut Frame, view: &StatsView) {
     frame.render_widget(eta, time_chunks[2]);
 
     // Progress gauge
-    let progress_ratio = view.progress_ratio(MAX_POSITIONS_TOTAL).min(1.0);
+    let progress_ratio = view.progress_ratio(view.max_positions).min(1.0);
     let label = Span::styled(
         format!(
             "{:.1}M / {:.1}M ({:.1}%)",
             view.positions_millions(),
-            MAX_POSITIONS_TOTAL as f32 / 1_000_000.0,
+            view.max_positions as f32 / 1_000_000.0,
             progress_ratio * 100.0,
         ),
         Style::default().fg(Color::White),
@@ -941,14 +1115,19 @@ fn render_tui(frame: &mut Frame, view: &StatsView) {
     }
 
     // Thread buffer line gauges
-    for (i, &buffer_size) in view.thread_buffers.iter().enumerate() {
+    for (i, &buffer_size) in view
+        .thread_buffers
+        .iter()
+        .take(view.threads as usize)
+        .enumerate()
+    {
         let ratio = (buffer_size as f64 / TrainingPosition::BUFFER_COUNT as f64).min(1.0);
 
         let line_gauge = Gauge::default()
             .gauge_style(Style::default().fg(Color::Blue))
             .ratio(ratio)
             .label(Span::styled(
-                format!("T{}", i),
+                format!("T{i}"),
                 Style::default().fg(Color::White),
             ));
 
@@ -1017,21 +1196,19 @@ fn render_tui(frame: &mut Frame, view: &StatsView) {
     let bar_area = games_layout[1];
 
     // Ensure percentages always sum to 100 to avoid flickering
-    let white_constraint = white_pct as u16;
-    let black_constraint = black_pct as u16;
-    let draw_constraint = 100u16.saturating_sub(white_constraint + black_constraint);
+    let draw_constraint = 100u16.saturating_sub(white_pct + black_pct);
 
     let bar_layout = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([
-            Constraint::Percentage(white_constraint),
+            Constraint::Percentage(white_pct),
             Constraint::Percentage(draw_constraint),
-            Constraint::Percentage(black_constraint),
+            Constraint::Percentage(black_pct),
         ])
         .split(bar_area);
 
     if white_pct > 0 {
-        let label = Span::styled(format!("{}%", white_pct), Style::default().fg(Color::Black));
+        let label = Span::styled(format!("{white_pct}%"), Style::default().fg(Color::Black));
         let white_bar = Gauge::default()
             .gauge_style(Style::default().fg(Color::White).bg(Color::White))
             .percent(100)
@@ -1040,7 +1217,7 @@ fn render_tui(frame: &mut Frame, view: &StatsView) {
     }
 
     if draw_pct > 0 {
-        let label = Span::styled(format!("{}%", draw_pct), Style::default().fg(Color::Black));
+        let label = Span::styled(format!("{draw_pct}%"), Style::default().fg(Color::Black));
         let draw_bar = Gauge::default()
             .gauge_style(
                 Style::default()
@@ -1053,7 +1230,7 @@ fn render_tui(frame: &mut Frame, view: &StatsView) {
     }
 
     if black_pct > 0 {
-        let label = Span::styled(format!("{}%", black_pct), Style::default().fg(Color::White));
+        let label = Span::styled(format!("{black_pct}%"), Style::default().fg(Color::White));
         let black_bar = Gauge::default()
             .gauge_style(Style::default().fg(Color::LightGreen).bg(Color::LightGreen))
             .percent(100)
@@ -1066,14 +1243,16 @@ fn render_tui(frame: &mut Frame, view: &StatsView) {
         top_row[1],
         "Search Stats (avg per position)",
         format!(
-            "Nodes:   {:>5}\nDepth:   {:>5}",
+            "Nodes:    {:>5}\nDepth:    {:>2}/{:<2}",
             view.avg_nodes(),
             view.avg_depth(),
+            view.avg_seldepth(),
         ),
         format!(
-            "Playouts: {:>5}\nSeldepth: {:>5}",
+            "Playouts: {:>5} [KLD: {:.2e}]\nVisits:   {:>5}",
             view.avg_playouts(),
-            view.avg_seldepth(),
+            KL_DIVERGENCE_THRESHOLD,
+            view.avg_visits(),
         ),
     );
 
@@ -1082,8 +1261,10 @@ fn render_tui(frame: &mut Frame, view: &StatsView) {
         bottom_row[0],
         "Quality Metrics",
         format!(
-            "Blunders: {:>5.1}%\nSkipped:  {:>5.1}%\nOpening:   {:>+5.2}",
-            view.blunder_pct(),
+            "Blunders: {:>5.1}% [D:{:.1} L:{:.1}]\nSkipped:  {:>5.1}%\nOpening:   {:>+5.2}",
+            view.blunder_win_draw_pct() + view.blunder_win_loss_pct(),
+            view.blunder_win_draw_pct(),
+            view.blunder_win_loss_pct(),
             view.skipped_pct(),
             view.avg_opening_eval(),
         ),
@@ -1098,28 +1279,31 @@ fn render_tui(frame: &mut Frame, view: &StatsView) {
     render_histogram(
         frame,
         histogram_row[0],
-        "Policy Gini",
+        &format!("Policy Gini (μ={:.2})", view.avg_policy_gini()),
         &view.policy_gini_buckets,
         &bucket_labels(&POLICY_GINI_THRESHOLDS),
     );
     render_histogram(
         frame,
         histogram_row[1],
+        &format!("Policy KL (μ={:.2})", view.avg_policy_kl()),
+        &view.policy_kl_buckets,
+        &bucket_labels(&POLICY_KL_THRESHOLDS),
+    );
+    render_histogram(
+        frame,
+        histogram_row[2],
         "Eval Distribution (STM)",
         &view.eval_distribution_buckets,
         &bucket_labels(&EVAL_DISTRIBUTION_THRESHOLDS),
     );
     render_histogram(
         frame,
-        histogram_row[2],
-        "Eval Delta",
-        &view.eval_delta_buckets,
-        &bucket_labels(&EVAL_DELTA_THRESHOLDS),
-    );
-    render_histogram(
-        frame,
         histogram_row[3],
-        "Eval-Result Agreement",
+        &format!(
+            "Eval-Result Disagreement (μ={:.2})",
+            view.avg_eval_result_disagreement()
+        ),
         &view.eval_result_agreement_buckets,
         &bucket_labels(&EVAL_RESULT_AGREEMENT_THRESHOLDS),
     );
@@ -1193,51 +1377,69 @@ fn render_tui(frame: &mut Frame, view: &StatsView) {
         .style(Style::default().fg(Color::Yellow));
     frame.render_widget(var_phase_sparkline, rows[2]);
 
-    let duplicate_layout = Layout::default()
+    let right_layout = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Length(13), Constraint::Min(0)])
         .split(main_split[1]);
 
-    let duplicate_rows = Layout::default()
+    let right_rows = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Length(1), Constraint::Length(1)])
-        .split(duplicate_layout[1]);
+        .constraints([
+            Constraint::Length(1),
+            Constraint::Length(1),
+            Constraint::Length(1),
+        ])
+        .split(right_layout[1]);
 
-    let duplicate_labels = Layout::default()
+    let right_labels = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Length(1), Constraint::Length(1)])
-        .split(duplicate_layout[0]);
+        .constraints([
+            Constraint::Length(1),
+            Constraint::Length(1),
+            Constraint::Length(1),
+        ])
+        .split(right_layout[0]);
 
-    let duplicate_pct = if view.positions > 0 {
-        (view.duplicate_count as f64 / view.positions as f64) * 100.0
-    } else {
-        0.0
-    };
+    let open_eval_label = Paragraph::new("Open Eval:").style(Style::default().fg(Color::Gray));
+    frame.render_widget(open_eval_label, right_labels[0]);
 
-    let dup_label = Paragraph::new("Duplicates:").style(Style::default().fg(Color::Gray));
-    frame.render_widget(dup_label, duplicate_labels[0]);
+    let open_eval_data: Vec<u64> = view.opening_eval_distribution.to_vec();
+    let open_eval_sparkline = Sparkline::default()
+        .data(&open_eval_data)
+        .style(Style::default().fg(Color::Blue));
+    frame.render_widget(open_eval_sparkline, right_rows[0]);
 
-    let dup_pct =
-        Paragraph::new(format!("{:>5.1}%", duplicate_pct)).style(Style::default().fg(Color::Gray));
-    frame.render_widget(dup_pct, duplicate_rows[0]);
+    let game_len_label = Paragraph::new("Game Len:").style(Style::default().fg(Color::Gray));
+    frame.render_widget(game_len_label, right_labels[1]);
 
-    let dup_sparkline_label = Paragraph::new("Dup by PC:").style(Style::default().fg(Color::Gray));
-    frame.render_widget(dup_sparkline_label, duplicate_labels[1]);
+    let game_len_data: Vec<u64> = view.game_length_distribution.to_vec();
+    let game_len_sparkline = Sparkline::default()
+        .data(&game_len_data)
+        .style(Style::default().fg(Color::LightGreen));
+    frame.render_widget(game_len_sparkline, right_rows[1]);
 
-    let dup_data: Vec<u64> = view.duplicate_piece_count_distribution[2..33].to_vec();
-    let dup_sparkline = Sparkline::default()
-        .data(&dup_data)
-        .style(Style::default().fg(Color::Red));
-    frame.render_widget(dup_sparkline, duplicate_rows[1]);
+    let eval_delta_label = Paragraph::new("Eval Delta:").style(Style::default().fg(Color::Gray));
+    frame.render_widget(eval_delta_label, right_labels[2]);
+
+    let eval_delta_data: Vec<u64> = view.eval_delta_distribution.to_vec();
+    let eval_delta_sparkline = Sparkline::default()
+        .data(&eval_delta_data)
+        .style(Style::default().fg(Color::Magenta));
+    frame.render_widget(eval_delta_sparkline, right_rows[2]);
 }
 
-fn run_tui(stats: &Stats, stop_signal: Arc<AtomicBool>) -> io::Result<()> {
+fn run_tui(
+    stats: &Stats,
+    stop_signal: &Arc<AtomicBool>,
+    threads: u16,
+    max_positions: u64,
+) -> io::Result<()> {
     let stdout = io::stdout();
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::with_options(
         backend,
         TerminalOptions {
-            viewport: Viewport::Inline(TUI_TOTAL_HEIGHT),
+            viewport: Viewport::Inline(tui_total_height(threads)),
         },
     )?;
 
@@ -1247,10 +1449,12 @@ fn run_tui(stats: &Stats, stop_signal: Arc<AtomicBool>) -> io::Result<()> {
         let mut last_sample_time = Instant::now();
 
         loop {
-            let view = stats.view();
+            let view = stats.view(threads, max_positions);
             terminal.draw(|f| render_tui(f, &view))?;
 
-            if view.positions >= MAX_POSITIONS_TOTAL || stop_signal.load(Ordering::Relaxed) {
+            if stats.active_threads.load(Ordering::Relaxed) == 0
+                || stop_signal.load(Ordering::Relaxed)
+            {
                 break;
             }
 
@@ -1302,24 +1506,53 @@ fn run_tui(stats: &Stats, stop_signal: Arc<AtomicBool>) -> io::Result<()> {
     result
 }
 
+#[allow(clippy::too_many_lines)]
 fn main() {
+    let mut args = Args::from_env();
+    let threads = args
+        .flag("-t", "--threads")
+        .unwrap_or_else(system::default_thread_count)
+        .min(MAX_THREADS);
+    let max_positions = args
+        .flag("-p", "--positions")
+        .unwrap_or_else(|| panic!("Missing required argument: --positions"));
+
+    assert!(
+        threads > 0,
+        "Thread count must be at least 1, got {threads}"
+    );
+    assert!(max_positions > 0, "Positions must be at least 1");
+    assert!(
+        max_positions <= MAX_POSITIONS_PER_FILE * u64::from(threads),
+        "Requested {max_positions} positions but maximum is {} ({}M positions/file * {} threads)",
+        MAX_POSITIONS_PER_FILE * u64::from(threads),
+        MAX_POSITIONS_PER_FILE / 1_000_000,
+        threads
+    );
+
     let stats = Arc::new(Stats::zero());
     let stop_signal = Arc::new(AtomicBool::new(false));
 
     let timestamp = Utc::now().format("%Y%m%d-%H%M").to_string();
 
+    fs::create_dir_all("data").expect("Failed to create data directory");
+
+    stats
+        .active_threads
+        .store(threads as usize, Ordering::Relaxed);
+
     thread::scope(|s| {
         let tui_stats = stats.clone();
         let tui_stop = stop_signal.clone();
         s.spawn(move || {
-            if let Err(e) = run_tui(&tui_stats, tui_stop.clone()) {
+            if let Err(e) = run_tui(&tui_stats, &tui_stop, threads, max_positions) {
                 eprintln!("TUI failed: {e}");
                 tui_stop.store(true, Ordering::Relaxed);
             }
         });
 
-        for t in 0..THREADS {
-            thread::sleep(Duration::from_millis(10 * t));
+        for t in 0..threads {
+            thread::sleep(Duration::from_millis(u64::from(10 * t)));
 
             let mut writer = BufWriter::new(
                 File::create(format!("data/princhess-{timestamp}-{t}.data")).unwrap(),
@@ -1335,13 +1568,33 @@ fn main() {
                 let mut buffer: Box<[TrainingPosition; TrainingPosition::BUFFER_COUNT]> =
                     allocation::zeroed_box();
 
-                while stats.positions.load(Ordering::Relaxed) < MAX_POSITIONS_TOTAL
+                let mcts_options = MctsOptions {
+                    cpuct: 2.82,
+                    cpuct_tau: 0.5,
+                    cpuct_jitter: 0.0,
+                    cpuct_trend_adjustment: 0.0,
+                    cpuct_gini_base: 1.0,
+                    cpuct_gini_factor: 0.0,
+                    cpuct_gini_max: 1.0,
+                    policy_temperature: 1.0,
+                    policy_temperature_root: 1.4,
+                };
+
+                let engine_options = EngineOptions {
+                    hash_size_mb: HASH_SIZE_MB,
+                    mcts_options,
+                    ..EngineOptions::default()
+                };
+
+                let mut engine = Engine::new(State::default(), engine_options);
+
+                while stats.positions.load(Ordering::Relaxed) < max_positions
                     && !stop.load(Ordering::Relaxed)
                 {
                     while positions.len() < TrainingPosition::BUFFER_COUNT
                         && !stop.load(Ordering::Relaxed)
                     {
-                        run_game(&stats, &mut positions, &mut rng, &stop);
+                        run_game(&stats, &mut engine, &mut positions, &mut rng, &stop);
                         stats.thread_buffers[t as usize].store(positions.len(), Ordering::Relaxed);
                     }
 
@@ -1354,6 +1607,8 @@ fn main() {
                         stats.thread_buffers[t as usize].store(positions.len(), Ordering::Relaxed);
                     }
                 }
+
+                stats.active_threads.fetch_sub(1, Ordering::Relaxed);
             });
         }
     });

@@ -27,6 +27,7 @@ impl<S: LRScheduler> AdamWOptimizer<S> {
         }
     }
 
+    #[must_use]
     pub fn weight_decay(mut self, weight_decay: f32) -> Self {
         self.weight_decay = weight_decay;
         self
