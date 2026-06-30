@@ -1,10 +1,60 @@
 use std::env;
+use std::path::Path;
+use std::process::Command;
 
 fn main() {
+    emit_fingerprint_vars();
+
     if env::var("CARGO_FEATURE_FATHOM").is_ok() {
         build_fathom();
         generate_bindings();
     }
+}
+
+fn emit_fingerprint_vars() {
+    let rustc = Command::new("rustc")
+        .arg("--version")
+        .output()
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+        .unwrap_or_else(|_| "unknown".to_string());
+    println!("cargo:rustc-env=PRINCHESS_RUSTC_VERSION={rustc}");
+
+    let git = Command::new("git")
+        .args(["describe", "--tags", "--dirty", "--always"])
+        .output()
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+        .unwrap_or_else(|_| "unknown".to_string());
+    println!("cargo:rustc-env=PRINCHESS_GIT_DESCRIBE={git}");
+
+    let cpu = env::var("PRINCHESS_TARGET_CPU").unwrap_or_else(|_| "unknown".to_string());
+    println!("cargo:rustc-env=PRINCHESS_PRINCHESS_TARGET_CPU={cpu}");
+
+    for (name, path) in [
+        ("VALUE", "src/nets/value.bin"),
+        ("MG_POLICY", "src/nets/mg-policy.bin"),
+        ("EG_POLICY", "src/nets/eg-policy.bin"),
+    ] {
+        println!("cargo:rerun-if-changed={path}");
+        let md5 = net_md5(Path::new(path));
+        println!("cargo:rustc-env=PRINCHESS_NET_MD5_{name}={md5}");
+    }
+}
+
+fn net_md5(path: &Path) -> String {
+    if !path.exists() {
+        return "none".to_string();
+    }
+
+    Command::new("md5sum")
+        .arg(path)
+        .output()
+        .ok()
+        .and_then(|o| {
+            String::from_utf8(o.stdout)
+                .ok()
+                .and_then(|s| s.split_whitespace().next().map(str::to_string))
+        })
+        .unwrap_or_else(|| "unknown".to_string())
 }
 
 fn build_fathom() {
@@ -15,7 +65,7 @@ fn build_fathom() {
     cc.define("_CRT_SECURE_NO_WARNINGS", None);
     cc.flag("-Wno-sign-compare");
 
-    let target_cpu = env::var("TARGET_CPU").unwrap_or("native".to_string());
+    let target_cpu = env::var("PRINCHESS_TARGET_CPU").unwrap_or("native".to_string());
 
     cc.flag(format!("-march={target_cpu}"));
 
