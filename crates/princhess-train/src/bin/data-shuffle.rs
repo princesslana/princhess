@@ -690,6 +690,14 @@ fn main() {
     // Gather file info
     let files: Vec<FileInfo> = input_files
         .into_iter()
+        .filter(|path| {
+            let size = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
+            if size == 0 {
+                eprintln!("Warning: skipping empty file {}", path.display());
+                return false;
+            }
+            true
+        })
         .map(|path| {
             let mut info = FileInfo::new(path.clone()).unwrap_or_else(|e| {
                 eprintln!("Error reading {}: {}", path.display(), e);
