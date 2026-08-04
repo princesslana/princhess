@@ -1,5 +1,5 @@
 use std::fs::{self, File};
-use std::io::{self, Read, Seek, SeekFrom};
+use std::io;
 use std::ops::AddAssign;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU32, AtomicU64, AtomicUsize, Ordering};
@@ -25,9 +25,9 @@ use scc::{Guard, Queue};
 use princhess::engine::SCALE;
 use princhess::state::State;
 use princhess_train::args::Args;
-use princhess_train::data::TrainingPosition;
+use princhess_train::data::{TrainingData, TrainingPosition};
 use princhess_train::neural::{
-    AdamWOptimizer, FeedForwardNetwork, LRScheduler, LinearWarmupDecayLRScheduler, OutputLayer,
+    AdamWOptimizer, FeedForwardNetwork, LRScheduler, PolynomialWarmupDecayLRScheduler, OutputLayer,
     SparseVector, Vector,
 };
 use princhess_train::system;
@@ -100,7 +100,7 @@ struct TrainingStats {
     lr_history: Queue<f32>,
 
     // File read progress (bytes consumed from current pass through the file)
-    file_bytes_consumed: AtomicU64,
+    positions_consumed: AtomicU64,
 
     last_saved_net: Mutex<Option<String>>,
 }
@@ -122,7 +122,7 @@ impl TrainingStats {
             last_sample_positions: AtomicU64::new(0),
             current_lr: AtomicU32::new(0),
             lr_history: Queue::default(),
-            file_bytes_consumed: AtomicU64::new(0),
+            positions_consumed: AtomicU64::new(0),
             last_saved_net: Mutex::new(None),
         }
     }
@@ -227,7 +227,7 @@ fn main() {
 
     let total_steps = (TOTAL_SUPER_BATCHES * BATCHES_PER_SUPER_BATCH) as u32;
 
-    let scheduler = LinearWarmupDecayLRScheduler::new(LEARNING_RATE, 0.05, total_steps);
+    let scheduler = PolynomialWarmupDecayLRScheduler::linear(LEARNING_RATE, 0.05, total_steps);
     let optimizer = AdamWOptimizer::with_scheduler(scheduler).weight_decay(WEIGHT_DECAY);
 
     run_training_loop(network, momentum, velocity, optimizer, config);
@@ -257,7 +257,7 @@ fn run_training_loop<S: LRScheduler>(
         }
     });
 
-    let mut file = File::open(&config.input_file).unwrap();
+    let mut data = TrainingData::new(&config.input_file);
 
     // Training loop
     for sb in 0..TOTAL_SUPER_BATCHES {
@@ -272,7 +272,7 @@ fn run_training_loop<S: LRScheduler>(
             &mut optimizer,
             &config,
             &stats,
-            &mut file,
+            &mut data,
         );
 
         stats.finish_super_batch();
@@ -498,18 +498,18 @@ fn render_progress(
     );
 
     // File read progress
-    let file_total_bytes = config.data_positions as u64 * TrainingPosition::SIZE as u64;
-    let file_bytes = stats.file_bytes_consumed.load(Ordering::Relaxed);
-    let file_ratio = if file_total_bytes > 0 {
-        (file_bytes as f64 / file_total_bytes as f64).min(1.0)
+    let total_positions = config.data_positions as u64;
+    let consumed_positions = stats.positions_consumed.load(Ordering::Relaxed);
+    let file_ratio = if total_positions > 0 {
+        (consumed_positions as f64 / total_positions as f64).min(1.0)
     } else {
         0.0
     };
     let file_label = Span::styled(
         format!(
             "{:>6.1} / {:>6.1}M ({:>5.1}%)",
-            file_bytes as f64 / TrainingPosition::SIZE as f64 / 1_000_000.0,
-            config.data_positions as f64 / 1_000_000.0,
+            consumed_positions as f64 / 1_000_000.0,
+            total_positions as f64 / 1_000_000.0,
             file_ratio * 100.0,
         ),
         Style::default().fg(Color::White),
@@ -682,30 +682,14 @@ fn train_super_batch<S: LRScheduler>(
     optimizer: &mut AdamWOptimizer<S>,
     config: &TrainingConfig,
     stats: &TrainingStats,
-    file: &mut File,
+    data: &mut TrainingData,
 ) {
-    let mut raw_buf = vec![0u8; TrainingPosition::BUFFER_SIZE];
     let mut batches_processed = 0;
 
     while batches_processed < BATCHES_PER_SUPER_BATCH {
-        loop {
-            match file.read_exact(&mut raw_buf) {
-                Ok(()) => break,
-                Err(e) if e.kind() == io::ErrorKind::UnexpectedEof => {
-                    file.seek(SeekFrom::Start(0)).unwrap();
-                    stats.file_bytes_consumed.store(0, Ordering::Relaxed);
-                }
-                Err(e) => panic!("Data read error: {e}"),
-            }
-        }
+        let buffer = data.next_buffer();
 
-        stats
-            .file_bytes_consumed
-            .fetch_add(raw_buf.len() as u64, Ordering::Relaxed);
-
-        let data = TrainingPosition::read_buffer(&raw_buf);
-
-        for batch in data.chunks(BATCH_SIZE) {
+        for batch in buffer.chunks(BATCH_SIZE) {
             if batches_processed >= BATCHES_PER_SUPER_BATCH {
                 break;
             }
@@ -737,6 +721,10 @@ fn train_super_batch<S: LRScheduler>(
 
             batches_processed += 1;
         }
+
+        stats
+            .positions_consumed
+            .store(data.positions_consumed(), Ordering::Relaxed);
     }
 }
 

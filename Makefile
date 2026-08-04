@@ -17,6 +17,7 @@ help:
 	@echo "Testing:"
 	@echo "  sprt-gain          - Start SPRT gain test (STC)"
 	@echo "  sprt-gain-ltc      - Start SPRT gain test (LTC)"
+	@echo "  sprt-gain-25k      - Start SPRT gain test (25k nodes)"
 	@echo "  sprt-gain-2t       - Start SPRT gain test (STC, 2 threads)"
 	@echo "  sprt-equal         - Start SPRT equal test (STC)"
 	@echo "  sprt-equal-ltc     - Start SPRT equal test (LTC)"
@@ -110,6 +111,10 @@ elo-check:
 .PHONY: elo-check-25k
 elo-check-25k:
 	@$(MAKE) start-test TYPE=elo_check TC=nodes25k ENGINE1=princhess ENGINE2=princhess-main
+
+.PHONY: sprt-gain-25k
+sprt-gain-25k:
+	@$(MAKE) start-test TYPE=sprt_gain TC=nodes25k ENGINE1=princhess ENGINE2=princhess-main
 
 .PHONY: sprt-gain-dfrc
 sprt-gain-dfrc:

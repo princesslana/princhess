@@ -118,6 +118,24 @@ impl Activation for SoftSign {
 }
 
 #[derive(Clone, Copy, Zeroable)]
+pub struct HardTanh;
+impl Activation for HardTanh {
+    type Initializer = Glorot;
+
+    fn name() -> &'static str {
+        "hardtanh"
+    }
+
+    fn activate(x: f32) -> f32 {
+        x.clamp(-1.0, 1.0)
+    }
+
+    fn derivative(x: f32) -> f32 {
+        if x > -1.0 && x < 1.0 { 1.0 } else { 0.0 }
+    }
+}
+
+#[derive(Clone, Copy, Zeroable)]
 pub struct Tanh;
 impl Activation for Tanh {
     type Initializer = Glorot;

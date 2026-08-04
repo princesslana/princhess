@@ -1,78 +1,40 @@
-use std::fmt::{self, Display, Formatter};
+use std::fmt::{self, Display};
 use std::ops::{AddAssign, DivAssign};
 use std::ptr;
 
 use bytemuck::{allocation, Zeroable};
 use princhess::chess::Square;
-use princhess::math::Rng;
 use princhess::nets::MoveIndex;
-use princhess::quantized_policy::{
-    QuantizedPolicyNetwork, RawPolicyPieceSqBias, RawPolicyPieceSqWeights, RawPolicySqBias,
+use princhess::quantized_mg_policy::{
+    QuantizedMgPolicyNetwork, RawPolicyPieceSqBias, RawPolicyPieceSqWeights, RawPolicySqBias,
     RawPolicySqWeights, ATTENTION_SIZE, INPUT_SIZE, QA,
 };
 use princhess::state::State;
 
 use crate::nets;
 use crate::neural::{
-    AdamWOptimizer, FeedForwardNetwork, LRScheduler, OutputLayer, ReLU, SparseConnected,
-    SparseVector, Vector,
+    AdamWOptimizer, FeedForwardNetwork, LRScheduler, LinearNetwork, OutputLayer, SparseVector,
 };
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum Phase {
-    MiddleGame,
-    Endgame,
-}
+type MgLinearNetwork = LinearNetwork<INPUT_SIZE, ATTENTION_SIZE>;
 
-impl Phase {
-    #[must_use]
-    pub fn from_arg(arg: &str) -> Option<Self> {
-        if arg.eq_ignore_ascii_case("mg") {
-            Some(Self::MiddleGame)
-        } else if arg.eq_ignore_ascii_case("eg") {
-            Some(Self::Endgame)
-        } else {
-            None
-        }
-    }
-
-    #[must_use]
-    pub fn matches(&self, state: &State) -> bool {
-        let board = state.board();
-        let major_pieces_count =
-            (board.queens() | board.rooks() | board.bishops() | board.knights()).count();
-
-        match self {
-            Self::MiddleGame => major_pieces_count > 6,
-            Self::Endgame => major_pieces_count <= 8,
-        }
-    }
-}
-
-impl Display for Phase {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::MiddleGame => write!(f, "mg"),
-            Self::Endgame => write!(f, "eg"),
-        }
-    }
+#[must_use]
+pub fn is_training_position(state: &State) -> bool {
+    let board = state.board();
+    let major_pieces_count =
+        (board.queens() | board.rooks() | board.bishops() | board.knights()).count();
+    major_pieces_count > 6
 }
 
 #[allow(clippy::module_name_repetitions)]
 #[derive(Zeroable)]
-pub struct PolicyNetwork {
-    sq: [LinearNetwork; MoveIndex::SQ_COUNT],
-    piece_sq: [LinearNetwork; MoveIndex::TO_PIECE_SQ_COUNT],
+pub struct MgPolicyNetwork {
+    sq: [MgLinearNetwork; MoveIndex::SQ_COUNT],
+    piece_sq: [MgLinearNetwork; MoveIndex::TO_PIECE_SQ_COUNT],
 }
 
-#[allow(clippy::module_name_repetitions)]
-#[derive(Zeroable)]
-pub struct PolicyCount {
-    pub sq: [u64; MoveIndex::SQ_COUNT],
-    pub piece_sq: [u64; MoveIndex::TO_PIECE_SQ_COUNT],
-}
 
-impl Display for PolicyNetwork {
+impl Display for MgPolicyNetwork {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let sq = format!("sq: [{}; {}]", self.sq[0], Square::COUNT);
         let piece_sq = format!("piece_sq: [{}; {}]", self.piece_sq[0], self.piece_sq.len());
@@ -80,7 +42,7 @@ impl Display for PolicyNetwork {
     }
 }
 
-impl AddAssign<&Self> for PolicyNetwork {
+impl AddAssign<&Self> for MgPolicyNetwork {
     fn add_assign(&mut self, rhs: &Self) {
         for (lhs_subnet, rhs_subnet) in self.sq.iter_mut().zip(&rhs.sq) {
             *lhs_subnet += rhs_subnet;
@@ -92,7 +54,7 @@ impl AddAssign<&Self> for PolicyNetwork {
     }
 }
 
-impl DivAssign<f32> for PolicyNetwork {
+impl DivAssign<f32> for MgPolicyNetwork {
     fn div_assign(&mut self, rhs: f32) {
         for subnet in &mut self.sq {
             *subnet /= rhs;
@@ -103,14 +65,14 @@ impl DivAssign<f32> for PolicyNetwork {
     }
 }
 
-impl PolicyNetwork {
+impl MgPolicyNetwork {
     #[must_use]
     pub fn zeroed() -> Box<Self> {
         allocation::zeroed_box()
     }
 
     pub fn zero_out(&mut self) {
-        // SAFETY: PolicyNetwork: Zeroable guarantees all-zeros is a valid bit pattern
+        // SAFETY: MgPolicyNetwork: Zeroable guarantees all-zeros is a valid bit pattern
         unsafe { ptr::write_bytes(ptr::from_mut::<Self>(self), 0, 1) }
     }
 
@@ -129,11 +91,11 @@ impl PolicyNetwork {
         network
     }
 
-    fn get_sq(&self, sq: Square) -> &LinearNetwork {
+    fn get_sq(&self, sq: Square) -> &MgLinearNetwork {
         &self.sq[sq]
     }
 
-    fn get_piece_sq(&self, piece_sq_idx: usize) -> &LinearNetwork {
+    fn get_piece_sq(&self, piece_sq_idx: usize) -> &MgLinearNetwork {
         unsafe { self.piece_sq.get_unchecked(piece_sq_idx) }
     }
 
@@ -185,19 +147,6 @@ impl PolicyNetwork {
         }
     }
 
-    pub fn scale_by_counts(&mut self, count: &PolicyCount) {
-        for subnet_idx in 0..self.sq.len() {
-            if count.sq[subnet_idx] > 0 {
-                self.sq[subnet_idx] /= count.sq[subnet_idx] as f32;
-            }
-        }
-        for subnet_idx in 0..self.piece_sq.len() {
-            if count.piece_sq[subnet_idx] > 0 {
-                self.piece_sq[subnet_idx] /= count.piece_sq[subnet_idx] as f32;
-            }
-        }
-    }
-
     pub fn backprop(&self, features: &SparseVector, g: &mut Self, move_idx: MoveIndex, error: f32) {
         let from_sq = self.get_sq(move_idx.from_sq());
         let from_piece_sq = self.get_piece_sq(move_idx.from_piece_sq_index());
@@ -240,7 +189,7 @@ impl PolicyNetwork {
     }
 
     #[must_use]
-    pub fn to_boxed_and_quantized(&self) -> Box<QuantizedPolicyNetwork> {
+    pub fn to_boxed_and_quantized(&self) -> Box<QuantizedMgPolicyNetwork> {
         let mut sq_weights: Box<RawPolicySqWeights> = allocation::zeroed_box();
         let mut sq_bias: Box<RawPolicySqBias> = allocation::zeroed_box();
         let mut piece_sq_weights: Box<RawPolicyPieceSqWeights> = allocation::zeroed_box();
@@ -276,7 +225,7 @@ impl PolicyNetwork {
             }
         }
 
-        QuantizedPolicyNetwork::boxed_from_slices(
+        QuantizedMgPolicyNetwork::boxed_from_slices(
             &sq_weights,
             &sq_bias,
             &piece_sq_weights,
@@ -285,93 +234,6 @@ impl PolicyNetwork {
     }
 }
 
-impl PolicyCount {
-    pub fn increment(&mut self, move_idx: MoveIndex) {
-        self.sq[move_idx.from_sq()] += 1;
-        self.sq[move_idx.to_sq()] += 1;
-        self.piece_sq[move_idx.from_piece_sq_index()] += 1;
-        self.piece_sq[move_idx.to_piece_sq_index()] += 1;
-    }
-}
-
-impl AddAssign<&Self> for PolicyCount {
-    fn add_assign(&mut self, rhs: &Self) {
-        for (lhs, rhs) in self.sq.iter_mut().zip(&rhs.sq) {
-            *lhs += rhs;
-        }
-
-        for (lhs, rhs) in self.piece_sq.iter_mut().zip(&rhs.piece_sq) {
-            *lhs += rhs;
-        }
-    }
-}
-
-type Linear = SparseConnected<ReLU, INPUT_SIZE, ATTENTION_SIZE>;
-
-#[repr(C)]
-pub struct LinearNetwork {
-    output: Linear,
-}
-
-unsafe impl Zeroable for LinearNetwork {}
-
-impl AddAssign<&LinearNetwork> for LinearNetwork {
-    fn add_assign(&mut self, rhs: &LinearNetwork) {
-        self.output += &rhs.output;
-    }
-}
-
-impl DivAssign<f32> for LinearNetwork {
-    fn div_assign(&mut self, rhs: f32) {
-        self.output /= rhs;
-    }
-}
-
-impl LinearNetwork {
-    pub fn randomize(&mut self) {
-        let mut rng = Rng::default();
-
-        self.output = *SparseConnected::randomized(&mut rng);
-    }
-
-    pub fn adamw<S: LRScheduler>(
-        &mut self,
-        g: &Self,
-        m: &mut Self,
-        v: &mut Self,
-        optimizer: &AdamWOptimizer<S>,
-    ) {
-        self.output
-            .adamw(&g.output, &mut m.output, &mut v.output, optimizer);
-    }
-}
-
-impl Display for LinearNetwork {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{INPUT_SIZE}->{ATTENTION_SIZE}")
-    }
-}
-
-impl FeedForwardNetwork for LinearNetwork {
-    type InputType = SparseVector;
-    type OutputType = Vector<ATTENTION_SIZE>;
-    type Layers = <Linear as FeedForwardNetwork>::Layers;
-
-    fn out_with_layers(&self, input: &Self::InputType) -> Self::Layers {
-        self.output.out_with_layers(input)
-    }
-
-    fn backprop(
-        &self,
-        input: &Self::InputType,
-        grad: &mut Self,
-        out_err: Self::OutputType,
-        layers: &Self::Layers,
-    ) -> Self::InputType {
-        self.output
-            .backprop(input, &mut grad.output, out_err, layers)
-    }
-}
 
 #[cfg(test)]
 mod tests {
@@ -379,8 +241,7 @@ mod tests {
 
     #[test]
     fn test_quantization_does_not_crash() {
-        // This test ensures that the conversion to a quantized policy network does not crash.
-        let policy_net = PolicyNetwork::random();
+        let policy_net = MgPolicyNetwork::random();
         let _quantized_policy_net = policy_net.to_boxed_and_quantized();
     }
 }

@@ -7,6 +7,21 @@ use bytemuck::{self, Pod, Zeroable};
 
 use crate::chess::{Piece, Rank, Square};
 
+#[cfg(feature = "value-net")]
+pub const NET_MD5_VALUE: &str = env!("PRINCHESS_NET_MD5_VALUE");
+#[cfg(not(feature = "value-net"))]
+pub const NET_MD5_VALUE: &str = "none";
+
+#[cfg(feature = "policy-net")]
+pub const NET_MD5_MG_POLICY: &str = env!("PRINCHESS_NET_MD5_MG_POLICY");
+#[cfg(not(feature = "policy-net"))]
+pub const NET_MD5_MG_POLICY: &str = "none";
+
+#[cfg(feature = "policy-net")]
+pub const NET_MD5_EG_POLICY: &str = env!("PRINCHESS_NET_MD5_EG_POLICY");
+#[cfg(not(feature = "policy-net"))]
+pub const NET_MD5_EG_POLICY: &str = "none";
+
 #[derive(Clone, Copy, Debug, Zeroable)]
 #[repr(C)]
 pub struct Accumulator<T, const H: usize> {
@@ -33,6 +48,65 @@ impl<const H: usize> Accumulator<i16, H> {
 
         for (a, b) in self.vals.iter().zip(&rhs.vals) {
             result += relu(*a) * relu(*b);
+        }
+
+        result as f32 / Q as f32
+    }
+
+    // self is hardtanh-activated (clamped to [-QA, QA]); relu applied to rhs
+    #[must_use]
+    pub fn hardtanh_dot_relu<const QA: i32>(&self, rhs: &Accumulator<i16, H>) -> f32 {
+        let mut result: i32 = 0;
+
+        for (a, b) in self.vals.iter().zip(rhs.vals.iter()) {
+            result += i32::from(*a).clamp(-QA, QA) * relu(*b);
+        }
+
+        result as f32 / (QA * QA) as f32
+    }
+
+    // self is linear (no relu); relu applied to rhs only
+    #[must_use]
+    pub fn linear_dot_relu<const Q: i32>(&self, rhs: &Accumulator<i16, H>) -> f32 {
+        let mut result: i32 = 0;
+
+        for (a, b) in self.vals.iter().zip(rhs.vals.iter()) {
+            result += i32::from(*a) * relu(*b);
+        }
+
+        result as f32 / Q as f32
+    }
+
+    // self is linear (no relu); no relu applied to rhs either
+    #[must_use]
+    pub fn linear_dot_linear<const Q: i32>(&self, rhs: &Accumulator<i16, H>) -> f32 {
+        let mut result: i32 = 0;
+
+        for (a, b) in self.vals.iter().zip(rhs.vals.iter()) {
+            result += i32::from(*a) * i32::from(*b);
+        }
+
+        result as f32 / Q as f32
+    }
+
+    // self is linear (exp(embed)*QA scale); relu applied to rhs, then multiply and divide by Q
+    #[must_use]
+    pub fn linear_mult_relu<const Q: i32>(&self, rhs: &Accumulator<i16, H>) -> Accumulator<i16, H> {
+        let mut result = Accumulator { vals: [0i16; H] };
+
+        for i in 0..H {
+            result.vals[i] = ((i32::from(self.vals[i]) * relu(rhs.vals[i])) / Q) as i16;
+        }
+
+        result
+    }
+
+    #[must_use]
+    pub fn sum_relu<const Q: i32>(&self) -> f32 {
+        let mut result: i32 = 0;
+
+        for a in &self.vals {
+            result += relu(*a);
         }
 
         result as f32 / Q as f32
@@ -119,5 +193,17 @@ impl MoveIndex {
             _ => self.to_sq,
         };
         bucket * Square::COUNT + to_sq.index()
+    }
+
+    pub fn good_see(self) -> bool {
+        self.good_see
+    }
+
+    pub fn to_sq_for_piece_subnet(self) -> Square {
+        match self.promotion {
+            Piece::KNIGHT => self.to_sq.with_rank(Rank::_1),
+            Piece::BISHOP | Piece::ROOK => self.to_sq.with_rank(Rank::_2),
+            _ => self.to_sq,
+        }
     }
 }

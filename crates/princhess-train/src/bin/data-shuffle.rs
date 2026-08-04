@@ -1,3 +1,4 @@
+use std::collections::{HashMap, HashSet};
 use std::fs::{self, File};
 use std::io::{self, BufRead, BufReader, BufWriter, ErrorKind, Read, Write};
 use std::path::{Path, PathBuf};
@@ -17,6 +18,7 @@ use ratatui::style::{Color, Style};
 use ratatui::text::Span;
 use ratatui::widgets::{Block, Borders, Gauge, Paragraph};
 use ratatui::{Frame, Terminal, TerminalOptions, Viewport};
+use toml::{Table, Value};
 
 use princhess::math::Rng;
 use princhess_train::args::Args;
@@ -28,6 +30,7 @@ struct FileInfo {
     path: PathBuf,
     is_shuffled: bool,
     position_count: usize,
+    source_toml: Option<Arc<Table>>,
 }
 
 impl FileInfo {
@@ -75,6 +78,7 @@ impl FileInfo {
             path,
             is_shuffled,
             position_count,
+            source_toml: None,
         })
     }
 }
@@ -530,6 +534,121 @@ fn render_interleave_box(frame: &mut Frame, area: ratatui::layout::Rect, progres
     );
 }
 
+fn find_source_tomls(input_files: &[PathBuf]) -> HashMap<String, Arc<Table>> {
+    let dirs: HashSet<&Path> = input_files.iter().filter_map(|p| p.parent()).collect();
+    let mut map = HashMap::new();
+    for dir in dirs {
+        let Ok(entries) = fs::read_dir(dir) else { continue };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().and_then(|e| e.to_str()) != Some("toml") {
+                continue;
+            }
+            let Ok(content) = fs::read_to_string(&path) else { continue };
+            let Ok(table) = content.parse::<Table>() else { continue };
+            let file_paths: Vec<String> = match table.get("files") {
+                Some(Value::Array(arr)) => arr
+                    .iter()
+                    .filter_map(|v| if let Value::String(s) = v { Some(s.clone()) } else { None })
+                    .collect(),
+                _ => continue,
+            };
+            let shared = Arc::new(table);
+            for file_path in file_paths {
+                map.insert(file_path, shared.clone());
+            }
+        }
+    }
+    map
+}
+
+fn write_shuffle_toml(toml_path: &Path, output_data_path: &Path, files: &[FileInfo]) {
+    let mut doc = Table::new();
+    doc.insert(
+        "files".into(),
+        Value::Array(vec![Value::String(output_data_path.to_string_lossy().into_owned())]),
+    );
+
+    let mut groups: Vec<(Option<Arc<Table>>, Vec<&FileInfo>)> = Vec::new();
+    'outer: for file in files {
+        for (toml, group) in &mut groups {
+            let same = match (toml, &file.source_toml) {
+                (Some(a), Some(b)) => Arc::ptr_eq(a, b),
+                (None, None) => true,
+                _ => false,
+            };
+            if same {
+                group.push(file);
+                continue 'outer;
+            }
+        }
+        groups.push((file.source_toml.clone(), vec![file]));
+    }
+
+    let source_array: Vec<Value> = groups
+        .into_iter()
+        .map(|(toml, group)| {
+            let mut s = Table::new();
+            s.insert(
+                "files".into(),
+                Value::Array(
+                    group
+                        .iter()
+                        .map(|f| Value::String(f.path.to_string_lossy().into_owned()))
+                        .collect(),
+                ),
+            );
+            s.insert(
+                "positions".into(),
+                Value::Integer(
+                    i64::try_from(group.iter().map(|f| f.position_count).sum::<usize>())
+                        .unwrap_or(i64::MAX),
+                ),
+            );
+            if let Some(t) = toml {
+                for (key, val) in t.iter() {
+                    if key != "files" {
+                        s.insert(key.clone(), val.clone());
+                    }
+                }
+            }
+            Value::Table(s)
+        })
+        .collect();
+
+    doc.insert("source".into(), Value::Array(source_array));
+
+    let mut file = File::create(toml_path).expect("Failed to create shuffle TOML");
+    write!(file, "{doc}").expect("Failed to write shuffle TOML");
+}
+
+fn cleanup_orphaned_tomls(files: &[FileInfo]) {
+    let dirs: HashSet<&Path> = files.iter().filter_map(|f| f.path.parent()).collect();
+    for dir in dirs {
+        let Ok(entries) = fs::read_dir(dir) else { continue };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().and_then(|e| e.to_str()) != Some("toml") {
+                continue;
+            }
+            let Ok(content) = fs::read_to_string(&path) else { continue };
+            let Ok(table) = content.parse::<Table>() else { continue };
+            let all_gone = match table.get("files") {
+                Some(Value::Array(arr)) => {
+                    !arr.is_empty()
+                        && arr.iter().all(|v| {
+                            matches!(v, Value::String(s) if !Path::new(s).exists())
+                        })
+                }
+                _ => false,
+            };
+            if all_gone {
+                fs::remove_file(&path).ok();
+            }
+        }
+    }
+}
+
 fn main() {
     let mut args = Args::from_env();
 
@@ -546,14 +665,18 @@ fn main() {
         process::exit(1);
     }
 
+    let source_map = find_source_tomls(&input_files);
+
     // Gather file info
     let files: Vec<FileInfo> = input_files
         .into_iter()
         .map(|path| {
-            FileInfo::new(path.clone()).unwrap_or_else(|e| {
+            let mut info = FileInfo::new(path.clone()).unwrap_or_else(|e| {
                 eprintln!("Error reading {}: {}", path.display(), e);
                 process::exit(1);
-            })
+            });
+            info.source_toml = path.to_str().and_then(|s| source_map.get(s)).cloned();
+            info
         })
         .collect();
 
@@ -675,11 +798,19 @@ fn main() {
 
             progress.interleave_complete.store(true, Ordering::Relaxed);
 
+            let toml_path = PathBuf::from(format!(
+                "data/princhess-{}-{}m.toml",
+                timestamp,
+                total_positions / 1_000_000
+            ));
+            write_shuffle_toml(&toml_path, &output_path, &files);
+
             // Cleanup temp shuffled files after interleaving if requested
             if cleanup {
                 for temp in &temp_files {
                     fs::remove_file(temp).ok();
                 }
+                cleanup_orphaned_tomls(&files);
             }
         }
     });

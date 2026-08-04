@@ -25,6 +25,11 @@ get_engine_path() {
     fi
 }
 
+print_fingerprint() {
+    local engine_path=$1
+    "$engine_path" fingerprint 2>&1 | sed 's/info string /  /' >&2
+}
+
 # Prints per-run nps lines, then prints the average as the last line.
 run_bench() {
     local engine_path=$1
@@ -68,10 +73,12 @@ echo "Bench: $ENGINE1 vs $ENGINE2 ($RUNS runs)"
 echo ""
 
 echo "$ENGINE1 ($ENGINE1_PATH):"
+print_fingerprint "$ENGINE1_PATH"
 AVG1=$(run_bench "$ENGINE1_PATH" | tail -1)
 echo ""
 
 echo "$ENGINE2 ($ENGINE2_PATH):"
+print_fingerprint "$ENGINE2_PATH"
 AVG2=$(run_bench "$ENGINE2_PATH" | tail -1)
 echo ""
 

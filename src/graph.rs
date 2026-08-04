@@ -173,6 +173,10 @@ impl MoveEdge {
         self.policy
     }
 
+    pub fn set_policy(&mut self, val: u16) {
+        self.policy = val;
+    }
+
     pub fn reward(&self) -> Reward {
         let visits = self.visits.load(Ordering::Relaxed);
 

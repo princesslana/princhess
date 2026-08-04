@@ -1,0 +1,43 @@
+accuracy = 0.582366943359375
+info_gain = 0.581573486328125
+input_file = "data/princhess-20260723-1909-401m.data.shuffled"
+loss = 2.512908935546875
+network_info = "hardtanh(ctx): [768->32] * relu({P/N/B/R/Q: SeeSplit([768->16; 64]), K: [768->16; 64]}), to+from"
+super_batch = 35
+super_batches_total = 35
+
+[piece.b]
+accuracy = 0.5023040771484375
+info_gain = 0.06353759765625
+wrong_piece = 0.3306732177734375
+wrong_square = 0.1669921875
+
+[piece.k]
+accuracy = 0.6304168701171875
+info_gain = 0.07904052734375
+wrong_piece = 0.16998291015625
+wrong_square = 0.1995697021484375
+
+[piece.n]
+accuracy = 0.5465850830078125
+info_gain = 0.0636749267578125
+wrong_piece = 0.31146240234375
+wrong_square = 0.141937255859375
+
+[piece.p]
+accuracy = 0.6835174560546875
+info_gain = 0.129547119140625
+wrong_piece = 0.232940673828125
+wrong_square = 0.083526611328125
+
+[piece.q]
+accuracy = 0.501678466796875
+info_gain = 0.095367431640625
+wrong_piece = 0.2577362060546875
+wrong_square = 0.240570068359375
+
+[piece.r]
+accuracy = 0.504302978515625
+info_gain = 0.161834716796875
+wrong_piece = 0.2728729248046875
+wrong_square = 0.2227935791015625

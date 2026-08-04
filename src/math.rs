@@ -75,6 +75,47 @@ impl Rng {
         min + self.next_f32() * (max - min)
     }
 
+    fn next_normal(&mut self) -> f32 {
+        let u1 = self.next_f32().max(f32::EPSILON);
+        let u2 = self.next_f32();
+        (-2.0 * u1.ln()).sqrt() * (std::f32::consts::TAU * u2).cos()
+    }
+
+    #[allow(clippy::many_single_char_names)]
+    fn next_gamma(&mut self, alpha: f32) -> f32 {
+        if alpha < 1.0 {
+            return self.next_gamma(alpha + 1.0) * self.next_f32().powf(1.0 / alpha);
+        }
+        let d = alpha - 1.0 / 3.0;
+        let c = 1.0 / (9.0 * d).sqrt();
+        loop {
+            let z = self.next_normal();
+            let v_base = 1.0 + c * z;
+            if v_base <= 0.0 {
+                continue;
+            }
+            let v = v_base * v_base * v_base;
+            let u = self.next_f32().max(f32::EPSILON);
+            if u < 1.0 - 0.0331 * (z * z) * (z * z) {
+                return d * v;
+            }
+            if u.ln() < 0.5 * z * z + d * (1.0 - v + v.ln()) {
+                return d * v;
+            }
+        }
+    }
+
+    pub fn fill_dirichlet(&mut self, alpha: f32, out: &mut [f32]) {
+        let mut sum = 0.0;
+        for x in out.iter_mut() {
+            *x = self.next_gamma(alpha);
+            sum += *x;
+        }
+        for x in out.iter_mut() {
+            *x /= sum;
+        }
+    }
+
     pub fn weighted(&mut self, weights: &[f32]) -> usize {
         let r = self.next_f32();
 

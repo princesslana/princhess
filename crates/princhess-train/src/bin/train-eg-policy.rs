@@ -1,6 +1,7 @@
 use std::array;
+use std::collections::{BinaryHeap, HashMap};
 use std::fs::{self, File};
-use std::io::{self, Read, Seek, SeekFrom};
+use std::io::{self, Write};
 use std::ops::AddAssign;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU32, AtomicU64, AtomicUsize, Ordering};
@@ -22,6 +23,7 @@ use ratatui::widgets::{
 };
 use ratatui::{Frame, Terminal, TerminalOptions, Viewport};
 use scc::{Guard, Queue};
+use toml::{Table, Value};
 
 use princhess::chess::Piece;
 use princhess::engine::SCALE;
@@ -30,15 +32,16 @@ use princhess::state::State;
 
 use princhess_train::args::Args;
 use princhess_train::data::TrainingPosition;
+use princhess_train::data::TrainingData;
+use princhess_train::eg_policy::{is_training_position, EgPolicyNetwork};
 use princhess_train::neural::{
-    AdamWOptimizer, LRScheduler, LinearWarmupDecayLRScheduler, SparseVector,
+    AdamWOptimizer, LRScheduler, PolynomialWarmupDecayLRScheduler, SparseVector,
 };
-use princhess_train::policy::{Phase, PolicyNetwork};
 use princhess_train::system;
 use princhess_train::tui::{self, RawModeGuard};
 
 const BATCHES_PER_SUPER_BATCH: usize = 6_104;
-const TOTAL_SUPER_BATCHES: usize = 50;
+const TOTAL_SUPER_BATCHES: usize = 35;
 const BATCH_SIZE: usize = 32768;
 
 const TUI_TOTAL_HEIGHT: u16 = 40;
@@ -94,7 +97,7 @@ struct TrainingConfig {
     network_info: String,
     data_positions: usize,
     threads: usize,
-    phase: Phase,
+    scheduler: String,
 }
 
 struct TrainingStats {
@@ -112,6 +115,10 @@ struct TrainingStats {
     loss_history: Queue<f32>,
     accuracy_history: Queue<f32>,
 
+    // Per-batch histories for LR analysis (collected at end of training)
+    grad_l1_history: Queue<f32>,
+    lr_full_history: Queue<f32>,
+
     // Rate tracking
     recent_rates: Queue<u64>,
     last_sample_positions: AtomicU64,
@@ -121,7 +128,7 @@ struct TrainingStats {
     lr_history: Queue<f32>,
 
     // File read progress (bytes consumed from current pass through the file)
-    file_bytes_consumed: AtomicU64,
+    positions_consumed: AtomicU64,
 
     // Previous super batch metrics (stored as quantized i64)
     prev_loss: AtomicI64,     // loss * SCALE
@@ -136,6 +143,13 @@ struct TrainingStats {
     piece_baseline_sum: [AtomicI64; Piece::COUNT],
     wrong_piece: [AtomicU64; Piece::COUNT],
     wrong_square: [AtomicU64; Piece::COUNT],
+
+    // Snapshots of piece metrics from the last completed super batch (scaled by SCALE)
+    prev_piece_accuracy: [AtomicI64; Piece::COUNT],
+    prev_piece_info_gain: [AtomicI64; Piece::COUNT],
+    prev_wrong_piece: [AtomicI64; Piece::COUNT],
+    prev_wrong_square: [AtomicI64; Piece::COUNT],
+
     last_saved_net: Mutex<Option<String>>,
 }
 
@@ -151,11 +165,13 @@ impl TrainingStats {
             current_count: AtomicUsize::new(0),
             loss_history: Queue::default(),
             accuracy_history: Queue::default(),
+            grad_l1_history: Queue::default(),
+            lr_full_history: Queue::default(),
             recent_rates: Queue::default(),
             last_sample_positions: AtomicU64::new(0),
             current_lr: AtomicU32::new(0),
             lr_history: Queue::default(),
-            file_bytes_consumed: AtomicU64::new(0),
+            positions_consumed: AtomicU64::new(0),
             prev_loss: AtomicI64::new(0),
             prev_accuracy: AtomicI64::new(0),
             prev_baseline: AtomicI64::new(0),
@@ -166,6 +182,10 @@ impl TrainingStats {
             piece_baseline_sum: array::from_fn(|_| AtomicI64::new(0)),
             wrong_piece: array::from_fn(|_| AtomicU64::new(0)),
             wrong_square: array::from_fn(|_| AtomicU64::new(0)),
+            prev_piece_accuracy: array::from_fn(|_| AtomicI64::new(0)),
+            prev_piece_info_gain: array::from_fn(|_| AtomicI64::new(0)),
+            prev_wrong_piece: array::from_fn(|_| AtomicI64::new(0)),
+            prev_wrong_square: array::from_fn(|_| AtomicI64::new(0)),
             last_saved_net: Mutex::new(None),
         }
     }
@@ -239,6 +259,17 @@ impl TrainingStats {
         }
 
         self.current_super_batch.fetch_add(1, Ordering::Relaxed);
+
+        // Snapshot piece metrics before reset
+        let piece_acc = self.get_piece_accuracy();
+        let piece_ig = self.get_piece_info_gain();
+        let (wp, ws) = self.get_piece_error_breakdown();
+        for i in 0..Piece::COUNT {
+            self.prev_piece_accuracy[i].store((piece_acc[i] * SCALE) as i64, Ordering::Relaxed);
+            self.prev_piece_info_gain[i].store((piece_ig[i] * SCALE) as i64, Ordering::Relaxed);
+            self.prev_wrong_piece[i].store((wp[i] * SCALE) as i64, Ordering::Relaxed);
+            self.prev_wrong_square[i].store((ws[i] * SCALE) as i64, Ordering::Relaxed);
+        }
 
         // Don't reset progress counters if we've completed all super batches
         // This preserves the final display state
@@ -315,12 +346,21 @@ impl TrainingStats {
         baseline - loss
     }
 
+    fn get_prev_piece_data(&self) -> ([f32; Piece::COUNT], [f32; Piece::COUNT], [f32; Piece::COUNT], [f32; Piece::COUNT]) {
+        let load = |arr: &[AtomicI64; Piece::COUNT]| -> [f32; Piece::COUNT] {
+            array::from_fn(|i| arr[i].load(Ordering::Relaxed) as f32 / SCALE)
+        };
+        (load(&self.prev_piece_accuracy), load(&self.prev_piece_info_gain), load(&self.prev_wrong_piece), load(&self.prev_wrong_square))
+    }
+
     fn get_piece_info_gain(&self) -> [f32; Piece::COUNT] {
+        let total: u64 = (0..Piece::COUNT)
+            .map(|i| self.piece_total[i].load(Ordering::Relaxed))
+            .sum();
+        if total == 0 {
+            return [0.0; Piece::COUNT];
+        }
         array::from_fn(|i| {
-            let total = self.piece_total[i].load(Ordering::Relaxed);
-            if total == 0 {
-                return 0.0;
-            }
             let baseline = self.piece_baseline_sum[i].load(Ordering::Relaxed) as f32 / SCALE;
             let loss = self.piece_loss_sum[i].load(Ordering::Relaxed) as f32 / SCALE;
             (baseline - loss) / total as f32
@@ -339,12 +379,6 @@ fn main() {
         "Thread count must be at least 1, got {threads}"
     );
 
-    let phase_arg: String = args
-        .flag("-p", "--phase")
-        .unwrap_or_else(|| panic!("Missing required flag: -p <mg|eg>"));
-    let phase = Phase::from_arg(&phase_arg)
-        .unwrap_or_else(|| panic!("Invalid phase: {phase_arg}. Use 'mg' or 'eg'."));
-
     let input = args.expect("input file");
 
     let file = File::open(&input).unwrap();
@@ -356,33 +390,27 @@ fn main() {
         TrainingPosition::BUFFER_COUNT
     );
 
-    let network = PolicyNetwork::random();
-    let momentum = PolicyNetwork::zeroed();
-    let velocity = PolicyNetwork::zeroed();
+    let network = EgPolicyNetwork::random();
+    let momentum = EgPolicyNetwork::zeroed();
+    let velocity = EgPolicyNetwork::zeroed();
 
+    let total_steps = (TOTAL_SUPER_BATCHES * BATCHES_PER_SUPER_BATCH) as u32;
+    let scheduler = PolynomialWarmupDecayLRScheduler::new(LR, 0.0, total_steps, 1.1);
     let config = TrainingConfig {
         input_file: input.clone(),
         network_info: format!("{network}"),
         data_positions,
         threads,
-        phase,
+        scheduler: format!("{scheduler}"),
     };
-
-    let total_steps = (TOTAL_SUPER_BATCHES * BATCHES_PER_SUPER_BATCH) as u32;
-    let scheduler = LinearWarmupDecayLRScheduler::new(LR, 0.05, total_steps);
-    let weight_decay = if phase == Phase::MiddleGame {
-        0.01
-    } else {
-        0.0
-    };
-    let optimizer = AdamWOptimizer::with_scheduler(scheduler).weight_decay(weight_decay);
+    let optimizer = AdamWOptimizer::with_scheduler(scheduler).weight_decay(0.01);
     run_training_loop(network, momentum, velocity, optimizer, config);
 }
 
 fn run_training_loop<S: LRScheduler + Sync>(
-    mut network: Box<PolicyNetwork>,
-    mut momentum: Box<PolicyNetwork>,
-    mut velocity: Box<PolicyNetwork>,
+    mut network: Box<EgPolicyNetwork>,
+    mut momentum: Box<EgPolicyNetwork>,
+    mut velocity: Box<EgPolicyNetwork>,
     mut optimizer: AdamWOptimizer<S>,
     config: TrainingConfig,
 ) {
@@ -403,7 +431,7 @@ fn run_training_loop<S: LRScheduler + Sync>(
         }
     });
 
-    let mut file = File::open(&config.input_file).unwrap();
+    let mut data = TrainingData::new(&config.input_file);
 
     // Training loop
     for sb in 0..TOTAL_SUPER_BATCHES {
@@ -418,21 +446,20 @@ fn run_training_loop<S: LRScheduler + Sync>(
             &mut optimizer,
             &config,
             &stats,
-            &mut file,
-            config.phase,
+            &mut data,
         );
 
         stats.finish_super_batch();
 
         // Save network periodically (always save after first super batch for sanity checks)
         if (sb + 1) % SAVE_EVERY_N_SUPER_BATCHES == 0 || sb + 1 == TOTAL_SUPER_BATCHES || sb == 0 {
-            let phase = config.phase;
-            let dir_name = format!("nets/{phase}-policy-{timestamp}-sb{:03}", sb + 1);
+            let dir_name = format!("nets/eg-policy-{timestamp}-sb{:03}", sb + 1);
             fs::create_dir_all(&dir_name).expect("Failed to create network save directory");
             let dir = Path::new(&dir_name);
             network
                 .to_boxed_and_quantized()
-                .save_to_bin(dir, &format!("{phase}-policy.bin"));
+                .save_to_bin(dir, "eg-policy.bin");
+            write_training_toml(dir, sb + 1, &stats, &config);
 
             *stats.last_saved_net.lock().unwrap() = Some(dir_name);
         }
@@ -441,6 +468,301 @@ fn run_training_loop<S: LRScheduler + Sync>(
     // Cleanup TUI
     stop_signal.store(true, Ordering::Relaxed);
     tui_thread.join().unwrap();
+
+    let last_dir = stats.last_saved_net.lock().unwrap().clone();
+    if let Some(dir) = last_dir {
+        write_lr_analysis_toml(Path::new(&dir), &stats, &config);
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+struct OrdF32(u32);
+
+impl OrdF32 {
+    fn new(f: f32) -> Self {
+        Self(f.to_bits())
+    }
+    fn val(self) -> f32 {
+        f32::from_bits(self.0)
+    }
+}
+
+impl PartialOrd for OrdF32 {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for OrdF32 {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.val().total_cmp(&other.val())
+    }
+}
+
+// Two-heap sliding median with lazy deletion. O(T log W).
+fn sliding_median(data: &[f32], width: usize) -> Vec<f32> {
+    use std::cmp::Reverse;
+
+    let n = data.len();
+    if n == 0 {
+        return vec![];
+    }
+
+    let half = width / 2;
+    let w = 2 * half + 1;
+
+    let mut padded = Vec::with_capacity(n + 2 * half);
+    padded.extend(std::iter::repeat(data[0]).take(half));
+    padded.extend_from_slice(data);
+    padded.extend(std::iter::repeat(*data.last().unwrap()).take(half));
+
+    let mut lo: BinaryHeap<OrdF32> = BinaryHeap::new();
+    let mut hi: BinaryHeap<Reverse<OrdF32>> = BinaryHeap::new();
+    let mut lo_eff: i64 = 0;
+    let mut hi_eff: i64 = 0;
+    let mut lazy: HashMap<u32, i64> = HashMap::new();
+
+    macro_rules! clean_lo {
+        () => {
+            while let Some(&top) = lo.peek() {
+                if *lazy.get(&top.0).unwrap_or(&0) > 0 {
+                    lo.pop();
+                    *lazy.entry(top.0).or_default() -= 1;
+                } else {
+                    break;
+                }
+            }
+        };
+    }
+    macro_rules! clean_hi {
+        () => {
+            while let Some(&Reverse(top)) = hi.peek() {
+                if *lazy.get(&top.0).unwrap_or(&0) > 0 {
+                    hi.pop();
+                    *lazy.entry(top.0).or_default() -= 1;
+                } else {
+                    break;
+                }
+            }
+        };
+    }
+    macro_rules! rebalance {
+        () => {
+            while lo_eff > hi_eff + 1 {
+                clean_lo!();
+                if let Some(top) = lo.pop() {
+                    lo_eff -= 1;
+                    hi.push(Reverse(top));
+                    hi_eff += 1;
+                }
+            }
+            while hi_eff > lo_eff {
+                clean_hi!();
+                if let Some(Reverse(top)) = hi.pop() {
+                    hi_eff -= 1;
+                    lo.push(top);
+                    lo_eff += 1;
+                }
+            }
+        };
+    }
+    macro_rules! heap_push {
+        ($v:expr) => {
+            clean_lo!();
+            match lo.peek() {
+                Some(&top) if $v > top => {
+                    hi.push(Reverse($v));
+                    hi_eff += 1;
+                }
+                _ => {
+                    lo.push($v);
+                    lo_eff += 1;
+                }
+            }
+            rebalance!();
+        };
+    }
+    macro_rules! heap_remove {
+        ($v:expr) => {
+            *lazy.entry($v.0).or_default() += 1;
+            clean_lo!();
+            match lo.peek() {
+                Some(&top) if $v > top => hi_eff -= 1,
+                _ => lo_eff -= 1,
+            }
+            rebalance!();
+        };
+    }
+    macro_rules! median {
+        () => {{
+            clean_lo!();
+            lo.peek().map_or(0.0, |top| top.val())
+        }};
+    }
+
+    for &x in &padded[..w] {
+        heap_push!(OrdF32::new(x));
+    }
+
+    let mut result = Vec::with_capacity(n);
+    result.push(median!());
+
+    for i in w..padded.len() {
+        heap_push!(OrdF32::new(padded[i]));
+        heap_remove!(OrdF32::new(padded[i - w]));
+        result.push(median!());
+    }
+
+    result
+}
+
+fn write_lr_analysis_toml(dir: &Path, stats: &TrainingStats, config: &TrainingConfig) {
+    let guard = scc::Guard::new();
+    let grad_l1: Vec<f32> = stats.grad_l1_history.iter(&guard).copied().collect();
+    let lr_full: Vec<f32> = stats.lr_full_history.iter(&guard).copied().collect();
+
+    if grad_l1.is_empty() || lr_full.is_empty() {
+        return;
+    }
+
+    let t = grad_l1.len();
+    let win = (t / 10).max(1);
+    let smoothed = sliding_median(&grad_l1, win);
+
+    // Importance weights: regions with small gradient L1 norms are underexplored
+    let weights: Vec<f32> = smoothed.iter().map(|&s| 1.0 / s.max(1e-9)).collect();
+
+    // Suffix sums for the optimal forward-pass LR allocation
+    let mut suffix = vec![0.0f32; t + 1];
+    for i in (0..t).rev() {
+        suffix[i] = suffix[i + 1] + weights[i];
+    }
+
+    // Proposed LR proportional to w[t] * remaining_weight
+    let mut proposal: Vec<f32> = (0..t).map(|i| weights[i] * suffix[i + 1]).collect();
+
+    // Normalize to match the total area under the actual LR schedule
+    let proposal_sum: f32 = proposal.iter().sum();
+    if proposal_sum > 0.0 {
+        let actual_sum: f32 = lr_full.iter().sum();
+        let scale = actual_sum / proposal_sum;
+        for p in &mut proposal {
+            *p *= scale;
+        }
+    }
+
+    let steps_per_sb = (t / TOTAL_SUPER_BATCHES).max(1);
+    let mut schedule = Vec::new();
+    for sb in 0..TOTAL_SUPER_BATCHES {
+        let start = sb * steps_per_sb;
+        let end = ((sb + 1) * steps_per_sb).min(t);
+        if start >= t {
+            break;
+        }
+        let len = (end - start) as f32;
+        let actual_avg = lr_full[start..end].iter().sum::<f32>() / len;
+        let proposed_avg = proposal[start..end].iter().sum::<f32>() / len;
+        let grad_l1_avg = grad_l1[start..end].iter().sum::<f32>() / len;
+        let smoothed_avg = smoothed[start..end].iter().sum::<f32>() / len;
+
+        let mut entry = Table::new();
+        entry.insert("superbatch".into(), Value::Integer(i64::try_from(sb + 1).unwrap_or(i64::MAX)));
+        entry.insert("actual_lr".into(), actual_avg.into());
+        entry.insert("proposed_lr".into(), proposed_avg.into());
+        entry.insert("grad_l1".into(), grad_l1_avg.into());
+        entry.insert("smoothed_grad_l1".into(), smoothed_avg.into());
+        schedule.push(Value::Table(entry));
+    }
+
+    // Fine-grained warmup analysis: 10 bins each for SB1 and SB2
+    const WARMUP_FINE_SBS: usize = 2;
+    const WARMUP_BINS_PER_SB: usize = 10;
+    let fine_steps = (steps_per_sb * WARMUP_FINE_SBS).min(t);
+    let bin_size = fine_steps / (WARMUP_FINE_SBS * WARMUP_BINS_PER_SB);
+    let mut warmup_analysis = Vec::new();
+    if bin_size > 0 {
+        for bin in 0..(WARMUP_FINE_SBS * WARMUP_BINS_PER_SB) {
+            let start = bin * bin_size;
+            let end = ((bin + 1) * bin_size).min(t);
+            let len = (end - start) as f32;
+            let step_mid = (start + end) / 2;
+            let actual_avg = lr_full[start..end].iter().sum::<f32>() / len;
+            let proposed_avg = proposal[start..end].iter().sum::<f32>() / len;
+            let grad_l1_avg = grad_l1[start..end].iter().sum::<f32>() / len;
+            let mut entry = Table::new();
+            entry.insert("step_mid".into(), Value::Integer(step_mid as i64));
+            entry.insert("actual_lr".into(), actual_avg.into());
+            entry.insert("proposed_lr".into(), proposed_avg.into());
+            entry.insert("grad_l1".into(), grad_l1_avg.into());
+            warmup_analysis.push(Value::Table(entry));
+        }
+    }
+
+    // Step at which proposed_lr peaks (skip step 0 — artificially high due to low initial grad norms)
+    let (peak_step, &peak_proposed) = proposal[1..fine_steps]
+        .iter()
+        .enumerate()
+        .max_by(|a, b| a.1.partial_cmp(b.1).unwrap_or(std::cmp::Ordering::Equal))
+        .map(|(i, v)| (i + 1, v))
+        .unwrap_or((0, &0.0));
+    let peak_actual = lr_full.get(peak_step).copied().unwrap_or(0.0);
+    let mut warmup_peak = Table::new();
+    warmup_peak.insert("step".into(), Value::Integer(peak_step as i64));
+    warmup_peak.insert("proposed_lr".into(), peak_proposed.into());
+    warmup_peak.insert("actual_lr".into(), peak_actual.into());
+
+    let mut doc = Table::new();
+    doc.insert("input_file".into(), config.input_file.clone().into());
+    doc.insert("network_info".into(), config.network_info.clone().into());
+    doc.insert("data_positions".into(), Value::Integer(i64::try_from(config.data_positions).unwrap_or(i64::MAX)));
+    doc.insert("scheduler".into(), config.scheduler.clone().into());
+    doc.insert("warmup_peak".into(), Value::Table(warmup_peak));
+    doc.insert("warmup_analysis".into(), Value::Array(warmup_analysis));
+    doc.insert("schedule".into(), Value::Array(schedule));
+
+    let path = dir.join("eg-policy-lr-analysis.toml");
+    if let Ok(mut file) = File::create(path) {
+        let _ = write!(file, "{doc}");
+    }
+
+    // Raw f32 curves for detailed offline analysis: three contiguous blocks (proposed, actual, grad_l1)
+    let bin_path = dir.join("eg-policy-lr-curves.bin");
+    if let Ok(mut file) = File::create(bin_path) {
+        let _ = file.write_all(bytemuck::cast_slice(&proposal));
+        let _ = file.write_all(bytemuck::cast_slice(&lr_full));
+        let _ = file.write_all(bytemuck::cast_slice(&grad_l1));
+    }
+}
+
+fn write_training_toml(dir: &Path, sb: usize, stats: &TrainingStats, config: &TrainingConfig) {
+    let (loss, accuracy) = stats.get_prev_avg_metrics();
+    let info_gain = stats.get_prev_info_gain();
+    let (piece_accuracy, piece_info_gain, wrong_piece, wrong_square) = stats.get_prev_piece_data();
+    let piece_names = ["p", "n", "b", "r", "q", "k"];
+
+    let mut doc = Table::new();
+    doc.insert("super_batch".into(), Value::Integer(i64::try_from(sb).unwrap_or(i64::MAX)));
+    doc.insert("super_batches_total".into(), Value::Integer(i64::try_from(TOTAL_SUPER_BATCHES).unwrap_or(i64::MAX)));
+    doc.insert("network_info".into(), config.network_info.clone().into());
+    doc.insert("input_file".into(), config.input_file.clone().into());
+    doc.insert("loss".into(), loss.into());
+    doc.insert("accuracy".into(), accuracy.into());
+    doc.insert("info_gain".into(), info_gain.into());
+
+    let mut pieces = Table::new();
+    for (i, name) in piece_names.iter().enumerate() {
+        let mut p = Table::new();
+        p.insert("accuracy".into(), piece_accuracy[i].into());
+        p.insert("info_gain".into(), piece_info_gain[i].into());
+        p.insert("wrong_piece".into(), wrong_piece[i].into());
+        p.insert("wrong_square".into(), wrong_square[i].into());
+        pieces.insert((*name).into(), Value::Table(p));
+    }
+    doc.insert("piece".into(), Value::Table(pieces));
+
+    let path = dir.join("eg-policy.toml");
+    let mut file = File::create(path).expect("Failed to create training TOML");
+    write!(file, "{doc}").expect("Failed to write training TOML");
 }
 
 fn run_tui(
@@ -557,10 +879,9 @@ fn render_dataset_boxes(
     frame.render_widget(dataset_block, cols[0]);
     frame.render_widget(
         Paragraph::new(format!(
-            "Input: {}\nPositions: {:.1}M  Phase: {}",
+            "Input: {}\nPositions: {:.1}M  Phase: eg",
             config.input_file,
             config.data_positions as f64 / 1_000_000.0,
-            config.phase,
         )),
         dataset_inner,
     );
@@ -693,18 +1014,18 @@ fn render_progress(
     );
 
     // File read progress
-    let file_total_bytes = config.data_positions as u64 * TrainingPosition::SIZE as u64;
-    let file_bytes = stats.file_bytes_consumed.load(Ordering::Relaxed);
-    let file_ratio = if file_total_bytes > 0 {
-        (file_bytes as f64 / file_total_bytes as f64).min(1.0)
+    let total_positions = config.data_positions as u64;
+    let consumed_positions = stats.positions_consumed.load(Ordering::Relaxed);
+    let file_ratio = if total_positions > 0 {
+        (consumed_positions as f64 / total_positions as f64).min(1.0)
     } else {
         0.0
     };
     let file_label = Span::styled(
         format!(
             "{:>6.1} / {:>6.1}M ({:>5.1}%)",
-            file_bytes as f64 / TrainingPosition::SIZE as f64 / 1_000_000.0,
-            config.data_positions as f64 / 1_000_000.0,
+            consumed_positions as f64 / 1_000_000.0,
+            total_positions as f64 / 1_000_000.0,
             file_ratio * 100.0,
         ),
         Style::default().fg(Color::White),
@@ -886,7 +1207,6 @@ fn render_loss_chart(frame: &mut Frame, area: ratatui::layout::Rect, stats: &Tra
         let min = loss_data.iter().map(|(_, y)| *y).fold(f64::MAX, f64::min);
         let range = max - min;
         if range < 1e-6 {
-            // Single data point or very small range
             (0.0, max * 2.0)
         } else {
             let buffer = range * 0.1;
@@ -927,7 +1247,6 @@ fn render_accuracy_chart(frame: &mut Frame, area: ratatui::layout::Rect, stats: 
         let min = acc_data.iter().map(|(_, y)| *y).fold(f64::MAX, f64::min);
         let range = max - min;
         if range < 1e-6 {
-            // Single data point - keep full range
             (0.0, 100.0)
         } else {
             let buffer = range * 0.1;
@@ -955,38 +1274,25 @@ fn render_accuracy_chart(frame: &mut Frame, area: ratatui::layout::Rect, stats: 
 
 #[allow(clippy::too_many_arguments)]
 fn train_super_batch<S: LRScheduler + Sync>(
-    network: &mut PolicyNetwork,
-    momentum: &mut PolicyNetwork,
-    velocity: &mut PolicyNetwork,
+    network: &mut EgPolicyNetwork,
+    momentum: &mut EgPolicyNetwork,
+    velocity: &mut EgPolicyNetwork,
     optimizer: &mut AdamWOptimizer<S>,
     config: &TrainingConfig,
     stats: &TrainingStats,
-    file: &mut File,
-    phase: Phase,
+    data: &mut TrainingData,
 ) {
-    let mut thread_buffers: Vec<Box<PolicyNetwork>> = (0..config.threads)
-        .map(|_| PolicyNetwork::zeroed())
+    let mut thread_buffers: Vec<Box<EgPolicyNetwork>> = (0..config.threads)
+        .map(|_| EgPolicyNetwork::zeroed())
         .collect();
-    let mut gradients = PolicyNetwork::zeroed();
-    let mut raw_buf = vec![0u8; TrainingPosition::BUFFER_SIZE];
+    let mut gradients = EgPolicyNetwork::zeroed();
 
     let mut batches_processed = 0;
 
     while batches_processed < BATCHES_PER_SUPER_BATCH {
-        loop {
-            match file.read_exact(&mut raw_buf) {
-                Ok(()) => break,
-                Err(e) if e.kind() == io::ErrorKind::UnexpectedEof => {
-                    file.seek(SeekFrom::Start(0)).unwrap();
-                    stats.file_bytes_consumed.store(0, Ordering::Relaxed);
-                }
-                Err(e) => panic!("Data read error: {e}"),
-            }
-        }
+        let buffer = data.next_buffer();
 
-        let data = TrainingPosition::read_buffer(&raw_buf);
-
-        for batch in data.chunks(BATCH_SIZE) {
+        for batch in buffer.chunks(BATCH_SIZE) {
             if batches_processed >= BATCHES_PER_SUPER_BATCH {
                 break;
             }
@@ -999,10 +1305,10 @@ fn train_super_batch<S: LRScheduler + Sync>(
                 batch,
                 &mut thread_buffers,
                 config,
-                phase,
             );
 
             stats.record_batch(batch_metrics);
+            let _ = stats.grad_l1_history.push(gradients.l1_norm());
 
             optimizer.step();
             network.adamw(&gradients, momentum, velocity, optimizer);
@@ -1012,6 +1318,7 @@ fn train_super_batch<S: LRScheduler + Sync>(
             stats
                 .current_lr
                 .store(current_lr.to_bits(), Ordering::Relaxed);
+            let _ = stats.lr_full_history.push(current_lr);
 
             // Sample LR periodically
             let sample_interval = BATCHES_PER_SUPER_BATCH / LR_SAMPLES_PER_SUPER_BATCH;
@@ -1026,18 +1333,17 @@ fn train_super_batch<S: LRScheduler + Sync>(
         }
 
         stats
-            .file_bytes_consumed
-            .fetch_add(raw_buf.len() as u64, Ordering::Relaxed);
+            .positions_consumed
+            .store(data.positions_consumed(), Ordering::Relaxed);
     }
 }
 
 fn gradients_batch(
-    network: &PolicyNetwork,
-    gradients: &mut PolicyNetwork,
+    network: &EgPolicyNetwork,
+    gradients: &mut EgPolicyNetwork,
     batch: &[TrainingPosition],
-    thread_buffers: &mut [Box<PolicyNetwork>],
+    thread_buffers: &mut [Box<EgPolicyNetwork>],
     config: &TrainingConfig,
-    phase: Phase,
 ) -> BatchMetrics {
     let size = (batch.len() / config.threads) + 1;
     let num_chunks = batch.chunks(size).count();
@@ -1055,7 +1361,7 @@ fn gradients_batch(
             .for_each(|((chunk, inner_gradients), inner_metrics)| {
                 s.spawn(move || {
                     for position in chunk {
-                        update_gradient(position, network, inner_gradients, inner_metrics, phase);
+                        update_gradient(position, network, inner_gradients, inner_metrics);
                     }
                 });
             });
@@ -1074,14 +1380,13 @@ fn gradients_batch(
 
 fn update_gradient(
     position: &TrainingPosition,
-    network: &PolicyNetwork,
-    gradients: &mut PolicyNetwork,
+    network: &EgPolicyNetwork,
+    gradients: &mut EgPolicyNetwork,
     metrics: &mut BatchMetrics,
-    phase: Phase,
 ) {
     let state = State::from(position);
 
-    if !phase.matches(&state) {
+    if !is_training_position(&state) {
         return;
     }
 
@@ -1094,7 +1399,7 @@ fn update_gradient(
     let move_idxes = state.moves_to_indexes(&only_moves).collect::<Vec<_>>();
 
     let mut raw_outputs = vec![0.0; moves.len()];
-    network.get_all(&features, move_idxes.iter().copied(), &mut raw_outputs);
+    let cache = network.get_all_with_layers(&features, &move_idxes, &mut raw_outputs);
 
     let mut actual_policy = raw_outputs;
     math::softmax(&mut actual_policy, 1.0);
@@ -1106,6 +1411,7 @@ fn update_gradient(
     let expected_secondary = calculate_target(&raw_counts, SOFT_TARGET_TEMPERATURE);
 
     let mut position_loss = 0.0f32;
+    let mut errors = ArrayVec::<f32, { TrainingPosition::MAX_MOVES }>::new();
     for idx in 0..moves.len() {
         let actual_val = actual_policy[idx];
         let log_actual_val = actual_val.max(EPSILON).ln();
@@ -1116,22 +1422,30 @@ fn update_gradient(
         position_loss -= expected_primary_val * log_actual_val;
         position_loss -= expected_secondary_val * log_actual_val * SOFT_TARGET_WEIGHT;
 
-        let error = (actual_val - expected_primary_val)
-            + (actual_val - expected_secondary_val) * SOFT_TARGET_WEIGHT;
-
-        network.backprop(&features, gradients, move_idxes[idx], error);
+        errors.push(
+            (actual_val - expected_primary_val)
+                + (actual_val - expected_secondary_val) * SOFT_TARGET_WEIGHT,
+        );
     }
 
-    let baseline = (moves.len() as f32).ln();
+    network.backprop_position(&features, gradients, &move_idxes, &errors, &cache);
+
+    let baseline = (moves.len() as f32).ln() * (1.0 + SOFT_TARGET_WEIGHT);
     metrics.loss += position_loss;
     metrics.baseline_loss += baseline;
+
+    for idx in 0..moves.len() {
+        let piece = move_idxes[idx].piece();
+        let t_i = expected_primary[idx];
+        let log_p_i = actual_policy[idx].max(EPSILON).ln();
+        metrics.piece_loss[piece] += t_i * (-log_p_i);
+        metrics.piece_baseline_loss[piece] += t_i * (moves.len() as f32).ln();
+    }
 
     let expected_best = argmax(&expected_primary);
     let predicted_best = argmax(&actual_policy);
     let piece = move_idxes[expected_best].piece();
     metrics.piece_total[piece] += 1;
-    metrics.piece_loss[piece] += position_loss;
-    metrics.piece_baseline_loss[piece] += baseline;
     if predicted_best == expected_best {
         metrics.accuracy += 1.;
         metrics.piece_correct[piece] += 1;

@@ -1,36 +1,55 @@
+use std::fmt::{self, Display};
+
+pub trait LRScheduler {
+    fn get_lr(&self, step: u32) -> f32;
+}
+
 #[derive(Debug, Clone)]
-pub struct LinearWarmupDecayLRScheduler {
+pub struct PolynomialWarmupDecayLRScheduler {
     initial_lr: f32,
     warmup_steps: u32,
     total_steps: u32,
+    power: f32,
 }
 
-impl LinearWarmupDecayLRScheduler {
+impl PolynomialWarmupDecayLRScheduler {
     #[must_use]
-    pub fn new(initial_lr: f32, warmup_fraction: f32, total_steps: u32) -> Self {
+    pub fn linear(initial_lr: f32, warmup_fraction: f32, total_steps: u32) -> Self {
+        Self::new(initial_lr, warmup_fraction, total_steps, 1.0)
+    }
+
+    #[must_use]
+    pub fn new(initial_lr: f32, warmup_fraction: f32, total_steps: u32, power: f32) -> Self {
         let warmup_steps = (total_steps as f32 * warmup_fraction).ceil() as u32;
         Self {
             initial_lr,
             warmup_steps,
             total_steps,
+            power,
         }
     }
 }
 
-impl LRScheduler for LinearWarmupDecayLRScheduler {
+impl LRScheduler for PolynomialWarmupDecayLRScheduler {
     fn get_lr(&self, step: u32) -> f32 {
         if step < self.warmup_steps {
             self.initial_lr * step as f32 / self.warmup_steps as f32
         } else {
             let decay_steps = self.total_steps - self.warmup_steps;
             let elapsed = step - self.warmup_steps;
-            self.initial_lr * (1.0 - elapsed as f32 / decay_steps as f32).max(0.0)
+            self.initial_lr * (1.0 - elapsed as f32 / decay_steps as f32).max(0.0).powf(self.power)
         }
     }
 }
 
-pub trait LRScheduler {
-    fn get_lr(&self, step: u32) -> f32;
+impl Display for PolynomialWarmupDecayLRScheduler {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "PolynomialWarmupDecay(lr={}, warmup_steps={}, total_steps={}, power={})",
+            self.initial_lr, self.warmup_steps, self.total_steps, self.power
+        )
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -52,6 +71,16 @@ impl StepLRScheduler {
     }
 }
 
+impl Display for StepLRScheduler {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "StepLR(lr={}, drop_factor={}, drop_interval={})",
+            self.initial_lr, self.drop_factor, self.drop_interval
+        )
+    }
+}
+
 impl LRScheduler for StepLRScheduler {
     fn get_lr(&self, step: u32) -> f32 {
         let num_drops = step / self.drop_interval;
@@ -68,6 +97,12 @@ impl ConstantLRScheduler {
     #[must_use]
     pub fn new(lr: f32) -> Self {
         Self { lr }
+    }
+}
+
+impl Display for ConstantLRScheduler {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "Constant(lr={})", self.lr)
     }
 }
 
@@ -94,6 +129,16 @@ impl CosineAnnealingLRScheduler {
             total_steps,
             cycle_decay,
         }
+    }
+}
+
+impl Display for CosineAnnealingLRScheduler {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "CosineAnnealing(lr={}, min_lr={}, total_steps={}, cycle_decay={})",
+            self.initial_lr, self.min_lr, self.total_steps, self.cycle_decay
+        )
     }
 }
 
