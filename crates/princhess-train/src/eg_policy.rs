@@ -7,17 +7,16 @@ use bytemuck::{allocation, Zeroable};
 use princhess::chess::{Piece, Square};
 use princhess::nets::MoveIndex;
 use princhess::quantized_eg_policy::{
-    QuantizedCtxNetwork, QuantizedEgPolicyNetwork, QuantizedSquareSubnets,
-    RawCtxBias, RawCtxWeights, RawSquareBias, RawSquareWeights, ATTENTION_SIZE, CTX_SIZE,
-    INPUT_SIZE, QA,
+    QuantizedCtxNetwork, QuantizedEgPolicyNetwork, QuantizedSquareSubnets, RawCtxBias,
+    RawCtxWeights, RawSquareBias, RawSquareWeights, ATTENTION_SIZE, CTX_SIZE, INPUT_SIZE, QA,
 };
 use princhess::state::State;
 
 use crate::data::TrainingPosition;
 use crate::nets;
 use crate::neural::{
-    AdamWOptimizer, FeedForwardNetwork, LRScheduler, LinearNetwork, OutputLayer,
-    HardTanh, SparseConnected, SparseConnectedLayers, SparseVector, Vector,
+    AdamWOptimizer, FeedForwardNetwork, HardTanh, LRScheduler, LinearNetwork, OutputLayer,
+    SparseConnected, SparseConnectedLayers, SparseVector, Vector,
 };
 
 type EgCtxNetwork = SparseConnected<HardTanh, INPUT_SIZE, CTX_SIZE>;
@@ -57,7 +56,7 @@ impl DivAssign<f32> for SquareSubnets {
 
 impl SquareSubnets {
     fn l1_norm(&self) -> f32 {
-        self.0.iter().map(|s| s.l1_norm()).sum()
+        self.0.iter().map(EgLinearNetwork::l1_norm).sum()
     }
 
     fn adamw<S: LRScheduler>(
@@ -78,7 +77,6 @@ impl SquareSubnets {
         }
     }
 }
-
 
 #[must_use]
 pub fn is_training_position(state: &State) -> bool {
@@ -120,7 +118,8 @@ impl SeeSplitSubnets {
         v: &mut Self,
         optimizer: &AdamWOptimizer<S>,
     ) {
-        self.base.adamw(&g.base, &mut m.base, &mut v.base, optimizer);
+        self.base
+            .adamw(&g.base, &mut m.base, &mut v.base, optimizer);
         self.good_see
             .adamw(&g.good_see, &mut m.good_see, &mut v.good_see, optimizer);
     }
@@ -130,7 +129,6 @@ impl SeeSplitSubnets {
         self.good_see.randomize();
     }
 }
-
 
 struct EgPolicyMoveLayers {
     from_piece_sq: SparseConnectedLayers<ATTENTION_SIZE>,
@@ -305,10 +303,18 @@ impl EgPolicyNetwork {
             out[i] = ctx_to.dot(&to_piece_sq.output_layer())
                 + ctx_from.dot(&from_piece_sq.output_layer());
 
-            move_layers.push(EgPolicyMoveLayers { from_piece_sq, to_piece_sq });
+            move_layers.push(EgPolicyMoveLayers {
+                from_piece_sq,
+                to_piece_sq,
+            });
         }
 
-        EgPolicyForwardCache { ctx_layers, ctx_to, ctx_from, move_layers }
+        EgPolicyForwardCache {
+            ctx_layers,
+            ctx_to,
+            ctx_from,
+            move_layers,
+        }
     }
 
     pub fn adamw<S: LRScheduler>(
@@ -319,15 +325,18 @@ impl EgPolicyNetwork {
         optimizer: &AdamWOptimizer<S>,
     ) {
         self.ctx.adamw(&g.ctx, &mut m.ctx, &mut v.ctx, optimizer);
-        self.pawn.adamw(&g.pawn, &mut m.pawn, &mut v.pawn, optimizer);
+        self.pawn
+            .adamw(&g.pawn, &mut m.pawn, &mut v.pawn, optimizer);
         self.knight
             .adamw(&g.knight, &mut m.knight, &mut v.knight, optimizer);
         self.bishop
             .adamw(&g.bishop, &mut m.bishop, &mut v.bishop, optimizer);
-        self.rook.adamw(&g.rook, &mut m.rook, &mut v.rook, optimizer);
+        self.rook
+            .adamw(&g.rook, &mut m.rook, &mut v.rook, optimizer);
         self.queen
             .adamw(&g.queen, &mut m.queen, &mut v.queen, optimizer);
-        self.king.adamw(&g.king, &mut m.king, &mut v.king, optimizer);
+        self.king
+            .adamw(&g.king, &mut m.king, &mut v.king, optimizer);
     }
 
     pub fn backprop_position(
@@ -372,7 +381,8 @@ impl EgPolicyNetwork {
             );
         }
 
-        self.ctx.backprop(features, &mut g.ctx, ctx_err, &cache.ctx_layers);
+        self.ctx
+            .backprop(features, &mut g.ctx, ctx_err, &cache.ctx_layers);
     }
 
     #[must_use]
@@ -413,14 +423,11 @@ fn quantize_ctx(ctx: &EgCtxNetwork) -> Box<QuantizedCtxNetwork> {
     QuantizedCtxNetwork::from_raw(&weights, &bias)
 }
 
-
 fn quantize_subnets(subnets: &SquareSubnets) -> Box<QuantizedSquareSubnets> {
     let mut weights: Box<RawSquareWeights> = allocation::zeroed_box();
     let mut bias: Box<RawSquareBias> = allocation::zeroed_box();
 
-    for (subnet, (raw_w, raw_b)) in
-        subnets.iter().zip(weights.iter_mut().zip(bias.iter_mut()))
-    {
+    for (subnet, (raw_w, raw_b)) in subnets.iter().zip(weights.iter_mut().zip(bias.iter_mut())) {
         for (row_idx, weights_row) in raw_w.iter_mut().enumerate() {
             let row = subnet.output.weights_row(row_idx);
             for (weight_idx, w) in weights_row.iter_mut().enumerate() {

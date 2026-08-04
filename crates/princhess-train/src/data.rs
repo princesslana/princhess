@@ -208,7 +208,11 @@ impl TrainingData {
     pub fn new(path: &str) -> Self {
         let file = File::open(path).expect("Failed to open training data file");
         let buf = vec![0u8; TrainingPosition::BUFFER_SIZE];
-        Self { file, buf, positions_consumed: 0 }
+        Self {
+            file,
+            buf,
+            positions_consumed: 0,
+        }
     }
 
     /// # Panics

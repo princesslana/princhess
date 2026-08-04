@@ -115,11 +115,12 @@ impl QuantizedEgPolicyNetwork {
 
         state.policy_features_map(|f| {
             features.push(f);
-            unsafe { ctx.set(self.ctx.weights.get_unchecked(f)); }
+            unsafe {
+                ctx.set(self.ctx.weights.get_unchecked(f));
+            }
         });
 
-        let [ctx_to, ctx_from]: &[Accumulator<i16, ATTENTION_SIZE>; 2] =
-            bytemuck::cast_ref(&ctx);
+        let [ctx_to, ctx_from]: &[Accumulator<i16, ATTENTION_SIZE>; 2] = bytemuck::cast_ref(&ctx);
 
         for (i, move_idx) in move_idxes.enumerate() {
             let from_sq = move_idx.from_sq();

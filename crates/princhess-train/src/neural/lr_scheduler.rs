@@ -37,7 +37,10 @@ impl LRScheduler for PolynomialWarmupDecayLRScheduler {
         } else {
             let decay_steps = self.total_steps - self.warmup_steps;
             let elapsed = step - self.warmup_steps;
-            self.initial_lr * (1.0 - elapsed as f32 / decay_steps as f32).max(0.0).powf(self.power)
+            self.initial_lr
+                * (1.0 - elapsed as f32 / decay_steps as f32)
+                    .max(0.0)
+                    .powf(self.power)
         }
     }
 }

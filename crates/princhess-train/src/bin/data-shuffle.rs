@@ -538,18 +538,30 @@ fn find_source_tomls(input_files: &[PathBuf]) -> HashMap<String, Arc<Table>> {
     let dirs: HashSet<&Path> = input_files.iter().filter_map(|p| p.parent()).collect();
     let mut map = HashMap::new();
     for dir in dirs {
-        let Ok(entries) = fs::read_dir(dir) else { continue };
+        let Ok(entries) = fs::read_dir(dir) else {
+            continue;
+        };
         for entry in entries.flatten() {
             let path = entry.path();
             if path.extension().and_then(|e| e.to_str()) != Some("toml") {
                 continue;
             }
-            let Ok(content) = fs::read_to_string(&path) else { continue };
-            let Ok(table) = content.parse::<Table>() else { continue };
+            let Ok(content) = fs::read_to_string(&path) else {
+                continue;
+            };
+            let Ok(table) = content.parse::<Table>() else {
+                continue;
+            };
             let file_paths: Vec<String> = match table.get("files") {
                 Some(Value::Array(arr)) => arr
                     .iter()
-                    .filter_map(|v| if let Value::String(s) = v { Some(s.clone()) } else { None })
+                    .filter_map(|v| {
+                        if let Value::String(s) = v {
+                            Some(s.clone())
+                        } else {
+                            None
+                        }
+                    })
                     .collect(),
                 _ => continue,
             };
@@ -566,7 +578,9 @@ fn write_shuffle_toml(toml_path: &Path, output_data_path: &Path, files: &[FileIn
     let mut doc = Table::new();
     doc.insert(
         "files".into(),
-        Value::Array(vec![Value::String(output_data_path.to_string_lossy().into_owned())]),
+        Value::Array(vec![Value::String(
+            output_data_path.to_string_lossy().into_owned(),
+        )]),
     );
 
     let mut groups: Vec<(Option<Arc<Table>>, Vec<&FileInfo>)> = Vec::new();
@@ -625,20 +639,26 @@ fn write_shuffle_toml(toml_path: &Path, output_data_path: &Path, files: &[FileIn
 fn cleanup_orphaned_tomls(files: &[FileInfo]) {
     let dirs: HashSet<&Path> = files.iter().filter_map(|f| f.path.parent()).collect();
     for dir in dirs {
-        let Ok(entries) = fs::read_dir(dir) else { continue };
+        let Ok(entries) = fs::read_dir(dir) else {
+            continue;
+        };
         for entry in entries.flatten() {
             let path = entry.path();
             if path.extension().and_then(|e| e.to_str()) != Some("toml") {
                 continue;
             }
-            let Ok(content) = fs::read_to_string(&path) else { continue };
-            let Ok(table) = content.parse::<Table>() else { continue };
+            let Ok(content) = fs::read_to_string(&path) else {
+                continue;
+            };
+            let Ok(table) = content.parse::<Table>() else {
+                continue;
+            };
             let all_gone = match table.get("files") {
                 Some(Value::Array(arr)) => {
                     !arr.is_empty()
-                        && arr.iter().all(|v| {
-                            matches!(v, Value::String(s) if !Path::new(s).exists())
-                        })
+                        && arr
+                            .iter()
+                            .all(|v| matches!(v, Value::String(s) if !Path::new(s).exists()))
                 }
                 _ => false,
             };

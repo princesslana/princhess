@@ -64,53 +64,6 @@ impl<const H: usize> Accumulator<i16, H> {
 
         result as f32 / (QA * QA) as f32
     }
-
-    // self is linear (no relu); relu applied to rhs only
-    #[must_use]
-    pub fn linear_dot_relu<const Q: i32>(&self, rhs: &Accumulator<i16, H>) -> f32 {
-        let mut result: i32 = 0;
-
-        for (a, b) in self.vals.iter().zip(rhs.vals.iter()) {
-            result += i32::from(*a) * relu(*b);
-        }
-
-        result as f32 / Q as f32
-    }
-
-    // self is linear (no relu); no relu applied to rhs either
-    #[must_use]
-    pub fn linear_dot_linear<const Q: i32>(&self, rhs: &Accumulator<i16, H>) -> f32 {
-        let mut result: i32 = 0;
-
-        for (a, b) in self.vals.iter().zip(rhs.vals.iter()) {
-            result += i32::from(*a) * i32::from(*b);
-        }
-
-        result as f32 / Q as f32
-    }
-
-    // self is linear (exp(embed)*QA scale); relu applied to rhs, then multiply and divide by Q
-    #[must_use]
-    pub fn linear_mult_relu<const Q: i32>(&self, rhs: &Accumulator<i16, H>) -> Accumulator<i16, H> {
-        let mut result = Accumulator { vals: [0i16; H] };
-
-        for i in 0..H {
-            result.vals[i] = ((i32::from(self.vals[i]) * relu(rhs.vals[i])) / Q) as i16;
-        }
-
-        result
-    }
-
-    #[must_use]
-    pub fn sum_relu<const Q: i32>(&self) -> f32 {
-        let mut result: i32 = 0;
-
-        for a in &self.vals {
-            result += relu(*a);
-        }
-
-        result as f32 / Q as f32
-    }
 }
 
 pub fn relu<F>(x: F) -> i32

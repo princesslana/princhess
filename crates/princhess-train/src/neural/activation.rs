@@ -131,7 +131,11 @@ impl Activation for HardTanh {
     }
 
     fn derivative(x: f32) -> f32 {
-        if x > -1.0 && x < 1.0 { 1.0 } else { 0.0 }
+        if x > -1.0 && x < 1.0 {
+            1.0
+        } else {
+            0.0
+        }
     }
 }
 

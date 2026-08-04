@@ -595,25 +595,58 @@ impl StatsView {
         t.insert("skipped_pct".into(), self.skipped_pct().into());
         t.insert("aborted_pct".into(), self.aborted_pct().into());
         t.insert("variation_pct".into(), self.variation_pct().into());
-        t.insert("blunder_win_draw_pct".into(), self.blunder_win_draw_pct().into());
-        t.insert("blunder_win_loss_pct".into(), self.blunder_win_loss_pct().into());
+        t.insert(
+            "blunder_win_draw_pct".into(),
+            self.blunder_win_draw_pct().into(),
+        );
+        t.insert(
+            "blunder_win_loss_pct".into(),
+            self.blunder_win_loss_pct().into(),
+        );
         t.insert("avg_nodes".into(), iz(self.avg_nodes()));
         t.insert("avg_playouts".into(), iz(self.avg_playouts()));
         t.insert("avg_visits".into(), iz(self.avg_visits()));
         t.insert("avg_depth".into(), iz(self.avg_depth()));
         t.insert("avg_seldepth".into(), iz(self.avg_seldepth()));
         t.insert("avg_opening_eval".into(), self.avg_opening_eval().into());
-        t.insert("avg_variation_eval".into(), self.avg_variation_eval().into());
+        t.insert(
+            "avg_variation_eval".into(),
+            self.avg_variation_eval().into(),
+        );
         t.insert("avg_policy_gini".into(), self.avg_policy_gini().into());
         t.insert("avg_policy_kl".into(), self.avg_policy_kl().into());
-        t.insert("avg_eval_result_disagreement".into(), self.avg_eval_result_disagreement().into());
-        t.insert("policy_gini".into(), dist(&self.policy_gini_buckets, &POLICY_GINI_THRESHOLDS));
-        t.insert("policy_kl".into(), dist(&self.policy_kl_buckets, &POLICY_KL_THRESHOLDS));
-        t.insert("eval_distribution".into(), dist(&self.eval_distribution_buckets, &EVAL_DISTRIBUTION_THRESHOLDS));
-        t.insert("eval_result_agreement".into(), dist(&self.eval_result_agreement_buckets, &EVAL_RESULT_AGREEMENT_THRESHOLDS));
+        t.insert(
+            "avg_eval_result_disagreement".into(),
+            self.avg_eval_result_disagreement().into(),
+        );
+        t.insert(
+            "policy_gini".into(),
+            dist(&self.policy_gini_buckets, &POLICY_GINI_THRESHOLDS),
+        );
+        t.insert(
+            "policy_kl".into(),
+            dist(&self.policy_kl_buckets, &POLICY_KL_THRESHOLDS),
+        );
+        t.insert(
+            "eval_distribution".into(),
+            dist(
+                &self.eval_distribution_buckets,
+                &EVAL_DISTRIBUTION_THRESHOLDS,
+            ),
+        );
+        t.insert(
+            "eval_result_agreement".into(),
+            dist(
+                &self.eval_result_agreement_buckets,
+                &EVAL_RESULT_AGREEMENT_THRESHOLDS,
+            ),
+        );
         t.insert("piece_count".into(), iarr(&self.piece_count_distribution));
         t.insert("phase".into(), iarr(&self.phase_distribution));
-        t.insert("variation_phase".into(), iarr(&self.variation_phase_distribution));
+        t.insert(
+            "variation_phase".into(),
+            iarr(&self.variation_phase_distribution),
+        );
         t.insert("opening_eval".into(), iarr(&self.opening_eval_distribution));
         t.insert("eval_delta".into(), iarr(&self.eval_delta_distribution));
         t.insert("game_length".into(), iarr(&self.game_length_distribution));
@@ -1484,10 +1517,7 @@ fn render_tui(frame: &mut Frame, view: &StatsView) {
         nets::NET_MD5_MG_POLICY,
         nets::NET_MD5_EG_POLICY,
     );
-    frame.render_widget(
-        Paragraph::new(fingerprint),
-        chunks[3],
-    );
+    frame.render_widget(Paragraph::new(fingerprint), chunks[3]);
 }
 
 fn run_tui(
@@ -1579,17 +1609,32 @@ fn write_toml(path: &str, stats: &Stats, files: &[String], threads: u16, max_pos
 
     let mut p = Table::new();
     p.insert("threads".into(), Value::Integer(i64::from(threads)));
-    p.insert("max_positions".into(), Value::Integer(i64::try_from(max_positions).unwrap_or(i64::MAX)));
+    p.insert(
+        "max_positions".into(),
+        Value::Integer(i64::try_from(max_positions).unwrap_or(i64::MAX)),
+    );
     p.insert("net_md5_value".into(), nets::NET_MD5_VALUE.into());
     p.insert("net_md5_mg_policy".into(), nets::NET_MD5_MG_POLICY.into());
     p.insert("net_md5_eg_policy".into(), nets::NET_MD5_EG_POLICY.into());
     p.insert("cpuct".into(), CPUCT.into());
     p.insert("cpuct_jitter".into(), CPUCT_JITTER.into());
     p.insert("policy_temperature".into(), POLICY_TEMPERATURE.into());
-    p.insert("policy_temperature_root".into(), POLICY_TEMPERATURE_ROOT.into());
-    p.insert("max_playouts_per_position".into(), Value::Integer(i64::try_from(MAX_PLAYOUTS_PER_POSITION).unwrap_or(i64::MAX)));
-    p.insert("kl_divergence_threshold".into(), KL_DIVERGENCE_THRESHOLD.into());
-    p.insert("dfrc_pct".into(), Value::Integer(i64::try_from(DFRC_PCT).unwrap_or(i64::MAX)));
+    p.insert(
+        "policy_temperature_root".into(),
+        POLICY_TEMPERATURE_ROOT.into(),
+    );
+    p.insert(
+        "max_playouts_per_position".into(),
+        Value::Integer(i64::try_from(MAX_PLAYOUTS_PER_POSITION).unwrap_or(i64::MAX)),
+    );
+    p.insert(
+        "kl_divergence_threshold".into(),
+        KL_DIVERGENCE_THRESHOLD.into(),
+    );
+    p.insert(
+        "dfrc_pct".into(),
+        Value::Integer(i64::try_from(DFRC_PCT).unwrap_or(i64::MAX)),
+    );
     doc.insert("params".into(), Value::Table(p));
     doc.insert("stats".into(), Value::Table(view.to_toml()));
 

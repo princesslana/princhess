@@ -29,8 +29,8 @@ use princhess::math;
 use princhess::state::State;
 
 use princhess_train::args::Args;
-use princhess_train::data::TrainingPosition;
 use princhess_train::data::TrainingData;
+use princhess_train::data::TrainingPosition;
 use princhess_train::mg_policy::{is_training_position, MgPolicyNetwork};
 use princhess_train::neural::{
     AdamWOptimizer, LRScheduler, PolynomialWarmupDecayLRScheduler, SparseVector,
@@ -963,13 +963,8 @@ fn train_super_batch<S: LRScheduler + Sync>(
 
             gradients.zero_out();
 
-            let batch_metrics = gradients_batch(
-                network,
-                &mut gradients,
-                batch,
-                &mut thread_buffers,
-                config,
-            );
+            let batch_metrics =
+                gradients_batch(network, &mut gradients, batch, &mut thread_buffers, config);
 
             stats.record_batch(batch_metrics);
 

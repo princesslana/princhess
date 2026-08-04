@@ -130,8 +130,7 @@ impl QuantizedMgPolicyNetwork {
                 self.piece_sq.set(to_piece_sq_idx, *f, &mut to_piece_sq);
             }
 
-            out[i] =
-                to_sq.dot_relu::<QAA>(&to_piece_sq) - from_sq.dot_relu::<QAA>(&from_piece_sq);
+            out[i] = to_sq.dot_relu::<QAA>(&to_piece_sq) - from_sq.dot_relu::<QAA>(&from_piece_sq);
         }
     }
 }

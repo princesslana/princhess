@@ -153,13 +153,6 @@ impl<const N: usize> SubAssign<Vector<N>> for Vector<N> {
 }
 
 impl<const N: usize> Vector<N> {
-    pub fn map<F: Fn(f32) -> f32>(mut self, f: F) -> Self {
-        for x in &mut self.inner {
-            *x = f(*x);
-        }
-        self
-    }
-
     pub fn from_fn<F: FnMut(usize) -> f32>(mut f: F) -> Self {
         let mut res = Self::zeroed();
 
@@ -178,11 +171,6 @@ impl<const N: usize> Vector<N> {
         }
 
         score
-    }
-
-    #[must_use]
-    pub fn sum(&self) -> f32 {
-        self.inner.iter().sum()
     }
 
     #[must_use]

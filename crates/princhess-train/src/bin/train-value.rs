@@ -27,7 +27,7 @@ use princhess::state::State;
 use princhess_train::args::Args;
 use princhess_train::data::{TrainingData, TrainingPosition};
 use princhess_train::neural::{
-    AdamWOptimizer, FeedForwardNetwork, LRScheduler, PolynomialWarmupDecayLRScheduler, OutputLayer,
+    AdamWOptimizer, FeedForwardNetwork, LRScheduler, OutputLayer, PolynomialWarmupDecayLRScheduler,
     SparseVector, Vector,
 };
 use princhess_train::system;

@@ -31,8 +31,8 @@ use princhess::math;
 use princhess::state::State;
 
 use princhess_train::args::Args;
-use princhess_train::data::TrainingPosition;
 use princhess_train::data::TrainingData;
+use princhess_train::data::TrainingPosition;
 use princhess_train::eg_policy::{is_training_position, EgPolicyNetwork};
 use princhess_train::neural::{
     AdamWOptimizer, LRScheduler, PolynomialWarmupDecayLRScheduler, SparseVector,
@@ -346,11 +346,23 @@ impl TrainingStats {
         baseline - loss
     }
 
-    fn get_prev_piece_data(&self) -> ([f32; Piece::COUNT], [f32; Piece::COUNT], [f32; Piece::COUNT], [f32; Piece::COUNT]) {
+    fn get_prev_piece_data(
+        &self,
+    ) -> (
+        [f32; Piece::COUNT],
+        [f32; Piece::COUNT],
+        [f32; Piece::COUNT],
+        [f32; Piece::COUNT],
+    ) {
         let load = |arr: &[AtomicI64; Piece::COUNT]| -> [f32; Piece::COUNT] {
             array::from_fn(|i| arr[i].load(Ordering::Relaxed) as f32 / SCALE)
         };
-        (load(&self.prev_piece_accuracy), load(&self.prev_piece_info_gain), load(&self.prev_wrong_piece), load(&self.prev_wrong_square))
+        (
+            load(&self.prev_piece_accuracy),
+            load(&self.prev_piece_info_gain),
+            load(&self.prev_wrong_piece),
+            load(&self.prev_wrong_square),
+        )
     }
 
     fn get_piece_info_gain(&self) -> [f32; Piece::COUNT] {
@@ -512,9 +524,9 @@ fn sliding_median(data: &[f32], width: usize) -> Vec<f32> {
     let w = 2 * half + 1;
 
     let mut padded = Vec::with_capacity(n + 2 * half);
-    padded.extend(std::iter::repeat(data[0]).take(half));
+    padded.extend(std::iter::repeat_n(data[0], half));
     padded.extend_from_slice(data);
-    padded.extend(std::iter::repeat(*data.last().unwrap()).take(half));
+    padded.extend(std::iter::repeat_n(*data.last().unwrap(), half));
 
     let mut lo: BinaryHeap<OrdF32> = BinaryHeap::new();
     let mut hi: BinaryHeap<Reverse<OrdF32>> = BinaryHeap::new();
@@ -666,7 +678,10 @@ fn write_lr_analysis_toml(dir: &Path, stats: &TrainingStats, config: &TrainingCo
         let smoothed_avg = smoothed[start..end].iter().sum::<f32>() / len;
 
         let mut entry = Table::new();
-        entry.insert("superbatch".into(), Value::Integer(i64::try_from(sb + 1).unwrap_or(i64::MAX)));
+        entry.insert(
+            "superbatch".into(),
+            Value::Integer(i64::try_from(sb + 1).unwrap_or(i64::MAX)),
+        );
         entry.insert("actual_lr".into(), actual_avg.into());
         entry.insert("proposed_lr".into(), proposed_avg.into());
         entry.insert("grad_l1".into(), grad_l1_avg.into());
@@ -714,7 +729,10 @@ fn write_lr_analysis_toml(dir: &Path, stats: &TrainingStats, config: &TrainingCo
     let mut doc = Table::new();
     doc.insert("input_file".into(), config.input_file.clone().into());
     doc.insert("network_info".into(), config.network_info.clone().into());
-    doc.insert("data_positions".into(), Value::Integer(i64::try_from(config.data_positions).unwrap_or(i64::MAX)));
+    doc.insert(
+        "data_positions".into(),
+        Value::Integer(i64::try_from(config.data_positions).unwrap_or(i64::MAX)),
+    );
     doc.insert("scheduler".into(), config.scheduler.clone().into());
     doc.insert("warmup_peak".into(), Value::Table(warmup_peak));
     doc.insert("warmup_analysis".into(), Value::Array(warmup_analysis));
@@ -741,8 +759,14 @@ fn write_training_toml(dir: &Path, sb: usize, stats: &TrainingStats, config: &Tr
     let piece_names = ["p", "n", "b", "r", "q", "k"];
 
     let mut doc = Table::new();
-    doc.insert("super_batch".into(), Value::Integer(i64::try_from(sb).unwrap_or(i64::MAX)));
-    doc.insert("super_batches_total".into(), Value::Integer(i64::try_from(TOTAL_SUPER_BATCHES).unwrap_or(i64::MAX)));
+    doc.insert(
+        "super_batch".into(),
+        Value::Integer(i64::try_from(sb).unwrap_or(i64::MAX)),
+    );
+    doc.insert(
+        "super_batches_total".into(),
+        Value::Integer(i64::try_from(TOTAL_SUPER_BATCHES).unwrap_or(i64::MAX)),
+    );
     doc.insert("network_info".into(), config.network_info.clone().into());
     doc.insert("input_file".into(), config.input_file.clone().into());
     doc.insert("loss".into(), loss.into());
@@ -1299,13 +1323,8 @@ fn train_super_batch<S: LRScheduler + Sync>(
 
             gradients.zero_out();
 
-            let batch_metrics = gradients_batch(
-                network,
-                &mut gradients,
-                batch,
-                &mut thread_buffers,
-                config,
-            );
+            let batch_metrics =
+                gradients_batch(network, &mut gradients, batch, &mut thread_buffers, config);
 
             stats.record_batch(batch_metrics);
             let _ = stats.grad_l1_history.push(gradients.l1_norm());

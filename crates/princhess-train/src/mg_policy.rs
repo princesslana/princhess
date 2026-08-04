@@ -33,7 +33,6 @@ pub struct MgPolicyNetwork {
     piece_sq: [MgLinearNetwork; MoveIndex::TO_PIECE_SQ_COUNT],
 }
 
-
 impl Display for MgPolicyNetwork {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let sq = format!("sq: [{}; {}]", self.sq[0], Square::COUNT);
@@ -233,7 +232,6 @@ impl MgPolicyNetwork {
         )
     }
 }
-
 
 #[cfg(test)]
 mod tests {
