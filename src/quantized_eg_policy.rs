@@ -115,6 +115,7 @@ impl QuantizedEgPolicyNetwork {
 
         state.policy_features_map(|f| {
             features.push(f);
+            // SAFETY: policy_features_map guarantees f < POLICY_NUMBER_FEATURES == INPUT_SIZE.
             unsafe {
                 ctx.set(self.ctx.weights.get_unchecked(f));
             }

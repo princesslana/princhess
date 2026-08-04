@@ -58,7 +58,7 @@ const SOFT_TARGET_TEMPERATURE: f32 = 4.0;
 const EPSILON: f32 = 1e-9;
 const SAVE_EVERY_N_SUPER_BATCHES: usize = 10;
 
-const _BUFFER_SIZE_CHECK: () = assert!(TrainingPosition::BUFFER_SIZE.is_multiple_of(BATCH_SIZE));
+const _BUFFER_SIZE_CHECK: () = assert!(TrainingPosition::BUFFER_COUNT.is_multiple_of(BATCH_SIZE));
 
 #[derive(Debug, Default, Clone, Copy)]
 struct BatchMetrics {
@@ -392,15 +392,8 @@ fn main() {
     );
 
     let input = args.expect("input file");
-
-    let file = File::open(&input).unwrap();
-    let data_positions = file.metadata().unwrap().len() as usize / TrainingPosition::SIZE;
-
-    assert!(
-        data_positions >= TrainingPosition::BUFFER_COUNT,
-        "Input file has {data_positions} positions, need at least {} (BUFFER_COUNT)",
-        TrainingPosition::BUFFER_COUNT
-    );
+    let data = TrainingData::new(&input);
+    let data_positions = data.positions();
 
     let network = EgPolicyNetwork::random();
     let momentum = EgPolicyNetwork::zeroed();
@@ -416,7 +409,7 @@ fn main() {
         scheduler: format!("{scheduler}"),
     };
     let optimizer = AdamWOptimizer::with_scheduler(scheduler).weight_decay(0.01);
-    run_training_loop(network, momentum, velocity, optimizer, config);
+    run_training_loop(network, momentum, velocity, optimizer, data, config);
 }
 
 fn run_training_loop<S: LRScheduler + Sync>(
@@ -424,6 +417,7 @@ fn run_training_loop<S: LRScheduler + Sync>(
     mut momentum: Box<EgPolicyNetwork>,
     mut velocity: Box<EgPolicyNetwork>,
     mut optimizer: AdamWOptimizer<S>,
+    mut data: TrainingData,
     config: TrainingConfig,
 ) {
     let timestamp = Utc::now().format("%Y%m%d-%H%M").to_string();
@@ -442,8 +436,6 @@ fn run_training_loop<S: LRScheduler + Sync>(
             stop_clone.store(true, Ordering::Relaxed);
         }
     });
-
-    let mut data = TrainingData::new(&config.input_file);
 
     // Training loop
     for sb in 0..TOTAL_SUPER_BATCHES {
@@ -596,12 +588,10 @@ fn sliding_median(data: &[f32], width: usize) -> Vec<f32> {
     }
     macro_rules! heap_remove {
         ($v:expr) => {
-            *lazy.entry($v.0).or_default() += 1;
             clean_lo!();
-            match lo.peek() {
-                Some(&top) if $v > top => hi_eff -= 1,
-                _ => lo_eff -= 1,
-            }
+            let in_hi = matches!(lo.peek(), Some(&top) if $v > top);
+            *lazy.entry($v.0).or_default() += 1;
+            if in_hi { hi_eff -= 1; } else { lo_eff -= 1; }
             rebalance!();
         };
     }

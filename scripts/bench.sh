@@ -27,7 +27,7 @@ get_engine_path() {
 
 print_fingerprint() {
     local engine_path=$1
-    "$engine_path" fingerprint 2>&1 | sed 's/info string /  /' >&2
+    "$engine_path" fingerprint 2>&1 | sed 's/^info string /  /' >&2
 }
 
 # Prints per-run nps lines, then prints the average as the last line.

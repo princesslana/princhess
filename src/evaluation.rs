@@ -113,10 +113,14 @@ pub fn evaluate_state_flag(state: &State, is_legal_moves: bool) -> Flag {
 }
 
 #[cfg(feature = "policy-net")]
+// SAFETY: include_bytes! embeds exactly size_of::<QuantizedMgPolicyNetwork>() bytes; Pod
+// guarantees any bit pattern is valid.
 static MG_POLICY_NETWORK: QuantizedMgPolicyNetwork =
     unsafe { mem::transmute(*include_bytes!("nets/mg-policy.bin")) };
 
 #[cfg(feature = "policy-net")]
+// SAFETY: include_bytes! embeds exactly size_of::<QuantizedEgPolicyNetwork>() bytes; Pod
+// guarantees any bit pattern is valid.
 static EG_POLICY_NETWORK: QuantizedEgPolicyNetwork =
     unsafe { mem::transmute(*include_bytes!("nets/eg-policy.bin")) };
 

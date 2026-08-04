@@ -87,15 +87,7 @@ impl QuantizedMgPolicyNetwork {
         self.piece_sq.get_weights(idx, feat_idx)
     }
 
-    #[must_use]
-    pub fn sq_count(&self) -> usize {
-        MoveIndex::SQ_COUNT
-    }
 
-    #[must_use]
-    pub fn piece_sq_count(&self) -> usize {
-        MoveIndex::TO_PIECE_SQ_COUNT
-    }
 
     pub fn get_all<I: Iterator<Item = MoveIndex>>(
         &self,

@@ -120,7 +120,7 @@ struct TrainingStats {
     current_lr: AtomicU32, // stored as f32.to_bits() (updated each batch)
     lr_history: Queue<f32>,
 
-    // File read progress (bytes consumed from current pass through the file)
+    // File read progress (positions consumed from current pass through the file)
     positions_consumed: AtomicU64,
 
     // Previous super batch metrics (stored as quantized i64)

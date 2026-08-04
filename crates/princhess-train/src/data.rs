@@ -203,10 +203,16 @@ pub struct TrainingData {
 impl TrainingData {
     /// # Panics
     ///
-    /// Panics if the file cannot be opened.
+    /// Panics if the file cannot be opened or is smaller than one full buffer.
     #[must_use]
     pub fn new(path: &str) -> Self {
         let file = File::open(path).expect("Failed to open training data file");
+        let positions = file.metadata().unwrap().len() as usize / TrainingPosition::SIZE;
+        assert!(
+            positions >= TrainingPosition::BUFFER_COUNT,
+            "Training file has {positions} positions, need at least {} (BUFFER_COUNT)",
+            TrainingPosition::BUFFER_COUNT
+        );
         let buf = vec![0u8; TrainingPosition::BUFFER_SIZE];
         Self {
             file,
@@ -239,6 +245,8 @@ impl TrainingData {
                     return TrainingPosition::read_buffer(&self.buf);
                 }
                 Err(e) if e.kind() == ErrorKind::UnexpectedEof => {
+                    // Trailing data smaller than a full buffer is intentionally
+                    // discarded; progress may appear below 100% at end-of-file.
                     self.file.seek(SeekFrom::Start(0)).unwrap();
                     self.positions_consumed = 0;
                 }

@@ -32,10 +32,13 @@ impl PolynomialWarmupDecayLRScheduler {
 
 impl LRScheduler for PolynomialWarmupDecayLRScheduler {
     fn get_lr(&self, step: u32) -> f32 {
-        if step < self.warmup_steps {
+        if self.warmup_steps > 0 && step < self.warmup_steps {
             self.initial_lr * step as f32 / self.warmup_steps as f32
         } else {
             let decay_steps = self.total_steps - self.warmup_steps;
+            if decay_steps == 0 {
+                return self.initial_lr;
+            }
             let elapsed = step - self.warmup_steps;
             self.initial_lr
                 * (1.0 - elapsed as f32 / decay_steps as f32)
