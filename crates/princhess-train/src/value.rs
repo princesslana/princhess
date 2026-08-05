@@ -21,13 +21,12 @@ type Feature = SparseConnected<SCReLU, INPUT_SIZE, HIDDEN_SIZE>;
 type Output = DenseConnected<Tanh, { HIDDEN_SIZE * 2 }, OUTPUT_SIZE>;
 
 #[allow(clippy::module_name_repetitions)]
+#[derive(Zeroable)]
 pub struct ValueNetwork {
     stm: Feature,
     nstm: Feature,
     output: Output,
 }
-
-unsafe impl Zeroable for ValueNetwork {}
 
 impl Display for ValueNetwork {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {

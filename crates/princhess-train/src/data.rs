@@ -4,7 +4,8 @@ use princhess::chess::{Bitboard, Board, Castling, Color, Move, Piece, Square};
 use princhess::engine::SCALE;
 use princhess::mcts::Mcts;
 use princhess::state::State;
-use std::io::{self, Write};
+use std::fs::File;
+use std::io::{self, ErrorKind, Read, Seek, SeekFrom, Write};
 use std::mem;
 
 #[derive(Clone, Copy, Debug, Pod, Zeroable)]
@@ -190,6 +191,68 @@ impl From<&TrainingPosition> for State {
         );
 
         State::from_board(board)
+    }
+}
+
+pub struct TrainingData {
+    file: File,
+    buf: Vec<u8>,
+    positions_consumed: u64,
+}
+
+impl TrainingData {
+    /// # Panics
+    ///
+    /// Panics if the file cannot be opened or is smaller than one full buffer.
+    #[must_use]
+    pub fn new(path: &str) -> Self {
+        let file = File::open(path).expect("Failed to open training data file");
+        let positions = file.metadata().unwrap().len() as usize / TrainingPosition::SIZE;
+        assert!(
+            positions >= TrainingPosition::BUFFER_COUNT,
+            "Training file has {positions} positions, need at least {} (BUFFER_COUNT)",
+            TrainingPosition::BUFFER_COUNT
+        );
+        let buf = vec![0u8; TrainingPosition::BUFFER_SIZE];
+        Self {
+            file,
+            buf,
+            positions_consumed: 0,
+        }
+    }
+
+    /// # Panics
+    ///
+    /// Panics if file metadata cannot be read.
+    #[must_use]
+    pub fn positions(&self) -> usize {
+        self.file.metadata().unwrap().len() as usize / TrainingPosition::SIZE
+    }
+
+    #[must_use]
+    pub fn positions_consumed(&self) -> u64 {
+        self.positions_consumed
+    }
+
+    /// # Panics
+    ///
+    /// Panics on unexpected I/O errors reading the data file.
+    pub fn next_buffer(&mut self) -> &[TrainingPosition; TrainingPosition::BUFFER_COUNT] {
+        loop {
+            match self.file.read_exact(&mut self.buf) {
+                Ok(()) => {
+                    self.positions_consumed += TrainingPosition::BUFFER_COUNT as u64;
+                    return TrainingPosition::read_buffer(&self.buf);
+                }
+                Err(e) if e.kind() == ErrorKind::UnexpectedEof => {
+                    // Trailing data smaller than a full buffer is intentionally
+                    // discarded; progress may appear below 100% at end-of-file.
+                    self.file.seek(SeekFrom::Start(0)).unwrap();
+                    self.positions_consumed = 0;
+                }
+                Err(e) => panic!("Data read error: {e}"),
+            }
+        }
     }
 }
 

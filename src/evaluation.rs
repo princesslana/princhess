@@ -7,7 +7,9 @@ use crate::engine::SCALE;
 use crate::math;
 use crate::options::EvaluationOptions;
 #[cfg(feature = "policy-net")]
-use crate::quantized_policy::QuantizedPolicyNetwork;
+use crate::quantized_eg_policy::QuantizedEgPolicyNetwork;
+#[cfg(feature = "policy-net")]
+use crate::quantized_mg_policy::QuantizedMgPolicyNetwork;
 #[cfg(feature = "value-net")]
 use crate::quantized_value::QuantizedValueNetwork;
 use crate::state::State;
@@ -111,11 +113,15 @@ pub fn evaluate_state_flag(state: &State, is_legal_moves: bool) -> Flag {
 }
 
 #[cfg(feature = "policy-net")]
-static MG_POLICY_NETWORK: QuantizedPolicyNetwork =
+// SAFETY: include_bytes! embeds exactly size_of::<QuantizedMgPolicyNetwork>() bytes; Pod
+// guarantees any bit pattern is valid.
+static MG_POLICY_NETWORK: QuantizedMgPolicyNetwork =
     unsafe { mem::transmute(*include_bytes!("nets/mg-policy.bin")) };
 
 #[cfg(feature = "policy-net")]
-static EG_POLICY_NETWORK: QuantizedPolicyNetwork =
+// SAFETY: include_bytes! embeds exactly size_of::<QuantizedEgPolicyNetwork>() bytes; Pod
+// guarantees any bit pattern is valid.
+static EG_POLICY_NETWORK: QuantizedEgPolicyNetwork =
     unsafe { mem::transmute(*include_bytes!("nets/eg-policy.bin")) };
 
 #[cfg(not(feature = "policy-net"))]
@@ -137,8 +143,11 @@ fn run_policy_net(state: &State, moves: &MoveList, t: f32) -> Vec<f32> {
         return evalns;
     }
 
-    let network = [&MG_POLICY_NETWORK, &EG_POLICY_NETWORK][usize::from(state.is_endgame())];
-    network.get_all(state, state.moves_to_indexes(moves), &mut evalns);
+    if state.is_endgame() {
+        EG_POLICY_NETWORK.get_all(state, state.moves_to_indexes(moves), &mut evalns);
+    } else {
+        MG_POLICY_NETWORK.get_all(state, state.moves_to_indexes(moves), &mut evalns);
+    }
 
     math::softmax(&mut evalns, t);
 

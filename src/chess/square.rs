@@ -142,6 +142,12 @@ impl From<u32> for Square {
     }
 }
 
+impl From<usize> for Square {
+    fn from(square: usize) -> Self {
+        Square(square as u8)
+    }
+}
+
 impl From<Square> for u16 {
     fn from(square: Square) -> Self {
         u16::from(square.0)

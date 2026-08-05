@@ -11,6 +11,8 @@ pub mod math;
 pub mod mcts;
 pub mod nets;
 pub mod options;
+pub mod quantized_eg_policy;
+pub mod quantized_mg_policy;
 pub mod quantized_policy;
 pub mod quantized_value;
 pub mod state;

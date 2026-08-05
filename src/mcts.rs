@@ -342,6 +342,10 @@ impl Mcts {
         &self.root_edges
     }
 
+    pub fn root_edges_mut(&mut self) -> &mut [MoveEdge] {
+        &mut self.root_edges
+    }
+
     pub fn root_visits(&self) -> u64 {
         self.root_edges.iter().map(|x| u64::from(x.visits())).sum()
     }

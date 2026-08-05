@@ -1,6 +1,6 @@
 use std::array;
 use std::fs::{self, File};
-use std::io::{self, Read, Seek, SeekFrom};
+use std::io;
 use std::ops::AddAssign;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU32, AtomicU64, AtomicUsize, Ordering};
@@ -29,11 +29,12 @@ use princhess::math;
 use princhess::state::State;
 
 use princhess_train::args::Args;
+use princhess_train::data::TrainingData;
 use princhess_train::data::TrainingPosition;
+use princhess_train::mg_policy::{is_training_position, MgPolicyNetwork};
 use princhess_train::neural::{
-    AdamWOptimizer, LRScheduler, LinearWarmupDecayLRScheduler, SparseVector,
+    AdamWOptimizer, LRScheduler, PolynomialWarmupDecayLRScheduler, SparseVector,
 };
-use princhess_train::policy::{Phase, PolicyNetwork};
 use princhess_train::system;
 use princhess_train::tui::{self, RawModeGuard};
 
@@ -94,7 +95,6 @@ struct TrainingConfig {
     network_info: String,
     data_positions: usize,
     threads: usize,
-    phase: Phase,
 }
 
 struct TrainingStats {
@@ -120,8 +120,8 @@ struct TrainingStats {
     current_lr: AtomicU32, // stored as f32.to_bits() (updated each batch)
     lr_history: Queue<f32>,
 
-    // File read progress (bytes consumed from current pass through the file)
-    file_bytes_consumed: AtomicU64,
+    // File read progress (positions consumed from current pass through the file)
+    positions_consumed: AtomicU64,
 
     // Previous super batch metrics (stored as quantized i64)
     prev_loss: AtomicI64,     // loss * SCALE
@@ -155,7 +155,7 @@ impl TrainingStats {
             last_sample_positions: AtomicU64::new(0),
             current_lr: AtomicU32::new(0),
             lr_history: Queue::default(),
-            file_bytes_consumed: AtomicU64::new(0),
+            positions_consumed: AtomicU64::new(0),
             prev_loss: AtomicI64::new(0),
             prev_accuracy: AtomicI64::new(0),
             prev_baseline: AtomicI64::new(0),
@@ -339,12 +339,6 @@ fn main() {
         "Thread count must be at least 1, got {threads}"
     );
 
-    let phase_arg: String = args
-        .flag("-p", "--phase")
-        .unwrap_or_else(|| panic!("Missing required flag: -p <mg|eg>"));
-    let phase = Phase::from_arg(&phase_arg)
-        .unwrap_or_else(|| panic!("Invalid phase: {phase_arg}. Use 'mg' or 'eg'."));
-
     let input = args.expect("input file");
 
     let file = File::open(&input).unwrap();
@@ -356,33 +350,27 @@ fn main() {
         TrainingPosition::BUFFER_COUNT
     );
 
-    let network = PolicyNetwork::random();
-    let momentum = PolicyNetwork::zeroed();
-    let velocity = PolicyNetwork::zeroed();
+    let network = MgPolicyNetwork::random();
+    let momentum = MgPolicyNetwork::zeroed();
+    let velocity = MgPolicyNetwork::zeroed();
 
     let config = TrainingConfig {
         input_file: input.clone(),
         network_info: format!("{network}"),
         data_positions,
         threads,
-        phase,
     };
 
     let total_steps = (TOTAL_SUPER_BATCHES * BATCHES_PER_SUPER_BATCH) as u32;
-    let scheduler = LinearWarmupDecayLRScheduler::new(LR, 0.05, total_steps);
-    let weight_decay = if phase == Phase::MiddleGame {
-        0.01
-    } else {
-        0.0
-    };
-    let optimizer = AdamWOptimizer::with_scheduler(scheduler).weight_decay(weight_decay);
+    let scheduler = PolynomialWarmupDecayLRScheduler::linear(LR, 0.05, total_steps);
+    let optimizer = AdamWOptimizer::with_scheduler(scheduler).weight_decay(0.01);
     run_training_loop(network, momentum, velocity, optimizer, config);
 }
 
 fn run_training_loop<S: LRScheduler + Sync>(
-    mut network: Box<PolicyNetwork>,
-    mut momentum: Box<PolicyNetwork>,
-    mut velocity: Box<PolicyNetwork>,
+    mut network: Box<MgPolicyNetwork>,
+    mut momentum: Box<MgPolicyNetwork>,
+    mut velocity: Box<MgPolicyNetwork>,
     mut optimizer: AdamWOptimizer<S>,
     config: TrainingConfig,
 ) {
@@ -403,7 +391,7 @@ fn run_training_loop<S: LRScheduler + Sync>(
         }
     });
 
-    let mut file = File::open(&config.input_file).unwrap();
+    let mut data = TrainingData::new(&config.input_file);
 
     // Training loop
     for sb in 0..TOTAL_SUPER_BATCHES {
@@ -418,21 +406,19 @@ fn run_training_loop<S: LRScheduler + Sync>(
             &mut optimizer,
             &config,
             &stats,
-            &mut file,
-            config.phase,
+            &mut data,
         );
 
         stats.finish_super_batch();
 
         // Save network periodically (always save after first super batch for sanity checks)
         if (sb + 1) % SAVE_EVERY_N_SUPER_BATCHES == 0 || sb + 1 == TOTAL_SUPER_BATCHES || sb == 0 {
-            let phase = config.phase;
-            let dir_name = format!("nets/{phase}-policy-{timestamp}-sb{:03}", sb + 1);
+            let dir_name = format!("nets/mg-policy-{timestamp}-sb{:03}", sb + 1);
             fs::create_dir_all(&dir_name).expect("Failed to create network save directory");
             let dir = Path::new(&dir_name);
             network
                 .to_boxed_and_quantized()
-                .save_to_bin(dir, &format!("{phase}-policy.bin"));
+                .save_to_bin(dir, "mg-policy.bin");
 
             *stats.last_saved_net.lock().unwrap() = Some(dir_name);
         }
@@ -557,10 +543,9 @@ fn render_dataset_boxes(
     frame.render_widget(dataset_block, cols[0]);
     frame.render_widget(
         Paragraph::new(format!(
-            "Input: {}\nPositions: {:.1}M  Phase: {}",
+            "Input: {}\nPositions: {:.1}M  Phase: mg",
             config.input_file,
             config.data_positions as f64 / 1_000_000.0,
-            config.phase,
         )),
         dataset_inner,
     );
@@ -693,18 +678,18 @@ fn render_progress(
     );
 
     // File read progress
-    let file_total_bytes = config.data_positions as u64 * TrainingPosition::SIZE as u64;
-    let file_bytes = stats.file_bytes_consumed.load(Ordering::Relaxed);
-    let file_ratio = if file_total_bytes > 0 {
-        (file_bytes as f64 / file_total_bytes as f64).min(1.0)
+    let total_positions = config.data_positions as u64;
+    let consumed_positions = stats.positions_consumed.load(Ordering::Relaxed);
+    let file_ratio = if total_positions > 0 {
+        (consumed_positions as f64 / total_positions as f64).min(1.0)
     } else {
         0.0
     };
     let file_label = Span::styled(
         format!(
             "{:>6.1} / {:>6.1}M ({:>5.1}%)",
-            file_bytes as f64 / TrainingPosition::SIZE as f64 / 1_000_000.0,
-            config.data_positions as f64 / 1_000_000.0,
+            consumed_positions as f64 / 1_000_000.0,
+            total_positions as f64 / 1_000_000.0,
             file_ratio * 100.0,
         ),
         Style::default().fg(Color::White),
@@ -886,7 +871,6 @@ fn render_loss_chart(frame: &mut Frame, area: ratatui::layout::Rect, stats: &Tra
         let min = loss_data.iter().map(|(_, y)| *y).fold(f64::MAX, f64::min);
         let range = max - min;
         if range < 1e-6 {
-            // Single data point or very small range
             (0.0, max * 2.0)
         } else {
             let buffer = range * 0.1;
@@ -927,7 +911,6 @@ fn render_accuracy_chart(frame: &mut Frame, area: ratatui::layout::Rect, stats: 
         let min = acc_data.iter().map(|(_, y)| *y).fold(f64::MAX, f64::min);
         let range = max - min;
         if range < 1e-6 {
-            // Single data point - keep full range
             (0.0, 100.0)
         } else {
             let buffer = range * 0.1;
@@ -955,52 +938,33 @@ fn render_accuracy_chart(frame: &mut Frame, area: ratatui::layout::Rect, stats: 
 
 #[allow(clippy::too_many_arguments)]
 fn train_super_batch<S: LRScheduler + Sync>(
-    network: &mut PolicyNetwork,
-    momentum: &mut PolicyNetwork,
-    velocity: &mut PolicyNetwork,
+    network: &mut MgPolicyNetwork,
+    momentum: &mut MgPolicyNetwork,
+    velocity: &mut MgPolicyNetwork,
     optimizer: &mut AdamWOptimizer<S>,
     config: &TrainingConfig,
     stats: &TrainingStats,
-    file: &mut File,
-    phase: Phase,
+    data: &mut TrainingData,
 ) {
-    let mut thread_buffers: Vec<Box<PolicyNetwork>> = (0..config.threads)
-        .map(|_| PolicyNetwork::zeroed())
+    let mut thread_buffers: Vec<Box<MgPolicyNetwork>> = (0..config.threads)
+        .map(|_| MgPolicyNetwork::zeroed())
         .collect();
-    let mut gradients = PolicyNetwork::zeroed();
-    let mut raw_buf = vec![0u8; TrainingPosition::BUFFER_SIZE];
+    let mut gradients = MgPolicyNetwork::zeroed();
 
     let mut batches_processed = 0;
 
     while batches_processed < BATCHES_PER_SUPER_BATCH {
-        loop {
-            match file.read_exact(&mut raw_buf) {
-                Ok(()) => break,
-                Err(e) if e.kind() == io::ErrorKind::UnexpectedEof => {
-                    file.seek(SeekFrom::Start(0)).unwrap();
-                    stats.file_bytes_consumed.store(0, Ordering::Relaxed);
-                }
-                Err(e) => panic!("Data read error: {e}"),
-            }
-        }
+        let buffer = data.next_buffer();
 
-        let data = TrainingPosition::read_buffer(&raw_buf);
-
-        for batch in data.chunks(BATCH_SIZE) {
+        for batch in buffer.chunks(BATCH_SIZE) {
             if batches_processed >= BATCHES_PER_SUPER_BATCH {
                 break;
             }
 
             gradients.zero_out();
 
-            let batch_metrics = gradients_batch(
-                network,
-                &mut gradients,
-                batch,
-                &mut thread_buffers,
-                config,
-                phase,
-            );
+            let batch_metrics =
+                gradients_batch(network, &mut gradients, batch, &mut thread_buffers, config);
 
             stats.record_batch(batch_metrics);
 
@@ -1026,18 +990,17 @@ fn train_super_batch<S: LRScheduler + Sync>(
         }
 
         stats
-            .file_bytes_consumed
-            .fetch_add(raw_buf.len() as u64, Ordering::Relaxed);
+            .positions_consumed
+            .store(data.positions_consumed(), Ordering::Relaxed);
     }
 }
 
 fn gradients_batch(
-    network: &PolicyNetwork,
-    gradients: &mut PolicyNetwork,
+    network: &MgPolicyNetwork,
+    gradients: &mut MgPolicyNetwork,
     batch: &[TrainingPosition],
-    thread_buffers: &mut [Box<PolicyNetwork>],
+    thread_buffers: &mut [Box<MgPolicyNetwork>],
     config: &TrainingConfig,
-    phase: Phase,
 ) -> BatchMetrics {
     let size = (batch.len() / config.threads) + 1;
     let num_chunks = batch.chunks(size).count();
@@ -1055,7 +1018,7 @@ fn gradients_batch(
             .for_each(|((chunk, inner_gradients), inner_metrics)| {
                 s.spawn(move || {
                     for position in chunk {
-                        update_gradient(position, network, inner_gradients, inner_metrics, phase);
+                        update_gradient(position, network, inner_gradients, inner_metrics);
                     }
                 });
             });
@@ -1074,14 +1037,13 @@ fn gradients_batch(
 
 fn update_gradient(
     position: &TrainingPosition,
-    network: &PolicyNetwork,
-    gradients: &mut PolicyNetwork,
+    network: &MgPolicyNetwork,
+    gradients: &mut MgPolicyNetwork,
     metrics: &mut BatchMetrics,
-    phase: Phase,
 ) {
     let state = State::from(position);
 
-    if !phase.matches(&state) {
+    if !is_training_position(&state) {
         return;
     }
 

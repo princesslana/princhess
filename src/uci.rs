@@ -4,6 +4,7 @@ use std::str::SplitWhitespace;
 use crate::engine::Engine;
 use crate::graph;
 use crate::math::Rng;
+use crate::nets;
 use crate::options::{EngineOptions, UciOption, UciOptionMap};
 use crate::state::{self, State};
 use crate::tablebase;
@@ -166,18 +167,9 @@ impl Uci {
             "info string target-cpu {}",
             option_env!("PRINCHESS_TARGET_CPU").unwrap_or("unknown")
         );
-        println!(
-            "info string net-md5-value {}",
-            option_env!("PRINCHESS_NET_MD5_VALUE").unwrap_or("unknown")
-        );
-        println!(
-            "info string net-md5-mg-policy {}",
-            option_env!("PRINCHESS_NET_MD5_MG_POLICY").unwrap_or("unknown")
-        );
-        println!(
-            "info string net-md5-eg-policy {}",
-            option_env!("PRINCHESS_NET_MD5_EG_POLICY").unwrap_or("unknown")
-        );
+        println!("info string net-md5-value {}", nets::NET_MD5_VALUE);
+        println!("info string net-md5-mg-policy {}", nets::NET_MD5_MG_POLICY);
+        println!("info string net-md5-eg-policy {}", nets::NET_MD5_EG_POLICY);
     }
 
     fn generate_random_opening(&mut self) {

@@ -6,7 +6,7 @@
 use std::array;
 use std::collections::HashSet;
 use std::fs::{self, File};
-use std::io::{self, BufWriter};
+use std::io::{self, BufWriter, Write};
 use std::mem;
 use std::ops::Neg;
 use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU64, AtomicUsize, Ordering};
@@ -27,9 +27,11 @@ use ratatui::text::Span;
 use ratatui::widgets::{Block, Borders, Gauge, Paragraph, Sparkline};
 use ratatui::{Frame, Terminal, TerminalOptions, Viewport};
 use scc::{Guard, Queue};
+use toml::{Table, Value};
 
 use princhess::engine::{Engine, SCALE};
 use princhess::math::{self, Rng};
+use princhess::nets;
 use princhess::options::{EngineOptions, MctsOptions};
 use princhess::state::{self, State};
 
@@ -42,6 +44,12 @@ const HASH_SIZE_MB: usize = 64;
 
 const MAX_PLAYOUTS_PER_POSITION: u64 = 10000;
 const KL_DIVERGENCE_THRESHOLD: f32 = 0.000_002;
+
+const CPUCT: f32 = 2.82;
+const CPUCT_JITTER: f32 = 0.05;
+const POLICY_TEMPERATURE: f32 = 1.0;
+const POLICY_TEMPERATURE_ROOT: f32 = 1.4;
+
 const MAX_THREADS: u16 = 64;
 const DFRC_PCT: u64 = 10;
 
@@ -93,7 +101,7 @@ fn tui_progress_box_height(threads: u16) -> u16 {
 }
 
 fn tui_total_height(threads: u16) -> u16 {
-    tui_progress_box_height(threads) + TUI_GRID_HEIGHT + TUI_HISTOGRAM_HEIGHT + 2
+    tui_progress_box_height(threads) + TUI_GRID_HEIGHT + TUI_HISTOGRAM_HEIGHT + 2 + 1
 }
 
 fn load_atomic_array<const N: usize>(arr: &[AtomicU64; N]) -> [u64; N] {
@@ -564,6 +572,86 @@ impl StatsView {
             0.0
         }
     }
+
+    fn to_toml(&self) -> Table {
+        let i = |v: u64| Value::Integer(i64::try_from(v).unwrap_or(i64::MAX));
+        let iz = |v: usize| Value::Integer(i64::try_from(v).unwrap_or(i64::MAX));
+        let farr = |v: &[f32]| Value::Array(v.iter().map(|&x| x.into()).collect());
+        let iarr = |v: &[u64]| Value::Array(v.iter().copied().map(&i).collect());
+        let dist = |counts: &[u64], thresholds: &[f32]| {
+            let mut d = Table::new();
+            d.insert("thresholds".into(), farr(thresholds));
+            d.insert("counts".into(), iarr(counts));
+            Value::Table(d)
+        };
+
+        let mut t = Table::new();
+        t.insert("positions".into(), i(self.positions));
+        t.insert("games".into(), i(self.games));
+        t.insert("white_wins".into(), i(self.white_wins));
+        t.insert("draws".into(), i(self.draws));
+        t.insert("black_wins".into(), i(self.black_wins));
+        t.insert("elapsed_seconds".into(), i(self.elapsed_seconds));
+        t.insert("skipped_pct".into(), self.skipped_pct().into());
+        t.insert("aborted_pct".into(), self.aborted_pct().into());
+        t.insert("variation_pct".into(), self.variation_pct().into());
+        t.insert(
+            "blunder_win_draw_pct".into(),
+            self.blunder_win_draw_pct().into(),
+        );
+        t.insert(
+            "blunder_win_loss_pct".into(),
+            self.blunder_win_loss_pct().into(),
+        );
+        t.insert("avg_nodes".into(), iz(self.avg_nodes()));
+        t.insert("avg_playouts".into(), iz(self.avg_playouts()));
+        t.insert("avg_visits".into(), iz(self.avg_visits()));
+        t.insert("avg_depth".into(), iz(self.avg_depth()));
+        t.insert("avg_seldepth".into(), iz(self.avg_seldepth()));
+        t.insert("avg_opening_eval".into(), self.avg_opening_eval().into());
+        t.insert(
+            "avg_variation_eval".into(),
+            self.avg_variation_eval().into(),
+        );
+        t.insert("avg_policy_gini".into(), self.avg_policy_gini().into());
+        t.insert("avg_policy_kl".into(), self.avg_policy_kl().into());
+        t.insert(
+            "avg_eval_result_disagreement".into(),
+            self.avg_eval_result_disagreement().into(),
+        );
+        t.insert(
+            "policy_gini".into(),
+            dist(&self.policy_gini_buckets, &POLICY_GINI_THRESHOLDS),
+        );
+        t.insert(
+            "policy_kl".into(),
+            dist(&self.policy_kl_buckets, &POLICY_KL_THRESHOLDS),
+        );
+        t.insert(
+            "eval_distribution".into(),
+            dist(
+                &self.eval_distribution_buckets,
+                &EVAL_DISTRIBUTION_THRESHOLDS,
+            ),
+        );
+        t.insert(
+            "eval_result_agreement".into(),
+            dist(
+                &self.eval_result_agreement_buckets,
+                &EVAL_RESULT_AGREEMENT_THRESHOLDS,
+            ),
+        );
+        t.insert("piece_count".into(), iarr(&self.piece_count_distribution));
+        t.insert("phase".into(), iarr(&self.phase_distribution));
+        t.insert(
+            "variation_phase".into(),
+            iarr(&self.variation_phase_distribution),
+        );
+        t.insert("opening_eval".into(), iarr(&self.opening_eval_distribution));
+        t.insert("eval_delta".into(), iarr(&self.eval_delta_distribution));
+        t.insert("game_length".into(), iarr(&self.game_length_distribution));
+        t
+    }
 }
 
 impl GameStats {
@@ -1024,6 +1112,7 @@ fn render_tui(frame: &mut Frame, view: &StatsView) {
             Constraint::Length(tui_progress_box_height(view.threads)),
             Constraint::Length(TUI_GRID_HEIGHT),
             Constraint::Length(TUI_HISTOGRAM_HEIGHT),
+            Constraint::Length(1),
         ])
         .split(frame.area());
 
@@ -1421,6 +1510,14 @@ fn render_tui(frame: &mut Frame, view: &StatsView) {
         .data(&eval_delta_data)
         .style(Style::default().fg(Color::Magenta));
     frame.render_widget(eval_delta_sparkline, right_rows[2]);
+
+    let fingerprint = format!(
+        "value: {}  mg-policy: {}  eg-policy: {}",
+        nets::NET_MD5_VALUE,
+        nets::NET_MD5_MG_POLICY,
+        nets::NET_MD5_EG_POLICY,
+    );
+    frame.render_widget(Paragraph::new(fingerprint), chunks[3]);
 }
 
 fn run_tui(
@@ -1501,6 +1598,50 @@ fn run_tui(
     result
 }
 
+fn write_toml(path: &str, stats: &Stats, files: &[String], threads: u16, max_positions: u64) {
+    let view = stats.view(threads, max_positions);
+
+    let mut doc = Table::new();
+    doc.insert(
+        "files".into(),
+        Value::Array(files.iter().map(|f| Value::String(f.clone())).collect()),
+    );
+
+    let mut p = Table::new();
+    p.insert("threads".into(), Value::Integer(i64::from(threads)));
+    p.insert(
+        "max_positions".into(),
+        Value::Integer(i64::try_from(max_positions).unwrap_or(i64::MAX)),
+    );
+    p.insert("net_md5_value".into(), nets::NET_MD5_VALUE.into());
+    p.insert("net_md5_mg_policy".into(), nets::NET_MD5_MG_POLICY.into());
+    p.insert("net_md5_eg_policy".into(), nets::NET_MD5_EG_POLICY.into());
+    p.insert("cpuct".into(), CPUCT.into());
+    p.insert("cpuct_jitter".into(), CPUCT_JITTER.into());
+    p.insert("policy_temperature".into(), POLICY_TEMPERATURE.into());
+    p.insert(
+        "policy_temperature_root".into(),
+        POLICY_TEMPERATURE_ROOT.into(),
+    );
+    p.insert(
+        "max_playouts_per_position".into(),
+        Value::Integer(i64::try_from(MAX_PLAYOUTS_PER_POSITION).unwrap_or(i64::MAX)),
+    );
+    p.insert(
+        "kl_divergence_threshold".into(),
+        KL_DIVERGENCE_THRESHOLD.into(),
+    );
+    p.insert(
+        "dfrc_pct".into(),
+        Value::Integer(i64::try_from(DFRC_PCT).unwrap_or(i64::MAX)),
+    );
+    doc.insert("params".into(), Value::Table(p));
+    doc.insert("stats".into(), Value::Table(view.to_toml()));
+
+    let mut file = File::create(path).expect("Failed to create TOML file");
+    write!(file, "{doc}").expect("Failed to write TOML");
+}
+
 #[allow(clippy::too_many_lines)]
 fn main() {
     let mut args = Args::from_env();
@@ -1564,15 +1705,15 @@ fn main() {
                     allocation::zeroed_box();
 
                 let mcts_options = MctsOptions {
-                    cpuct: 2.82,
+                    cpuct: CPUCT,
                     cpuct_tau: 0.5,
                     cpuct_jitter: 0.0,
                     cpuct_trend_adjustment: 0.0,
                     cpuct_gini_base: 1.0,
                     cpuct_gini_factor: 0.0,
                     cpuct_gini_max: 1.0,
-                    policy_temperature: 1.0,
-                    policy_temperature_root: 1.4,
+                    policy_temperature: POLICY_TEMPERATURE,
+                    policy_temperature_root: POLICY_TEMPERATURE_ROOT,
                 };
 
                 let engine_options = EngineOptions {
@@ -1589,6 +1730,11 @@ fn main() {
                     while positions.len() < TrainingPosition::BUFFER_COUNT
                         && !stop.load(Ordering::Relaxed)
                     {
+                        let jitter = rng.next_f32_range(1.0 - CPUCT_JITTER, 1.0 + CPUCT_JITTER);
+                        engine.set_mcts_options(MctsOptions {
+                            cpuct: CPUCT * jitter,
+                            ..mcts_options
+                        });
                         run_game(&stats, &mut engine, &mut positions, &mut rng, &stop);
                         stats.thread_buffers[t as usize].store(positions.len(), Ordering::Relaxed);
                     }
@@ -1607,4 +1753,15 @@ fn main() {
             });
         }
     });
+
+    let files: Vec<String> = (0..threads)
+        .map(|t| format!("data/princhess-{timestamp}-{t}.data"))
+        .collect();
+    write_toml(
+        &format!("data/princhess-{timestamp}.toml"),
+        &stats,
+        &files,
+        threads,
+        max_positions,
+    );
 }

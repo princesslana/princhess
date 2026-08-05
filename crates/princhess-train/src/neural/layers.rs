@@ -69,6 +69,20 @@ impl<T: Activation, const M: usize, const N: usize> DenseConnected<T, M, N> {
         norm_sq.sqrt()
     }
 
+    #[must_use]
+    pub fn l1_norm(&self) -> f32 {
+        let mut sum = 0.0f32;
+        for row in 0..M {
+            for col in 0..N {
+                sum += self.weights[row][col].abs();
+            }
+        }
+        for col in 0..N {
+            sum += self.bias[col].abs();
+        }
+        sum
+    }
+
     pub fn adamw<S: LRScheduler>(
         &mut self,
         gradients: &Self,
@@ -217,6 +231,20 @@ impl<T: Activation, const M: usize, const N: usize> SparseConnected<T, M, N> {
             norm_sq += b * b;
         }
         norm_sq.sqrt()
+    }
+
+    #[must_use]
+    pub fn l1_norm(&self) -> f32 {
+        let mut sum = 0.0f32;
+        for row in 0..M {
+            for col in 0..N {
+                sum += self.weights[row][col].abs();
+            }
+        }
+        for col in 0..N {
+            sum += self.bias[col].abs();
+        }
+        sum
     }
 
     pub fn adamw<S: LRScheduler>(

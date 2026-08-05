@@ -159,8 +159,16 @@ impl Engine {
         self.mcts = Mcts::new(state, &self.ttable, self.engine_options);
     }
 
+    pub fn set_mcts_options(&mut self, mcts_options: MctsOptions) {
+        self.engine_options.mcts_options = mcts_options;
+    }
+
     pub fn root_edges(&self) -> &[MoveEdge] {
         self.mcts.root_edges()
+    }
+
+    pub fn root_edges_mut(&mut self) -> &mut [MoveEdge] {
+        self.mcts.root_edges_mut()
     }
 
     pub fn root_state(&self) -> &State {
