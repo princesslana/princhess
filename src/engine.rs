@@ -3,6 +3,7 @@ use std::process;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use arrayvec::ArrayVec;
+use fastapprox::faster;
 
 use crate::chess::Move;
 use crate::evaluation;
@@ -441,7 +442,7 @@ pub fn eval_in_cp(eval: f32) -> String {
     } else if eval <= -0.99 {
         -6400.0
     } else {
-        100.0 * (eval * FRAC_PI_2).tan()
+        100.0 * faster::tan(eval * FRAC_PI_2)
     };
 
     format!("cp {}", cps.round() as i64)
