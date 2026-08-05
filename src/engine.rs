@@ -435,13 +435,13 @@ impl Engine {
 // eval here is [-1.0, 1.0]
 #[must_use]
 pub fn eval_in_cp(eval: f32) -> String {
-    let cps = if eval > 0.5 {
-        18. * (eval - 0.5) + 1.
-    } else if eval < -0.5 {
-        18. * (eval + 0.5) - 1.
+    let cps = if eval >= 0.99 {
+        6400.0
+    } else if eval <= -0.99 {
+        -6400.0
     } else {
-        2. * eval
+        100.0 * (eval * std::f32::consts::FRAC_PI_2).tan()
     };
 
-    format!("cp {}", (cps * 100.).round().clamp(-1000., 1000.) as i64)
+    format!("cp {}", cps.round() as i64)
 }

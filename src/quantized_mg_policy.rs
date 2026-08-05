@@ -87,8 +87,6 @@ impl QuantizedMgPolicyNetwork {
         self.piece_sq.get_weights(idx, feat_idx)
     }
 
-
-
     pub fn get_all<I: Iterator<Item = MoveIndex>>(
         &self,
         state: &State,
