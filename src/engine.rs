@@ -1,3 +1,4 @@
+use std::f32::consts::FRAC_PI_2;
 use std::process;
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -440,7 +441,7 @@ pub fn eval_in_cp(eval: f32) -> String {
     } else if eval <= -0.99 {
         -6400.0
     } else {
-        100.0 * (eval * std::f32::consts::FRAC_PI_2).tan()
+        100.0 * (eval * FRAC_PI_2).tan()
     };
 
     format!("cp {}", cps.round() as i64)
