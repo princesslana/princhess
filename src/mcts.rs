@@ -660,8 +660,8 @@ impl UciWdl {
     #[allow(clippy::cast_sign_loss)]
     pub fn from_eval(eval: f32, phase: usize) -> Self {
         let b = phase as f32 / 48.0 + 1e-6;
-        let win = (1000.0 / (1.0 + faster::exp((0.5 - eval) / b))).round() as u16;
-        let loss = (1000.0 / (1.0 + faster::exp((0.5 + eval) / b))).round() as u16;
+        let win = (1000.0 / (1.0 + ((0.5 - eval) / b).exp())).round() as u16;
+        let loss = (1000.0 / (1.0 + ((0.5 + eval) / b).exp())).round() as u16;
         let draw = 1000_u16.saturating_sub(win).saturating_sub(loss);
 
         Self {
