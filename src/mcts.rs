@@ -655,41 +655,19 @@ impl Display for UciWdl {
 
 impl UciWdl {
     // eval here is white relative [-1.0, 1.0]
-    #[allow(clippy::cast_possible_wrap, clippy::cast_sign_loss)]
+    // a=0.5: eval where win rate hits 50% (self-consistent with MCTS win=+1/draw=0/loss=-1)
+    // b=phase/48: spread; at phase=24 (startpos) gives ~46% draw at eval=0
+    #[allow(clippy::cast_sign_loss)]
     pub fn from_eval(eval: f32, phase: usize) -> Self {
-        let phase = phase as i16;
+        let b = phase as f32 / 48.0 + 1e-6;
+        let win = (1000.0 / (1.0 + ((0.5 - eval) / b).exp())).round() as u16;
+        let loss = (1000.0 / (1.0 + ((0.5 + eval) / b).exp())).round() as u16;
+        let draw = 1000_u16.saturating_sub(win).saturating_sub(loss);
 
-        let mut win = ((1000. * eval.abs()) as u16).clamp(0, 1000);
-        let mut draw = (-33 * phase + 1000).clamp(0, 1000) as u16;
-        let mut loss = 0;
-
-        if win + draw > 1000 {
-            draw = 1000 - win;
-        } else {
-            let adj = (1000 - win - draw) / 3;
-            win += adj;
-            loss = adj;
-            draw = 1000 - win - loss;
-        }
-
-        let result = Self {
+        Self {
             white: win,
             draw,
             black: loss,
-        };
-
-        if eval.is_sign_positive() {
-            result
-        } else {
-            result.flip()
-        }
-    }
-
-    fn flip(&self) -> Self {
-        Self {
-            white: self.black,
-            draw: self.draw,
-            black: self.white,
         }
     }
 }
@@ -761,18 +739,18 @@ mod tests {
     fn test_uciwdl_from_eval() {
         let wdl = UciWdl::from_eval(0.5, 12);
         assert_eq!(wdl.white, 500);
-        assert_eq!(wdl.draw, 500);
-        assert_eq!(wdl.black, 0);
+        assert_eq!(wdl.draw, 482);
+        assert_eq!(wdl.black, 18);
 
         let wdl = UciWdl::from_eval(-0.5, 12);
-        assert_eq!(wdl.white, 0);
-        assert_eq!(wdl.draw, 500);
+        assert_eq!(wdl.white, 18);
+        assert_eq!(wdl.draw, 482);
         assert_eq!(wdl.black, 500);
 
         let wdl = UciWdl::from_eval(0.0, 12);
-        assert_eq!(wdl.white, 132);
-        assert_eq!(wdl.draw, 736);
-        assert_eq!(wdl.black, 132);
+        assert_eq!(wdl.white, 119);
+        assert_eq!(wdl.draw, 762);
+        assert_eq!(wdl.black, 119);
     }
 
     #[test]
@@ -783,7 +761,9 @@ mod tests {
             let white = UciWdl::from_eval(eval, phase);
             let black = UciWdl::from_eval(-eval, phase);
 
-            assert_eq!(white, black.flip());
+            assert_eq!(white.white, black.black);
+            assert_eq!(white.black, black.white);
+            assert_eq!(white.draw, black.draw);
         }
     }
 }
