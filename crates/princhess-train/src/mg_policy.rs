@@ -2,21 +2,27 @@ use std::fmt::{self, Display};
 use std::ops::{AddAssign, DivAssign};
 use std::ptr;
 
+use arrayvec::ArrayVec;
 use bytemuck::{allocation, Zeroable};
-use princhess::chess::Square;
+use princhess::chess::{Piece, Square};
 use princhess::nets::MoveIndex;
 use princhess::quantized_mg_policy::{
-    QuantizedMgPolicyNetwork, RawPolicyPieceSqBias, RawPolicyPieceSqWeights, RawPolicySqBias,
-    RawPolicySqWeights, ATTENTION_SIZE, INPUT_SIZE, QA,
+    QuantizedMgCtxNetwork, QuantizedMgPolicyNetwork, QuantizedMgSquareSubnets, RawCtxBias,
+    RawCtxWeights, RawSquareBias, RawSquareWeights, ATTENTION_SIZE, CTX_SIZE, INPUT_SIZE, QA,
 };
 use princhess::state::State;
 
+use crate::data::TrainingPosition;
 use crate::nets;
 use crate::neural::{
-    AdamWOptimizer, FeedForwardNetwork, LRScheduler, LinearNetwork, OutputLayer, SparseVector,
+    AdamWOptimizer, FeedForwardNetwork, HardTanh, LRScheduler, OutputLayer, SparseConnected,
+    SparseConnectedLayers, SparseVector, Vector,
 };
+use crate::policy_subnets::{SeeSplitSubnets, SquareSubnets};
 
-type MgLinearNetwork = LinearNetwork<INPUT_SIZE, ATTENTION_SIZE>;
+type MgCtxNetwork = SparseConnected<HardTanh, INPUT_SIZE, CTX_SIZE>;
+type MgSquareSubnets = SquareSubnets<ATTENTION_SIZE>;
+type MgSeeSplitSubnets = SeeSplitSubnets<ATTENTION_SIZE>;
 
 #[must_use]
 pub fn is_training_position(state: &State) -> bool {
@@ -26,41 +32,64 @@ pub fn is_training_position(state: &State) -> bool {
     major_pieces_count > 6
 }
 
+struct MgPolicyMoveLayers {
+    from_piece_sq: SparseConnectedLayers<ATTENTION_SIZE>,
+    to_piece_sq: SparseConnectedLayers<ATTENTION_SIZE>,
+}
+
+pub struct MgPolicyForwardCache {
+    ctx_layers: SparseConnectedLayers<CTX_SIZE>,
+    ctx_to: Vector<ATTENTION_SIZE>,
+    ctx_from: Vector<ATTENTION_SIZE>,
+    move_layers: ArrayVec<MgPolicyMoveLayers, { TrainingPosition::MAX_MOVES }>,
+}
+
 #[allow(clippy::module_name_repetitions)]
 #[derive(Zeroable)]
 pub struct MgPolicyNetwork {
-    sq: [MgLinearNetwork; MoveIndex::SQ_COUNT],
-    piece_sq: [MgLinearNetwork; MoveIndex::TO_PIECE_SQ_COUNT],
+    ctx: MgCtxNetwork,
+    pawn: MgSeeSplitSubnets,
+    knight: MgSeeSplitSubnets,
+    bishop: MgSeeSplitSubnets,
+    rook: MgSeeSplitSubnets,
+    queen: MgSeeSplitSubnets,
+    king: MgSquareSubnets,
 }
 
 impl Display for MgPolicyNetwork {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let sq = format!("sq: [{}; {}]", self.sq[0], Square::COUNT);
-        let piece_sq = format!("piece_sq: [{}; {}]", self.piece_sq[0], self.piece_sq.len());
-        write!(f, "{sq} * {piece_sq}")
+        write!(
+            f,
+            "hardtanh(ctx): [{INPUT_SIZE}->{CTX_SIZE}] * relu({{P/N/B/R/Q: SeeSplit([{}; {}]), K: [{}; {}]}}), to+from",
+            self.pawn.base[0],
+            Square::COUNT,
+            self.king[0],
+            Square::COUNT,
+        )
     }
 }
 
 impl AddAssign<&Self> for MgPolicyNetwork {
     fn add_assign(&mut self, rhs: &Self) {
-        for (lhs_subnet, rhs_subnet) in self.sq.iter_mut().zip(&rhs.sq) {
-            *lhs_subnet += rhs_subnet;
-        }
-
-        for (lhs_subnet, rhs_subnet) in self.piece_sq.iter_mut().zip(&rhs.piece_sq) {
-            *lhs_subnet += rhs_subnet;
-        }
+        self.ctx += &rhs.ctx;
+        self.pawn += &rhs.pawn;
+        self.knight += &rhs.knight;
+        self.bishop += &rhs.bishop;
+        self.rook += &rhs.rook;
+        self.queen += &rhs.queen;
+        self.king += &rhs.king;
     }
 }
 
 impl DivAssign<f32> for MgPolicyNetwork {
     fn div_assign(&mut self, rhs: f32) {
-        for subnet in &mut self.sq {
-            *subnet /= rhs;
-        }
-        for subnet in &mut self.piece_sq {
-            *subnet /= rhs;
-        }
+        self.ctx /= rhs;
+        self.pawn /= rhs;
+        self.knight /= rhs;
+        self.bishop /= rhs;
+        self.rook /= rhs;
+        self.queen /= rhs;
+        self.king /= rhs;
     }
 }
 
@@ -76,47 +105,117 @@ impl MgPolicyNetwork {
     }
 
     #[must_use]
+    pub fn l1_norm(&self) -> f32 {
+        self.ctx.l1_norm()
+            + self.pawn.l1_norm()
+            + self.knight.l1_norm()
+            + self.bishop.l1_norm()
+            + self.rook.l1_norm()
+            + self.queen.l1_norm()
+            + self.king.l1_norm()
+    }
+
+    #[must_use]
     pub fn random() -> Box<Self> {
+        let mut rng = princhess::math::Rng::default();
         let mut network = Self::zeroed();
 
-        for subnet in &mut network.sq {
-            subnet.randomize();
-        }
-
-        for subnet in &mut network.piece_sq {
-            subnet.randomize();
-        }
+        network.ctx = *MgCtxNetwork::randomized(&mut rng);
+        network.pawn.randomize();
+        network.knight.randomize();
+        network.bishop.randomize();
+        network.rook.randomize();
+        network.queen.randomize();
+        network.king.randomize();
 
         network
     }
 
-    fn get_sq(&self, sq: Square) -> &MgLinearNetwork {
-        &self.sq[sq]
+    fn piece_base_subnets(&self, piece: Piece) -> &MgSquareSubnets {
+        match piece {
+            Piece::PAWN => &self.pawn.base,
+            Piece::KNIGHT => &self.knight.base,
+            Piece::BISHOP => &self.bishop.base,
+            Piece::ROOK => &self.rook.base,
+            Piece::QUEEN => &self.queen.base,
+            Piece::KING => &self.king,
+            _ => unreachable!(),
+        }
     }
 
-    fn get_piece_sq(&self, piece_sq_idx: usize) -> &MgLinearNetwork {
-        unsafe { self.piece_sq.get_unchecked(piece_sq_idx) }
+    fn piece_base_subnets_mut(&mut self, piece: Piece) -> &mut MgSquareSubnets {
+        match piece {
+            Piece::PAWN => &mut self.pawn.base,
+            Piece::KNIGHT => &mut self.knight.base,
+            Piece::BISHOP => &mut self.bishop.base,
+            Piece::ROOK => &mut self.rook.base,
+            Piece::QUEEN => &mut self.queen.base,
+            Piece::KING => &mut self.king,
+            _ => unreachable!(),
+        }
     }
 
-    pub fn get_all<I: Iterator<Item = MoveIndex>>(
+    fn piece_to_subnets(&self, move_idx: MoveIndex) -> &MgSquareSubnets {
+        match (move_idx.piece(), move_idx.good_see()) {
+            (_, false) | (Piece::KING, _) => self.piece_base_subnets(move_idx.piece()),
+            (Piece::PAWN, true) => &self.pawn.good_see,
+            (Piece::KNIGHT, true) => &self.knight.good_see,
+            (Piece::BISHOP, true) => &self.bishop.good_see,
+            (Piece::ROOK, true) => &self.rook.good_see,
+            (Piece::QUEEN, true) => &self.queen.good_see,
+            _ => unreachable!(),
+        }
+    }
+
+    fn piece_to_subnets_mut(&mut self, move_idx: MoveIndex) -> &mut MgSquareSubnets {
+        match (move_idx.piece(), move_idx.good_see()) {
+            (_, false) | (Piece::KING, _) => self.piece_base_subnets_mut(move_idx.piece()),
+            (Piece::PAWN, true) => &mut self.pawn.good_see,
+            (Piece::KNIGHT, true) => &mut self.knight.good_see,
+            (Piece::BISHOP, true) => &mut self.bishop.good_see,
+            (Piece::ROOK, true) => &mut self.rook.good_see,
+            (Piece::QUEEN, true) => &mut self.queen.good_see,
+            _ => unreachable!(),
+        }
+    }
+
+    pub fn get_all_with_layers(
         &self,
         features: &SparseVector,
-        move_idxes: I,
+        move_idxes: &[MoveIndex],
         out: &mut [f32],
-    ) {
-        for (i, move_idx) in move_idxes.enumerate() {
-            let from_piece_sq = move_idx.from_piece_sq_index();
+    ) -> MgPolicyForwardCache {
+        let ctx_layers = self.ctx.out_with_layers(features);
+        let ctx_out = ctx_layers.output_layer();
+        let ctx_to: Vector<ATTENTION_SIZE> = ctx_out.slice(0);
+        let ctx_from: Vector<ATTENTION_SIZE> = ctx_out.slice(ATTENTION_SIZE);
 
-            let to_piece_sq = move_idx.to_piece_sq_index();
+        let mut move_layers = ArrayVec::new();
 
-            let from_sq_logits = self.get_sq(move_idx.from_sq()).out(features);
-            let to_sq_logits = self.get_sq(move_idx.to_sq()).out(features);
+        for (i, &move_idx) in move_idxes.iter().enumerate() {
+            let from_sq = move_idx.from_sq();
+            let to_piece_sq = move_idx.to_sq_for_piece_subnet();
 
-            let from_piece_sq_logits = self.get_piece_sq(from_piece_sq).out(features);
-            let to_piece_sq_logits = self.get_piece_sq(to_piece_sq).out(features);
+            let from_piece = self.piece_base_subnets(move_idx.piece());
+            let to_piece = self.piece_to_subnets(move_idx);
 
-            out[i] =
-                to_sq_logits.dot(&to_piece_sq_logits) - from_sq_logits.dot(&from_piece_sq_logits);
+            let from_piece_sq = from_piece[from_sq].output.out_with_layers(features);
+            let to_piece_sq = to_piece[to_piece_sq].output.out_with_layers(features);
+
+            out[i] = ctx_to.dot(&to_piece_sq.output_layer())
+                + ctx_from.dot(&from_piece_sq.output_layer());
+
+            move_layers.push(MgPolicyMoveLayers {
+                from_piece_sq,
+                to_piece_sq,
+            });
+        }
+
+        MgPolicyForwardCache {
+            ctx_layers,
+            ctx_to,
+            ctx_from,
+            move_layers,
         }
     }
 
@@ -127,110 +226,119 @@ impl MgPolicyNetwork {
         v: &mut Self,
         optimizer: &AdamWOptimizer<S>,
     ) {
-        for subnet_idx in 0..self.sq.len() {
-            self.sq[subnet_idx].adamw(
-                &g.sq[subnet_idx],
-                &mut m.sq[subnet_idx],
-                &mut v.sq[subnet_idx],
-                optimizer,
-            );
-        }
-
-        for subnet_idx in 0..self.piece_sq.len() {
-            self.piece_sq[subnet_idx].adamw(
-                &g.piece_sq[subnet_idx],
-                &mut m.piece_sq[subnet_idx],
-                &mut v.piece_sq[subnet_idx],
-                optimizer,
-            );
-        }
+        self.ctx.adamw(&g.ctx, &mut m.ctx, &mut v.ctx, optimizer);
+        self.pawn.adamw(&g.pawn, &mut m.pawn, &mut v.pawn, optimizer);
+        self.knight
+            .adamw(&g.knight, &mut m.knight, &mut v.knight, optimizer);
+        self.bishop
+            .adamw(&g.bishop, &mut m.bishop, &mut v.bishop, optimizer);
+        self.rook.adamw(&g.rook, &mut m.rook, &mut v.rook, optimizer);
+        self.queen
+            .adamw(&g.queen, &mut m.queen, &mut v.queen, optimizer);
+        self.king.adamw(&g.king, &mut m.king, &mut v.king, optimizer);
     }
 
-    pub fn backprop(&self, features: &SparseVector, g: &mut Self, move_idx: MoveIndex, error: f32) {
-        let from_sq = self.get_sq(move_idx.from_sq());
-        let from_piece_sq = self.get_piece_sq(move_idx.from_piece_sq_index());
+    pub fn backprop_position(
+        &self,
+        features: &SparseVector,
+        g: &mut Self,
+        move_idxes: &[MoveIndex],
+        errors: &[f32],
+        cache: &MgPolicyForwardCache,
+    ) {
+        let ctx_to = cache.ctx_to;
+        let ctx_from = cache.ctx_from;
 
-        let to_sq = self.get_sq(move_idx.to_sq());
-        let to_piece_sq = self.get_piece_sq(move_idx.to_piece_sq_index());
+        let mut ctx_err = Vector::<CTX_SIZE>::zeroed();
 
-        let from_sq_out = from_sq.out_with_layers(features);
-        let from_piece_sq_out = from_piece_sq.out_with_layers(features);
-        let to_sq_out = to_sq.out_with_layers(features);
-        let to_piece_sq_out = to_piece_sq.out_with_layers(features);
+        for ((&move_idx, &error), layers) in move_idxes
+            .iter()
+            .zip(errors.iter())
+            .zip(cache.move_layers.iter())
+        {
+            let from_sq = move_idx.from_sq();
+            let to_piece_sq = move_idx.to_sq_for_piece_subnet();
 
-        from_sq.backprop(
-            features,
-            &mut g.sq[move_idx.from_sq()],
-            -error * from_piece_sq_out.output_layer(),
-            &from_sq_out,
-        );
+            let from_piece = self.piece_base_subnets(move_idx.piece());
+            let to_piece = self.piece_to_subnets(move_idx);
 
-        from_piece_sq.backprop(
-            features,
-            &mut g.piece_sq[move_idx.from_piece_sq_index()],
-            -error * from_sq_out.output_layer(),
-            &from_piece_sq_out,
-        );
+            ctx_err.madd_slice(&layers.to_piece_sq.output_layer(), error, 0);
+            ctx_err.madd_slice(&layers.from_piece_sq.output_layer(), error, ATTENTION_SIZE);
 
-        to_sq.backprop(
-            features,
-            &mut g.sq[move_idx.to_sq()],
-            error * to_piece_sq_out.output_layer(),
-            &to_sq_out,
-        );
+            from_piece[from_sq].backprop(
+                features,
+                &mut g.piece_base_subnets_mut(move_idx.piece())[from_sq],
+                error * ctx_from,
+                &layers.from_piece_sq,
+            );
 
-        to_piece_sq.backprop(
-            features,
-            &mut g.piece_sq[move_idx.to_piece_sq_index()],
-            error * to_sq_out.output_layer(),
-            &to_piece_sq_out,
-        );
+            to_piece[to_piece_sq].backprop(
+                features,
+                &mut g.piece_to_subnets_mut(move_idx)[to_piece_sq],
+                error * ctx_to,
+                &layers.to_piece_sq,
+            );
+        }
+
+        self.ctx
+            .backprop(features, &mut g.ctx, ctx_err, &cache.ctx_layers);
     }
 
     #[must_use]
     pub fn to_boxed_and_quantized(&self) -> Box<QuantizedMgPolicyNetwork> {
-        let mut sq_weights: Box<RawPolicySqWeights> = allocation::zeroed_box();
-        let mut sq_bias: Box<RawPolicySqBias> = allocation::zeroed_box();
-        let mut piece_sq_weights: Box<RawPolicyPieceSqWeights> = allocation::zeroed_box();
-        let mut piece_sq_bias: Box<RawPolicyPieceSqBias> = allocation::zeroed_box();
+        let mut result: Box<QuantizedMgPolicyNetwork> = allocation::zeroed_box();
 
-        for (subnet, raw) in self.sq.iter().zip(sq_weights.iter_mut()) {
-            for (row_idx, weights) in raw.iter_mut().enumerate() {
-                let row = subnet.output.weights_row(row_idx);
-                for weight_idx in 0..ATTENTION_SIZE {
-                    weights[weight_idx] = nets::q_i16(row[weight_idx], QA);
-                }
-            }
-        }
+        result.ctx = *quantize_ctx(&self.ctx);
+        result.pawn.base = *quantize_subnets(&self.pawn.base);
+        result.pawn.good_see = *quantize_subnets(&self.pawn.good_see);
+        result.knight.base = *quantize_subnets(&self.knight.base);
+        result.knight.good_see = *quantize_subnets(&self.knight.good_see);
+        result.bishop.base = *quantize_subnets(&self.bishop.base);
+        result.bishop.good_see = *quantize_subnets(&self.bishop.good_see);
+        result.rook.base = *quantize_subnets(&self.rook.base);
+        result.rook.good_see = *quantize_subnets(&self.rook.good_see);
+        result.queen.base = *quantize_subnets(&self.queen.base);
+        result.queen.good_see = *quantize_subnets(&self.queen.good_see);
+        result.king = *quantize_subnets(&self.king);
 
-        for (subnet, raw) in self.sq.iter().zip(sq_bias.iter_mut()) {
-            for (weight_idx, bias) in raw.iter_mut().enumerate() {
-                *bias = nets::q_i16(subnet.output.bias()[weight_idx], QA);
-            }
-        }
-
-        for (subnet, raw) in self.piece_sq.iter().zip(piece_sq_weights.iter_mut()) {
-            for (row_idx, weights) in raw.iter_mut().enumerate() {
-                let row = subnet.output.weights_row(row_idx);
-                for weight_idx in 0..ATTENTION_SIZE {
-                    weights[weight_idx] = nets::q_i16(row[weight_idx], QA);
-                }
-            }
-        }
-
-        for (subnet, raw) in self.piece_sq.iter().zip(piece_sq_bias.iter_mut()) {
-            for (weight_idx, bias) in raw.iter_mut().enumerate() {
-                *bias = nets::q_i16(subnet.output.bias()[weight_idx], QA);
-            }
-        }
-
-        QuantizedMgPolicyNetwork::boxed_from_slices(
-            &sq_weights,
-            &sq_bias,
-            &piece_sq_weights,
-            &piece_sq_bias,
-        )
+        result
     }
+}
+
+fn quantize_ctx(ctx: &MgCtxNetwork) -> Box<QuantizedMgCtxNetwork> {
+    let mut weights: Box<RawCtxWeights> = allocation::zeroed_box();
+    let mut bias: Box<RawCtxBias> = allocation::zeroed_box();
+
+    for (row_idx, weights_row) in weights.iter_mut().enumerate() {
+        let row = ctx.weights_row(row_idx);
+        for (weight_idx, w) in weights_row.iter_mut().enumerate() {
+            *w = nets::q_i16(row[weight_idx], QA);
+        }
+    }
+    for (weight_idx, b) in bias.iter_mut().enumerate() {
+        *b = nets::q_i16(ctx.bias()[weight_idx], QA);
+    }
+
+    QuantizedMgCtxNetwork::from_raw(&weights, &bias)
+}
+
+fn quantize_subnets(subnets: &MgSquareSubnets) -> Box<QuantizedMgSquareSubnets> {
+    let mut weights: Box<RawSquareWeights> = allocation::zeroed_box();
+    let mut bias: Box<RawSquareBias> = allocation::zeroed_box();
+
+    for (subnet, (raw_w, raw_b)) in subnets.iter().zip(weights.iter_mut().zip(bias.iter_mut())) {
+        for (row_idx, weights_row) in raw_w.iter_mut().enumerate() {
+            let row = subnet.output.weights_row(row_idx);
+            for (weight_idx, w) in weights_row.iter_mut().enumerate() {
+                *w = nets::q_i16(row[weight_idx], QA);
+            }
+        }
+        for (weight_idx, b) in raw_b.iter_mut().enumerate() {
+            *b = nets::q_i16(subnet.output.bias()[weight_idx], QA);
+        }
+    }
+
+    QuantizedMgSquareSubnets::boxed_from_slices(&weights, &bias)
 }
 
 #[cfg(test)]

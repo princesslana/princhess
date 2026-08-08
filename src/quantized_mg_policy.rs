@@ -1,15 +1,17 @@
 use std::path::Path;
 
 use arrayvec::ArrayVec;
-use bytemuck::{allocation, Pod, Zeroable};
+use bytemuck::{self, allocation, Pod, Zeroable};
 
+use crate::chess::{Piece, Square};
 use crate::mem::Align16;
 use crate::nets::{self, Accumulator, MoveIndex};
 use crate::quantized_policy::QuantizedLinearNetwork;
 use crate::state::{self, State};
 
 pub const INPUT_SIZE: usize = state::POLICY_NUMBER_FEATURES;
-pub const ATTENTION_SIZE: usize = 8;
+pub const ATTENTION_SIZE: usize = 16;
+pub const CTX_SIZE: usize = 2 * ATTENTION_SIZE;
 
 pub const QA: i32 = 256;
 pub const QAA: i32 = QA * QA;
@@ -17,22 +19,53 @@ pub const QAA: i32 = QA * QA;
 pub type RawLinearWeights = Align16<[[i16; ATTENTION_SIZE]; INPUT_SIZE]>;
 pub type RawLinearBias = Align16<[i16; ATTENTION_SIZE]>;
 
-pub type RawPolicySqWeights = [RawLinearWeights; MoveIndex::SQ_COUNT];
-pub type RawPolicySqBias = [RawLinearBias; MoveIndex::SQ_COUNT];
-pub type RawPolicyPieceSqWeights = [RawLinearWeights; MoveIndex::TO_PIECE_SQ_COUNT];
-pub type RawPolicyPieceSqBias = [RawLinearBias; MoveIndex::TO_PIECE_SQ_COUNT];
+pub type RawCtxWeights = Align16<[[i16; CTX_SIZE]; INPUT_SIZE]>;
+pub type RawCtxBias = Align16<[i16; CTX_SIZE]>;
 
-type MgLinearNetwork = QuantizedLinearNetwork<{ MoveIndex::SQ_COUNT }, INPUT_SIZE, ATTENTION_SIZE>;
-type MgPieceSqLinearNetwork =
-    QuantizedLinearNetwork<{ MoveIndex::TO_PIECE_SQ_COUNT }, INPUT_SIZE, ATTENTION_SIZE>;
+pub type RawSquareWeights = [RawLinearWeights; Square::COUNT];
+pub type RawSquareBias = [RawLinearBias; Square::COUNT];
+
+pub type QuantizedMgSquareSubnets =
+    QuantizedLinearNetwork<{ Square::COUNT }, INPUT_SIZE, ATTENTION_SIZE>;
 
 type FeatureVector = ArrayVec<usize, 32>;
 
 #[repr(C)]
+#[derive(Copy, Clone, Zeroable)]
+pub struct QuantizedMgCtxNetwork {
+    weights: [Align16<Accumulator<i16, CTX_SIZE>>; INPUT_SIZE],
+    bias: Align16<Accumulator<i16, CTX_SIZE>>,
+}
+
+unsafe impl Pod for QuantizedMgCtxNetwork {}
+
+impl QuantizedMgCtxNetwork {
+    #[must_use]
+    pub fn from_raw(weights: &RawCtxWeights, bias: &RawCtxBias) -> Box<Self> {
+        let mut result: Box<Self> = allocation::zeroed_box();
+        result.weights = *bytemuck::must_cast_ref(weights);
+        result.bias = *bytemuck::must_cast_ref(bias);
+        result
+    }
+}
+
+#[repr(C)]
+#[derive(Copy, Clone, Pod, Zeroable)]
+pub struct QuantizedMgSeeSplitSubnets {
+    pub base: QuantizedMgSquareSubnets,
+    pub good_see: QuantizedMgSquareSubnets,
+}
+
+#[repr(C)]
 #[derive(Copy, Clone, Pod, Zeroable)]
 pub struct QuantizedMgPolicyNetwork {
-    sq: MgLinearNetwork,
-    piece_sq: MgPieceSqLinearNetwork,
+    pub ctx: QuantizedMgCtxNetwork,
+    pub pawn: QuantizedMgSeeSplitSubnets,
+    pub knight: QuantizedMgSeeSplitSubnets,
+    pub bishop: QuantizedMgSeeSplitSubnets,
+    pub rook: QuantizedMgSeeSplitSubnets,
+    pub queen: QuantizedMgSeeSplitSubnets,
+    pub king: QuantizedMgSquareSubnets,
 }
 
 impl QuantizedMgPolicyNetwork {
@@ -41,50 +74,32 @@ impl QuantizedMgPolicyNetwork {
         allocation::zeroed_box()
     }
 
-    #[must_use]
-    pub fn boxed_from_slices(
-        sq_weights: &RawPolicySqWeights,
-        sq_bias: &RawPolicySqBias,
-        piece_sq_weights: &RawPolicyPieceSqWeights,
-        piece_sq_bias: &RawPolicyPieceSqBias,
-    ) -> Box<Self> {
-        let mut result: Box<QuantizedMgPolicyNetwork> = allocation::zeroed_box();
-        result.sq = *MgLinearNetwork::boxed_from_slices(sq_weights, sq_bias);
-        result.piece_sq =
-            *MgPieceSqLinearNetwork::boxed_from_slices(piece_sq_weights, piece_sq_bias);
-        result
-    }
-
     pub fn save_to_bin(&self, dir: &Path, name: &str) {
         nets::save_to_bin(dir, name, self);
     }
 
-    #[must_use]
-    pub fn sq_subnet_bias(&self, idx: usize) -> Accumulator<i16, ATTENTION_SIZE> {
-        self.sq.get_bias(idx)
+    fn piece_base_subnets(&self, piece: Piece) -> &QuantizedMgSquareSubnets {
+        match piece {
+            Piece::PAWN => &self.pawn.base,
+            Piece::KNIGHT => &self.knight.base,
+            Piece::BISHOP => &self.bishop.base,
+            Piece::ROOK => &self.rook.base,
+            Piece::QUEEN => &self.queen.base,
+            Piece::KING => &self.king,
+            _ => unreachable!(),
+        }
     }
 
-    #[must_use]
-    pub fn piece_sq_subnet_bias(&self, idx: usize) -> Accumulator<i16, ATTENTION_SIZE> {
-        self.piece_sq.get_bias(idx)
-    }
-
-    #[must_use]
-    pub fn sq_subnet_weight(
-        &self,
-        idx: usize,
-        feat_idx: usize,
-    ) -> &Accumulator<i16, ATTENTION_SIZE> {
-        self.sq.get_weights(idx, feat_idx)
-    }
-
-    #[must_use]
-    pub fn piece_sq_subnet_weight(
-        &self,
-        idx: usize,
-        feat_idx: usize,
-    ) -> &Accumulator<i16, ATTENTION_SIZE> {
-        self.piece_sq.get_weights(idx, feat_idx)
+    fn piece_to_subnets(&self, piece: Piece, good_see: bool) -> &QuantizedMgSquareSubnets {
+        match (piece, good_see) {
+            (_, false) | (Piece::KING, _) => self.piece_base_subnets(piece),
+            (Piece::PAWN, true) => &self.pawn.good_see,
+            (Piece::KNIGHT, true) => &self.knight.good_see,
+            (Piece::BISHOP, true) => &self.bishop.good_see,
+            (Piece::ROOK, true) => &self.rook.good_see,
+            (Piece::QUEEN, true) => &self.queen.good_see,
+            _ => unreachable!(),
+        }
     }
 
     pub fn get_all<I: Iterator<Item = MoveIndex>>(
@@ -94,33 +109,35 @@ impl QuantizedMgPolicyNetwork {
         out: &mut [f32],
     ) {
         let mut features = FeatureVector::new();
+        let mut ctx = *self.ctx.bias;
 
-        state.policy_features_map(|feature| {
-            features.push(feature);
+        state.policy_features_map(|f| {
+            features.push(f);
+            // SAFETY: policy_features_map guarantees f < POLICY_NUMBER_FEATURES == INPUT_SIZE.
+            unsafe {
+                ctx.set(self.ctx.weights.get_unchecked(f));
+            }
         });
 
+        let [ctx_to, ctx_from]: &[Accumulator<i16, ATTENTION_SIZE>; 2] = bytemuck::cast_ref(&ctx);
+
         for (i, move_idx) in move_idxes.enumerate() {
-            let from_sq_idx = move_idx.from_sq().index();
-            let to_sq_idx = move_idx.to_sq().index();
+            let from_sq = move_idx.from_sq();
+            let to_sq = move_idx.to_sq_for_piece_subnet();
 
-            let from_piece_sq_idx = move_idx.from_piece_sq_index();
-            let to_piece_sq_idx = move_idx.to_piece_sq_index();
+            let from_piece = self.piece_base_subnets(move_idx.piece());
+            let to_piece = self.piece_to_subnets(move_idx.piece(), move_idx.good_see());
 
-            let mut from_sq = self.sq.get_bias(from_sq_idx);
-            let mut to_sq = self.sq.get_bias(to_sq_idx);
-
-            let mut from_piece_sq = self.piece_sq.get_bias(from_piece_sq_idx);
-            let mut to_piece_sq = self.piece_sq.get_bias(to_piece_sq_idx);
+            let mut from_piece_sq = from_piece.get_bias(from_sq.index());
+            let mut to_piece_sq = to_piece.get_bias(to_sq.index());
 
             for f in &features {
-                self.sq.set(from_sq_idx, *f, &mut from_sq);
-                self.sq.set(to_sq_idx, *f, &mut to_sq);
-
-                self.piece_sq.set(from_piece_sq_idx, *f, &mut from_piece_sq);
-                self.piece_sq.set(to_piece_sq_idx, *f, &mut to_piece_sq);
+                from_piece.set(from_sq.index(), *f, &mut from_piece_sq);
+                to_piece.set(to_sq.index(), *f, &mut to_piece_sq);
             }
 
-            out[i] = to_sq.dot_relu::<QAA>(&to_piece_sq) - from_sq.dot_relu::<QAA>(&from_piece_sq);
+            out[i] = ctx_to.hardtanh_dot_relu::<QA>(&to_piece_sq)
+                + ctx_from.hardtanh_dot_relu::<QA>(&from_piece_sq);
         }
     }
 }

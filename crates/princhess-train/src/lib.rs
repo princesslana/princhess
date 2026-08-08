@@ -8,6 +8,7 @@ pub mod data;
 pub mod eg_policy;
 pub mod mg_policy;
 pub mod neural;
+pub mod policy_subnets;
 pub mod system;
 pub mod tui;
 pub mod value;
