@@ -37,6 +37,8 @@ pub struct QuantizedMgCtxNetwork {
     bias: Align16<Accumulator<i16, CTX_SIZE>>,
 }
 
+// SAFETY: #[repr(C)] with only Pod fields (Align16<Accumulator<i16, N>>); no padding.
+// bytemuck's derive doesn't support this because Accumulator uses a manual Pod impl.
 unsafe impl Pod for QuantizedMgCtxNetwork {}
 
 impl QuantizedMgCtxNetwork {

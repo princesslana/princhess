@@ -1195,6 +1195,8 @@ fn update_gradient(
         let piece = move_idxes[idx].piece();
         let t_i = expected_primary[idx];
         let log_p_i = actual_policy[idx].max(EPSILON).ln();
+        // Only primary target — soft-target contribution is excluded, so
+        // sum(piece_info_gains) will slightly exceed aggregate info_gain.
         metrics.piece_loss[piece] += t_i * (-log_p_i);
         metrics.piece_baseline_loss[piece] += t_i * (moves.len() as f32).ln();
     }
