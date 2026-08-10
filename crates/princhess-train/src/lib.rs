@@ -3,11 +3,13 @@
 #![allow(clippy::cast_sign_loss, clippy::cast_possible_wrap)]
 #![allow(clippy::multiple_crate_versions)]
 
+pub mod analysis;
 pub mod args;
 pub mod data;
 pub mod eg_policy;
 pub mod mg_policy;
 pub mod neural;
+pub mod policy_subnets;
 pub mod system;
 pub mod tui;
 pub mod value;

@@ -15,68 +15,14 @@ use princhess::state::State;
 use crate::data::TrainingPosition;
 use crate::nets;
 use crate::neural::{
-    AdamWOptimizer, FeedForwardNetwork, HardTanh, LRScheduler, LinearNetwork, OutputLayer,
-    SparseConnected, SparseConnectedLayers, SparseVector, Vector,
+    AdamWOptimizer, FeedForwardNetwork, HardTanh, LRScheduler, OutputLayer, SparseConnected,
+    SparseConnectedLayers, SparseVector, Vector,
 };
+use crate::policy_subnets::{SeeSplitSubnets, SquareSubnets};
 
 type EgCtxNetwork = SparseConnected<HardTanh, INPUT_SIZE, CTX_SIZE>;
-type EgLinearNetwork = LinearNetwork<INPUT_SIZE, ATTENTION_SIZE>;
-
-#[derive(Zeroable)]
-struct SquareSubnets([EgLinearNetwork; Square::COUNT]);
-
-impl std::ops::Deref for SquareSubnets {
-    type Target = [EgLinearNetwork; Square::COUNT];
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl std::ops::DerefMut for SquareSubnets {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
-    }
-}
-
-impl AddAssign<&Self> for SquareSubnets {
-    fn add_assign(&mut self, rhs: &Self) {
-        for (l, r) in self.0.iter_mut().zip(&rhs.0) {
-            *l += r;
-        }
-    }
-}
-
-impl DivAssign<f32> for SquareSubnets {
-    fn div_assign(&mut self, rhs: f32) {
-        for s in &mut self.0 {
-            *s /= rhs;
-        }
-    }
-}
-
-impl SquareSubnets {
-    fn l1_norm(&self) -> f32 {
-        self.0.iter().map(EgLinearNetwork::l1_norm).sum()
-    }
-
-    fn adamw<S: LRScheduler>(
-        &mut self,
-        g: &Self,
-        m: &mut Self,
-        v: &mut Self,
-        optimizer: &AdamWOptimizer<S>,
-    ) {
-        for i in 0..Square::COUNT {
-            self.0[i].adamw(&g.0[i], &mut m.0[i], &mut v.0[i], optimizer);
-        }
-    }
-
-    fn randomize(&mut self) {
-        for s in &mut self.0 {
-            s.randomize();
-        }
-    }
-}
+type EgSquareSubnets = SquareSubnets<ATTENTION_SIZE>;
+type EgSeeSplitSubnets = SeeSplitSubnets<ATTENTION_SIZE>;
 
 #[must_use]
 pub fn is_training_position(state: &State) -> bool {
@@ -84,50 +30,6 @@ pub fn is_training_position(state: &State) -> bool {
     let major_pieces_count =
         (board.queens() | board.rooks() | board.bishops() | board.knights()).count();
     major_pieces_count <= 8
-}
-
-#[derive(Zeroable)]
-struct SeeSplitSubnets {
-    base: SquareSubnets,
-    good_see: SquareSubnets,
-}
-
-impl AddAssign<&Self> for SeeSplitSubnets {
-    fn add_assign(&mut self, rhs: &Self) {
-        self.base += &rhs.base;
-        self.good_see += &rhs.good_see;
-    }
-}
-
-impl DivAssign<f32> for SeeSplitSubnets {
-    fn div_assign(&mut self, rhs: f32) {
-        self.base /= rhs;
-        self.good_see /= rhs;
-    }
-}
-
-impl SeeSplitSubnets {
-    fn l1_norm(&self) -> f32 {
-        self.base.l1_norm() + self.good_see.l1_norm()
-    }
-
-    fn adamw<S: LRScheduler>(
-        &mut self,
-        g: &Self,
-        m: &mut Self,
-        v: &mut Self,
-        optimizer: &AdamWOptimizer<S>,
-    ) {
-        self.base
-            .adamw(&g.base, &mut m.base, &mut v.base, optimizer);
-        self.good_see
-            .adamw(&g.good_see, &mut m.good_see, &mut v.good_see, optimizer);
-    }
-
-    fn randomize(&mut self) {
-        self.base.randomize();
-        self.good_see.randomize();
-    }
 }
 
 struct EgPolicyMoveLayers {
@@ -146,12 +48,12 @@ pub struct EgPolicyForwardCache {
 #[derive(Zeroable)]
 pub struct EgPolicyNetwork {
     ctx: EgCtxNetwork,
-    pawn: SeeSplitSubnets,
-    knight: SeeSplitSubnets,
-    bishop: SeeSplitSubnets,
-    rook: SeeSplitSubnets,
-    queen: SeeSplitSubnets,
-    king: SquareSubnets,
+    pawn: EgSeeSplitSubnets,
+    knight: EgSeeSplitSubnets,
+    bishop: EgSeeSplitSubnets,
+    rook: EgSeeSplitSubnets,
+    queen: EgSeeSplitSubnets,
+    king: EgSquareSubnets,
 }
 
 impl Display for EgPolicyNetwork {
@@ -229,7 +131,7 @@ impl EgPolicyNetwork {
         network
     }
 
-    fn piece_base_subnets(&self, piece: Piece) -> &SquareSubnets {
+    fn piece_base_subnets(&self, piece: Piece) -> &EgSquareSubnets {
         match piece {
             Piece::PAWN => &self.pawn.base,
             Piece::KNIGHT => &self.knight.base,
@@ -241,7 +143,7 @@ impl EgPolicyNetwork {
         }
     }
 
-    fn piece_base_subnets_mut(&mut self, piece: Piece) -> &mut SquareSubnets {
+    fn piece_base_subnets_mut(&mut self, piece: Piece) -> &mut EgSquareSubnets {
         match piece {
             Piece::PAWN => &mut self.pawn.base,
             Piece::KNIGHT => &mut self.knight.base,
@@ -253,7 +155,7 @@ impl EgPolicyNetwork {
         }
     }
 
-    fn piece_to_subnets(&self, move_idx: MoveIndex) -> &SquareSubnets {
+    fn piece_to_subnets(&self, move_idx: MoveIndex) -> &EgSquareSubnets {
         match (move_idx.piece(), move_idx.good_see()) {
             (_, false) | (Piece::KING, _) => self.piece_base_subnets(move_idx.piece()),
             (Piece::PAWN, true) => &self.pawn.good_see,
@@ -265,7 +167,7 @@ impl EgPolicyNetwork {
         }
     }
 
-    fn piece_to_subnets_mut(&mut self, move_idx: MoveIndex) -> &mut SquareSubnets {
+    fn piece_to_subnets_mut(&mut self, move_idx: MoveIndex) -> &mut EgSquareSubnets {
         match (move_idx.piece(), move_idx.good_see()) {
             (_, false) | (Piece::KING, _) => self.piece_base_subnets_mut(move_idx.piece()),
             (Piece::PAWN, true) => &mut self.pawn.good_see,
@@ -423,7 +325,7 @@ fn quantize_ctx(ctx: &EgCtxNetwork) -> Box<QuantizedCtxNetwork> {
     QuantizedCtxNetwork::from_raw(&weights, &bias)
 }
 
-fn quantize_subnets(subnets: &SquareSubnets) -> Box<QuantizedSquareSubnets> {
+fn quantize_subnets(subnets: &EgSquareSubnets) -> Box<QuantizedSquareSubnets> {
     let mut weights: Box<RawSquareWeights> = allocation::zeroed_box();
     let mut bias: Box<RawSquareBias> = allocation::zeroed_box();
 
