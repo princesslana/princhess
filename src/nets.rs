@@ -53,13 +53,47 @@ impl<const H: usize> Accumulator<i16, H> {
         result as f32 / Q as f32
     }
 
-    // self is hardtanh-activated (clamped to [-QA, QA]); relu applied to rhs
     #[must_use]
-    pub fn hardtanh_dot_relu<const QA: i32>(&self, rhs: &Accumulator<i16, H>) -> f32 {
+    pub fn apply_hardtanh<const QA: i32>(&self) -> Self {
+        let mut result = *self;
+        for x in result.vals.iter_mut() {
+            *x = i32::from(*x).clamp(-QA, QA) as i16;
+        }
+        result
+    }
+
+    // Three-slope PWL approximation of tanh: slopes 0.5/1.0/0.5 at thresholds QA/2, QA, 3*QA/2
+    #[must_use]
+    pub fn apply_pwl<const QA: i32>(&self) -> Self {
+        let t1 = QA / 2;
+        let t3 = QA + t1;
+        let offset = QA / 4;
+
+        let mut result = *self;
+        for x in result.vals.iter_mut() {
+            let v = i32::from(*x);
+            let abs_v = v.abs();
+            let abs_y = if abs_v >= t3 {
+                QA
+            } else if abs_v > QA {
+                abs_v / 2 + offset
+            } else if abs_v > t1 {
+                abs_v - offset
+            } else {
+                abs_v / 2
+            };
+            *x = if v >= 0 { abs_y } else { -abs_y } as i16;
+        }
+        result
+    }
+
+    // self passed through linearly; relu applied to rhs
+    #[must_use]
+    pub fn linear_dot_relu<const QA: i32>(&self, rhs: &Accumulator<i16, H>) -> f32 {
         let mut result: i32 = 0;
 
         for (a, b) in self.vals.iter().zip(rhs.vals.iter()) {
-            result += i32::from(*a).clamp(-QA, QA) * relu(*b);
+            result += i32::from(*a) * relu(*b);
         }
 
         result as f32 / (QA * QA) as f32

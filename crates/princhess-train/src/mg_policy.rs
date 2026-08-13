@@ -60,7 +60,8 @@ impl Display for MgPolicyNetwork {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,
-            "hardtanh(ctx): [{INPUT_SIZE}->{CTX_SIZE}] * relu({{P/N/B/R/Q: SeeSplit([{}; {}]), K: [{}; {}]}}), to+from",
+            "{}(ctx): [{INPUT_SIZE}->{CTX_SIZE}] * relu({{P/N/B/R/Q: SeeSplit([{}; {}]), K: [{}; {}]}}), to+from",
+            MgCtxNetwork::activation_name(),
             self.pawn.base[0],
             Square::COUNT,
             self.king[0],

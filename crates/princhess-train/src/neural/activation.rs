@@ -140,6 +140,43 @@ impl Activation for HardTanh {
 }
 
 #[derive(Clone, Copy, Zeroable)]
+pub struct PiecewiseTanh;
+impl Activation for PiecewiseTanh {
+    type Initializer = Glorot;
+
+    fn name() -> &'static str {
+        "piecewise_tanh"
+    }
+
+    fn activate(x: f32) -> f32 {
+        let abs_x = x.abs();
+        let sign = x.signum();
+        if abs_x >= 1.5 {
+            sign
+        } else if abs_x >= 1.0 {
+            sign * (0.5 * abs_x + 0.25)
+        } else if abs_x >= 0.5 {
+            sign * (abs_x - 0.25)
+        } else {
+            0.5 * x
+        }
+    }
+
+    fn derivative(x: f32) -> f32 {
+        let abs_x = x.abs();
+        if abs_x >= 1.5 {
+            0.0
+        } else if abs_x >= 1.0 {
+            0.5
+        } else if abs_x >= 0.5 {
+            1.0
+        } else {
+            0.5
+        }
+    }
+}
+
+#[derive(Clone, Copy, Zeroable)]
 pub struct Tanh;
 impl Activation for Tanh {
     type Initializer = Glorot;
