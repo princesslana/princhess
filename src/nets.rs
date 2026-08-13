@@ -64,7 +64,7 @@ impl<const H: usize> Accumulator<i16, H> {
 
     // Three-slope PWL approximation of tanh: slopes 0.5/1.0/0.5 at thresholds QA/2, QA, 3*QA/2
     #[must_use]
-    pub fn apply_pwl<const QA: i32>(&self) -> Self {
+    pub fn apply_piecewise_tanh<const QA: i32>(&self) -> Self {
         let t1 = QA / 2;
         let t3 = QA + t1;
         let offset = QA / 4;

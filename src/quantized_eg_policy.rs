@@ -123,8 +123,8 @@ impl QuantizedEgPolicyNetwork {
 
         let [ctx_to_raw, ctx_from_raw]: &[Accumulator<i16, ATTENTION_SIZE>; 2] =
             bytemuck::cast_ref(&ctx);
-        let ctx_to = ctx_to_raw.apply_pwl::<QA>();
-        let ctx_from = ctx_from_raw.apply_pwl::<QA>();
+        let ctx_to = ctx_to_raw.apply_piecewise_tanh::<QA>();
+        let ctx_from = ctx_from_raw.apply_piecewise_tanh::<QA>();
 
         for (i, move_idx) in move_idxes.enumerate() {
             let from_sq = move_idx.from_sq();
