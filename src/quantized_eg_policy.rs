@@ -121,7 +121,10 @@ impl QuantizedEgPolicyNetwork {
             }
         });
 
-        let [ctx_to, ctx_from]: &[Accumulator<i16, ATTENTION_SIZE>; 2] = bytemuck::cast_ref(&ctx);
+        let [ctx_to_raw, ctx_from_raw]: &[Accumulator<i16, ATTENTION_SIZE>; 2] =
+            bytemuck::cast_ref(&ctx);
+        let ctx_to = ctx_to_raw.apply_piecewise_tanh::<QA>();
+        let ctx_from = ctx_from_raw.apply_piecewise_tanh::<QA>();
 
         for (i, move_idx) in move_idxes.enumerate() {
             let from_sq = move_idx.from_sq();
@@ -138,8 +141,8 @@ impl QuantizedEgPolicyNetwork {
                 to_piece.set(to_sq.index(), *f, &mut to_piece_sq);
             }
 
-            out[i] = ctx_to.hardtanh_dot_relu::<QA>(&to_piece_sq)
-                + ctx_from.hardtanh_dot_relu::<QA>(&from_piece_sq);
+            out[i] = ctx_to.linear_dot_relu::<QA>(&to_piece_sq)
+                + ctx_from.linear_dot_relu::<QA>(&from_piece_sq);
         }
     }
 }

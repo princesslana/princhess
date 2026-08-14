@@ -15,12 +15,12 @@ use princhess::state::State;
 use crate::data::TrainingPosition;
 use crate::nets;
 use crate::neural::{
-    AdamWOptimizer, FeedForwardNetwork, HardTanh, LRScheduler, OutputLayer, SparseConnected,
+    AdamWOptimizer, FeedForwardNetwork, LRScheduler, OutputLayer, PiecewiseTanh, SparseConnected,
     SparseConnectedLayers, SparseVector, Vector,
 };
 use crate::policy_subnets::{SeeSplitSubnets, SquareSubnets};
 
-type EgCtxNetwork = SparseConnected<HardTanh, INPUT_SIZE, CTX_SIZE>;
+type EgCtxNetwork = SparseConnected<PiecewiseTanh, INPUT_SIZE, CTX_SIZE>;
 type EgSquareSubnets = SquareSubnets<ATTENTION_SIZE>;
 type EgSeeSplitSubnets = SeeSplitSubnets<ATTENTION_SIZE>;
 
@@ -60,7 +60,8 @@ impl Display for EgPolicyNetwork {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,
-            "hardtanh(ctx): [{INPUT_SIZE}->{CTX_SIZE}] * relu({{P/N/B/R/Q: SeeSplit([{}; {}]), K: [{}; {}]}}), to+from",
+            "{}(ctx): [{INPUT_SIZE}->{CTX_SIZE}] * relu({{P/N/B/R/Q: SeeSplit([{}; {}]), K: [{}; {}]}}), to+from",
+            EgCtxNetwork::activation_name(),
             self.pawn.base[0],
             Square::COUNT,
             self.king[0],
