@@ -11,6 +11,7 @@ Princhess is a chess engine written in Rust. It implements a Monte Carlo Tree Se
 *   **DAG-Based MCTS:** Uses a directed acyclic graph rather than a tree to support transpositions. Rewards and visit counts are stored on edges instead of nodes.
 *   **Dynamic CPUCT Adjustments:** Multiple mechanisms for adjusting exploration including Gini impurity, per-thread jitter for search diversity, and trend-based adjustments for winning/losing positions.
 *   **Custom Memory Allocator:** Includes an arena memory allocator with half flipping for managing the MCTS graph within a fixed memory size, allowing unbounded search depth with bounded memory usage.
+*   **Top Two Root Selection:** Uses the Top Two sampling rule for root move selection, based on [EB-TCε](https://arxiv.org/abs/2305.16041). Treats root move selection as a best arm identification problem, using transportation cost to identify the leader and challenger.
 *   **Phase-Aware Policy Networks:** Dynamically loads separate policy networks for middle-game and endgame phases.
 *   **Endgame Tablebase Integration:** Integrates with Fathom tablebases for endgame evaluation.
 *   **Self-Play & Training Infrastructure:** The `princhess-train` crate provides tools for self-play data generation. The policy and value networks are trained on this self-play data and are designed to be small enough to run efficiently on the CPU.
@@ -65,7 +66,6 @@ The engine responds to standard UCI commands.
 - **CPuctGiniMax** (default: 210): Maximum value for Gini-scaled exploration coefficient
 - **CVisitsSelection** (default: 1): How much to consider visits vs Q-value in final move selection
 - **PolicyTemperature** (default: 100): Softmax temperature for policy network during node expansion
-- **PolicyTemperatureRoot** (default: 1450): Separate policy temperature specifically for root node
 
 ### Time Management
 Adaptive time allocation controls:

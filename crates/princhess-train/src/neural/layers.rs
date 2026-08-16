@@ -207,6 +207,7 @@ impl<T: Activation, const M: usize, const N: usize> MulAssign<f32> for SparseCon
 }
 
 impl<T: Activation, const M: usize, const N: usize> SparseConnected<T, M, N> {
+    #[must_use]
     pub fn activation_name() -> &'static str {
         T::name()
     }

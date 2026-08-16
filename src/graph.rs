@@ -33,9 +33,10 @@ pub struct PositionNode {
     _padding: [u8; 8],
 }
 
+#[derive(Clone, Copy)]
 pub struct Reward {
     pub average: i64,
-    pub visits: u32, // This is fine as visits count up, not related to evaluation magnitude
+    pub visits: u32,
 }
 
 impl Reward {

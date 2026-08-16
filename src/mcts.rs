@@ -51,17 +51,9 @@ impl Mcts {
     /// Creates a new MCTS instance with the given root state.
     pub fn new(state: State, table: &LRTable, engine_options: EngineOptions) -> Self {
         let moves = state.available_moves();
-        let move_eval = evaluation::policy(
-            &state,
-            &moves,
-            engine_options.mcts_options.policy_temperature_root,
-        );
-
         let mut root_edges = Vec::with_capacity(moves.len());
-        #[allow(clippy::cast_sign_loss)]
-        for i in 0..move_eval.len() {
-            let policy_val = (move_eval[i] * SCALE) as u16;
-            root_edges.push(MoveEdge::new(policy_val, moves[i]));
+        for mv in &moves {
+            root_edges.push(MoveEdge::new(0, *mv));
         }
 
         // Warm-start: copy statistics from transposition table if available
@@ -122,7 +114,7 @@ impl Mcts {
             tld.root_gini = math::gini(tld.root_edges.iter().map(RootEdge::visits), total_visits);
         }
 
-        let root_edge_idx = self.select_root_edge(tld, options, total_visits);
+        let root_edge_idx = tld.top_two_state.next(&tld.root_edges);
         let root_edge_ref = &self.root_edges[root_edge_idx];
 
         let mut state = self.root_state.clone();
@@ -566,40 +558,6 @@ impl Mcts {
         // Calculate exploration coefficient
         (cpuct * faster::exp(options.cpuct_tau * faster::ln((total_visits + 1) as f32)) * SCALE)
             as i64
-    }
-
-    /// PUCT selection for root node using thread-local buffered statistics.
-    fn select_root_edge(
-        &self,
-        tld: &ThreadData,
-        options: &MctsOptions,
-        total_visits: u64,
-    ) -> usize {
-        let edges = &self.root_edges;
-
-        let explore_coef = self.exploration_coefficient(
-            options,
-            total_visits,
-            tld.is_main_thread(),
-            tld.root_gini,
-        );
-
-        let mut best_idx = 0;
-        let mut best_score = i64::MIN;
-
-        for (idx, edge) in edges.iter().enumerate() {
-            let reward = tld.root_edges[idx].reward();
-            let q = if reward.visits > 0 { reward.average } else { 0 };
-            let u = exploration_bonus(explore_coef, edge.policy(), reward.visits);
-            let score = q + u;
-
-            if score > best_score {
-                best_score = score;
-                best_idx = idx;
-            }
-        }
-
-        best_idx
     }
 
     /// PUCT selection: choose best child using Q(action) + U(action)

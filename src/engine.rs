@@ -98,6 +98,67 @@ impl RootEdge {
     }
 }
 
+pub struct TopTwoState {
+    challenger_deficit: f32,
+}
+
+impl TopTwoState {
+    fn new() -> Self {
+        Self {
+            challenger_deficit: 0.0,
+        }
+    }
+
+    pub fn next(&mut self, root_edges: &ArrayVec<RootEdge, 256>) -> usize {
+        let mut leader = 0;
+        let mut leader_avg = i64::MIN;
+        for (i, edge) in root_edges.iter().enumerate() {
+            let avg = edge.reward().average;
+            if avg > leader_avg {
+                leader_avg = avg;
+                leader = i;
+            }
+        }
+
+        let leader_reward = root_edges[leader].reward();
+        // 0 visits → ∞, so unvisited moves get tc_sq = 0 (best challenger)
+        let inv_n_leader = 1.0 / leader_reward.visits as f32;
+
+        let mut best_tc_sq = f32::INFINITY;
+        let mut challenger = 0;
+        let mut n_c = 0.0_f32;
+
+        for (i, edge) in root_edges.iter().enumerate() {
+            if i == leader {
+                continue;
+            }
+            let r = edge.reward();
+            let gap = (leader_avg - r.average) as f32 / SCALE;
+            let tc_sq = gap * gap / (inv_n_leader + 1.0 / r.visits as f32);
+            if tc_sq < best_tc_sq {
+                best_tc_sq = tc_sq;
+                challenger = i;
+                n_c = r.visits as f32;
+            }
+        }
+
+        let n_l = leader_reward.visits as f32;
+        let p_challenger = if n_l < n_c {
+            (n_l + 0.5) / (n_l + n_c + 1.0)
+        } else {
+            1.0 / (2.0 + best_tc_sq.max(0.0).sqrt())
+        };
+        self.challenger_deficit += p_challenger;
+
+        if self.challenger_deficit >= 1.0 {
+            self.challenger_deficit -= 1.0;
+            challenger
+        } else {
+            leader
+        }
+    }
+}
+
 pub struct ThreadData<'a> {
     pub ttable: &'a LRTable,
     pub allocator: LRAllocator<'a>,
@@ -108,6 +169,7 @@ pub struct ThreadData<'a> {
     pub tb_hits: usize,
     pub root_edges: ArrayVec<RootEdge, 256>,
     pub root_gini: f32,
+    pub top_two_state: TopTwoState,
 }
 
 impl<'a> ThreadData<'a> {
@@ -127,6 +189,7 @@ impl<'a> ThreadData<'a> {
             tb_hits: 0,
             root_edges,
             root_gini,
+            top_two_state: TopTwoState::new(),
         }
     }
 
@@ -382,20 +445,28 @@ impl Engine {
 
         let mut moves: Vec<(&MoveEdge, f32)> = node_moves.iter().zip(state_moves_eval).collect();
         moves.sort_by_key(|(h, e)| (h.reward().average, (e * SCALE) as i64));
+
+        let leader_reward = moves.last().map_or(Reward::ZERO, |(m, _)| m.reward());
+        let leader_avg = leader_reward.average;
+        let inv_n_leader = 1.0 / leader_reward.visits as f32;
+
         for (mov, e) in moves {
             let reward = mov.reward();
-            let u = mcts::exploration_bonus(explore_coef, mov.policy(), reward.visits);
+            #[allow(clippy::cast_sign_loss)]
+            let u = mcts::exploration_bonus(explore_coef, (e * SCALE) as u16, reward.visits);
+            let gap = (leader_avg - reward.average) as f32 / SCALE;
+            let tc = (gap * gap / (inv_n_leader + 1.0 / reward.visits as f32)).max(0.0).sqrt();
 
             println!(
-                "info string {:7} M: {:>5.2} P: {:>5.2} V: {:7} ({:>5.2}%) Q: {:>7.2} ({:>8}) U: {:>7.2}",
+                "info string {:7} M: {:>5.2} V: {:7} ({:>5.2}%) Q: {:>7.2} ({:>8}) U: {:>7.2} T: {:>7.2}",
                 self.to_uci(*mov.get_move()),
                 e * 100.,
-                f32::from(mov.policy()) / SCALE * 100.,
                 mov.visits(),
                 mov.visits() as f32 / total_visits as f32 * 100.,
                 reward.average as f32 / (SCALE / 100.),
                 eval_in_cp(reward.average as f32 / SCALE),
                 u as f32 / (SCALE / 100.),
+                tc,
             );
         }
     }

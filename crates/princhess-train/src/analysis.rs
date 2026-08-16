@@ -21,6 +21,9 @@ pub fn write_lr_analysis_toml(
     grad_l1: &[f32],
     lr_full: &[f32],
 ) {
+    const WARMUP_FINE_SBS: usize = 2;
+    const WARMUP_BINS_PER_SB: usize = 10;
+
     if grad_l1.is_empty() || lr_full.is_empty() {
         return;
     }
@@ -79,8 +82,6 @@ pub fn write_lr_analysis_toml(
     }
 
     // Fine-grained warmup analysis: 10 bins each for SB1 and SB2
-    const WARMUP_FINE_SBS: usize = 2;
-    const WARMUP_BINS_PER_SB: usize = 10;
     let fine_steps = (steps_per_sb * WARMUP_FINE_SBS).min(t);
     let bin_size = fine_steps / (WARMUP_FINE_SBS * WARMUP_BINS_PER_SB);
     let mut warmup_analysis = Vec::new();
@@ -89,7 +90,7 @@ pub fn write_lr_analysis_toml(
             let start = bin * bin_size;
             let end = ((bin + 1) * bin_size).min(t);
             let len = (end - start) as f32;
-            let step_mid = (start + end) / 2;
+            let step_mid = usize::midpoint(start, end);
             let actual_avg = lr_full[start..end].iter().sum::<f32>() / len;
             let proposed_avg = proposal[start..end].iter().sum::<f32>() / len;
             let grad_l1_avg = grad_l1[start..end].iter().sum::<f32>() / len;
@@ -107,8 +108,7 @@ pub fn write_lr_analysis_toml(
         .iter()
         .enumerate()
         .max_by(|a, b| a.1.partial_cmp(b.1).unwrap_or(std::cmp::Ordering::Equal))
-        .map(|(i, v)| (i + 1, v))
-        .unwrap_or((0, &0.0));
+        .map_or((0, &0.0), |(i, v)| (i + 1, v));
     let peak_actual = lr_full.get(peak_step).copied().unwrap_or(0.0);
     let mut warmup_peak = Table::new();
     warmup_peak.insert("step".into(), Value::Integer(peak_step as i64));
@@ -174,6 +174,7 @@ impl Ord for OrdF32 {
 }
 
 // Two-heap sliding median with lazy deletion. O(T log W).
+#[allow(clippy::too_many_lines)]
 fn sliding_median(data: &[f32], width: usize) -> Vec<f32> {
     let n = data.len();
     if n == 0 {
