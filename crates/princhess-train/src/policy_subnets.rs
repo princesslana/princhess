@@ -96,7 +96,8 @@ impl<const A: usize> SeeSplitSubnets<A> {
         v: &mut Self,
         optimizer: &AdamWOptimizer<S>,
     ) {
-        self.base.adamw(&g.base, &mut m.base, &mut v.base, optimizer);
+        self.base
+            .adamw(&g.base, &mut m.base, &mut v.base, optimizer);
         self.good_see
             .adamw(&g.good_see, &mut m.good_see, &mut v.good_see, optimizer);
     }

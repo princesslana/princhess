@@ -115,31 +115,31 @@ impl ValueNetwork {
         for (row_idx, weights) in stm_weights.iter_mut().enumerate() {
             let row = self.stm.weights_row(row_idx);
             for weight_idx in 0..HIDDEN_SIZE {
-                weights[weight_idx] = q_i16(row[weight_idx], QA);
+                weights[weight_idx] = q_i16::<QA>(row[weight_idx]);
             }
         }
 
         for (weight_idx, bias) in stm_bias.iter_mut().enumerate() {
-            *bias = q_i16(self.stm.bias()[weight_idx], QA);
+            *bias = q_i16::<QA>(self.stm.bias()[weight_idx]);
         }
 
         for (row_idx, weights) in nstm_weights.iter_mut().enumerate() {
             let row = self.nstm.weights_row(row_idx);
             for weight_idx in 0..HIDDEN_SIZE {
-                weights[weight_idx] = q_i16(row[weight_idx], QA);
+                weights[weight_idx] = q_i16::<QA>(row[weight_idx]);
             }
         }
 
         for (weight_idx, bias) in nstm_bias.iter_mut().enumerate() {
-            *bias = q_i16(self.nstm.bias()[weight_idx], QA);
+            *bias = q_i16::<QA>(self.nstm.bias()[weight_idx]);
         }
 
         for (col_idx, weights) in output_weights.iter_mut().enumerate() {
             let col = self.output.weights_col(col_idx);
-            *weights = q_i16(col[0], QB);
+            *weights = q_i16::<QB>(col[0]);
         }
 
-        let output_bias = q_i32(self.output.bias()[0], QAB);
+        let output_bias = q_i32::<QAB>(self.output.bias()[0]);
 
         QuantizedValueNetwork::from_slices(
             &stm_weights,

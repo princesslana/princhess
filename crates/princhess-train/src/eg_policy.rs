@@ -7,7 +7,7 @@ use bytemuck::{allocation, Zeroable};
 use princhess::chess::{Piece, Square};
 use princhess::nets::MoveIndex;
 use princhess::quantized_eg_policy::{
-    QuantizedCtxNetwork, QuantizedEgPolicyNetwork, QuantizedSquareSubnets, RawCtxBias,
+    QuantizedCtxNetwork, QuantizedEgPolicyNetwork, QuantizedEgSquareSubnets, RawCtxBias,
     RawCtxWeights, RawSquareBias, RawSquareWeights, ATTENTION_SIZE, CTX_SIZE, INPUT_SIZE, QA,
 };
 use princhess::state::State;
@@ -316,17 +316,17 @@ fn quantize_ctx(ctx: &EgCtxNetwork) -> Box<QuantizedCtxNetwork> {
     for (row_idx, weights_row) in weights.iter_mut().enumerate() {
         let row = ctx.weights_row(row_idx);
         for (weight_idx, w) in weights_row.iter_mut().enumerate() {
-            *w = nets::q_i16(row[weight_idx], QA);
+            *w = nets::q_i16::<QA>(row[weight_idx]);
         }
     }
     for (weight_idx, b) in bias.iter_mut().enumerate() {
-        *b = nets::q_i16(ctx.bias()[weight_idx], QA);
+        *b = nets::q_i16::<QA>(ctx.bias()[weight_idx]);
     }
 
     QuantizedCtxNetwork::from_raw(&weights, &bias)
 }
 
-fn quantize_subnets(subnets: &EgSquareSubnets) -> Box<QuantizedSquareSubnets> {
+fn quantize_subnets(subnets: &EgSquareSubnets) -> Box<QuantizedEgSquareSubnets> {
     let mut weights: Box<RawSquareWeights> = allocation::zeroed_box();
     let mut bias: Box<RawSquareBias> = allocation::zeroed_box();
 
@@ -334,15 +334,15 @@ fn quantize_subnets(subnets: &EgSquareSubnets) -> Box<QuantizedSquareSubnets> {
         for (row_idx, weights_row) in raw_w.iter_mut().enumerate() {
             let row = subnet.output.weights_row(row_idx);
             for (weight_idx, w) in weights_row.iter_mut().enumerate() {
-                *w = nets::q_i16(row[weight_idx], QA);
+                *w = nets::q_i16::<QA>(row[weight_idx]);
             }
         }
         for (weight_idx, b) in raw_b.iter_mut().enumerate() {
-            *b = nets::q_i16(subnet.output.bias()[weight_idx], QA);
+            *b = nets::q_i16::<QA>(subnet.output.bias()[weight_idx]);
         }
     }
 
-    QuantizedSquareSubnets::boxed_from_slices(&weights, &bias)
+    QuantizedEgSquareSubnets::boxed_from_slices(&weights, &bias)
 }
 
 #[cfg(test)]
