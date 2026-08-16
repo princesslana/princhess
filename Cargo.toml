@@ -18,12 +18,12 @@ members = [".", "crates/princhess-train"]
 default-members = [".", "crates/princhess-train"]
 
 [workspace.dependencies]
-arrayvec = "=0.7.6"
+arrayvec = "=0.7.8"
 princhess = { version = "0.0.0-dev", path = "." }
-scc = "=3.6.12"
+scc = "=3.8.6"
 
 [workspace.dependencies.bytemuck]
-version = "=1.24.0"
+version = "=1.25.2"
 features = [
     "derive",
     "extern_crate_alloc",
@@ -46,7 +46,7 @@ fathom = []
 
 [build-dependencies]
 bindgen = "=0.72.1"
-cc = "=1.2.41"
+cc = "=1.4.3"
 
 [profile.release]
 lto = true
