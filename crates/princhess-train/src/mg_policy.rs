@@ -228,15 +228,18 @@ impl MgPolicyNetwork {
         optimizer: &AdamWOptimizer<S>,
     ) {
         self.ctx.adamw(&g.ctx, &mut m.ctx, &mut v.ctx, optimizer);
-        self.pawn.adamw(&g.pawn, &mut m.pawn, &mut v.pawn, optimizer);
+        self.pawn
+            .adamw(&g.pawn, &mut m.pawn, &mut v.pawn, optimizer);
         self.knight
             .adamw(&g.knight, &mut m.knight, &mut v.knight, optimizer);
         self.bishop
             .adamw(&g.bishop, &mut m.bishop, &mut v.bishop, optimizer);
-        self.rook.adamw(&g.rook, &mut m.rook, &mut v.rook, optimizer);
+        self.rook
+            .adamw(&g.rook, &mut m.rook, &mut v.rook, optimizer);
         self.queen
             .adamw(&g.queen, &mut m.queen, &mut v.queen, optimizer);
-        self.king.adamw(&g.king, &mut m.king, &mut v.king, optimizer);
+        self.king
+            .adamw(&g.king, &mut m.king, &mut v.king, optimizer);
     }
 
     pub fn backprop_position(
@@ -313,11 +316,11 @@ fn quantize_ctx(ctx: &MgCtxNetwork) -> Box<QuantizedMgCtxNetwork> {
     for (row_idx, weights_row) in weights.iter_mut().enumerate() {
         let row = ctx.weights_row(row_idx);
         for (weight_idx, w) in weights_row.iter_mut().enumerate() {
-            *w = nets::q_i16(row[weight_idx], QA);
+            *w = nets::q_i16::<QA>(row[weight_idx]);
         }
     }
     for (weight_idx, b) in bias.iter_mut().enumerate() {
-        *b = nets::q_i16(ctx.bias()[weight_idx], QA);
+        *b = nets::q_i16::<QA>(ctx.bias()[weight_idx]);
     }
 
     QuantizedMgCtxNetwork::from_raw(&weights, &bias)
@@ -331,11 +334,11 @@ fn quantize_subnets(subnets: &MgSquareSubnets) -> Box<QuantizedMgSquareSubnets> 
         for (row_idx, weights_row) in raw_w.iter_mut().enumerate() {
             let row = subnet.output.weights_row(row_idx);
             for (weight_idx, w) in weights_row.iter_mut().enumerate() {
-                *w = nets::q_i16(row[weight_idx], QA);
+                *w = nets::q_i16::<QA>(row[weight_idx]);
             }
         }
         for (weight_idx, b) in raw_b.iter_mut().enumerate() {
-            *b = nets::q_i16(subnet.output.bias()[weight_idx], QA);
+            *b = nets::q_i16::<QA>(subnet.output.bias()[weight_idx]);
         }
     }
 

@@ -30,33 +30,42 @@ print_fingerprint() {
     "$engine_path" fingerprint 2>&1 | sed 's/^info string /  /' >&2
 }
 
-# Prints per-run nps lines, then prints the average as the last line.
+# Prints per-run nodes/nps lines, then prints avg nps as the last line.
+# Also checks that node count is consistent across all runs.
 run_bench() {
     local engine_path=$1
     local total=0
     local min=0
     local max=0
+    local expected_nodes=""
+    local nodes_ok=true
     local first=true
 
     for i in $(seq 1 "$RUNS"); do
-        local nps
-        # "Bench: <nodes> nodes <nps> nps" — the number is the second-to-last field
-        nps=$("$engine_path" bench 2>&1 | awk '/^Bench:/ { print $(NF-1) }')
+        local nodes nps
+        # "Bench: <nodes> nodes <nps> nps"
+        read -r nodes nps < <("$engine_path" bench 2>&1 | awk '/^Bench:/ { print $2, $(NF-1) }')
         total=$((total + nps))
         if [ "$first" = true ]; then
             min=$nps
             max=$nps
+            expected_nodes=$nodes
             first=false
         else
             [ "$nps" -lt "$min" ] && min=$nps
             [ "$nps" -gt "$max" ] && max=$nps
+            [ "$nodes" != "$expected_nodes" ] && nodes_ok=false
         fi
-        printf "  run %2d: %d nps\n" "$i" "$nps" >&2
+        printf "  run %2d: %d nodes  %d nps\n" "$i" "$nodes" "$nps" >&2
     done
 
     local avg=$((total / RUNS))
-    printf "  avg: %d  min: %d  max: %d\n" "$avg" "$min" "$max" >&2
-    echo "$avg"
+    if [ "$nodes_ok" = true ]; then
+        printf "  avg: %d  min: %d  max: %d  nodes: %d\n" "$avg" "$min" "$max" "$expected_nodes" >&2
+    else
+        printf "  avg: %d  min: %d  max: %d  nodes: INCONSISTENT\n" "$avg" "$min" "$max" >&2
+    fi
+    echo "$avg $expected_nodes"
 }
 
 ENGINE1_PATH=$(get_engine_path "$ENGINE1")
@@ -74,14 +83,19 @@ echo ""
 
 echo "$ENGINE1 ($ENGINE1_PATH):"
 print_fingerprint "$ENGINE1_PATH"
-AVG1=$(run_bench "$ENGINE1_PATH" | tail -1)
+read -r AVG1 NODES1 < <(run_bench "$ENGINE1_PATH" | tail -1)
 echo ""
 
 echo "$ENGINE2 ($ENGINE2_PATH):"
 print_fingerprint "$ENGINE2_PATH"
-AVG2=$(run_bench "$ENGINE2_PATH" | tail -1)
+read -r AVG2 NODES2 < <(run_bench "$ENGINE2_PATH" | tail -1)
 echo ""
 
 RATIO=$(awk -v a="$AVG1" -v b="$AVG2" 'BEGIN { printf "%.2f", (a / b) * 100 }')
 DIFF=$((AVG1 - AVG2))
-echo "Result: $ENGINE1 is ${RATIO}% of $ENGINE2 ($(printf '%+d' "$DIFF") nps)"
+if [ "$NODES1" = "$NODES2" ]; then
+    NODE_STATUS="nodes match ($NODES1)"
+else
+    NODE_STATUS="nodes MISMATCH: $ENGINE1=$NODES1 $ENGINE2=$NODES2"
+fi
+echo "Result: $ENGINE1 is ${RATIO}% of $ENGINE2 ($(printf '%+d' "$DIFF") nps)  $NODE_STATUS"

@@ -53,24 +53,19 @@ impl<const H: usize> Accumulator<i16, H> {
         result as f32 / Q as f32
     }
 
-    #[must_use]
-    pub fn apply_hardtanh<const QA: i32>(&self) -> Self {
-        let mut result = *self;
-        for x in result.vals.iter_mut() {
+    pub fn hardtanh<const QA: i32>(&mut self) {
+        for x in self.vals.iter_mut() {
             *x = i32::from(*x).clamp(-QA, QA) as i16;
         }
-        result
     }
 
     // Three-slope PWL approximation of tanh: slopes 0.5/1.0/0.5 at thresholds QA/2, QA, 3*QA/2
-    #[must_use]
-    pub fn apply_piecewise_tanh<const QA: i32>(&self) -> Self {
+    pub fn piecewise_tanh<const QA: i32>(&mut self) {
         let t1 = QA / 2;
         let t3 = QA + t1;
         let offset = QA / 4;
 
-        let mut result = *self;
-        for x in result.vals.iter_mut() {
+        for x in self.vals.iter_mut() {
             let v = i32::from(*x);
             let abs_v = v.abs();
             let abs_y = if abs_v >= t3 {
@@ -84,7 +79,6 @@ impl<const H: usize> Accumulator<i16, H> {
             };
             *x = if v >= 0 { abs_y } else { -abs_y } as i16;
         }
-        result
     }
 
     // self passed through linearly; relu applied to rhs
@@ -108,8 +102,8 @@ where
 }
 
 #[must_use]
-pub fn screlu(x: i16, q: i32) -> i32 {
-    let clamped = i32::from(x).clamp(0, q);
+pub fn screlu<const Q: i32>(x: i16) -> i32 {
+    let clamped = i32::from(x).clamp(0, Q);
     clamped * clamped
 }
 

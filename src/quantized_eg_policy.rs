@@ -3,7 +3,7 @@ use std::path::Path;
 use arrayvec::ArrayVec;
 use bytemuck::{self, allocation, Pod, Zeroable};
 
-use crate::chess::Piece;
+use crate::chess::{Piece, Square};
 use crate::mem::Align16;
 
 use crate::nets::{self, Accumulator, MoveIndex};
@@ -26,8 +26,7 @@ pub type RawCtxBias = Align16<[i16; CTX_SIZE]>;
 pub type RawSquareWeights = [RawLinearWeights; Square::COUNT];
 pub type RawSquareBias = [RawLinearBias; Square::COUNT];
 
-use crate::chess::Square;
-pub type QuantizedSquareSubnets =
+pub type QuantizedEgSquareSubnets =
     QuantizedLinearNetwork<{ Square::COUNT }, INPUT_SIZE, ATTENTION_SIZE>;
 
 type FeatureVector = ArrayVec<usize, 32>;
@@ -53,21 +52,21 @@ impl QuantizedCtxNetwork {
 
 #[repr(C)]
 #[derive(Copy, Clone, Pod, Zeroable)]
-pub struct QuantizedSeeSplitSubnets {
-    pub base: QuantizedSquareSubnets,
-    pub good_see: QuantizedSquareSubnets,
+pub struct QuantizedEgSeeSplitSubnets {
+    pub base: QuantizedEgSquareSubnets,
+    pub good_see: QuantizedEgSquareSubnets,
 }
 
 #[repr(C)]
 #[derive(Copy, Clone, Pod, Zeroable)]
 pub struct QuantizedEgPolicyNetwork {
     pub ctx: QuantizedCtxNetwork,
-    pub pawn: QuantizedSeeSplitSubnets,
-    pub knight: QuantizedSeeSplitSubnets,
-    pub bishop: QuantizedSeeSplitSubnets,
-    pub rook: QuantizedSeeSplitSubnets,
-    pub queen: QuantizedSeeSplitSubnets,
-    pub king: QuantizedSquareSubnets,
+    pub pawn: QuantizedEgSeeSplitSubnets,
+    pub knight: QuantizedEgSeeSplitSubnets,
+    pub bishop: QuantizedEgSeeSplitSubnets,
+    pub rook: QuantizedEgSeeSplitSubnets,
+    pub queen: QuantizedEgSeeSplitSubnets,
+    pub king: QuantizedEgSquareSubnets,
 }
 
 impl QuantizedEgPolicyNetwork {
@@ -80,7 +79,7 @@ impl QuantizedEgPolicyNetwork {
         nets::save_to_bin(dir, name, self);
     }
 
-    fn piece_base_subnets(&self, piece: Piece) -> &QuantizedSquareSubnets {
+    fn piece_base_subnets(&self, piece: Piece) -> &QuantizedEgSquareSubnets {
         match piece {
             Piece::PAWN => &self.pawn.base,
             Piece::KNIGHT => &self.knight.base,
@@ -92,7 +91,7 @@ impl QuantizedEgPolicyNetwork {
         }
     }
 
-    fn piece_to_subnets(&self, piece: Piece, good_see: bool) -> &QuantizedSquareSubnets {
+    fn piece_to_subnets(&self, piece: Piece, good_see: bool) -> &QuantizedEgSquareSubnets {
         match (piece, good_see) {
             (_, false) | (Piece::KING, _) => self.piece_base_subnets(piece),
             (Piece::PAWN, true) => &self.pawn.good_see,
@@ -121,10 +120,8 @@ impl QuantizedEgPolicyNetwork {
             }
         });
 
-        let [ctx_to_raw, ctx_from_raw]: &[Accumulator<i16, ATTENTION_SIZE>; 2] =
-            bytemuck::cast_ref(&ctx);
-        let ctx_to = ctx_to_raw.apply_piecewise_tanh::<QA>();
-        let ctx_from = ctx_from_raw.apply_piecewise_tanh::<QA>();
+        ctx.piecewise_tanh::<QA>();
+        let [ctx_to, ctx_from]: &[Accumulator<i16, ATTENTION_SIZE>; 2] = bytemuck::cast_ref(&ctx);
 
         for (i, move_idx) in move_idxes.enumerate() {
             let from_sq = move_idx.from_sq();

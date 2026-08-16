@@ -121,10 +121,8 @@ impl QuantizedMgPolicyNetwork {
             }
         });
 
-        let [ctx_to_raw, ctx_from_raw]: &[Accumulator<i16, ATTENTION_SIZE>; 2] =
-            bytemuck::cast_ref(&ctx);
-        let ctx_to = ctx_to_raw.apply_hardtanh::<QA>();
-        let ctx_from = ctx_from_raw.apply_hardtanh::<QA>();
+        ctx.hardtanh::<QA>();
+        let [ctx_to, ctx_from]: &[Accumulator<i16, ATTENTION_SIZE>; 2] = bytemuck::cast_ref(&ctx);
 
         for (i, move_idx) in move_idxes.enumerate() {
             let from_sq = move_idx.from_sq();

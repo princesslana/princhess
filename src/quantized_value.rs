@@ -87,11 +87,11 @@ impl QuantizedValueNetwork {
         let mut result: i32 = 0;
 
         for (&x, w) in stm.vals.iter().zip(self.output_weights[0].vals) {
-            result += nets::screlu(x, QA) * i32::from(w);
+            result += nets::screlu::<QA>(x) * i32::from(w);
         }
 
         for (&x, w) in nstm.vals.iter().zip(self.output_weights[1].vals) {
-            result += nets::screlu(x, QA) * i32::from(w);
+            result += nets::screlu::<QA>(x) * i32::from(w);
         }
 
         result = result / QA + self.output_bias;
