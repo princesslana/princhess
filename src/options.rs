@@ -98,8 +98,6 @@ static CPUCT_GINI_FACTOR: UciOption = UciOption::spin("CPuctGiniFactor", 163, 0,
 static CPUCT_GINI_MAX: UciOption = UciOption::spin("CPuctGiniMax", 210, 0, 2 << 16);
 static CVISITS_SELECTION: UciOption = UciOption::spin("CVisitsSelection", 1, 0, 100);
 static POLICY_TEMPERATURE: UciOption = UciOption::spin("PolicyTemperature", 100, 0, 2 << 16);
-static POLICY_TEMPERATURE_ROOT: UciOption =
-    UciOption::spin("PolicyTemperatureRoot", 1450, 0, 2 << 16);
 
 static TM_MIN_M: UciOption = UciOption::spin("TMMinM", 10, 0, 2 << 16);
 static TM_MAX_M: UciOption = UciOption::spin("TMMaxM", 500, 0, 2 << 16);
@@ -130,7 +128,6 @@ static ALL_OPTIONS: &[UciOption] = &[
     CPUCT_GINI_MAX,
     CVISITS_SELECTION,
     POLICY_TEMPERATURE,
-    POLICY_TEMPERATURE_ROOT,
     TM_MIN_M,
     TM_MAX_M,
     TM_VISITS_BASE,
@@ -222,7 +219,6 @@ pub struct MctsOptions {
     pub cpuct_gini_factor: f32,
     pub cpuct_gini_max: f32,
     pub policy_temperature: f32,
-    pub policy_temperature_root: f32,
 }
 
 #[allow(clippy::module_name_repetitions, clippy::struct_excessive_bools)]
@@ -284,7 +280,6 @@ impl From<&UciOptionMap> for MctsOptions {
             cpuct_gini_factor: map.get_f32(&CPUCT_GINI_FACTOR),
             cpuct_gini_max: map.get_f32(&CPUCT_GINI_MAX),
             policy_temperature: map.get_f32(&POLICY_TEMPERATURE),
-            policy_temperature_root: map.get_f32(&POLICY_TEMPERATURE_ROOT),
         }
     }
 }

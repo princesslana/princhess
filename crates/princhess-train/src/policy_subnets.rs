@@ -85,6 +85,7 @@ impl<const A: usize> DivAssign<f32> for SeeSplitSubnets<A> {
 }
 
 impl<const A: usize> SeeSplitSubnets<A> {
+    #[must_use]
     pub fn l1_norm(&self) -> f32 {
         self.base.l1_norm() + self.good_see.l1_norm()
     }

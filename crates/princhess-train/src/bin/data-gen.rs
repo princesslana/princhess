@@ -48,7 +48,6 @@ const KL_DIVERGENCE_THRESHOLD: f32 = 0.000_002;
 const CPUCT: f32 = 2.82;
 const CPUCT_JITTER: f32 = 0.05;
 const POLICY_TEMPERATURE: f32 = 1.0;
-const POLICY_TEMPERATURE_ROOT: f32 = 1.4;
 
 const MAX_THREADS: u16 = 64;
 const DFRC_PCT: u64 = 10;
@@ -1620,10 +1619,6 @@ fn write_toml(path: &str, stats: &Stats, files: &[String], threads: u16, max_pos
     p.insert("cpuct_jitter".into(), CPUCT_JITTER.into());
     p.insert("policy_temperature".into(), POLICY_TEMPERATURE.into());
     p.insert(
-        "policy_temperature_root".into(),
-        POLICY_TEMPERATURE_ROOT.into(),
-    );
-    p.insert(
         "max_playouts_per_position".into(),
         Value::Integer(i64::try_from(MAX_PLAYOUTS_PER_POSITION).unwrap_or(i64::MAX)),
     );
@@ -1713,7 +1708,6 @@ fn main() {
                     cpuct_gini_factor: 0.0,
                     cpuct_gini_max: 1.0,
                     policy_temperature: POLICY_TEMPERATURE,
-                    policy_temperature_root: POLICY_TEMPERATURE_ROOT,
                 };
 
                 let engine_options = EngineOptions {
