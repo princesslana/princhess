@@ -12,6 +12,7 @@ fn main() {
 }
 
 fn emit_fingerprint_vars() {
+    println!("cargo:rerun-if-changed=.always-rerun");
     let rustc = Command::new("rustc")
         .arg("--version")
         .output()
