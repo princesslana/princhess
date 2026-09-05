@@ -142,7 +142,6 @@ mod tests {
         parse_go(&mut tokens)
     }
 
-    // Test for "go infinite"
     #[test]
     fn test_from_go_infinite() {
         let state = State::default();
@@ -154,7 +153,6 @@ mod tests {
         assert_eq!(tm.node_limit(), usize::MAX);
     }
 
-    // Test for "go movetime <ms>"
     #[test]
     fn test_from_go_movetime() {
         let state = State::default();
@@ -166,7 +164,6 @@ mod tests {
         assert_eq!(tm.node_limit(), usize::MAX);
     }
 
-    // Test for "go nodes <n>"
     #[test]
     fn test_from_go_nodes() {
         let state = State::default();
@@ -182,7 +179,6 @@ mod tests {
         assert_eq!(tm.node_limit(), 100_000);
     }
 
-    // Test for "go wtime <ms> btime <ms>" (White to move)
     #[test]
     fn test_from_go_time_white_to_move() {
         let state = State::default(); // White to move by default, moves_left() = 43
@@ -204,7 +200,6 @@ mod tests {
         assert_eq!(tm.node_limit(), usize::MAX);
     }
 
-    // Test for "go wtime <ms> btime <ms>" (Black to move)
     #[test]
     fn test_from_go_time_black_to_move() {
         let state = State::from_fen(BLACK_TO_MOVE_FEN); // Set black to move
@@ -226,7 +221,6 @@ mod tests {
         assert_eq!(tm.node_limit(), usize::MAX);
     }
 
-    // Test for "go wtime <ms> btime <ms> winc <inc> binc <inc>" (White to move)
     #[test]
     fn test_from_go_time_inc_white_to_move() {
         let state = State::default();
@@ -249,7 +243,6 @@ mod tests {
         assert_eq!(tm.node_limit(), usize::MAX);
     }
 
-    // Test for "go wtime <ms> btime <ms> movestogo <n>"
     #[test]
     fn test_from_go_movestogo() {
         let state = State::default(); // moves_left() = 43
@@ -273,7 +266,6 @@ mod tests {
         assert_eq!(tm.node_limit(), usize::MAX);
     }
 
-    // Test for is_policy_only
     #[test]
     fn test_from_go_is_policy_only() {
         let state = State::default();
@@ -362,7 +354,6 @@ mod tests {
         );
     }
 
-    // Test for combined time and nodes
     #[test]
     fn test_from_go_time_and_nodes() {
         let state = State::default();
@@ -407,7 +398,6 @@ mod tests {
         assert_eq!(tm.hard_limit(), Some(expected_hard_limit));
     }
 
-    // Test for negative btime when it's white to move
     #[test]
     fn test_from_go_negative_btime_white_to_move() {
         let state = State::default(); // White to move
@@ -431,7 +421,6 @@ mod tests {
         assert_eq!(tm.node_limit(), usize::MAX);
     }
 
-    // Test for negative wtime when it's black to move
     #[test]
     fn test_from_go_negative_wtime_black_to_move() {
         let state = State::from_fen(BLACK_TO_MOVE_FEN); // Black to move
