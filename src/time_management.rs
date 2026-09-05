@@ -100,14 +100,16 @@ impl TimeManagement {
 
             if let Some(m) = params.movestogo {
                 // movestogo is set, use that over moves_left
-                move_time_fraction = (m + 2).min(move_time_fraction).max(1);
+                move_time_fraction = m.saturating_add(2).min(move_time_fraction).max(1);
             }
 
             let r = r.saturating_sub(MOVE_OVERHEAD);
 
             // soft limit: ideal target time for this move
-            let soft_limit = (r + move_time_fraction * increment) / move_time_fraction;
-
+            let total_increment = increment
+                .checked_mul(move_time_fraction)
+                .unwrap_or(Duration::ZERO);
+            let soft_limit = r.checked_add(total_increment).unwrap_or(r) / move_time_fraction;
             // hard limit: safety cap at 1/3 remaining time
             let hard_limit = r / 3;
 

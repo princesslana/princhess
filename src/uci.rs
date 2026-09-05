@@ -154,11 +154,17 @@ impl Uci {
         };
 
         for mov_str in moves {
+            let mut applied = false;
             for mov in state.available_moves() {
                 if mov.matches_uci(mov_str, self.engine_options.is_chess960) {
                     state.make_move(mov);
+                    applied = true;
                     break;
                 }
+            }
+            if !applied {
+                println!("info string Couldn't parse '{mov_str}' as move");
+                return;
             }
         }
 
