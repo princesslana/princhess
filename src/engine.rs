@@ -15,8 +15,7 @@ use crate::state::State;
 use crate::tablebase;
 use crate::threadpool::{Scope, ThreadPool};
 use crate::time_management::TimeManagement;
-use crate::transposition_table::{LRAllocator, LRTable};
-use crate::uci::{self, Tokens};
+use crate::uci::{self, GoParams};
 
 pub const SCALE: f32 = 256. * 256.;
 
@@ -256,7 +255,7 @@ impl Engine {
         self.ttable.flip(|| self.mcts.clear_root_children_links());
     }
 
-    pub fn go(&self, tokens: Tokens, is_interactive: bool) -> Option<String> {
+    pub fn go(&self, params: &GoParams, is_interactive: bool) -> Option<String> {
         let state = self.mcts.root_state();
         let mvs = state.available_moves();
 
@@ -283,7 +282,7 @@ impl Engine {
         }
 
         let think_time =
-            TimeManagement::from_tokens(tokens, state, self.engine_options.is_policy_only);
+            TimeManagement::from_go(params, state, self.engine_options.is_policy_only);
 
         self.playout_parallel(think_time, is_interactive)
     }
@@ -384,13 +383,14 @@ impl Engine {
         self.mcts.flush_thread_stats(&mut tld);
     }
 
-    pub fn print_move_list(&self, tokens: Tokens) {
+    pub fn print_move_list<S: AsRef<str>>(&self, moves: impl IntoIterator<Item = S>) {
         let mut current_node: Option<&PositionNode> = None;
         let mut current_edges = self.mcts.root_edges();
         let mut current_state = self.mcts.root_state().clone();
 
-        // Navigate down the tree following the move sequence
-        for move_str in tokens {
+        // walk down tree following move path
+        for move_elem in moves {
+            let move_str = move_elem.as_ref();
             let edge = current_edges
                 .iter()
                 .find(|e| self.to_uci(*e.get_move()) == move_str);
@@ -426,7 +426,7 @@ impl Engine {
             self.engine_options.mcts_options.policy_temperature,
         );
 
-        // Calculate exploration coefficient for Q+U display
+        // calc exploration coefficient for q+u display
         let (total_visits, gini) = if let Some(node) = current_node {
             (node.visits(), f32::from(node.gini()) / SCALE)
         } else {

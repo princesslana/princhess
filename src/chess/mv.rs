@@ -97,4 +97,77 @@ impl Move {
 
         format!("{from}{to}{promotion}")
     }
+
+    // match uci string on the stack without allocating any heap strings :)
+    #[must_use]
+    pub fn matches_uci(self, mov_str: &str, is_chess960: bool) -> bool {
+        let bytes = mov_str.as_bytes();
+        if bytes.len() != 4 && bytes.len() != 5 {
+            return false;
+        }
+
+        let from = self.from();
+        let to = if self.is_castle() && !is_chess960 {
+            match self.to() {
+                Square::H1 => Square::G1,
+                Square::A1 => Square::C1,
+                Square::H8 => Square::G8,
+                Square::A8 => Square::C8,
+                _ => return false,
+            }
+        } else {
+            self.to()
+        };
+
+        let from_idx = from.index() as u8;
+        let to_idx = to.index() as u8;
+
+        if bytes[0] != b'a' + (from_idx % 8) || bytes[1] != b'1' + (from_idx / 8) {
+            return false;
+        }
+
+        if bytes[2] != b'a' + (to_idx % 8) || bytes[3] != b'1' + (to_idx / 8) {
+            return false;
+        }
+
+        let promo = self.promotion().to_promotion_char();
+        if promo.is_empty() {
+            bytes.len() == 4
+        } else {
+            bytes.len() == 5 && bytes[4] == promo.as_bytes()[0]
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_matches_uci_normal() {
+        let m = Move::new(Square::E2, Square::E4);
+        assert!(m.matches_uci("e2e4", false));
+        assert!(!m.matches_uci("e2e5", false));
+        assert!(!m.matches_uci("e3e4", false));
+        assert!(!m.matches_uci("e2e4q", false));
+    }
+
+    #[test]
+    fn test_matches_uci_promotion() {
+        let m = Move::new_promotion(Square::E7, Square::E8, Piece::QUEEN);
+        assert!(m.matches_uci("e7e8q", false));
+        assert!(!m.matches_uci("e7e8r", false));
+        assert!(!m.matches_uci("e7e8", false));
+    }
+
+    #[test]
+    fn test_matches_uci_castling() {
+        let m = Move::new_castle(Square::E1, Square::H1);
+        // standard chess: king lands on g1
+        assert!(m.matches_uci("e1g1", false));
+        assert!(!m.matches_uci("e1h1", false));
+        // chess960: king lands on rook square h1
+        assert!(m.matches_uci("e1h1", true));
+        assert!(!m.matches_uci("e1g1", true));
+    }
 }

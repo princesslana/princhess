@@ -1,5 +1,4 @@
 use std::io;
-use std::str::SplitWhitespace;
 
 use crate::engine::Engine;
 use crate::graph;
@@ -10,7 +9,11 @@ use crate::state::{self, State};
 use crate::tablebase;
 use crate::time_management::TimeManagement;
 
-pub type Tokens<'a> = SplitWhitespace<'a>;
+pub mod command;
+pub mod parser;
+
+pub use command::{GoParams, PositionSpec, SetOptionParams, UciCommand};
+pub use parser::ParseError;
 
 const ENGINE_NAME: &str = "Princhess";
 const ENGINE_AUTHOR: &str = "Princess Lana";
@@ -39,6 +42,7 @@ impl Uci {
         }
     }
 
+    // main repl loop reading stdin until quit
     pub fn main_loop(&mut self) {
         let mut next_line: Option<String> = None;
 
@@ -58,66 +62,114 @@ impl Uci {
         }
     }
 
+    // parse line and dispatch uci command
     pub fn handle_command(&mut self, line: &str, is_interactive: bool) -> (bool, Option<String>) {
-        let mut tokens = line.split_whitespace();
+        let command = match UciCommand::parse(line) {
+            Ok(Some(cmd)) => cmd,
+            Ok(None) => return (false, None),
+            Err(ParseError::InvalidPosition | ParseError::InvalidFen) => {
+                println!("info string Couldn't parse '{line}' as position");
+                return (false, None);
+            }
+            Err(ParseError::MissingOptionName | ParseError::MalformedCommand) => {
+                return (false, None);
+            }
+        };
+
+        self.execute(command, is_interactive)
+    }
+
+    // execute parsed uci command
+    pub fn execute(
+        &mut self,
+        command: UciCommand<'_>,
+        is_interactive: bool,
+    ) -> (bool, Option<String>) {
         let mut next_line_from_go = None;
         let mut should_quit = false;
 
-        if let Some(first_word) = tokens.next() {
-            match first_word {
-                "uci" => Self::uci_info(),
-                "isready" => println!("readyok"),
-                "setoption" => self.handle_setoption(tokens),
-                "ucinewgame" => {
-                    self.engine = Engine::new(State::default(), self.engine_options);
-                }
-                "position" => self.handle_position(tokens, line),
-                "quit" => should_quit = true,
-                "go" => {
-                    next_line_from_go = self.handle_go(tokens, is_interactive);
-                }
-                "movelist" => self.engine.print_move_list(tokens),
-                "sizelist" => graph::print_size_list(),
-                "eval" => self.engine.print_eval(),
-                "bench" => self.run_bench(),
-                "randomopen" => self.generate_random_opening(),
-                "fingerprint" => Self::fingerprint(),
-                _ => (),
+        match command {
+            UciCommand::Uci => Self::uci_info(),
+            UciCommand::Debug(_) => (),
+            UciCommand::IsReady => println!("readyok"),
+            UciCommand::SetOption(params) => {
+                self.handle_setoption(params.name, params.value);
             }
+            UciCommand::UciNewGame => {
+                self.engine = Engine::new(State::default(), self.engine_options);
+            }
+            UciCommand::Position { spec, moves } => {
+                self.handle_position(spec, &moves);
+            }
+            UciCommand::Quit => should_quit = true,
+            UciCommand::Stop | UciCommand::PonderHit => (),
+            UciCommand::Go(params) => {
+                next_line_from_go = self.handle_go(&params, is_interactive);
+            }
+            UciCommand::MoveList(moves) => self.engine.print_move_list(&moves),
+            UciCommand::SizeList => graph::print_size_list(),
+            UciCommand::Eval => self.engine.print_eval(),
+            UciCommand::Bench => self.run_bench(),
+            UciCommand::RandomOpen => self.generate_random_opening(),
+            UciCommand::Fingerprint => Self::fingerprint(),
+            UciCommand::UnknownCommand(_) => (),
         }
+
         (should_quit, next_line_from_go)
     }
 
-    fn handle_setoption(&mut self, tokens: Tokens) {
-        if let Some((name, value)) = parse_set_option(tokens) {
+    // handle setoption, clear hash resets ttable and syzygypath updates tb dir
+    fn handle_setoption(&mut self, name: &str, value: Option<&str>) {
+        if name.eq_ignore_ascii_case("clear hash") {
             let root_state = self.engine.root_state().clone();
+            self.engine = Engine::new(root_state, self.engine_options);
+            return;
+        }
 
-            self.options.set(&name, &value);
-            self.engine_options = EngineOptions::from(&self.options);
+        let Some(value) = value else {
+            println!("info string Option '{name}' is not a button and requires a value");
+            return;
+        };
 
-            if name.eq_ignore_ascii_case("syzygypath") {
-                match tablebase::set_tablebase_directory(&value) {
-                    Ok(()) => println!("info string Success initializing tablebase at {value}"),
-                    Err(()) => println!("info string Error initializing tablebase at {value}"),
+        let root_state = self.engine.root_state().clone();
+
+        self.options.set(name, value);
+        self.engine_options = EngineOptions::from(&self.options);
+
+        if name.eq_ignore_ascii_case("syzygypath") {
+            match tablebase::set_tablebase_directory(value) {
+                Ok(()) => println!("info string Success initializing tablebase at {value}"),
+                Err(()) => println!("info string Error initializing tablebase at {value}"),
+            }
+        }
+
+        self.engine = Engine::new(root_state, self.engine_options);
+    }
+
+    // set up root state from startpos/fen and replay moves without allocating
+    fn handle_position(&mut self, spec: PositionSpec<'_>, moves: &[&str]) {
+        let mut state = match spec {
+            PositionSpec::Startpos => State::default(),
+            PositionSpec::Fen(fen) => State::from_fen(fen),
+        };
+
+        for mov_str in moves {
+            for mov in state.available_moves() {
+                if mov.matches_uci(mov_str, self.engine_options.is_chess960) {
+                    state.make_move(mov);
+                    break;
                 }
             }
-
-            self.engine = Engine::new(root_state, self.engine_options);
         }
+
+        self.engine.set_root_state(state);
     }
 
-    fn handle_position(&mut self, tokens: Tokens, line: &str) {
-        if let Some(state) = State::from_tokens(tokens, self.engine_options.is_chess960) {
-            self.engine.set_root_state(state);
-        } else {
-            println!("info string Couldn't parse '{line}' as position");
-        }
+    fn handle_go(&self, params: &GoParams, is_interactive: bool) -> Option<String> {
+        self.engine.go(params, is_interactive)
     }
 
-    fn handle_go(&self, tokens: Tokens, is_interactive: bool) -> Option<String> {
-        self.engine.go(tokens, is_interactive)
-    }
-
+    // run bench across standard fens and spit out nps
     fn run_bench(&mut self) {
         let mut total_nodes = 0;
         let mut total_elapsed_time_ms = 0;
@@ -145,6 +197,7 @@ impl Uci {
         println!("Bench: {total_nodes} nodes {nps} nps");
     }
 
+    // print engine handshake info and available options
     pub fn uci_info() {
         println!("id name {} {}", ENGINE_NAME, VERSION.unwrap_or("unknown"));
         println!("id author {ENGINE_AUTHOR}");
@@ -154,6 +207,7 @@ impl Uci {
         println!("uciok");
     }
 
+    // dump build metadata and neural net hashes
     fn fingerprint() {
         println!(
             "info string git {}",
@@ -174,14 +228,14 @@ impl Uci {
 
     fn generate_random_opening(&mut self) {
         let mut rng = Rng::default();
-        let (moves_played, state) = state::generate_random_opening(&mut rng, 0); // No DFRC
+        let (moves_played, state) = state::generate_random_opening(&mut rng, 0); // no dfrc
 
         let move_strs: Vec<String> = moves_played
             .iter()
             .map(|mv| mv.to_uci(self.engine_options.is_chess960))
             .collect();
 
-        // Set the engine position to the generated opening
+        // point engine at generated opening
         self.engine.set_root_state(state);
 
         println!("info string {}", move_strs.join(" "));
@@ -206,30 +260,3 @@ pub fn read_stdin() -> String {
     input
 }
 
-#[must_use]
-pub fn parse_set_option(mut tokens: Tokens) -> Option<(String, String)> {
-    if tokens.next() != Some("name") {
-        return None;
-    }
-
-    let mut name = tokens.next()?.to_owned();
-
-    for t in tokens.by_ref() {
-        if t == "value" {
-            break;
-        }
-
-        name = format!("{name} {t}");
-    }
-
-    let mut value = None;
-
-    for t in tokens {
-        value = match value {
-            None => Some(t.to_owned()),
-            Some(s) => Some(format!("{s} {t}")),
-        }
-    }
-
-    Some((name, value?))
-}
