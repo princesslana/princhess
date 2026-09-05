@@ -245,8 +245,6 @@ impl TrainingData {
                     return TrainingPosition::read_buffer(&self.buf);
                 }
                 Err(e) if e.kind() == ErrorKind::UnexpectedEof => {
-                    // Trailing data smaller than a full buffer is intentionally
-                    // discarded; progress may appear below 100% at end-of-file.
                     self.file.seek(SeekFrom::Start(0)).unwrap();
                     self.positions_consumed = 0;
                 }

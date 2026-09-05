@@ -113,9 +113,12 @@ impl TopTwoState {
         let mut leader = 0;
         let mut leader_avg = i64::MIN;
         for (i, edge) in root_edges.iter().enumerate() {
-            let avg = edge.reward().average;
-            if avg > leader_avg {
-                leader_avg = avg;
+            let r = edge.reward();
+            if r.visits == 0 {
+                return i;
+            }
+            if r.average > leader_avg {
+                leader_avg = r.average;
                 leader = i;
             }
         }
@@ -455,7 +458,9 @@ impl Engine {
             #[allow(clippy::cast_sign_loss)]
             let u = mcts::exploration_bonus(explore_coef, (e * SCALE) as u16, reward.visits);
             let gap = (leader_avg - reward.average) as f32 / SCALE;
-            let tc = (gap * gap / (inv_n_leader + 1.0 / reward.visits as f32)).max(0.0).sqrt();
+            let tc = (gap * gap / (inv_n_leader + 1.0 / reward.visits as f32))
+                .max(0.0)
+                .sqrt();
 
             println!(
                 "info string {:7} M: {:>5.2} V: {:7} ({:>5.2}%) Q: {:>7.2} ({:>8}) U: {:>7.2} T: {:>7.2}",
