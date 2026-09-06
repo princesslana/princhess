@@ -7,7 +7,6 @@ use std::array;
 use std::collections::HashSet;
 use std::fs::{self, File};
 use std::io::{self, BufWriter, Write};
-use std::mem;
 use std::ops::Neg;
 use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -42,8 +41,7 @@ use princhess_train::tui::{self, RawModeGuard};
 
 const HASH_SIZE_MB: usize = 64;
 
-const MAX_PLAYOUTS_PER_POSITION: u64 = 10000;
-const KL_DIVERGENCE_THRESHOLD: f32 = 0.000_002;
+const PLAYOUTS_PER_POSITION: u64 = 2000;
 
 const CPUCT: f32 = 2.82;
 const CPUCT_JITTER: f32 = 0.05;
@@ -743,26 +741,7 @@ fn run_game(
             let legal_moves = engine.root_edges().len();
 
             if legal_moves > 1 {
-                let mut previous_visits = vec![0u32; legal_moves];
-                let mut current_visits = Vec::with_capacity(legal_moves);
-
-                // Early stopping based on KL divergence convergence
-                // Compare visit distributions between successive batches and stop when the
-                // per-playout KL gain falls below threshold, indicating search has converged
-                for _playout in 0..MAX_PLAYOUTS_PER_POSITION {
-                    engine.playout_sync(1);
-
-                    current_visits.clear();
-                    current_visits.extend(engine.root_edges().iter().map(|e| e.visits()));
-
-                    if let Some(gain) = kld_gain(&current_visits, &previous_visits) {
-                        if gain < KL_DIVERGENCE_THRESHOLD {
-                            break;
-                        }
-                    }
-
-                    mem::swap(&mut previous_visits, &mut current_visits);
-                }
+                engine.playout_sync(PLAYOUTS_PER_POSITION);
             }
 
             let best_move = engine.best_move();
@@ -937,28 +916,6 @@ fn run_game(
 fn random_start(rng: &mut Rng) -> State {
     let (_moves, state) = state::generate_random_opening(rng, DFRC_PCT);
     state
-}
-
-/// Computes KL divergence per additional playout between old and new visit distributions.
-///
-/// Returns KL divergence divided by the visit difference to normalize gain per playout.
-/// Returns `None` if `old_visits` is zero or `new_visits` ≤ `old_visits`.
-fn kld_gain(new_visits: &[u32], old_visits: &[u32]) -> Option<f32> {
-    let new_parent_visits: u64 = new_visits.iter().map(|&x| u64::from(x)).sum();
-    let old_parent_visits: u64 = old_visits.iter().map(|&x| u64::from(x)).sum();
-
-    if old_parent_visits == 0 || new_parent_visits <= old_parent_visits {
-        return None;
-    }
-
-    let kl = kl_divergence(old_visits, new_visits);
-
-    let parent_visits_diff = new_parent_visits.saturating_sub(old_parent_visits) as f32;
-    if parent_visits_diff > 0.0 {
-        Some(kl / parent_visits_diff)
-    } else {
-        None
-    }
 }
 
 /// Computes KL divergence between final visit distribution and policy distribution.
@@ -1332,9 +1289,8 @@ fn render_tui(frame: &mut Frame, view: &StatsView) {
             view.avg_seldepth(),
         ),
         format!(
-            "Playouts: {:>5} [KLD: {:.2e}]\nVisits:   {:>5}",
+            "Playouts: {:>5}\nVisits:   {:>5}",
             view.avg_playouts(),
-            KL_DIVERGENCE_THRESHOLD,
             view.avg_visits(),
         ),
     );
@@ -1619,12 +1575,8 @@ fn write_toml(path: &str, stats: &Stats, files: &[String], threads: u16, max_pos
     p.insert("cpuct_jitter".into(), CPUCT_JITTER.into());
     p.insert("policy_temperature".into(), POLICY_TEMPERATURE.into());
     p.insert(
-        "max_playouts_per_position".into(),
-        Value::Integer(i64::try_from(MAX_PLAYOUTS_PER_POSITION).unwrap_or(i64::MAX)),
-    );
-    p.insert(
-        "kl_divergence_threshold".into(),
-        KL_DIVERGENCE_THRESHOLD.into(),
+        "playouts_per_position".into(),
+        Value::Integer(i64::try_from(PLAYOUTS_PER_POSITION).unwrap_or(i64::MAX)),
     );
     p.insert(
         "dfrc_pct".into(),

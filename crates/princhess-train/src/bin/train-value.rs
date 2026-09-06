@@ -1,5 +1,5 @@
 use std::fs::{self, File};
-use std::io;
+use std::io::{self, Write};
 use std::ops::AddAssign;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU32, AtomicU64, AtomicUsize, Ordering};
@@ -8,6 +8,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use chrono::Utc;
+use toml::{Table, Value};
 
 use crossterm::cursor;
 use crossterm::event::{poll, read, Event, KeyCode};
@@ -38,7 +39,7 @@ const BATCHES_PER_SUPER_BATCH: usize = 6_104;
 const TOTAL_SUPER_BATCHES: usize = 75;
 const BATCH_SIZE: usize = 16384;
 
-const TUI_TOTAL_HEIGHT: u16 = 27;
+const TUI_TOTAL_HEIGHT: u16 = 28;
 const SAMPLE_INTERVAL_SECS: u64 = 5;
 const MAX_RATE_SAMPLES: usize = 512;
 const MAX_LR_SAMPLES: usize = 512;
@@ -283,6 +284,7 @@ fn run_training_loop<S: LRScheduler>(
             fs::create_dir(&dir_name).expect("Failed to create network save directory");
             let dir = Path::new(&dir_name);
             network.to_boxed_and_quantized().save_to_bin(dir);
+            write_training_toml(dir, sb + 1, &stats, &config);
 
             *stats.last_saved_net.lock().unwrap() = Some(dir_name);
         }
@@ -294,6 +296,27 @@ fn run_training_loop<S: LRScheduler>(
     // Cleanup TUI
     stop_signal.store(true, Ordering::Relaxed);
     tui_thread.join().unwrap();
+}
+
+fn write_training_toml(dir: &Path, sb: usize, stats: &TrainingStats, config: &TrainingConfig) {
+    let loss = stats.get_prev_loss();
+
+    let mut doc = Table::new();
+    doc.insert(
+        "super_batch".into(),
+        Value::Integer(i64::try_from(sb).unwrap_or(i64::MAX)),
+    );
+    doc.insert(
+        "super_batches_total".into(),
+        Value::Integer(i64::try_from(TOTAL_SUPER_BATCHES).unwrap_or(i64::MAX)),
+    );
+    doc.insert("network_info".into(), config.network_info.clone().into());
+    doc.insert("input_file".into(), config.input_file.clone().into());
+    doc.insert("loss".into(), loss.into());
+
+    let path = dir.join("value.toml");
+    let mut file = File::create(path).expect("Failed to create training TOML");
+    write!(file, "{doc}").expect("Failed to write training TOML");
 }
 
 fn run_tui(

@@ -52,7 +52,8 @@ const LR_SAMPLES_PER_SUPER_BATCH: usize = 5;
 
 const LR: f32 = 1e-3;
 
-const SOFT_TARGET_WEIGHT: f32 = 0.1;
+const PRIMARY_TEMPERATURE: f32 = 1.0;
+const SOFT_TARGET_WEIGHT: f32 = 0.25;
 const SOFT_TARGET_TEMPERATURE: f32 = 4.0;
 
 const EPSILON: f32 = 1e-9;
@@ -506,6 +507,18 @@ fn write_training_toml(dir: &Path, sb: usize, stats: &TrainingStats, config: &Tr
     );
     doc.insert("network_info".into(), config.network_info.clone().into());
     doc.insert("input_file".into(), config.input_file.clone().into());
+    doc.insert(
+        "primary_temperature".into(),
+        f64::from(PRIMARY_TEMPERATURE).into(),
+    );
+    doc.insert(
+        "soft_target_weight".into(),
+        f64::from(SOFT_TARGET_WEIGHT).into(),
+    );
+    doc.insert(
+        "soft_target_temperature".into(),
+        f64::from(SOFT_TARGET_TEMPERATURE).into(),
+    );
     doc.insert("loss".into(), loss.into());
     doc.insert("accuracy".into(), accuracy.into());
     doc.insert("info_gain".into(), info_gain.into());
@@ -1163,7 +1176,7 @@ fn update_gradient(
     let raw_counts: ArrayVec<f32, { TrainingPosition::MAX_MOVES }> =
         moves.iter().map(|(_, v)| f32::from(*v)).collect();
 
-    let expected_primary = calculate_target(&raw_counts, 1.0);
+    let expected_primary = calculate_target(&raw_counts, PRIMARY_TEMPERATURE);
     let expected_secondary = calculate_target(&raw_counts, SOFT_TARGET_TEMPERATURE);
 
     let mut position_loss = 0.0f32;
