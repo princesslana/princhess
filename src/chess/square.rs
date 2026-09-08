@@ -36,6 +36,9 @@ impl Square {
 
     pub const COUNT: usize = 64;
 
+    pub const FLIP_RANK_MASK: usize = 0x38;
+    pub const FLIP_FILE_MASK: usize = 0x07;
+
     pub fn from_coords(file: File, rank: Rank) -> Square {
         Square((rank.0 * 8) + file.0)
     }
@@ -51,14 +54,6 @@ impl Square {
 
     pub fn file(self) -> File {
         File(self.0 & 7)
-    }
-
-    pub fn flip_rank(self) -> Square {
-        Square(self.0 ^ 0x38)
-    }
-
-    pub fn flip_file(self) -> Square {
-        Square(self.0 ^ 7)
     }
 
     #[must_use]

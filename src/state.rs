@@ -168,22 +168,27 @@ impl State {
         let stm_ksq = b.king_of(stm);
         let nstm_ksq = b.king_of(!stm);
 
-        let flip_stm = |sq: Square| match (stm == Color::BLACK, stm_ksq.file() <= File::D) {
-            (true, true) => sq.flip_rank().flip_file(),
-            (true, false) => sq.flip_rank(),
-            (false, true) => sq.flip_file(),
-            (false, false) => sq,
-        };
+        let stm_flip = (if stm == Color::BLACK {
+            Square::FLIP_RANK_MASK
+        } else {
+            0
+        }) | (if stm_ksq.file() <= File::D {
+            Square::FLIP_FILE_MASK
+        } else {
+            0
+        });
+        let nstm_flip = (if stm == Color::WHITE {
+            Square::FLIP_RANK_MASK
+        } else {
+            0
+        }) | (if nstm_ksq.file() <= File::D {
+            Square::FLIP_FILE_MASK
+        } else {
+            0
+        });
 
-        let flip_nstm = |sq: Square| match (stm == Color::WHITE, nstm_ksq.file() <= File::D) {
-            (true, true) => sq.flip_rank().flip_file(),
-            (true, false) => sq.flip_rank(),
-            (false, true) => sq.flip_file(),
-            (false, false) => sq,
-        };
-
-        let stm_king_bucket = Self::king_bucket(flip_stm(stm_ksq));
-        let nstm_king_bucket = Self::king_bucket(flip_nstm(nstm_ksq));
+        let stm_king_bucket = Self::king_bucket(Square::from(stm_ksq.index() ^ stm_flip));
+        let nstm_king_bucket = Self::king_bucket(Square::from(nstm_ksq.index() ^ nstm_flip));
 
         for sq in b.occupied() {
             let piece = b.piece_at(sq);
@@ -198,7 +203,7 @@ impl State {
             let threat_bucket = usize::from(threatened) * 2 + usize::from(defended);
 
             {
-                let sq_idx = flip_stm(sq).index();
+                let sq_idx = sq.index() ^ stm_flip;
 
                 let bucket = threat_bucket * NUMBER_KING_BUCKETS + stm_king_bucket;
                 let position = [0, 384][side_idx] + piece_idx * 64 + sq_idx;
@@ -208,7 +213,7 @@ impl State {
             }
 
             {
-                let sq_idx = flip_nstm(sq).index();
+                let sq_idx = sq.index() ^ nstm_flip;
 
                 let bucket = threat_bucket * NUMBER_KING_BUCKETS + nstm_king_bucket;
                 let position = [384, 0][side_idx] + piece_idx * 64 + sq_idx;
@@ -227,18 +232,21 @@ impl State {
         let b = &self.board;
         let occ = b.occupied();
 
-        let flip_square = match (stm == Color::BLACK, b.king_of(stm).file() <= File::D) {
-            (true, true) => |sq: Square| sq.flip_rank().flip_file(),
-            (true, false) => |sq: Square| sq.flip_rank(),
-            (false, true) => |sq: Square| sq.flip_file(),
-            (false, false) => |sq: Square| sq,
-        };
+        let flip = (if stm == Color::BLACK {
+            Square::FLIP_RANK_MASK
+        } else {
+            0
+        }) | (if b.king_of(stm).file() <= File::D {
+            Square::FLIP_FILE_MASK
+        } else {
+            0
+        });
 
         for sq in occ {
             let piece = b.piece_at(sq);
             let color = b.color_at(sq);
 
-            let sq_idx = flip_square(sq).index();
+            let sq_idx = sq.index() ^ flip;
             let piece_idx = piece.index();
             let side_idx = usize::from(color != stm);
 
@@ -255,21 +263,21 @@ impl State {
         let b = self.board;
         let color = self.side_to_move();
 
-        let flip_square = match (color == Color::BLACK, b.king_of(color).file() <= File::D) {
-            (true, true) => |sq: Square| sq.flip_rank().flip_file(),
-            (true, false) => |sq: Square| sq.flip_rank(),
-            (false, true) => |sq: Square| sq.flip_file(),
-            (false, false) => |sq: Square| sq,
-        };
+        let flip = (if color == Color::BLACK {
+            Square::FLIP_RANK_MASK
+        } else {
+            0
+        }) | (if b.king_of(color).file() <= File::D {
+            Square::FLIP_FILE_MASK
+        } else {
+            0
+        });
 
         mvs.iter().map(move |mv| {
             let piece = b.piece_at(mv.from());
 
-            let from_sq = mv.from();
-            let to_sq = mv.to();
-
-            let flip_from = flip_square(from_sq);
-            let flip_to = flip_square(to_sq);
+            let flip_from = Square::from(mv.from().index() ^ flip);
+            let flip_to = Square::from(mv.to().index() ^ flip);
 
             let adj_to = if mv.is_castle() {
                 flip_to
