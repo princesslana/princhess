@@ -168,24 +168,10 @@ impl State {
         let stm_ksq = b.king_of(stm);
         let nstm_ksq = b.king_of(!stm);
 
-        let stm_flip = (if stm == Color::BLACK {
-            Square::FLIP_RANK_MASK
-        } else {
-            0
-        }) | (if stm_ksq.file() <= File::D {
-            Square::FLIP_FILE_MASK
-        } else {
-            0
-        });
-        let nstm_flip = (if stm == Color::WHITE {
-            Square::FLIP_RANK_MASK
-        } else {
-            0
-        }) | (if nstm_ksq.file() <= File::D {
-            Square::FLIP_FILE_MASK
-        } else {
-            0
-        });
+        let stm_flip = [0, Square::FLIP_RANK_MASK][usize::from(stm == Color::BLACK)]
+            | [0, Square::FLIP_FILE_MASK][usize::from(stm_ksq.file() <= File::D)];
+        let nstm_flip = [0, Square::FLIP_RANK_MASK][usize::from(stm == Color::WHITE)]
+            | [0, Square::FLIP_FILE_MASK][usize::from(nstm_ksq.file() <= File::D)];
 
         let stm_king_bucket = Self::king_bucket(Square::from(stm_ksq.index() ^ stm_flip));
         let nstm_king_bucket = Self::king_bucket(Square::from(nstm_ksq.index() ^ nstm_flip));
@@ -232,15 +218,8 @@ impl State {
         let b = &self.board;
         let occ = b.occupied();
 
-        let flip = (if stm == Color::BLACK {
-            Square::FLIP_RANK_MASK
-        } else {
-            0
-        }) | (if b.king_of(stm).file() <= File::D {
-            Square::FLIP_FILE_MASK
-        } else {
-            0
-        });
+        let flip = [0, Square::FLIP_RANK_MASK][usize::from(stm == Color::BLACK)]
+            | [0, Square::FLIP_FILE_MASK][usize::from(b.king_of(stm).file() <= File::D)];
 
         for sq in occ {
             let piece = b.piece_at(sq);
@@ -263,15 +242,8 @@ impl State {
         let b = self.board;
         let color = self.side_to_move();
 
-        let flip = (if color == Color::BLACK {
-            Square::FLIP_RANK_MASK
-        } else {
-            0
-        }) | (if b.king_of(color).file() <= File::D {
-            Square::FLIP_FILE_MASK
-        } else {
-            0
-        });
+        let flip = [0, Square::FLIP_RANK_MASK][usize::from(color == Color::BLACK)]
+            | [0, Square::FLIP_FILE_MASK][usize::from(b.king_of(color).file() <= File::D)];
 
         mvs.iter().map(move |mv| {
             let piece = b.piece_at(mv.from());
