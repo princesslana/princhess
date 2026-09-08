@@ -1,6 +1,6 @@
 use std::fmt::{self, Display, Formatter};
 use std::hint;
-use std::ops::{Add, BitAnd, Index, IndexMut, Sub};
+use std::ops::{Add, BitAnd, BitXor, Index, IndexMut, Sub};
 
 use crate::chess::Bitboard;
 
@@ -36,6 +36,9 @@ impl Square {
 
     pub const COUNT: usize = 64;
 
+    pub const FLIP_RANK_MASK: u8 = 0x38;
+    pub const FLIP_FILE_MASK: u8 = 0x07;
+
     pub fn from_coords(file: File, rank: Rank) -> Square {
         Square((rank.0 * 8) + file.0)
     }
@@ -51,14 +54,6 @@ impl Square {
 
     pub fn file(self) -> File {
         File(self.0 & 7)
-    }
-
-    pub fn flip_rank(self) -> Square {
-        Square(self.0 ^ 0x38)
-    }
-
-    pub fn flip_file(self) -> Square {
-        Square(self.0 ^ 7)
     }
 
     #[must_use]
@@ -179,6 +174,14 @@ impl BitAnd<Bitboard> for Rank {
 
     fn bitand(self, rhs: Bitboard) -> Self::Output {
         Bitboard::from(self) & rhs
+    }
+}
+
+impl BitXor<u8> for Square {
+    type Output = Square;
+
+    fn bitxor(self, rhs: u8) -> Self::Output {
+        Square(self.0 ^ rhs)
     }
 }
 

@@ -168,22 +168,13 @@ impl State {
         let stm_ksq = b.king_of(stm);
         let nstm_ksq = b.king_of(!stm);
 
-        let flip_stm = |sq: Square| match (stm == Color::BLACK, stm_ksq.file() <= File::D) {
-            (true, true) => sq.flip_rank().flip_file(),
-            (true, false) => sq.flip_rank(),
-            (false, true) => sq.flip_file(),
-            (false, false) => sq,
-        };
+        let stm_flip = [0u8, Square::FLIP_RANK_MASK][usize::from(stm == Color::BLACK)]
+            | [0u8, Square::FLIP_FILE_MASK][usize::from(stm_ksq.file() <= File::D)];
+        let nstm_flip = [0u8, Square::FLIP_RANK_MASK][usize::from(stm == Color::WHITE)]
+            | [0u8, Square::FLIP_FILE_MASK][usize::from(nstm_ksq.file() <= File::D)];
 
-        let flip_nstm = |sq: Square| match (stm == Color::WHITE, nstm_ksq.file() <= File::D) {
-            (true, true) => sq.flip_rank().flip_file(),
-            (true, false) => sq.flip_rank(),
-            (false, true) => sq.flip_file(),
-            (false, false) => sq,
-        };
-
-        let stm_king_bucket = Self::king_bucket(flip_stm(stm_ksq));
-        let nstm_king_bucket = Self::king_bucket(flip_nstm(nstm_ksq));
+        let stm_king_bucket = Self::king_bucket(stm_ksq ^ stm_flip);
+        let nstm_king_bucket = Self::king_bucket(nstm_ksq ^ nstm_flip);
 
         for sq in b.occupied() {
             let piece = b.piece_at(sq);
@@ -198,7 +189,7 @@ impl State {
             let threat_bucket = usize::from(threatened) * 2 + usize::from(defended);
 
             {
-                let sq_idx = flip_stm(sq).index();
+                let sq_idx = (sq ^ stm_flip).index();
 
                 let bucket = threat_bucket * NUMBER_KING_BUCKETS + stm_king_bucket;
                 let position = [0, 384][side_idx] + piece_idx * 64 + sq_idx;
@@ -208,7 +199,7 @@ impl State {
             }
 
             {
-                let sq_idx = flip_nstm(sq).index();
+                let sq_idx = (sq ^ nstm_flip).index();
 
                 let bucket = threat_bucket * NUMBER_KING_BUCKETS + nstm_king_bucket;
                 let position = [384, 0][side_idx] + piece_idx * 64 + sq_idx;
@@ -227,18 +218,14 @@ impl State {
         let b = &self.board;
         let occ = b.occupied();
 
-        let flip_square = match (stm == Color::BLACK, b.king_of(stm).file() <= File::D) {
-            (true, true) => |sq: Square| sq.flip_rank().flip_file(),
-            (true, false) => |sq: Square| sq.flip_rank(),
-            (false, true) => |sq: Square| sq.flip_file(),
-            (false, false) => |sq: Square| sq,
-        };
+        let flip = [0u8, Square::FLIP_RANK_MASK][usize::from(stm == Color::BLACK)]
+            | [0u8, Square::FLIP_FILE_MASK][usize::from(b.king_of(stm).file() <= File::D)];
 
         for sq in occ {
             let piece = b.piece_at(sq);
             let color = b.color_at(sq);
 
-            let sq_idx = flip_square(sq).index();
+            let sq_idx = (sq ^ flip).index();
             let piece_idx = piece.index();
             let side_idx = usize::from(color != stm);
 
@@ -255,21 +242,14 @@ impl State {
         let b = self.board;
         let color = self.side_to_move();
 
-        let flip_square = match (color == Color::BLACK, b.king_of(color).file() <= File::D) {
-            (true, true) => |sq: Square| sq.flip_rank().flip_file(),
-            (true, false) => |sq: Square| sq.flip_rank(),
-            (false, true) => |sq: Square| sq.flip_file(),
-            (false, false) => |sq: Square| sq,
-        };
+        let flip = [0u8, Square::FLIP_RANK_MASK][usize::from(color == Color::BLACK)]
+            | [0u8, Square::FLIP_FILE_MASK][usize::from(b.king_of(color).file() <= File::D)];
 
         mvs.iter().map(move |mv| {
             let piece = b.piece_at(mv.from());
 
-            let from_sq = mv.from();
-            let to_sq = mv.to();
-
-            let flip_from = flip_square(from_sq);
-            let flip_to = flip_square(to_sq);
+            let flip_from = mv.from() ^ flip;
+            let flip_to = mv.to() ^ flip;
 
             let adj_to = if mv.is_castle() {
                 flip_to
