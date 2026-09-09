@@ -6,24 +6,20 @@ use std::process;
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use chrono::Utc;
-use crossterm::cursor;
-use crossterm::event::{poll, read, Event, KeyCode};
-use crossterm::ExecutableCommand;
-use ratatui::backend::CrosstermBackend;
 use ratatui::layout::{Alignment, Constraint, Direction, Layout};
 use ratatui::style::{Color, Style};
 use ratatui::text::Span;
 use ratatui::widgets::{Block, Borders, Gauge, Paragraph};
-use ratatui::{Frame, Terminal, TerminalOptions, Viewport};
+use ratatui::Frame;
 use toml::{Table, Value};
 
 use princhess::math::Rng;
 use princhess_train::args::Args;
 use princhess_train::data::TrainingPosition;
-use princhess_train::tui::{self, RawModeGuard};
+use princhess_train::tui;
 
 #[derive(Clone)]
 struct FileInfo {
@@ -845,45 +841,14 @@ fn main() {
 }
 
 fn run_tui(files: &[FileInfo], progress: &ProgressState) -> io::Result<()> {
-    let stdout = io::stdout();
-    let backend = CrosstermBackend::new(stdout);
-    let mut terminal = Terminal::with_options(
-        backend,
-        TerminalOptions {
-            viewport: Viewport::Inline(13),
-        },
-    )?;
-
-    let _guard = RawModeGuard::enable()?;
-
-    let result = (|| -> io::Result<()> {
-        loop {
-            terminal.draw(|f| render_tui(f, files, progress))?;
-
-            if progress.interleave_complete.load(Ordering::Relaxed)
+    tui::run_inline_tui(
+        13,
+        || {
+            progress.interleave_complete.load(Ordering::Relaxed)
                 || progress.stop_signal.load(Ordering::Relaxed)
-            {
-                break;
-            }
-
-            if poll(Duration::from_millis(100))? {
-                if let Event::Key(key) = read()? {
-                    if key.code == KeyCode::Char('c')
-                        && key
-                            .modifiers
-                            .contains(crossterm::event::KeyModifiers::CONTROL)
-                    {
-                        progress.stop_signal.store(true, Ordering::Relaxed);
-                        break;
-                    }
-                }
-            }
-        }
-        Ok(())
-    })();
-
-    let viewport_area = terminal.get_frame().area();
-    io::stdout().execute(cursor::MoveTo(0, viewport_area.bottom()))?;
-
-    result
+        },
+        || progress.stop_signal.store(true, Ordering::Relaxed),
+        || {},
+        |f| render_tui(f, files, progress),
+    )
 }

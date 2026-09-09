@@ -6,21 +6,14 @@ use std::path::Path;
 use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU32, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use arrayvec::ArrayVec;
 use chrono::Utc;
-use crossterm::cursor;
-use crossterm::event::{poll, read, Event, KeyCode};
-use crossterm::ExecutableCommand;
-use ratatui::backend::CrosstermBackend;
-use ratatui::layout::{Alignment, Constraint, Direction, Layout};
-use ratatui::style::{Color, Style};
-use ratatui::text::Span;
-use ratatui::widgets::{
-    Axis, Block, Borders, Chart, Dataset, Gauge, GraphType, Paragraph, Sparkline,
-};
-use ratatui::{Frame, Terminal, TerminalOptions, Viewport};
+use ratatui::layout::{Constraint, Direction, Layout};
+use ratatui::style::Color;
+use ratatui::widgets::{Block, Borders, Paragraph};
+use ratatui::Frame;
 use scc::{Guard, Queue};
 use toml::{Table, Value};
 
@@ -38,7 +31,7 @@ use princhess_train::neural::{
     AdamWOptimizer, LRScheduler, PolynomialWarmupDecayLRScheduler, SparseVector,
 };
 use princhess_train::system;
-use princhess_train::tui::{self, RawModeGuard};
+use princhess_train::tui;
 
 const BATCHES_PER_SUPER_BATCH: usize = 6_104;
 const TOTAL_SUPER_BATCHES: usize = 35;
@@ -544,77 +537,35 @@ fn run_tui(
     stop_signal: Arc<AtomicBool>,
     config: TrainingConfig,
 ) -> io::Result<()> {
-    let stdout = io::stdout();
-    let backend = CrosstermBackend::new(stdout);
-    let mut terminal = Terminal::with_options(
-        backend,
-        TerminalOptions {
-            viewport: Viewport::Inline(TUI_TOTAL_HEIGHT),
-        },
-    )?;
+    let stop_clone = Arc::clone(&stop_signal);
+    let mut last_sample_time = Instant::now();
 
-    let _guard = RawModeGuard::enable()?;
-
-    let result = (|| -> io::Result<()> {
-        let mut last_sample_time = Instant::now();
-
-        loop {
-            if stop_signal.load(Ordering::Relaxed) {
-                break;
-            }
-
-            terminal.draw(|f| render_tui(f, stats, &config))?;
-
-            // Update rate samples periodically
+    tui::run_inline_tui(
+        TUI_TOTAL_HEIGHT,
+        || stop_signal.load(Ordering::Relaxed),
+        || stop_clone.store(true, Ordering::Relaxed),
+        || {
             let now = Instant::now();
             let elapsed = now.duration_since(last_sample_time).as_secs();
             if elapsed >= SAMPLE_INTERVAL_SECS {
                 let current_positions = stats.total_positions_processed.load(Ordering::Relaxed);
                 let last_positions = stats.last_sample_positions.load(Ordering::Relaxed);
-
                 if last_positions > 0 {
                     let positions_diff = current_positions.saturating_sub(last_positions);
                     let rate_per_hour = (positions_diff * 3600) / elapsed;
-
                     let _ = stats.recent_rates.push(rate_per_hour);
-
                     while stats.recent_rates.len() > MAX_RATE_SAMPLES {
                         let _ = stats.recent_rates.pop();
                     }
                 }
-
                 stats
                     .last_sample_positions
                     .store(current_positions, Ordering::Relaxed);
                 last_sample_time = now;
             }
-
-            // Check for key presses (Ctrl-C to quit)
-            if poll(Duration::from_millis(100))? {
-                if let Event::Key(key) = read()? {
-                    if key.code == KeyCode::Char('c')
-                        && key
-                            .modifiers
-                            .contains(crossterm::event::KeyModifiers::CONTROL)
-                    {
-                        stop_signal.store(true, Ordering::Relaxed);
-                        break;
-                    }
-                }
-            }
-        }
-
-        // Final draw to show completed state
-        terminal.draw(|f| render_tui(f, stats, &config))?;
-
-        Ok(())
-    })();
-
-    // Position cursor at the end of the viewport
-    let viewport_area = terminal.get_frame().area();
-    io::stdout().execute(cursor::MoveTo(0, viewport_area.bottom()))?;
-    io::stdout().execute(cursor::Show)?;
-    result
+        },
+        |f| render_tui(f, stats, &config),
+    )
 }
 
 fn render_tui(frame: &mut Frame, stats: &TrainingStats, config: &TrainingConfig) {
@@ -622,241 +573,100 @@ fn render_tui(frame: &mut Frame, stats: &TrainingStats, config: &TrainingConfig)
         .direction(Direction::Vertical)
         .margin(1)
         .constraints([
-            Constraint::Length(8),  // Progress section (with 2 sparklines)
-            Constraint::Length(4),  // Dataset / Network info boxes
-            Constraint::Length(6),  // Metrics / Piece Accuracy boxes
+            Constraint::Length(8),  // Progress
+            Constraint::Length(4),  // Dataset / Network
+            Constraint::Length(6),  // Metrics / Piece Accuracy
             Constraint::Length(10), // Loss chart
             Constraint::Length(10), // Accuracy chart
         ])
         .split(frame.area());
 
-    render_progress(frame, chunks[0], stats, config);
-    render_dataset_boxes(frame, chunks[1], stats, config);
-    render_info(frame, chunks[2], stats);
-    render_loss_chart(frame, chunks[3], stats);
-    render_accuracy_chart(frame, chunks[4], stats);
-}
-
-fn render_dataset_boxes(
-    frame: &mut Frame,
-    area: ratatui::layout::Rect,
-    stats: &TrainingStats,
-    config: &TrainingConfig,
-) {
-    let cols = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
-        .split(area);
-
-    let dataset_block = Block::default().borders(Borders::ALL).title("Dataset");
-    let dataset_inner = dataset_block.inner(cols[0]);
-    frame.render_widget(dataset_block, cols[0]);
-    frame.render_widget(
-        Paragraph::new(format!(
-            "Input: {}\nPositions: {:.1}M  Phase: eg",
-            config.input_file,
-            config.data_positions as f64 / 1_000_000.0,
-        )),
-        dataset_inner,
-    );
-
-    let network_block = Block::default().borders(Borders::ALL).title("Network");
-    let network_inner = network_block.inner(cols[1]);
-    frame.render_widget(network_block, cols[1]);
-    let last_saved = stats
-        .last_saved_net
-        .lock()
-        .unwrap()
-        .clone()
-        .unwrap_or_else(|| "None".to_string());
-    frame.render_widget(
-        Paragraph::new(format!(
-            "{}\nLast saved: {}",
-            config.network_info, last_saved
-        )),
-        network_inner,
-    );
-}
-
-fn render_progress(
-    frame: &mut Frame,
-    area: ratatui::layout::Rect,
-    stats: &TrainingStats,
-    config: &TrainingConfig,
-) {
-    let block = Block::default().borders(Borders::ALL).title("Progress");
-    let inner = block.inner(area);
-    frame.render_widget(block, area);
-
-    let layout = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Length(1), // Time/rate/ETA info
-            Constraint::Length(1), // Overall progress bar
-            Constraint::Length(1), // Current super batch progress bar
-            Constraint::Length(1), // File read progress bar
-            Constraint::Length(1), // Sparkline for processing rate
-            Constraint::Length(1), // Sparkline for learning rate
-        ])
-        .split(inner);
-
-    // Time info
     let elapsed = stats.start_time.elapsed();
-    let total_batches_done = stats.current_super_batch.load(Ordering::Relaxed)
-        * BATCHES_PER_SUPER_BATCH
-        + stats.current_batch_in_super.load(Ordering::Relaxed);
-    let total_batches = TOTAL_SUPER_BATCHES * BATCHES_PER_SUPER_BATCH;
-
+    let super_batch = stats.current_super_batch.load(Ordering::Relaxed);
+    let batch_in_super = stats.current_batch_in_super.load(Ordering::Relaxed);
+    let total_batches_done = super_batch * BATCHES_PER_SUPER_BATCH + batch_in_super;
     let batches_per_sec = if elapsed.as_secs() > 0 {
         total_batches_done as f64 / elapsed.as_secs_f64()
     } else {
         0.0
     };
-
-    let samples_per_sec = batches_per_sec * BATCH_SIZE as f64;
-
-    let batches_remaining = (total_batches as f32 - total_batches_done as f32).max(0.0);
+    let batches_remaining = ((TOTAL_SUPER_BATCHES * BATCHES_PER_SUPER_BATCH) as f32
+        - total_batches_done as f32)
+        .max(0.0);
     let eta_secs = if batches_per_sec > 0.0 {
         (batches_remaining / batches_per_sec as f32) as u64
     } else {
         0
     };
 
-    let time_chunks = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([
-            Constraint::Percentage(33),
-            Constraint::Percentage(34),
-            Constraint::Percentage(33),
-        ])
-        .split(layout[0]);
-
-    frame.render_widget(
-        Paragraph::new(tui::format_elapsed(elapsed.as_secs())).alignment(Alignment::Left),
-        time_chunks[0],
-    );
-
-    frame.render_widget(
-        Paragraph::new(format!("{:.1}K pos/sec", samples_per_sec / 1000.0))
-            .alignment(Alignment::Center),
-        time_chunks[1],
-    );
-
-    frame.render_widget(
-        Paragraph::new(tui::format_eta(eta_secs)).alignment(Alignment::Right),
-        time_chunks[2],
-    );
-
-    // Overall progress
-    let current_sb = stats.current_super_batch.load(Ordering::Relaxed);
-    let overall_ratio = current_sb as f64 / TOTAL_SUPER_BATCHES as f64;
-    let overall_label = Span::styled(
-        format!(
-            "{:>6} / {:>6}  ({:>5.1}%)",
-            current_sb,
-            TOTAL_SUPER_BATCHES,
-            overall_ratio * 100.0,
-        ),
-        Style::default().fg(Color::White),
-    );
-    frame.render_widget(
-        Gauge::default()
-            .gauge_style(Style::default().fg(Color::Green))
-            .ratio(overall_ratio.min(1.0))
-            .label(overall_label),
-        layout[1],
-    );
-
-    // Current super batch progress
-    let batch_in_sb = stats.current_batch_in_super.load(Ordering::Relaxed);
-    let sb_ratio = batch_in_sb as f64 / BATCHES_PER_SUPER_BATCH as f64;
-    let sb_label = Span::styled(
-        format!(
-            "{:>6} / {:>6}  ({:>5.1}%)",
-            batch_in_sb,
-            BATCHES_PER_SUPER_BATCH,
-            sb_ratio * 100.0,
-        ),
-        Style::default().fg(Color::White),
-    );
-    frame.render_widget(
-        Gauge::default()
-            .gauge_style(Style::default().fg(Color::Blue))
-            .ratio(sb_ratio.min(1.0))
-            .label(sb_label),
-        layout[2],
-    );
-
-    // File read progress
-    let total_positions = config.data_positions as u64;
-    let consumed_positions = stats.positions_consumed.load(Ordering::Relaxed);
-    let file_ratio = if total_positions > 0 {
-        (consumed_positions as f64 / total_positions as f64).min(1.0)
-    } else {
-        0.0
-    };
-    let file_label = Span::styled(
-        format!(
-            "{:>6.1} / {:>6.1}M ({:>5.1}%)",
-            consumed_positions as f64 / 1_000_000.0,
-            total_positions as f64 / 1_000_000.0,
-            file_ratio * 100.0,
-        ),
-        Style::default().fg(Color::White),
-    );
-    frame.render_widget(
-        Gauge::default()
-            .gauge_style(Style::default().fg(Color::Yellow))
-            .ratio(file_ratio)
-            .label(file_label),
-        layout[3],
-    );
-
-    // Sparkline for processing rate
     let guard = Guard::new();
-    let recent_rates: Vec<u64> = stats.recent_rates.iter(&guard).copied().collect();
-    if !recent_rates.is_empty() {
-        let max_bars = layout[4].width as usize;
-        let data: Vec<u64> = if recent_rates.len() <= max_bars {
-            recent_rates
-        } else {
-            recent_rates
-                .iter()
-                .rev()
-                .take(max_bars)
-                .rev()
-                .copied()
-                .collect()
-        };
-        let sparkline = Sparkline::default()
-            .data(&data)
-            .style(Style::default().fg(Color::Cyan));
-        frame.render_widget(sparkline, layout[4]);
-    }
+    tui::render_training_progress(
+        frame,
+        chunks[0],
+        &tui::TrainingProgressView {
+            elapsed_secs: elapsed.as_secs(),
+            samples_per_sec: batches_per_sec * BATCH_SIZE as f64,
+            eta_secs,
+            super_batch,
+            total_super_batches: TOTAL_SUPER_BATCHES,
+            batch_in_super,
+            batches_per_super_batch: BATCHES_PER_SUPER_BATCH,
+            positions_consumed: stats.positions_consumed.load(Ordering::Relaxed),
+            data_positions: config.data_positions as u64,
+            recent_rates: stats.recent_rates.iter(&guard).copied().collect(),
+            lr_history: stats.lr_history.iter(&guard).copied().collect(),
+            lr_samples_per_super_batch: LR_SAMPLES_PER_SUPER_BATCH,
+        },
+    );
 
-    // Sparkline for learning rate
-    let lr_samples: Vec<f32> = stats.lr_history.iter(&guard).copied().collect();
-    if !lr_samples.is_empty() {
-        let sparkline_width = layout[5].width as usize;
-        let total_expected_samples = TOTAL_SUPER_BATCHES * LR_SAMPLES_PER_SUPER_BATCH;
+    let last_saved = stats.last_saved_net.lock().unwrap().clone();
+    tui::render_dataset_boxes(
+        frame,
+        chunks[1],
+        &tui::DatasetBoxesView {
+            input_file: &config.input_file,
+            data_positions: config.data_positions,
+            phase: Some("eg"),
+            network_info: &config.network_info,
+            last_saved: last_saved.as_deref(),
+        },
+    );
 
-        // Map full training span to widget width
-        let data: Vec<u64> = (0..sparkline_width)
-            .map(|i| {
-                let sample_idx = (i * total_expected_samples) / sparkline_width;
-                if sample_idx < lr_samples.len() {
-                    (lr_samples[sample_idx] * 1_000_000.0) as u64
-                } else {
-                    0 // Haven't reached this point in training yet
-                }
-            })
-            .collect();
+    render_info(frame, chunks[2], stats);
 
-        let lr_sparkline = Sparkline::default()
-            .data(&data)
-            .style(Style::default().fg(Color::Magenta));
-        frame.render_widget(lr_sparkline, layout[5]);
-    }
+    let loss_history: Vec<f32> = stats.loss_history.iter(&guard).copied().collect();
+    tui::render_history_chart(
+        frame,
+        chunks[3],
+        &tui::HistoryChartView {
+            title: "Loss",
+            data: &loss_history,
+            x_bound: TOTAL_SUPER_BATCHES as f64,
+            y_range_fallback: (0.0, 1.0),
+            y_max_clamp: None,
+            y_label_precision: 3,
+            color: Color::Red,
+        },
+    );
+
+    let acc_history: Vec<f32> = stats
+        .accuracy_history
+        .iter(&guard)
+        .map(|v| v * 100.0)
+        .collect();
+    tui::render_history_chart(
+        frame,
+        chunks[4],
+        &tui::HistoryChartView {
+            title: "Accuracy",
+            data: &acc_history,
+            x_bound: TOTAL_SUPER_BATCHES as f64,
+            y_range_fallback: (0.0, 100.0),
+            y_max_clamp: Some(100.0),
+            y_label_precision: 1,
+            color: Color::Green,
+        },
+    );
 }
 
 fn render_info(frame: &mut Frame, area: ratatui::layout::Rect, stats: &TrainingStats) {
@@ -964,86 +774,6 @@ fn render_info(frame: &mut Frame, area: ratatui::layout::Rect, stats: &TrainingS
         Paragraph::new(format!("Info gain:  {}", fmt_info_gain(&piece_info_gain))),
         piece_rows[3],
     );
-}
-
-fn render_loss_chart(frame: &mut Frame, area: ratatui::layout::Rect, stats: &TrainingStats) {
-    let guard = Guard::new();
-    let mut loss_data: Vec<(f64, f64)> = Vec::new();
-
-    for (idx, loss_entry) in stats.loss_history.iter(&guard).enumerate() {
-        loss_data.push(((idx + 1) as f64, *loss_entry as f64));
-    }
-
-    let (min_loss, max_loss) = if loss_data.is_empty() {
-        (0.0, 1.0)
-    } else {
-        let max = loss_data.iter().map(|(_, y)| *y).fold(0.0f64, f64::max);
-        let min = loss_data.iter().map(|(_, y)| *y).fold(f64::MAX, f64::min);
-        let range = max - min;
-        if range < 1e-6 {
-            (0.0, max * 2.0)
-        } else {
-            let buffer = range * 0.1;
-            ((min - buffer).max(0.0), max + buffer)
-        }
-    };
-
-    let datasets = vec![Dataset::default()
-        .name("Loss")
-        .marker(ratatui::symbols::Marker::Braille)
-        .graph_type(GraphType::Line)
-        .style(Style::default().fg(Color::Red))
-        .data(&loss_data)];
-
-    let chart = Chart::new(datasets)
-        .block(Block::default().borders(Borders::ALL).title("Loss"))
-        .x_axis(Axis::default().bounds([0.0, TOTAL_SUPER_BATCHES as f64]))
-        .y_axis(Axis::default().bounds([min_loss, max_loss]).labels(vec![
-            Span::raw(format!("{:.3}", min_loss)),
-            Span::raw(format!("{:.3}", max_loss)),
-        ]));
-
-    frame.render_widget(chart, area);
-}
-
-fn render_accuracy_chart(frame: &mut Frame, area: ratatui::layout::Rect, stats: &TrainingStats) {
-    let guard = Guard::new();
-    let mut acc_data: Vec<(f64, f64)> = Vec::new();
-
-    for (idx, acc_entry) in stats.accuracy_history.iter(&guard).enumerate() {
-        acc_data.push(((idx + 1) as f64, (*acc_entry * 100.0) as f64));
-    }
-
-    let (min_acc, max_acc) = if acc_data.is_empty() {
-        (0.0, 100.0)
-    } else {
-        let max = acc_data.iter().map(|(_, y)| *y).fold(0.0f64, f64::max);
-        let min = acc_data.iter().map(|(_, y)| *y).fold(f64::MAX, f64::min);
-        let range = max - min;
-        if range < 1e-6 {
-            (0.0, 100.0)
-        } else {
-            let buffer = range * 0.1;
-            ((min - buffer).max(0.0), (max + buffer).min(100.0))
-        }
-    };
-
-    let datasets = vec![Dataset::default()
-        .name("Accuracy")
-        .marker(ratatui::symbols::Marker::Braille)
-        .graph_type(GraphType::Line)
-        .style(Style::default().fg(Color::Green))
-        .data(&acc_data)];
-
-    let chart = Chart::new(datasets)
-        .block(Block::default().borders(Borders::ALL).title("Accuracy"))
-        .x_axis(Axis::default().bounds([0.0, TOTAL_SUPER_BATCHES as f64]))
-        .y_axis(Axis::default().bounds([min_acc, max_acc]).labels(vec![
-            Span::raw(format!("{:.1}", min_acc)),
-            Span::raw(format!("{:.1}", max_acc)),
-        ]));
-
-    frame.render_widget(chart, area);
 }
 
 #[allow(clippy::too_many_arguments)]

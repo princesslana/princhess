@@ -16,15 +16,11 @@ use std::time::{Duration, Instant};
 use arrayvec::ArrayVec;
 use bytemuck::allocation;
 use chrono::Utc;
-use crossterm::cursor;
-use crossterm::event::{poll, read, Event, KeyCode};
-use crossterm::ExecutableCommand;
-use ratatui::backend::CrosstermBackend;
 use ratatui::layout::{Alignment, Constraint, Direction, Layout};
 use ratatui::style::{Color, Style};
 use ratatui::text::Span;
 use ratatui::widgets::{Block, Borders, Gauge, Paragraph, Sparkline};
-use ratatui::{Frame, Terminal, TerminalOptions, Viewport};
+use ratatui::Frame;
 use scc::{Guard, Queue};
 use toml::{Table, Value};
 
@@ -37,7 +33,7 @@ use princhess::state::{self, State};
 use princhess_train::args::Args;
 use princhess_train::data::TrainingPosition;
 use princhess_train::system;
-use princhess_train::tui::{self, RawModeGuard};
+use princhess_train::tui;
 
 const HASH_SIZE_MB: usize = 64;
 
@@ -1481,76 +1477,35 @@ fn run_tui(
     threads: u16,
     max_positions: u64,
 ) -> io::Result<()> {
-    let stdout = io::stdout();
-    let backend = CrosstermBackend::new(stdout);
-    let mut terminal = Terminal::with_options(
-        backend,
-        TerminalOptions {
-            viewport: Viewport::Inline(tui_total_height(threads)),
-        },
-    )?;
+    let stop_clone = Arc::clone(stop_signal);
+    let mut last_sample_time = Instant::now();
 
-    let _guard = RawModeGuard::enable()?;
-
-    let result = (|| -> io::Result<()> {
-        let mut last_sample_time = Instant::now();
-
-        loop {
-            let view = stats.view(threads, max_positions);
-            terminal.draw(|f| render_tui(f, &view))?;
-
-            if stats.active_threads.load(Ordering::Relaxed) == 0
-                || stop_signal.load(Ordering::Relaxed)
-            {
-                break;
-            }
-
+    tui::run_inline_tui(
+        tui_total_height(threads),
+        || stats.active_threads.load(Ordering::Relaxed) == 0 || stop_signal.load(Ordering::Relaxed),
+        || stop_clone.store(true, Ordering::Relaxed),
+        || {
             let now = Instant::now();
             let elapsed = now.duration_since(last_sample_time).as_secs();
-
             if elapsed >= SAMPLE_INTERVAL_SECS {
                 last_sample_time = now;
-
                 let current_positions = stats.positions.load(Ordering::Relaxed);
                 let last_positions = stats.last_sample_positions.load(Ordering::Relaxed);
-
                 if last_positions > 0 {
                     let positions_diff = current_positions.saturating_sub(last_positions);
                     let rate_per_hour = (positions_diff * 3600) / elapsed;
-
                     let _ = stats.recent_rates.push(rate_per_hour);
-
                     while stats.recent_rates.len() > MAX_SAMPLES {
                         let _ = stats.recent_rates.pop();
                     }
                 }
-
                 stats
                     .last_sample_positions
                     .store(current_positions, Ordering::Relaxed);
             }
-
-            if poll(Duration::from_millis(100))? {
-                if let Event::Key(key) = read()? {
-                    if key.code == KeyCode::Char('c')
-                        && key
-                            .modifiers
-                            .contains(crossterm::event::KeyModifiers::CONTROL)
-                    {
-                        stop_signal.store(true, Ordering::Relaxed);
-                        break;
-                    }
-                }
-            }
-        }
-        Ok(())
-    })();
-
-    // Position cursor at the end of the viewport
-    let viewport_area = terminal.get_frame().area();
-    io::stdout().execute(cursor::MoveTo(0, viewport_area.bottom()))?;
-
-    result
+        },
+        |f| render_tui(f, &stats.view(threads, max_positions)),
+    )
 }
 
 fn write_toml(path: &str, stats: &Stats, files: &[String], threads: u16, max_positions: u64) {
