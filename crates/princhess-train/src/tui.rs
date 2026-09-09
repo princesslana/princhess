@@ -305,7 +305,12 @@ pub fn render_history_chart(frame: &mut Frame, area: Rect, view: &HistoryChartVi
         let min = data_pairs.iter().map(|(_, y)| *y).fold(f64::MAX, f64::min);
         let range = max - min;
         if range < 1e-6 {
-            view.y_range_fallback
+            let buffer = (max * 0.1).max(0.1);
+            let y_max = match view.y_max_clamp {
+                Some(clamp) => (max + buffer).min(clamp),
+                None => max + buffer,
+            };
+            ((max - buffer).max(0.0), y_max)
         } else {
             let buffer = range * 0.1;
             let y_max = match view.y_max_clamp {
