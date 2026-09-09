@@ -1,5 +1,5 @@
-input_file = "data/princhess-20260905-0315-803m.data.shuffled"
-loss = 0.03619384765625
+input_file = "data/princhess-20260908-0553-1205m.data.shuffled"
+loss = 0.0359344482421875
 network_info = "(9216->320)*2->1"
 super_batch = 75
 super_batches_total = 75
