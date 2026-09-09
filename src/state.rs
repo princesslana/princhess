@@ -3,8 +3,6 @@ use arrayvec::ArrayVec;
 use crate::chess::{Board, Color, File, Move, MoveList, Square};
 use crate::evaluation;
 use crate::math::Rng;
-use crate::nets::MoveIndex;
-use crate::uci::Tokens;
 
 pub const NUMBER_KING_BUCKETS: usize = 3;
 pub const NUMBER_THREAT_BUCKETS: usize = 4;
@@ -30,36 +28,6 @@ impl State {
         }
     }
 
-    #[must_use]
-    pub fn from_tokens(mut tokens: Tokens, is_chess960: bool) -> Option<Self> {
-        let mut result = match tokens.next()? {
-            "startpos" => Self::default(),
-            "fen" => {
-                let mut s = String::new();
-                for i in 0..6 {
-                    if i != 0 {
-                        s.push(' ');
-                    }
-                    s.push_str(tokens.next()?);
-                }
-                Self::from_fen(&s)
-            }
-            _ => return None,
-        };
-        match tokens.next() {
-            Some("moves") | None => (),
-            Some(_) => return None,
-        }
-        for mov_str in tokens {
-            for mov in result.available_moves() {
-                if mov.to_uci(is_chess960) == mov_str {
-                    result.make_move(mov);
-                    break;
-                }
-            }
-        }
-        Some(result)
-    }
 
     pub fn from_fen(fen: &str) -> Self {
         let board = Board::from_fen(fen);
