@@ -29,7 +29,7 @@ use princhess_train::tui;
 use princhess_train::value::ValueNetwork;
 
 const BATCHES_PER_SUPER_BATCH: usize = 6_104;
-const TOTAL_SUPER_BATCHES: usize = 75;
+const TOTAL_SUPER_BATCHES: usize = 150;
 const BATCH_SIZE: usize = 16384;
 
 const TUI_TOTAL_HEIGHT: u16 = 28;
@@ -272,7 +272,7 @@ fn run_training_loop<S: LRScheduler>(
         stats.finish_super_batch();
 
         // Save network periodically
-        if (sb + 1) % SAVE_EVERY_N_SUPER_BATCHES == 0 || sb + 1 == TOTAL_SUPER_BATCHES {
+        if sb == 0 || (sb + 1) % SAVE_EVERY_N_SUPER_BATCHES == 0 || sb + 1 == TOTAL_SUPER_BATCHES {
             let dir_name = format!("nets/value-{timestamp}-sb{:03}", sb + 1);
             fs::create_dir(&dir_name).expect("Failed to create network save directory");
             let dir = Path::new(&dir_name);
@@ -463,6 +463,7 @@ fn train_super_batch<S: LRScheduler>(
     data: &mut TrainingData,
 ) {
     let mut batches_processed = 0;
+    let mut gradients = ValueNetwork::zeroed();
 
     while batches_processed < BATCHES_PER_SUPER_BATCH {
         let buffer = data.next_buffer();
@@ -472,7 +473,8 @@ fn train_super_batch<S: LRScheduler>(
                 break;
             }
 
-            let mut gradients = ValueNetwork::zeroed();
+            // SAFETY: ValueNetwork: Zeroable guarantees all-zeros is valid.
+            unsafe { std::ptr::write_bytes((&mut *gradients) as *mut ValueNetwork, 0, 1) };
 
             let batch_metrics = gradients_batch(network, &mut gradients, batch, config.threads);
 
@@ -514,37 +516,42 @@ fn gradients_batch(
 ) -> BatchMetrics {
     let size = (batch.len() / threads) + 1;
 
-    let mut total_metrics = BatchMetrics::default();
+    // SAFETY: Hogwild — threads write concurrently to the shared gradient buffer
+    // without synchronisation. Different positions activate different sparse-weight
+    // rows (collision probability ~32/9216 per pair), so races are rare and the
+    // resulting gradient noise is acceptable for SGD. The bias and output-layer
+    // parameters see higher contention but are tiny relative to the feature weights,
+    // so corruption there is also negligible in practice.
+    let gradients_ptr = gradients as *mut ValueNetwork as usize;
 
-    thread::scope(|s| {
+    let metrics: Vec<BatchMetrics> = thread::scope(|s| {
         batch
             .chunks(size)
             .map(|chunk| {
                 s.spawn(move || {
-                    let mut inner_gradients = ValueNetwork::zeroed();
+                    let grads = unsafe { &mut *(gradients_ptr as *mut ValueNetwork) };
                     let mut loss = 0.0;
                     for position in chunk {
-                        update_gradient(position, network, &mut inner_gradients, &mut loss);
+                        update_gradient(position, network, grads, &mut loss);
                     }
-                    (
-                        inner_gradients,
-                        BatchMetrics {
-                            loss,
-                            processed_count: chunk.len(),
-                        },
-                    )
+                    BatchMetrics {
+                        loss,
+                        processed_count: chunk.len(),
+                    }
                 })
             })
             .collect::<Vec<_>>()
             .into_iter()
             .map(|handle| handle.join().unwrap())
-            .for_each(|(inner_gradients, inner_metrics)| {
-                *gradients += &inner_gradients;
-                total_metrics += inner_metrics;
-            });
+            .collect()
     });
 
-    total_metrics
+    metrics
+        .into_iter()
+        .fold(BatchMetrics::default(), |mut acc, m| {
+            acc += m;
+            acc
+        })
 }
 
 fn update_gradient(

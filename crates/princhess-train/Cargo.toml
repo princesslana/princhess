@@ -9,6 +9,7 @@ arrayvec = { workspace = true }
 bytemuck = { workspace = true }
 chrono = "=0.4.45"
 crossterm = "=0.29.0"
+num_cpus = "=1.17.0"
 princhess = { path = "../../", default-features = false }
 ratatui = "=0.30.2"
 scc = { workspace = true }
