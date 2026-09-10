@@ -516,12 +516,13 @@ fn gradients_batch(
 ) -> BatchMetrics {
     let size = (batch.len() / threads) + 1;
 
-    // SAFETY: Hogwild — threads write concurrently to the shared gradient buffer
-    // without synchronisation. Different positions activate different sparse-weight
-    // rows (collision probability ~32/9216 per pair), so races are rare and the
-    // resulting gradient noise is acceptable for SGD. The bias and output-layer
-    // parameters see higher contention but are tiny relative to the feature weights,
-    // so corruption there is also negligible in practice.
+    // SAFETY: Hogwild — this is knowingly unsound (multiple &mut to the same
+    // allocation is UB in Rust's memory model regardless of whether races occur).
+    // We accept this for performance: alternatives (AtomicF32 CAS loops over 5.9M
+    // floats, or per-thread buffers with reduction) are either unavailable on stable
+    // or slower than the per-thread approach we replaced. In practice on x86-64,
+    // sparse-weight rows (~32/9216 active per position) rarely collide, and gradient
+    // noise in the dense output layer is negligible for SGD convergence.
     let gradients_ptr = gradients as *mut ValueNetwork as usize;
 
     let metrics: Vec<BatchMetrics> = thread::scope(|s| {
