@@ -7,6 +7,8 @@ use princhess::state::State;
 use std::fs::File;
 use std::io::{self, ErrorKind, Read, Seek, SeekFrom, Write};
 use std::mem;
+use std::sync::mpsc::{sync_channel, Receiver, SyncSender};
+use std::thread;
 
 #[derive(Clone, Copy, Debug, Pod, Zeroable)]
 #[repr(C)]
@@ -195,9 +197,12 @@ impl From<&TrainingPosition> for State {
 }
 
 pub struct TrainingData {
-    file: File,
-    buf: Vec<u8>,
+    file_positions: usize,
+    full_rx: Receiver<(Vec<u8>, u64)>,
+    empty_tx: SyncSender<Vec<u8>>,
+    current_buf: Vec<u8>,
     positions_consumed: u64,
+    _reader: thread::JoinHandle<()>,
 }
 
 impl TrainingData {
@@ -207,26 +212,59 @@ impl TrainingData {
     #[must_use]
     pub fn new(path: &str) -> Self {
         let file = File::open(path).expect("Failed to open training data file");
-        let positions = file.metadata().unwrap().len() as usize / TrainingPosition::SIZE;
+        let file_positions = file.metadata().unwrap().len() as usize / TrainingPosition::SIZE;
         assert!(
-            positions >= TrainingPosition::BUFFER_COUNT,
-            "Training file has {positions} positions, need at least {} (BUFFER_COUNT)",
+            file_positions >= TrainingPosition::BUFFER_COUNT,
+            "Training file has {file_positions} positions, need at least {} (BUFFER_COUNT)",
             TrainingPosition::BUFFER_COUNT
         );
-        let buf = vec![0u8; TrainingPosition::BUFFER_SIZE];
+
+        let (full_tx, full_rx) = sync_channel(1);
+        let (empty_tx, empty_rx) = sync_channel(1);
+
+        // Seed the reader with one empty buffer so it starts prefetching immediately.
+        empty_tx
+            .send(vec![0u8; TrainingPosition::BUFFER_SIZE])
+            .unwrap();
+
+        let path = path.to_string();
+        let reader = thread::spawn(move || {
+            let mut file = File::open(&path).expect("Failed to open training data file");
+            let mut positions_consumed: u64 = 0;
+
+            while let Ok(mut buf) = empty_rx.recv() {
+                loop {
+                    match file.read_exact(&mut buf) {
+                        Ok(()) => {
+                            positions_consumed += TrainingPosition::BUFFER_COUNT as u64;
+                            if full_tx.send((buf, positions_consumed)).is_err() {
+                                return;
+                            }
+                            break;
+                        }
+                        Err(e) if e.kind() == ErrorKind::UnexpectedEof => {
+                            file.seek(SeekFrom::Start(0)).unwrap();
+                            positions_consumed = 0;
+                        }
+                        Err(e) => panic!("Data read error: {e}"),
+                    }
+                }
+            }
+        });
+
         Self {
-            file,
-            buf,
+            file_positions,
+            full_rx,
+            empty_tx,
+            current_buf: vec![0u8; TrainingPosition::BUFFER_SIZE],
             positions_consumed: 0,
+            _reader: reader,
         }
     }
 
-    /// # Panics
-    ///
-    /// Panics if file metadata cannot be read.
     #[must_use]
     pub fn positions(&self) -> usize {
-        self.file.metadata().unwrap().len() as usize / TrainingPosition::SIZE
+        self.file_positions
     }
 
     #[must_use]
@@ -238,19 +276,12 @@ impl TrainingData {
     ///
     /// Panics on unexpected I/O errors reading the data file.
     pub fn next_buffer(&mut self) -> &[TrainingPosition; TrainingPosition::BUFFER_COUNT] {
-        loop {
-            match self.file.read_exact(&mut self.buf) {
-                Ok(()) => {
-                    self.positions_consumed += TrainingPosition::BUFFER_COUNT as u64;
-                    return TrainingPosition::read_buffer(&self.buf);
-                }
-                Err(e) if e.kind() == ErrorKind::UnexpectedEof => {
-                    self.file.seek(SeekFrom::Start(0)).unwrap();
-                    self.positions_consumed = 0;
-                }
-                Err(e) => panic!("Data read error: {e}"),
-            }
-        }
+        let (new_buf, consumed) = self.full_rx.recv().expect("Reader thread died");
+        // Return the processed buffer to the reader to be refilled, take the new one.
+        let old_buf = std::mem::replace(&mut self.current_buf, new_buf);
+        let _ = self.empty_tx.send(old_buf);
+        self.positions_consumed = consumed;
+        TrainingPosition::read_buffer(&self.current_buf)
     }
 }
 
