@@ -5,6 +5,7 @@ pub mod layers;
 pub mod linear_network;
 pub mod lr_scheduler;
 pub mod matrix;
+pub mod optimizable;
 pub mod optimizer;
 pub mod vector;
 
@@ -15,5 +16,6 @@ pub use layers::*;
 pub use linear_network::*;
 pub use lr_scheduler::*;
 pub use matrix::*;
+pub use optimizable::*;
 pub use optimizer::*;
 pub use vector::*;

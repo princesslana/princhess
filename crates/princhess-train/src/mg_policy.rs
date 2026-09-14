@@ -15,7 +15,7 @@ use princhess::state::State;
 use crate::data::TrainingPosition;
 use crate::nets;
 use crate::neural::{
-    AdamWOptimizer, FeedForwardNetwork, HardTanh, LRScheduler, OutputLayer, SparseConnected,
+    AsParams, FeedForwardNetwork, HardTanh, Optimizable, OutputLayer, SparseConnected,
     SparseConnectedLayers, SparseVector, Vector,
 };
 use crate::policy_subnets::{SeeSplitSubnets, SquareSubnets};
@@ -45,6 +45,7 @@ pub struct MgPolicyForwardCache {
 }
 
 #[allow(clippy::module_name_repetitions)]
+#[repr(C)]
 #[derive(Zeroable)]
 pub struct MgPolicyNetwork {
     ctx: MgCtxNetwork,
@@ -220,28 +221,6 @@ impl MgPolicyNetwork {
         }
     }
 
-    pub fn adamw<S: LRScheduler>(
-        &mut self,
-        g: &Self,
-        m: &mut Self,
-        v: &mut Self,
-        optimizer: &AdamWOptimizer<S>,
-    ) {
-        self.ctx.adamw(&g.ctx, &mut m.ctx, &mut v.ctx, optimizer);
-        self.pawn
-            .adamw(&g.pawn, &mut m.pawn, &mut v.pawn, optimizer);
-        self.knight
-            .adamw(&g.knight, &mut m.knight, &mut v.knight, optimizer);
-        self.bishop
-            .adamw(&g.bishop, &mut m.bishop, &mut v.bishop, optimizer);
-        self.rook
-            .adamw(&g.rook, &mut m.rook, &mut v.rook, optimizer);
-        self.queen
-            .adamw(&g.queen, &mut m.queen, &mut v.queen, optimizer);
-        self.king
-            .adamw(&g.king, &mut m.king, &mut v.king, optimizer);
-    }
-
     pub fn backprop_position(
         &self,
         features: &SparseVector,
@@ -308,6 +287,36 @@ impl MgPolicyNetwork {
         result
     }
 }
+
+const _: () = {
+    assert!(std::mem::size_of::<MgPolicyNetwork>() % std::mem::size_of::<f32>() == 0);
+    assert!(std::mem::align_of::<MgPolicyNetwork>() == std::mem::align_of::<f32>());
+};
+
+impl AsParams for MgPolicyNetwork {
+    fn params(&self) -> &[f32] {
+        // SAFETY: MgPolicyNetwork is #[repr(C)] and composed entirely of f32 values.
+        unsafe {
+            std::slice::from_raw_parts(
+                self as *const Self as *const f32,
+                std::mem::size_of::<Self>() / std::mem::size_of::<f32>(),
+            )
+        }
+    }
+
+    fn params_mut(&mut self) -> &mut [f32] {
+        // SAFETY: same as params()
+        unsafe {
+            std::slice::from_raw_parts_mut(
+                self as *mut Self as *mut f32,
+                std::mem::size_of::<Self>() / std::mem::size_of::<f32>(),
+            )
+        }
+    }
+}
+
+// SAFETY: MgPolicyNetwork is #[repr(C)], composed entirely of f32 with no padding.
+unsafe impl Optimizable for MgPolicyNetwork {}
 
 fn quantize_ctx(ctx: &MgCtxNetwork) -> Box<QuantizedMgCtxNetwork> {
     let mut weights: Box<RawCtxWeights> = allocation::zeroed_box();

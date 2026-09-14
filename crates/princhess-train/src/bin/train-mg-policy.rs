@@ -22,7 +22,6 @@ use princhess::engine::SCALE;
 use princhess::math;
 use princhess::state::State;
 
-use princhess_train::analysis::{write_lr_analysis_toml, LrAnalysisConfig};
 use princhess_train::args::Args;
 use princhess_train::data::TrainingData;
 use princhess_train::data::TrainingPosition;
@@ -34,7 +33,7 @@ use princhess_train::system;
 use princhess_train::tui;
 
 const BATCHES_PER_SUPER_BATCH: usize = 6_104;
-const TOTAL_SUPER_BATCHES: usize = 35;
+const TOTAL_SUPER_BATCHES: usize = 75;
 const BATCH_SIZE: usize = 32768;
 
 const TUI_TOTAL_HEIGHT: u16 = 40;
@@ -90,7 +89,6 @@ struct TrainingConfig {
     network_info: String,
     data_positions: usize,
     threads: usize,
-    scheduler: String,
 }
 
 struct TrainingStats {
@@ -107,10 +105,6 @@ struct TrainingStats {
     // History queues for charting (updated at end of each super batch, single-threaded)
     loss_history: Queue<f32>,
     accuracy_history: Queue<f32>,
-
-    // Per-batch histories for LR analysis (collected at end of training)
-    grad_l1_history: Queue<f32>,
-    lr_full_history: Queue<f32>,
 
     // Rate tracking
     recent_rates: Queue<u64>,
@@ -158,8 +152,6 @@ impl TrainingStats {
             current_count: AtomicUsize::new(0),
             loss_history: Queue::default(),
             accuracy_history: Queue::default(),
-            grad_l1_history: Queue::default(),
-            lr_full_history: Queue::default(),
             recent_rates: Queue::default(),
             last_sample_positions: AtomicU64::new(0),
             current_lr: AtomicU32::new(0),
@@ -389,8 +381,6 @@ fn main() {
     let data_positions = data.positions();
 
     let network = MgPolicyNetwork::random();
-    let momentum = MgPolicyNetwork::zeroed();
-    let velocity = MgPolicyNetwork::zeroed();
 
     let total_steps = (TOTAL_SUPER_BATCHES * BATCHES_PER_SUPER_BATCH) as u32;
     let scheduler = PolynomialWarmupDecayLRScheduler::new(LR, 0.0, total_steps, 1.1);
@@ -399,17 +389,14 @@ fn main() {
         network_info: format!("{network}"),
         data_positions,
         threads,
-        scheduler: format!("{scheduler}"),
     };
-    let optimizer = AdamWOptimizer::with_scheduler(scheduler).weight_decay(0.01);
-    run_training_loop(network, momentum, velocity, optimizer, data, config);
+    let optimizer = AdamWOptimizer::new(&*network, scheduler).weight_decay(0.01);
+    run_training_loop(network, optimizer, data, config);
 }
 
-fn run_training_loop<S: LRScheduler + Sync>(
+fn run_training_loop<S: LRScheduler>(
     mut network: Box<MgPolicyNetwork>,
-    mut momentum: Box<MgPolicyNetwork>,
-    mut velocity: Box<MgPolicyNetwork>,
-    mut optimizer: AdamWOptimizer<S>,
+    mut optimizer: AdamWOptimizer<MgPolicyNetwork, S>,
     mut data: TrainingData,
     config: TrainingConfig,
 ) {
@@ -436,15 +423,7 @@ fn run_training_loop<S: LRScheduler + Sync>(
             break;
         }
 
-        train_super_batch(
-            &mut network,
-            &mut momentum,
-            &mut velocity,
-            &mut optimizer,
-            &config,
-            &stats,
-            &mut data,
-        );
+        train_super_batch(&mut network, &mut optimizer, &config, &stats, &mut data);
 
         stats.finish_super_batch();
 
@@ -466,21 +445,6 @@ fn run_training_loop<S: LRScheduler + Sync>(
     stop_signal.store(true, Ordering::Relaxed);
     tui_thread.join().unwrap();
 
-    let last_dir = stats.last_saved_net.lock().unwrap().clone();
-    if let Some(dir) = last_dir {
-        let guard = scc::Guard::new();
-        let grad_l1: Vec<f32> = stats.grad_l1_history.iter(&guard).copied().collect();
-        let lr_full: Vec<f32> = stats.lr_full_history.iter(&guard).copied().collect();
-        let analysis_config = LrAnalysisConfig {
-            name: "mg-policy",
-            input_file: &config.input_file,
-            network_info: &config.network_info,
-            data_positions: config.data_positions,
-            scheduler: &config.scheduler,
-            total_super_batches: TOTAL_SUPER_BATCHES,
-        };
-        write_lr_analysis_toml(Path::new(&dir), &analysis_config, &grad_l1, &lr_full);
-    }
 }
 
 fn write_training_toml(dir: &Path, sb: usize, stats: &TrainingStats, config: &TrainingConfig) {
@@ -762,19 +726,13 @@ fn render_info(frame: &mut Frame, area: ratatui::layout::Rect, stats: &TrainingS
     );
 }
 
-#[allow(clippy::too_many_arguments)]
-fn train_super_batch<S: LRScheduler + Sync>(
+fn train_super_batch<S: LRScheduler>(
     network: &mut MgPolicyNetwork,
-    momentum: &mut MgPolicyNetwork,
-    velocity: &mut MgPolicyNetwork,
-    optimizer: &mut AdamWOptimizer<S>,
+    optimizer: &mut AdamWOptimizer<MgPolicyNetwork, S>,
     config: &TrainingConfig,
     stats: &TrainingStats,
     data: &mut TrainingData,
 ) {
-    let mut thread_buffers: Vec<Box<MgPolicyNetwork>> = (0..config.threads)
-        .map(|_| MgPolicyNetwork::zeroed())
-        .collect();
     let mut gradients = MgPolicyNetwork::zeroed();
 
     let mut batches_processed = 0;
@@ -789,21 +747,20 @@ fn train_super_batch<S: LRScheduler + Sync>(
 
             gradients.zero_out();
 
-            let batch_metrics =
-                gradients_batch(network, &mut gradients, batch, &mut thread_buffers, config);
+            let batch_metrics = gradients_batch(network, &mut gradients, batch, config.threads);
+            if batch_metrics.processed_count > 0 {
+                *gradients /= batch_metrics.processed_count as f32;
+            }
 
             stats.record_batch(batch_metrics);
-            let _ = stats.grad_l1_history.push(gradients.l1_norm());
 
-            optimizer.step();
-            network.adamw(&gradients, momentum, velocity, optimizer);
+            optimizer.update(network, &gradients);
 
             // Update current LR
             let current_lr = optimizer.get_learning_rate();
             stats
                 .current_lr
                 .store(current_lr.to_bits(), Ordering::Relaxed);
-            let _ = stats.lr_full_history.push(current_lr);
 
             // Sample LR periodically
             let sample_interval = BATCHES_PER_SUPER_BATCH / LR_SAMPLES_PER_SUPER_BATCH;
@@ -827,40 +784,36 @@ fn gradients_batch(
     network: &MgPolicyNetwork,
     gradients: &mut MgPolicyNetwork,
     batch: &[TrainingPosition],
-    thread_buffers: &mut [Box<MgPolicyNetwork>],
-    config: &TrainingConfig,
+    threads: usize,
 ) -> BatchMetrics {
-    let size = (batch.len() / config.threads) + 1;
-    let num_chunks = batch.chunks(size).count();
-    let mut thread_metrics = vec![BatchMetrics::default(); num_chunks];
-
-    for g in thread_buffers.iter_mut() {
-        g.zero_out();
-    }
-
-    thread::scope(|s| {
+    let size = (batch.len() / threads) + 1;
+    // SAFETY: Hogwild — multiple threads write to the same gradient buffer without locking.
+    // This is UB under Rust's memory model but safe on x86-64 for f32 writes to distinct cache lines.
+    let gradients_ptr = gradients as *mut MgPolicyNetwork as usize;
+    let metrics: Vec<BatchMetrics> = thread::scope(|s| {
         batch
             .chunks(size)
-            .zip(thread_buffers.iter_mut())
-            .zip(thread_metrics.iter_mut())
-            .for_each(|((chunk, inner_gradients), inner_metrics)| {
+            .map(|chunk| {
                 s.spawn(move || {
+                    let grads = unsafe { &mut *(gradients_ptr as *mut MgPolicyNetwork) };
+                    let mut metrics = BatchMetrics::default();
                     for position in chunk {
-                        update_gradient(position, network, inner_gradients, inner_metrics);
+                        update_gradient(position, network, grads, &mut metrics);
                     }
-                });
-            });
+                    metrics
+                })
+            })
+            .collect::<Vec<_>>()
+            .into_iter()
+            .map(|h| h.join().unwrap())
+            .collect()
     });
-
-    let mut total_metrics = BatchMetrics::default();
-    for (inner_gradients, inner_metrics) in thread_buffers.iter().zip(thread_metrics) {
-        *gradients += inner_gradients;
-        total_metrics += inner_metrics;
-    }
-    if total_metrics.processed_count > 0 {
-        *gradients /= total_metrics.processed_count as f32;
-    }
-    total_metrics
+    metrics
+        .into_iter()
+        .fold(BatchMetrics::default(), |mut acc, m| {
+            acc += m;
+            acc
+        })
 }
 
 fn update_gradient(

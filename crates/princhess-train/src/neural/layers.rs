@@ -2,8 +2,8 @@ use std::marker::PhantomData;
 use std::ops::{AddAssign, DivAssign, MulAssign};
 
 use crate::neural::{
-    activation::Activation, initialization::WeightInitializer, AdamWOptimizer, FeedForwardNetwork,
-    LRScheduler, Matrix, OutputLayer, SparseVector, Vector,
+    activation::Activation, initialization::WeightInitializer, FeedForwardNetwork, Matrix,
+    OutputLayer, SparseVector, Vector,
 };
 use bytemuck::{allocation, Zeroable};
 use princhess::math::Rng;
@@ -81,27 +81,6 @@ impl<T: Activation, const M: usize, const N: usize> DenseConnected<T, M, N> {
             sum += self.bias[col].abs();
         }
         sum
-    }
-
-    pub fn adamw<S: LRScheduler>(
-        &mut self,
-        gradients: &Self,
-        momentum: &mut Self,
-        velocity: &mut Self,
-        optimizer: &AdamWOptimizer<S>,
-    ) {
-        optimizer.update_matrix(
-            &mut self.weights,
-            &gradients.weights,
-            &mut momentum.weights,
-            &mut velocity.weights,
-        );
-        optimizer.update_vector(
-            &mut self.bias,
-            &gradients.bias,
-            &mut momentum.bias,
-            &mut velocity.bias,
-        );
     }
 
     #[must_use]
@@ -250,27 +229,6 @@ impl<T: Activation, const M: usize, const N: usize> SparseConnected<T, M, N> {
             sum += self.bias[col].abs();
         }
         sum
-    }
-
-    pub fn adamw<S: LRScheduler>(
-        &mut self,
-        gradients: &Self,
-        momentum: &mut Self,
-        velocity: &mut Self,
-        optimizer: &AdamWOptimizer<S>,
-    ) {
-        optimizer.update_matrix(
-            &mut self.weights,
-            &gradients.weights,
-            &mut momentum.weights,
-            &mut velocity.weights,
-        );
-        optimizer.update_vector(
-            &mut self.bias,
-            &gradients.bias,
-            &mut momentum.bias,
-            &mut velocity.bias,
-        );
     }
 
     #[must_use]

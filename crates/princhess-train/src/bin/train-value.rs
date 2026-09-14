@@ -209,8 +209,6 @@ fn main() {
     );
 
     let network = ValueNetwork::random();
-    let momentum = ValueNetwork::zeroed();
-    let velocity = ValueNetwork::zeroed();
 
     let config = TrainingConfig {
         input_file: input.clone(),
@@ -222,16 +220,14 @@ fn main() {
     let total_steps = (TOTAL_SUPER_BATCHES * BATCHES_PER_SUPER_BATCH) as u32;
 
     let scheduler = PolynomialWarmupDecayLRScheduler::linear(LEARNING_RATE, 0.05, total_steps);
-    let optimizer = AdamWOptimizer::with_scheduler(scheduler).weight_decay(WEIGHT_DECAY);
+    let optimizer = AdamWOptimizer::new(&*network, scheduler).weight_decay(WEIGHT_DECAY);
 
-    run_training_loop(network, momentum, velocity, optimizer, config);
+    run_training_loop(network, optimizer, config);
 }
 
 fn run_training_loop<S: LRScheduler>(
     mut network: Box<ValueNetwork>,
-    mut momentum: Box<ValueNetwork>,
-    mut velocity: Box<ValueNetwork>,
-    mut optimizer: AdamWOptimizer<S>,
+    mut optimizer: AdamWOptimizer<ValueNetwork, S>,
     config: TrainingConfig,
 ) {
     let timestamp = Utc::now().format("%Y%m%d-%H%M").to_string();
@@ -259,15 +255,7 @@ fn run_training_loop<S: LRScheduler>(
             break;
         }
 
-        train_super_batch(
-            &mut network,
-            &mut momentum,
-            &mut velocity,
-            &mut optimizer,
-            &config,
-            &stats,
-            &mut data,
-        );
+        train_super_batch(&mut network, &mut optimizer, &config, &stats, &mut data);
 
         stats.finish_super_batch();
 
@@ -442,22 +430,20 @@ fn render_info(frame: &mut Frame, area: ratatui::layout::Rect, stats: &TrainingS
     let current_loss = stats.get_current_avg_loss();
     let lr = f32::from_bits(stats.current_lr.load(Ordering::Relaxed));
     frame.render_widget(
-        Paragraph::new(format!("LR:    {:.6}\nLoss:  {:.4}", lr, current_loss)),
+        Paragraph::new(format!("LR:    {:.6}\nLoss:  {:.6}", lr, current_loss)),
         metrics_columns[0],
     );
 
     let prev_loss = stats.get_prev_loss();
     frame.render_widget(
-        Paragraph::new(format!("Prev SB\n{:.4}", prev_loss)),
+        Paragraph::new(format!("Prev SB\n{:.6}", prev_loss)),
         metrics_columns[1],
     );
 }
 
 fn train_super_batch<S: LRScheduler>(
     network: &mut ValueNetwork,
-    momentum: &mut ValueNetwork,
-    velocity: &mut ValueNetwork,
-    optimizer: &mut AdamWOptimizer<S>,
+    optimizer: &mut AdamWOptimizer<ValueNetwork, S>,
     config: &TrainingConfig,
     stats: &TrainingStats,
     data: &mut TrainingData,
@@ -480,9 +466,7 @@ fn train_super_batch<S: LRScheduler>(
 
             *gradients /= batch.len() as f32;
 
-            optimizer.step();
-
-            network.train_step(&gradients, momentum, velocity, optimizer);
+            optimizer.update(network, &gradients);
 
             stats.record_batch(batch_metrics);
 
