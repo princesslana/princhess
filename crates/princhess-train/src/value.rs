@@ -1,5 +1,5 @@
 use crate::neural::{
-    AdamWOptimizer, DenseConnected, FeedForwardNetwork, LRScheduler, OutputLayer, SparseConnected,
+    AsParams, DenseConnected, FeedForwardNetwork, Optimizable, OutputLayer, SparseConnected,
     SparseVector, Tanh, Vector,
 };
 use bytemuck::{allocation, Zeroable};
@@ -21,6 +21,7 @@ type Feature = SparseConnected<SCReLU, INPUT_SIZE, HIDDEN_SIZE>;
 type Output = DenseConnected<Tanh, { HIDDEN_SIZE * 2 }, OUTPUT_SIZE>;
 
 #[allow(clippy::module_name_repetitions)]
+#[repr(C)]
 #[derive(Zeroable)]
 pub struct ValueNetwork {
     stm: Feature,
@@ -62,33 +63,6 @@ impl ValueNetwork {
     #[must_use]
     pub fn zeroed() -> Box<Self> {
         allocation::zeroed_box()
-    }
-
-    pub fn train_step<S: LRScheduler>(
-        &mut self,
-        gradients: &Self,
-        momentum: &mut Self,
-        velocity: &mut Self,
-        optimizer: &AdamWOptimizer<S>,
-    ) {
-        self.stm.adamw(
-            &gradients.stm,
-            &mut momentum.stm,
-            &mut velocity.stm,
-            optimizer,
-        );
-        self.nstm.adamw(
-            &gradients.nstm,
-            &mut momentum.nstm,
-            &mut velocity.nstm,
-            optimizer,
-        );
-        self.output.adamw(
-            &gradients.output,
-            &mut momentum.output,
-            &mut velocity.output,
-            optimizer,
-        );
     }
 
     #[must_use]
@@ -151,6 +125,37 @@ impl ValueNetwork {
         )
     }
 }
+
+const _: () = {
+    assert!(std::mem::size_of::<ValueNetwork>() % std::mem::size_of::<f32>() == 0);
+    assert!(std::mem::align_of::<ValueNetwork>() == std::mem::align_of::<f32>());
+};
+
+impl AsParams for ValueNetwork {
+    fn params(&self) -> &[f32] {
+        // SAFETY: ValueNetwork is #[repr(C)] and composed entirely of f32 values
+        // through its full field chain. The assertions above verify size/alignment.
+        unsafe {
+            std::slice::from_raw_parts(
+                self as *const Self as *const f32,
+                std::mem::size_of::<Self>() / std::mem::size_of::<f32>(),
+            )
+        }
+    }
+
+    fn params_mut(&mut self) -> &mut [f32] {
+        // SAFETY: same as params()
+        unsafe {
+            std::slice::from_raw_parts_mut(
+                self as *mut Self as *mut f32,
+                std::mem::size_of::<Self>() / std::mem::size_of::<f32>(),
+            )
+        }
+    }
+}
+
+// SAFETY: ValueNetwork is #[repr(C)], composed entirely of f32 with no padding.
+unsafe impl Optimizable for ValueNetwork {}
 
 #[allow(clippy::module_name_repetitions)]
 pub struct ValueNetworkLayers {

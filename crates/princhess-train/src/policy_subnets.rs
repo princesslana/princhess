@@ -4,10 +4,11 @@ use bytemuck::Zeroable;
 use princhess::chess::Square;
 use princhess::state::POLICY_NUMBER_FEATURES;
 
-use crate::neural::{AdamWOptimizer, LRScheduler, LinearNetwork};
+use crate::neural::LinearNetwork;
 
 pub type PolicyLinearNetwork<const A: usize> = LinearNetwork<POLICY_NUMBER_FEATURES, A>;
 
+#[repr(C)]
 #[derive(Zeroable)]
 pub struct SquareSubnets<const A: usize>(pub [PolicyLinearNetwork<A>; Square::COUNT]);
 
@@ -45,18 +46,6 @@ impl<const A: usize> SquareSubnets<A> {
         self.0.iter().map(PolicyLinearNetwork::<A>::l1_norm).sum()
     }
 
-    pub fn adamw<S: LRScheduler>(
-        &mut self,
-        g: &Self,
-        m: &mut Self,
-        v: &mut Self,
-        optimizer: &AdamWOptimizer<S>,
-    ) {
-        for i in 0..Square::COUNT {
-            self.0[i].adamw(&g.0[i], &mut m.0[i], &mut v.0[i], optimizer);
-        }
-    }
-
     pub fn randomize(&mut self) {
         for s in &mut self.0 {
             s.randomize();
@@ -64,6 +53,7 @@ impl<const A: usize> SquareSubnets<A> {
     }
 }
 
+#[repr(C)]
 #[derive(Zeroable)]
 pub struct SeeSplitSubnets<const A: usize> {
     pub base: SquareSubnets<A>,
@@ -88,19 +78,6 @@ impl<const A: usize> SeeSplitSubnets<A> {
     #[must_use]
     pub fn l1_norm(&self) -> f32 {
         self.base.l1_norm() + self.good_see.l1_norm()
-    }
-
-    pub fn adamw<S: LRScheduler>(
-        &mut self,
-        g: &Self,
-        m: &mut Self,
-        v: &mut Self,
-        optimizer: &AdamWOptimizer<S>,
-    ) {
-        self.base
-            .adamw(&g.base, &mut m.base, &mut v.base, optimizer);
-        self.good_see
-            .adamw(&g.good_see, &mut m.good_see, &mut v.good_see, optimizer);
     }
 
     pub fn randomize(&mut self) {

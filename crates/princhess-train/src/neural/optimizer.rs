@@ -1,29 +1,33 @@
-use crate::neural::lr_scheduler::LRScheduler;
-use crate::neural::matrix::Matrix;
-use crate::neural::vector::Vector;
+use std::marker::PhantomData;
 
-pub struct AdamWOptimizer<S: LRScheduler> {
+use crate::neural::lr_scheduler::LRScheduler;
+use crate::neural::optimizable::Optimizable;
+
+pub struct AdamWOptimizer<N: Optimizable, S: LRScheduler> {
+    momentum: Vec<f32>,
+    velocity: Vec<f32>,
     scheduler: S,
     beta1: f32,
     beta2: f32,
     epsilon: f32,
     weight_decay: f32,
     step: u32,
-    bias_correction1: f32,
-    bias_correction2: f32,
+    _phantom: PhantomData<N>,
 }
 
-impl<S: LRScheduler> AdamWOptimizer<S> {
-    pub fn with_scheduler(scheduler: S) -> Self {
+impl<N: Optimizable, S: LRScheduler> AdamWOptimizer<N, S> {
+    pub fn new(network: &N, scheduler: S) -> Self {
+        let count = network.params().len();
         Self {
+            momentum: vec![0.0; count],
+            velocity: vec![0.0; count],
             scheduler,
             beta1: 0.9,
             beta2: 0.999,
             epsilon: 1e-8,
             weight_decay: 0.01,
             step: 0,
-            bias_correction1: 1.0,
-            bias_correction2: 1.0,
+            _phantom: PhantomData,
         }
     }
 
@@ -33,10 +37,26 @@ impl<S: LRScheduler> AdamWOptimizer<S> {
         self
     }
 
-    pub fn step(&mut self) {
+    pub fn update(&mut self, network: &mut N, grad: &N) {
         self.step += 1;
-        self.bias_correction1 = 1.0 - self.beta1.powi(self.step as i32);
-        self.bias_correction2 = 1.0 - self.beta2.powi(self.step as i32);
+        let bc1 = 1.0 - self.beta1.powi(self.step as i32);
+        let bc2 = 1.0 - self.beta2.powi(self.step as i32);
+        let lr = self.scheduler.get_lr(self.step);
+        let (beta1, beta2, eps, wd) = (self.beta1, self.beta2, self.epsilon, self.weight_decay);
+
+        for (((p, &g), m), v) in network
+            .params_mut()
+            .iter_mut()
+            .zip(grad.params())
+            .zip(self.momentum.iter_mut())
+            .zip(self.velocity.iter_mut())
+        {
+            *m = beta1 * *m + (1.0 - beta1) * g;
+            *v = beta2 * *v + (1.0 - beta2) * g * g;
+            let m_hat = *m / bc1;
+            let v_hat = *v / bc2;
+            *p -= lr * (m_hat / (v_hat.sqrt() + eps) + wd * *p);
+        }
     }
 
     pub fn get_step(&self) -> u32 {
@@ -45,38 +65,5 @@ impl<S: LRScheduler> AdamWOptimizer<S> {
 
     pub fn get_learning_rate(&self) -> f32 {
         self.scheduler.get_lr(self.step)
-    }
-
-    pub fn update_vector<const N: usize>(
-        &self,
-        param: &mut Vector<N>,
-        grad: &Vector<N>,
-        momentum: &mut Vector<N>,
-        velocity: &mut Vector<N>,
-    ) {
-        *momentum = self.beta1 * *momentum + (1.0 - self.beta1) * *grad;
-        *velocity = self.beta2 * *velocity + (1.0 - self.beta2) * (*grad * *grad);
-
-        let corrected_momentum = *momentum / self.bias_correction1;
-        let corrected_velocity = *velocity / self.bias_correction2;
-
-        let weight_decay_update = self.weight_decay * *param;
-
-        let learning_rate = self.scheduler.get_lr(self.step);
-        *param -= learning_rate
-            * (corrected_momentum / (corrected_velocity.sqrt() + self.epsilon)
-                + weight_decay_update);
-    }
-
-    pub fn update_matrix<const R: usize, const C: usize>(
-        &self,
-        param: &mut Matrix<R, C>,
-        grad: &Matrix<R, C>,
-        momentum: &mut Matrix<R, C>,
-        velocity: &mut Matrix<R, C>,
-    ) {
-        for i in 0..R {
-            self.update_vector(&mut param[i], &grad[i], &mut momentum[i], &mut velocity[i]);
-        }
     }
 }

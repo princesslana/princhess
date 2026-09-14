@@ -4,9 +4,7 @@ use std::ops::{AddAssign, DivAssign};
 use bytemuck::Zeroable;
 use princhess::math::Rng;
 
-use crate::neural::{
-    AdamWOptimizer, FeedForwardNetwork, LRScheduler, ReLU, SparseConnected, SparseVector, Vector,
-};
+use crate::neural::{FeedForwardNetwork, ReLU, SparseConnected, SparseVector, Vector};
 
 #[repr(C)]
 #[derive(Zeroable)]
@@ -35,17 +33,6 @@ impl<const I: usize, const A: usize> LinearNetwork<I, A> {
     #[must_use]
     pub fn l1_norm(&self) -> f32 {
         self.output.l1_norm()
-    }
-
-    pub fn adamw<S: LRScheduler>(
-        &mut self,
-        g: &Self,
-        m: &mut Self,
-        v: &mut Self,
-        optimizer: &AdamWOptimizer<S>,
-    ) {
-        self.output
-            .adamw(&g.output, &mut m.output, &mut v.output, optimizer);
     }
 }
 
