@@ -9,7 +9,7 @@ use crate::options::EvaluationOptions;
 use crate::state::{self, State};
 
 pub const INPUT_SIZE: usize = state::VALUE_NUMBER_FEATURES;
-pub const HIDDEN_SIZE: usize = 320;
+pub const HIDDEN_SIZE: usize = 384;
 pub const QA: i32 = 256;
 pub const QB: i32 = 256;
 pub const QAB: i32 = QA * QB;

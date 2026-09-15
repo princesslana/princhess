@@ -29,7 +29,7 @@ use princhess_train::tui;
 use princhess_train::value::ValueNetwork;
 
 const BATCHES_PER_SUPER_BATCH: usize = 6_104;
-const TOTAL_SUPER_BATCHES: usize = 150;
+const TOTAL_SUPER_BATCHES: usize = 130;
 const BATCH_SIZE: usize = 16384;
 
 const TUI_TOTAL_HEIGHT: u16 = 28;
