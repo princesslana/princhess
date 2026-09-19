@@ -64,7 +64,7 @@ train:
 
 .PHONY: clippy
 clippy:
-	cargo clippy --all-targets -- -D warnings
+	cargo clippy --all-targets --keep-going -- -D warnings
 
 .PHONY: bench
 bench:
