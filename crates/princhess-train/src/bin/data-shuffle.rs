@@ -687,7 +687,7 @@ fn main() {
     let files: Vec<FileInfo> = input_files
         .into_iter()
         .filter(|path| {
-            let size = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
+            let size = fs::metadata(path).map(|m| m.len()).unwrap_or(0);
             if size == 0 {
                 eprintln!("Warning: skipping empty file {}", path.display());
                 return false;

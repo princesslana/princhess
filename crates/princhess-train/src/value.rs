@@ -1,19 +1,22 @@
+use std::boxed::Box;
+use std::fmt::{self, Display, Formatter};
+use std::mem;
+use std::ops::{AddAssign, DivAssign, MulAssign};
+use std::ptr;
+use std::slice;
+
+use bytemuck::{allocation, Zeroable};
+
+use crate::nets::{q_i16, q_i32};
 use crate::neural::{
-    AsParams, DenseConnected, FeedForwardNetwork, Optimizable, OutputLayer, SparseConnected,
+    AsParams, DenseConnected, FeedForwardNetwork, Optimizable, OutputLayer, SCReLU, SparseConnected,
     SparseVector, Tanh, Vector,
 };
-use bytemuck::{allocation, Zeroable};
 use princhess::math::Rng;
 use princhess::quantized_value::{
     QuantizedValueNetwork, RawFeatureBias, RawFeatureWeights, RawOutputWeights, HIDDEN_SIZE,
     INPUT_SIZE, QA, QAB, QB,
 };
-use std::boxed::Box;
-use std::fmt::{self, Display, Formatter};
-use std::ops::{AddAssign, DivAssign, MulAssign};
-
-use crate::nets::{q_i16, q_i32};
-use crate::neural::SCReLU;
 
 pub const OUTPUT_SIZE: usize = 1;
 
@@ -127,8 +130,8 @@ impl ValueNetwork {
 }
 
 const _: () = {
-    assert!(std::mem::size_of::<ValueNetwork>() % std::mem::size_of::<f32>() == 0);
-    assert!(std::mem::align_of::<ValueNetwork>() == std::mem::align_of::<f32>());
+    assert!(mem::size_of::<ValueNetwork>().is_multiple_of(mem::size_of::<f32>()));
+    assert!(mem::align_of::<ValueNetwork>() == mem::align_of::<f32>());
 };
 
 impl AsParams for ValueNetwork {
@@ -136,9 +139,9 @@ impl AsParams for ValueNetwork {
         // SAFETY: ValueNetwork is #[repr(C)] and composed entirely of f32 values
         // through its full field chain. The assertions above verify size/alignment.
         unsafe {
-            std::slice::from_raw_parts(
-                self as *const Self as *const f32,
-                std::mem::size_of::<Self>() / std::mem::size_of::<f32>(),
+            slice::from_raw_parts(
+                ptr::from_ref(self).cast::<f32>(),
+                mem::size_of::<Self>() / mem::size_of::<f32>(),
             )
         }
     }
@@ -146,9 +149,9 @@ impl AsParams for ValueNetwork {
     fn params_mut(&mut self) -> &mut [f32] {
         // SAFETY: same as params()
         unsafe {
-            std::slice::from_raw_parts_mut(
-                self as *mut Self as *mut f32,
-                std::mem::size_of::<Self>() / std::mem::size_of::<f32>(),
+            slice::from_raw_parts_mut(
+                ptr::from_mut(self).cast::<f32>(),
+                mem::size_of::<Self>() / mem::size_of::<f32>(),
             )
         }
     }

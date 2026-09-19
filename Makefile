@@ -7,6 +7,7 @@ help:
 	@echo "  build         - Build release binary (x86-64-v3)"
 	@echo "  native        - Build with native CPU optimizations"
 	@echo "  train         - Build training binaries with native CPU (NODEFAULTFEATURES=1 to skip default features)"
+	@echo "  clippy        - Run clippy with warnings as errors"
 	@echo "  clean         - Clean all build artifacts"
 	@echo "  bench         - Compare NPS: princhess vs princhess-main (ENGINE1, ENGINE2, RUNS)"
 	@echo ""
@@ -60,6 +61,10 @@ train:
 		exit 1; \
 	fi
 	RUSTFLAGS="-C target-cpu=native" cargo build --release --package princhess-train $(TRAIN_FEATURES)
+
+.PHONY: clippy
+clippy:
+	cargo clippy --all-targets --keep-going -- -D warnings
 
 .PHONY: bench
 bench:
