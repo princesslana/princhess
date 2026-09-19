@@ -1,4 +1,5 @@
 use std::fmt::{self, Display};
+use std::mem;
 use std::ops::{AddAssign, DivAssign};
 use std::ptr;
 
@@ -289,7 +290,7 @@ impl MgPolicyNetwork {
 }
 
 const _: () = {
-    assert!(std::mem::size_of::<MgPolicyNetwork>() % std::mem::size_of::<f32>() == 0);
+    assert!(mem::size_of::<MgPolicyNetwork>().is_multiple_of(mem::size_of::<f32>()));
     assert!(std::mem::align_of::<MgPolicyNetwork>() == std::mem::align_of::<f32>());
 };
 
@@ -298,8 +299,8 @@ impl AsParams for MgPolicyNetwork {
         // SAFETY: MgPolicyNetwork is #[repr(C)] and composed entirely of f32 values.
         unsafe {
             std::slice::from_raw_parts(
-                self as *const Self as *const f32,
-                std::mem::size_of::<Self>() / std::mem::size_of::<f32>(),
+                ptr::from_ref(self).cast::<f32>(),
+                mem::size_of::<Self>() / mem::size_of::<f32>(),
             )
         }
     }
@@ -308,8 +309,8 @@ impl AsParams for MgPolicyNetwork {
         // SAFETY: same as params()
         unsafe {
             std::slice::from_raw_parts_mut(
-                self as *mut Self as *mut f32,
-                std::mem::size_of::<Self>() / std::mem::size_of::<f32>(),
+                ptr::from_mut(self).cast::<f32>(),
+                mem::size_of::<Self>() / mem::size_of::<f32>(),
             )
         }
     }
