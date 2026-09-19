@@ -1,14 +1,31 @@
+use std::hash::{BuildHasher, Hasher};
 use std::mem::MaybeUninit;
 use std::ptr::NonNull;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
-use nohash_hasher::BuildNoHashHasher;
 use scc::hash_map::HashMap;
 
 use crate::arena::{self, Allocator, Arena, ArenaRef};
 use crate::graph::{self, MoveEdge, PositionNode};
 use crate::state::State;
+
+// Zobrist keys are already uniformly random — no need to hash them again.
+struct IdentityHasher(u64);
+
+impl Hasher for IdentityHasher {
+    fn write_u64(&mut self, i: u64) { self.0 = i; }
+    fn write(&mut self, _: &[u8]) { unimplemented!() }
+    fn finish(&self) -> u64 { self.0 }
+}
+
+#[derive(Clone, Default)]
+struct BuildIdentityHasher;
+
+impl BuildHasher for BuildIdentityHasher {
+    type Hasher = IdentityHasher;
+    fn build_hasher(&self) -> IdentityHasher { IdentityHasher(0) }
+}
 
 struct Entry {
     node_ptr: NonNull<PositionNode>,
@@ -27,7 +44,7 @@ impl Entry {
     }
 }
 
-type Table = HashMap<u64, Entry, BuildNoHashHasher<u64>>;
+type Table = HashMap<u64, Entry, BuildIdentityHasher>;
 
 pub struct TranspositionTable {
     table: Table,

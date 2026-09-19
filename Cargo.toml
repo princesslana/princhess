@@ -35,7 +35,6 @@ features = [
 arrayvec = { workspace = true }
 bytemuck = { workspace = true }
 fastapprox = "=0.3.1"
-nohash-hasher = "=0.2.0"
 scc = { workspace = true }
 
 [features]
