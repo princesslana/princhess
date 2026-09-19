@@ -2,6 +2,7 @@ use std::fs::{self, File};
 use std::io::{self, Write};
 use std::ops::AddAssign;
 use std::path::Path;
+use std::ptr;
 use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU32, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -460,7 +461,7 @@ fn train_super_batch<S: LRScheduler>(
             }
 
             // SAFETY: ValueNetwork: Zeroable guarantees all-zeros is valid.
-            unsafe { std::ptr::write_bytes((&mut *gradients) as *mut ValueNetwork, 0, 1) };
+            unsafe { ptr::write_bytes((&mut *gradients) as *mut ValueNetwork, 0, 1) };
 
             let batch_metrics = gradients_batch(network, &mut gradients, batch, config.threads);
 

@@ -2,6 +2,7 @@ use std::fmt::{self, Display};
 use std::mem;
 use std::ops::{AddAssign, DivAssign};
 use std::ptr;
+use std::slice;
 
 use arrayvec::ArrayVec;
 use bytemuck::{allocation, Zeroable};
@@ -291,14 +292,14 @@ impl EgPolicyNetwork {
 
 const _: () = {
     assert!(mem::size_of::<EgPolicyNetwork>().is_multiple_of(mem::size_of::<f32>()));
-    assert!(std::mem::align_of::<EgPolicyNetwork>() == std::mem::align_of::<f32>());
+    assert!(mem::align_of::<EgPolicyNetwork>() == mem::align_of::<f32>());
 };
 
 impl AsParams for EgPolicyNetwork {
     fn params(&self) -> &[f32] {
         // SAFETY: EgPolicyNetwork is #[repr(C)] and composed entirely of f32 values.
         unsafe {
-            std::slice::from_raw_parts(
+            slice::from_raw_parts(
                 ptr::from_ref(self).cast::<f32>(),
                 mem::size_of::<Self>() / mem::size_of::<f32>(),
             )
@@ -308,7 +309,7 @@ impl AsParams for EgPolicyNetwork {
     fn params_mut(&mut self) -> &mut [f32] {
         // SAFETY: same as params()
         unsafe {
-            std::slice::from_raw_parts_mut(
+            slice::from_raw_parts_mut(
                 ptr::from_mut(self).cast::<f32>(),
                 mem::size_of::<Self>() / mem::size_of::<f32>(),
             )

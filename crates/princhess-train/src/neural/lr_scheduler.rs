@@ -1,4 +1,4 @@
-use std::f32::consts;
+use std::f32::consts::PI;
 use std::fmt::{self, Display};
 
 pub trait LRScheduler {
@@ -155,7 +155,7 @@ impl LRScheduler for CosineAnnealingLRScheduler {
         let cycle_step = step % self.total_steps;
         let peak_lr = (self.initial_lr * self.cycle_decay.powi(cycle as i32)).max(self.min_lr);
         let progress = cycle_step as f32 / self.total_steps as f32;
-        let cosine_factor = f32::midpoint(1.0, (consts::PI * progress).cos());
+        let cosine_factor = f32::midpoint(1.0, (PI * progress).cos());
         self.min_lr + (peak_lr - self.min_lr) * cosine_factor
     }
 }

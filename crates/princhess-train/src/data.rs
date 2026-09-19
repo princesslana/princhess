@@ -278,7 +278,7 @@ impl TrainingData {
     pub fn next_buffer(&mut self) -> &[TrainingPosition; TrainingPosition::BUFFER_COUNT] {
         let (new_buf, consumed) = self.full_rx.recv().expect("Reader thread died");
         // Return the processed buffer to the reader to be refilled, take the new one.
-        let old_buf = std::mem::replace(&mut self.current_buf, new_buf);
+        let old_buf = mem::replace(&mut self.current_buf, new_buf);
         let _ = self.empty_tx.send(old_buf);
         self.positions_consumed = consumed;
         TrainingPosition::read_buffer(&self.current_buf)

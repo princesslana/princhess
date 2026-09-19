@@ -3,6 +3,7 @@ use std::fmt::{self, Display, Formatter};
 use std::mem;
 use std::ops::{AddAssign, DivAssign, MulAssign};
 use std::ptr;
+use std::slice;
 
 use bytemuck::{allocation, Zeroable};
 
@@ -130,7 +131,7 @@ impl ValueNetwork {
 
 const _: () = {
     assert!(mem::size_of::<ValueNetwork>().is_multiple_of(mem::size_of::<f32>()));
-    assert!(std::mem::align_of::<ValueNetwork>() == std::mem::align_of::<f32>());
+    assert!(mem::align_of::<ValueNetwork>() == mem::align_of::<f32>());
 };
 
 impl AsParams for ValueNetwork {
@@ -138,7 +139,7 @@ impl AsParams for ValueNetwork {
         // SAFETY: ValueNetwork is #[repr(C)] and composed entirely of f32 values
         // through its full field chain. The assertions above verify size/alignment.
         unsafe {
-            std::slice::from_raw_parts(
+            slice::from_raw_parts(
                 ptr::from_ref(self).cast::<f32>(),
                 mem::size_of::<Self>() / mem::size_of::<f32>(),
             )
@@ -148,7 +149,7 @@ impl AsParams for ValueNetwork {
     fn params_mut(&mut self) -> &mut [f32] {
         // SAFETY: same as params()
         unsafe {
-            std::slice::from_raw_parts_mut(
+            slice::from_raw_parts_mut(
                 ptr::from_mut(self).cast::<f32>(),
                 mem::size_of::<Self>() / mem::size_of::<f32>(),
             )

@@ -1,4 +1,4 @@
-use std::ops::{AddAssign, DivAssign};
+use std::ops::{AddAssign, Deref, DerefMut, DivAssign};
 
 use bytemuck::Zeroable;
 use princhess::chess::Square;
@@ -12,14 +12,14 @@ pub type PolicyLinearNetwork<const A: usize> = LinearNetwork<POLICY_NUMBER_FEATU
 #[derive(Zeroable)]
 pub struct SquareSubnets<const A: usize>(pub [PolicyLinearNetwork<A>; Square::COUNT]);
 
-impl<const A: usize> std::ops::Deref for SquareSubnets<A> {
+impl<const A: usize> Deref for SquareSubnets<A> {
     type Target = [PolicyLinearNetwork<A>; Square::COUNT];
     fn deref(&self) -> &Self::Target {
         &self.0
     }
 }
 
-impl<const A: usize> std::ops::DerefMut for SquareSubnets<A> {
+impl<const A: usize> DerefMut for SquareSubnets<A> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
     }
