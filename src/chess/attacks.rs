@@ -58,7 +58,7 @@ const fn in_between(sq1: usize, sq2: usize) -> Bitboard {
     line += 2 * ((rank & 7).wrapping_sub(1) >> 58);
     line += ((rank.wrapping_sub(file) & 15).wrapping_sub(1)) & B2G7;
     line += ((rank.wrapping_add(file) & 15).wrapping_sub(1)) & H1B7;
-    line = line.wrapping_mul(btwn & btwn.wrapping_neg());
+    line = line.wrapping_mul(btwn.isolate_lowest_one());
     Bitboard::new(line & btwn)
 }
 
