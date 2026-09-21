@@ -105,6 +105,8 @@ static TM_VISITS_BASE: UciOption = UciOption::spin("TMVisitsBase", 140, 0, 2 << 
 static TM_VISITS_M: UciOption = UciOption::spin("TMVisitsM", 139, 0, 2 << 16);
 static TM_PV_DIFF_C: UciOption = UciOption::spin("TMPvDiffC", 0, 0, 100);
 static TM_PV_DIFF_M: UciOption = UciOption::spin("TMPvDiffM", 121, 0, 2 << 16);
+static TM_TOP_TWO_C: UciOption = UciOption::spin("TMTopTwoC", 25, 0, 50);
+static TM_TOP_TWO_M: UciOption = UciOption::spin("TMTopTwoM", 150, 0, 2 << 16);
 
 static ENABLE_MATERIAL_SCALING: UciOption = UciOption::check("EnableMaterialScaling", true);
 static ENABLE_50MR_SCALING: UciOption = UciOption::check("Enable50mrScaling", true);
@@ -134,6 +136,8 @@ static ALL_OPTIONS: &[UciOption] = &[
     TM_VISITS_M,
     TM_PV_DIFF_C,
     TM_PV_DIFF_M,
+    TM_TOP_TWO_C,
+    TM_TOP_TWO_M,
     ENABLE_MATERIAL_SCALING,
     ENABLE_50MR_SCALING,
     CHESS960,
@@ -246,6 +250,8 @@ pub struct TimeManagementOptions {
     pub visits_m: f32,
     pub pv_diff_c: f32,
     pub pv_diff_m: f32,
+    pub top_two_c: f32,
+    pub top_two_m: f32,
 }
 
 impl Default for EvaluationOptions {
@@ -293,6 +299,8 @@ impl From<&UciOptionMap> for TimeManagementOptions {
             visits_m: map.get_f32(&TM_VISITS_M),
             pv_diff_c: map.get_f32(&TM_PV_DIFF_C),
             pv_diff_m: map.get_f32(&TM_PV_DIFF_M),
+            top_two_c: map.get_f32(&TM_TOP_TWO_C),
+            top_two_m: map.get_f32(&TM_TOP_TWO_M),
         }
     }
 }
