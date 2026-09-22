@@ -100,13 +100,19 @@ impl RootEdge {
 
 pub struct TopTwoState {
     challenger_deficit: f32,
+    last_tc_sq: f32,
 }
 
 impl TopTwoState {
     fn new() -> Self {
         Self {
             challenger_deficit: 0.0,
+            last_tc_sq: f32::INFINITY,
         }
+    }
+
+    pub fn last_tc_sq(&self) -> f32 {
+        self.last_tc_sq
     }
 
     pub fn next(&mut self, root_edges: &ArrayVec<RootEdge, 256>) -> usize {
@@ -144,6 +150,8 @@ impl TopTwoState {
                 n_c = r.visits as f32;
             }
         }
+
+        self.last_tc_sq = best_tc_sq;
 
         let n_l = leader_reward.visits as f32;
         let p_challenger = if n_l < n_c {

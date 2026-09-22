@@ -257,7 +257,7 @@ impl Mcts {
             if let Some(soft_limit) = time_management.soft_limit() {
                 let opts = &self.engine_options.time_management_options;
 
-                if elapsed >= soft_limit.mul_f32(self.soft_time_multiplier(opts)) {
+                if elapsed >= soft_limit.mul_f32(self.soft_time_multiplier(opts, tld.top_two_state.last_tc_sq())) {
                     return false;
                 }
             }
@@ -374,14 +374,10 @@ impl Mcts {
     ///
     /// Panics if the root node has no moves (e.g., checkmate or stalemate positions).
     pub fn best_edge(&self) -> &MoveEdge {
-        self.select_edge_by_score(&self.root_edges)
+        self.sort_edges_by_score(&self.root_edges)
+            .into_iter()
+            .next()
             .expect("Root node must have moves to determine best edge")
-    }
-
-    fn select_edge_by_score<'b>(&self, edges: &'b [MoveEdge]) -> Option<&'b MoveEdge> {
-        edges
-            .iter()
-            .max_by(|a, b| self.move_score(a).total_cmp(&self.move_score(b)))
     }
 
     fn move_score(&self, edge: &MoveEdge) -> f32 {
@@ -403,7 +399,7 @@ impl Mcts {
         result
     }
 
-    fn soft_time_multiplier(&self, opts: &TimeManagementOptions) -> f32 {
+    fn soft_time_multiplier(&self, opts: &TimeManagementOptions, last_tc_sq: f32) -> f32 {
         if self.root_visits() == 0 {
             return 1.0;
         }
@@ -433,6 +429,10 @@ impl Mcts {
 
             m *= 1.0 + adjustment;
         }
+
+        let p_challenger = 1.0 / (2.0 + last_tc_sq.max(0.0).sqrt());
+        let top_two_adjustment = (p_challenger - opts.top_two_c) * opts.top_two_m;
+        m *= 1.0 + top_two_adjustment.max(0.0);
 
         m = m.clamp(opts.min_m, opts.max_m);
 
