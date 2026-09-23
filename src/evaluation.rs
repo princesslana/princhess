@@ -101,6 +101,8 @@ pub fn evaluate_state_flag(state: &State, is_legal_moves: bool) -> Flag {
         } else {
             Flag::TERMINAL_DRAW
         }
+    } else if state.halfmove_clock() != 0 {
+        Flag::STANDARD
     } else if let Some(wdl) = tablebase::probe_wdl(state.board()) {
         match wdl {
             Wdl::Win => Flag::TABLEBASE_WIN,

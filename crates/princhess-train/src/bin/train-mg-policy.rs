@@ -444,7 +444,6 @@ fn run_training_loop<S: LRScheduler>(
     // Cleanup TUI
     stop_signal.store(true, Ordering::Relaxed);
     tui_thread.join().unwrap();
-
 }
 
 fn write_training_toml(dir: &Path, sb: usize, stats: &TrainingStats, config: &TrainingConfig) {

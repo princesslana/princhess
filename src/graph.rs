@@ -212,6 +212,11 @@ impl MoveEdge {
         self.sum_evaluations.fetch_add(delta, Ordering::Relaxed) + delta
     }
 
+    pub fn clear_stats(&self) {
+        self.visits.store(0, Ordering::Relaxed);
+        self.sum_evaluations.store(0, Ordering::Relaxed);
+    }
+
     pub fn replace(&self, other: &MoveEdge) {
         self.visits
             .store(other.visits.load(Ordering::Relaxed), Ordering::Relaxed);

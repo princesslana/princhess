@@ -114,7 +114,7 @@ impl Uci {
         }
     }
 
-    fn handle_go(&self, tokens: Tokens, is_interactive: bool) -> Option<String> {
+    fn handle_go(&mut self, tokens: Tokens, is_interactive: bool) -> Option<String> {
         self.engine.go(tokens, is_interactive)
     }
 
