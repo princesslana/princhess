@@ -289,12 +289,16 @@ impl Engine {
             .collect();
 
         let root_state = self.mcts.root_state();
-        let tablebase_root = tablebase::probe_root(root_state.board(), root_state.has_repeated());
+        let tablebase_root = if searchmoves.is_empty() {
+            tablebase::probe_root(root_state.board(), root_state.has_repeated())
+        } else {
+            None
+        };
         let best_rank = tablebase_root
             .as_ref()
             .and_then(|ranked| ranked.iter().map(|&(_, rank)| rank).max());
 
-        let mut searchable_moves: ArrayVec<bool, 256> = self
+        let searchable_moves: ArrayVec<bool, 256> = self
             .mcts
             .root_edges()
             .iter()
@@ -312,10 +316,6 @@ impl Engine {
                 is_searchmove && preserves_result
             })
             .collect();
-
-        if !searchable_moves.iter().any(|&s| s) {
-            searchable_moves.fill(true);
-        }
 
         self.mcts
             .set_root_filter(searchable_moves, tablebase_root.is_some());
