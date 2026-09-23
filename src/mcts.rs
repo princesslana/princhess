@@ -35,7 +35,7 @@ pub struct Mcts {
     root_edges: Box<[MoveEdge]>,
     root_state: State,
     searchable_moves: ArrayVec<bool, 256>,
-    is_tablebase_root: bool,
+    tablebase_score: Option<i64>,
 
     engine_options: EngineOptions,
 
@@ -67,7 +67,7 @@ impl Mcts {
             root_state: state,
             root_edges: root_edges.into_boxed_slice(),
             searchable_moves: moves.iter().map(|_| true).collect(),
-            is_tablebase_root: false,
+            tablebase_score: None,
             engine_options,
             num_nodes: 1.into(),
             playouts: 0.into(),
@@ -168,7 +168,10 @@ impl Mcts {
                 if node.is_terminal() {
                     break;
                 }
-                if node.is_tablebase() && state.halfmove_clock() == 0 && !self.is_tablebase_root {
+                if node.is_tablebase()
+                    && state.halfmove_clock() == 0
+                    && self.tablebase_score.is_none()
+                {
                     break;
                 }
             }
@@ -350,7 +353,7 @@ impl Mcts {
     pub fn set_root_filter(
         &mut self,
         searchable_moves: ArrayVec<bool, 256>,
-        is_tablebase_root: bool,
+        tablebase_score: Option<i64>,
     ) {
         for (edge, &searchable) in self.root_edges.iter().zip(&searchable_moves) {
             if !searchable {
@@ -359,7 +362,7 @@ impl Mcts {
         }
 
         self.searchable_moves = searchable_moves;
-        self.is_tablebase_root = is_tablebase_root;
+        self.tablebase_score = tablebase_score;
     }
 
     pub fn root_visits(&self) -> u64 {
@@ -499,20 +502,18 @@ impl Mcts {
                 write!(info_str, "movesleft {} ", self.root_state.moves_left()).unwrap();
             }
 
+            let average = edge.reward().average;
+            let eval = self
+                .tablebase_score
+                .map_or(average, |tb| average.midpoint(tb)) as f32
+                / SCALE;
+
             if self.engine_options.show_wdl {
-                let wdl = UciWdl::from_eval(
-                    edge.reward().average as f32 / SCALE,
-                    self.root_state.phase(),
-                );
+                let wdl = UciWdl::from_eval(eval, self.root_state.phase());
                 write!(info_str, "wdl {wdl} ").unwrap();
             }
 
-            write!(
-                info_str,
-                "score {} ",
-                engine::eval_in_cp(edge.reward().average as f32 / SCALE)
-            )
-            .unwrap();
+            write!(info_str, "score {} ", engine::eval_in_cp(eval)).unwrap();
             write!(info_str, "time {search_time_ms} ").unwrap();
             write!(info_str, "multipv {} ", idx + 1).unwrap();
 

@@ -317,8 +317,12 @@ impl Engine {
             })
             .collect();
 
-        self.mcts
-            .set_root_filter(searchable_moves, tablebase_root.is_some());
+        let tablebase_score = best_rank.map(|rank| match rank {
+            900.. | ..=-900 => i64::from(rank) * SCALE as i64 / 1000,
+            _ => 0,
+        });
+
+        self.mcts.set_root_filter(searchable_moves, tablebase_score);
 
         let think_time = TimeManagement::from_tokens(
             tokens,

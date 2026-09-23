@@ -6,8 +6,10 @@ perf.data
 /books
 /builds
 /data
+/docs
 /nets
 /pgn
 /syzygy
+/tmp
 /train
 .claude/
