@@ -34,6 +34,8 @@ pub fn exploration_bonus(explore_coef: i64, policy: u16, visits: u32) -> i64 {
 pub struct Mcts {
     root_edges: Box<[MoveEdge]>,
     root_state: State,
+    searchable_moves: ArrayVec<bool, 256>,
+    tablebase_score: Option<i64>,
 
     engine_options: EngineOptions,
 
@@ -64,6 +66,8 @@ impl Mcts {
         Self {
             root_state: state,
             root_edges: root_edges.into_boxed_slice(),
+            searchable_moves: moves.iter().map(|_| true).collect(),
+            tablebase_score: None,
             engine_options,
             num_nodes: 1.into(),
             playouts: 0.into(),
@@ -114,7 +118,9 @@ impl Mcts {
             tld.root_gini = math::gini(tld.root_edges.iter().map(RootEdge::visits), total_visits);
         }
 
-        let root_edge_idx = tld.top_two_state.next(&tld.root_edges);
+        let root_edge_idx = tld
+            .top_two_state
+            .next(&tld.root_edges, &self.searchable_moves);
         let root_edge_ref = &self.root_edges[root_edge_idx];
 
         let mut state = self.root_state.clone();
@@ -162,7 +168,10 @@ impl Mcts {
                 if node.is_terminal() {
                     break;
                 }
-                if node.is_tablebase() && state.halfmove_clock() == 0 {
+                if node.is_tablebase()
+                    && state.halfmove_clock() == 0
+                    && self.tablebase_score.is_none()
+                {
                     break;
                 }
             }
@@ -257,7 +266,10 @@ impl Mcts {
             if let Some(soft_limit) = time_management.soft_limit() {
                 let opts = &self.engine_options.time_management_options;
 
-                if elapsed >= soft_limit.mul_f32(self.soft_time_multiplier(opts, tld.top_two_state.last_tc_sq())) {
+                if elapsed
+                    >= soft_limit
+                        .mul_f32(self.soft_time_multiplier(opts, tld.top_two_state.last_tc_sq()))
+                {
                     return false;
                 }
             }
@@ -338,6 +350,21 @@ impl Mcts {
         &mut self.root_edges
     }
 
+    pub fn set_root_filter(
+        &mut self,
+        searchable_moves: ArrayVec<bool, 256>,
+        tablebase_score: Option<i64>,
+    ) {
+        for (edge, &searchable) in self.root_edges.iter().zip(&searchable_moves) {
+            if !searchable {
+                edge.clear_stats();
+            }
+        }
+
+        self.searchable_moves = searchable_moves;
+        self.tablebase_score = tablebase_score;
+    }
+
     pub fn root_visits(&self) -> u64 {
         self.root_edges.iter().map(|x| u64::from(x.visits())).sum()
     }
@@ -400,6 +427,10 @@ impl Mcts {
     }
 
     fn soft_time_multiplier(&self, opts: &TimeManagementOptions, last_tc_sq: f32) -> f32 {
+        if self.searchable_moves.iter().filter(|&&s| s).count() == 1 {
+            return 0.0;
+        }
+
         if self.root_visits() == 0 {
             return 1.0;
         }
@@ -471,20 +502,18 @@ impl Mcts {
                 write!(info_str, "movesleft {} ", self.root_state.moves_left()).unwrap();
             }
 
+            let average = edge.reward().average;
+            let eval = self
+                .tablebase_score
+                .map_or(average, |tb| average.midpoint(tb)) as f32
+                / SCALE;
+
             if self.engine_options.show_wdl {
-                let wdl = UciWdl::from_eval(
-                    edge.reward().average as f32 / SCALE,
-                    self.root_state.phase(),
-                );
+                let wdl = UciWdl::from_eval(eval, self.root_state.phase());
                 write!(info_str, "wdl {wdl} ").unwrap();
             }
 
-            write!(
-                info_str,
-                "score {} ",
-                engine::eval_in_cp(edge.reward().average as f32 / SCALE)
-            )
-            .unwrap();
+            write!(info_str, "score {} ", engine::eval_in_cp(eval)).unwrap();
             write!(info_str, "time {search_time_ms} ").unwrap();
             write!(info_str, "multipv {} ", idx + 1).unwrap();
 

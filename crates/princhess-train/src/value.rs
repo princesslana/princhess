@@ -9,8 +9,8 @@ use bytemuck::{allocation, Zeroable};
 
 use crate::nets::{q_i16, q_i32};
 use crate::neural::{
-    AsParams, DenseConnected, FeedForwardNetwork, Optimizable, OutputLayer, SCReLU, SparseConnected,
-    SparseVector, Tanh, Vector,
+    AsParams, DenseConnected, FeedForwardNetwork, Optimizable, OutputLayer, SCReLU,
+    SparseConnected, SparseVector, Tanh, Vector,
 };
 use princhess::math::Rng;
 use princhess::quantized_value::{

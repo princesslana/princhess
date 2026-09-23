@@ -144,6 +144,17 @@ impl State {
     }
 
     #[must_use]
+    pub fn has_repeated(&self) -> bool {
+        let hashes = &self.prev_state_hashes;
+
+        self.is_repetition()
+            || hashes
+                .iter()
+                .enumerate()
+                .any(|(i, h)| hashes[i + 1..].contains(h))
+    }
+
+    #[must_use]
     pub fn is_endgame(&self) -> bool {
         let b = &self.board;
         let major_pieces_count = (b.queens() | b.rooks() | b.bishops() | b.knights()).count();

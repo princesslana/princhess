@@ -17,6 +17,8 @@ Required:
 Optional:
   --threads <n>          Threads per game (default: 1)
   --syzygy <bool>        Use Syzygy tablebases: true/false (default: true)
+  --pgn <notation>       Save games to <test-type>.pgn: san/lan/uci (default: not saved)
+  --rounds <n>           Number of game pairs (default: set by test type)
   --max-cores <n>        Max cores available (overrides auto-detection)
   -h, --help             Show this help
 EOF

@@ -16,8 +16,6 @@ use crate::chess::{Color, Piece, Square};
 
 #[cfg(feature = "fathom")]
 use std::ffi::CString;
-#[cfg(feature = "fathom")]
-use std::ptr;
 
 pub enum Wdl {
     Win,
@@ -53,13 +51,22 @@ pub fn set_tablebase_directory(_paths: &str) -> Result<(), ()> {
     Err(())
 }
 
+// Fathom uses 0 for no en passant square, which is safe as a1 can never be one
+#[cfg(feature = "fathom")]
+fn ep_square(b: &Board) -> u32 {
+    match b.ep_square() {
+        Square::NONE => 0,
+        sq => sq.index() as u32,
+    }
+}
+
 #[cfg(feature = "fathom")]
 pub fn probe_wdl(b: &Board) -> Option<Wdl> {
     if b.occupied().count() > max_pieces() {
         return None;
     }
 
-    if b.is_castling_rights() || b.ep_square() != Square::NONE {
+    if b.is_castling_rights() {
         return None;
     }
 
@@ -75,7 +82,7 @@ pub fn probe_wdl(b: &Board) -> Option<Wdl> {
             b.pawns().0,
             0,
             0,
-            0,
+            ep_square(b),
             b.side_to_move() == Color::WHITE,
         );
 
@@ -96,17 +103,39 @@ pub fn probe_wdl(_b: &Board) -> Option<Wdl> {
 }
 
 #[cfg(feature = "fathom")]
-pub fn probe_best_move(b: &Board) -> Option<(Move, Wdl)> {
+fn tb_move(b: &Board, mv: bindings::TbMove) -> Option<Move> {
+    let from = Square::from((mv >> 6) & 0x3F);
+    let to = Square::from(mv & 0x3F);
+    let promotion = u32::from((mv >> 12) & 0x7);
+
+    let promotion_role = match promotion {
+        bindings::TB_PROMOTES_QUEEN => Piece::QUEEN,
+        bindings::TB_PROMOTES_ROOK => Piece::ROOK,
+        bindings::TB_PROMOTES_BISHOP => Piece::BISHOP,
+        bindings::TB_PROMOTES_KNIGHT => Piece::KNIGHT,
+        _ => Piece::NONE,
+    };
+
+    b.legal_moves()
+        .into_iter()
+        .find(|m| m.from() == from && m.to() == to && m.promotion() == promotion_role)
+}
+
+#[cfg(feature = "fathom")]
+pub fn probe_root(b: &Board, has_repeated: bool) -> Option<Vec<(Move, i32)>> {
     if b.occupied().count() > max_pieces() {
         return None;
     }
 
-    if b.is_castling_rights() || b.ep_square() != Square::NONE {
+    if b.is_castling_rights() {
         return None;
     }
 
-    unsafe {
-        let root = bindings::tb_probe_root(
+    // SAFETY: TbRootMoves is plain integers, for which all-zero bytes are valid.
+    let mut results = unsafe { Box::<bindings::TbRootMoves>::new_zeroed().assume_init() };
+
+    let success = unsafe {
+        bindings::tb_probe_root_dtz(
             b.white().0,
             b.black().0,
             b.kings().0,
@@ -115,47 +144,29 @@ pub fn probe_best_move(b: &Board) -> Option<(Move, Wdl)> {
             b.bishops().0,
             b.knights().0,
             b.pawns().0,
+            u32::from(b.halfmove_clock()),
             0,
-            0,
-            0,
+            ep_square(b),
             b.side_to_move() == Color::WHITE,
-            ptr::null_mut(),
-        );
+            has_repeated,
+            true,
+            &mut *results,
+        )
+    };
 
-        if root == bindings::TB_RESULT_FAILED {
-            return None;
-        }
-
-        let wdl = match (root & bindings::TB_RESULT_WDL_MASK) >> bindings::TB_RESULT_WDL_SHIFT {
-            bindings::TB_WIN => Wdl::Win,
-            bindings::TB_LOSS => Wdl::Loss,
-            _ => Wdl::Draw,
-        };
-
-        let from =
-            Square::from((root & bindings::TB_RESULT_FROM_MASK) >> bindings::TB_RESULT_FROM_SHIFT);
-        let to = Square::from((root & bindings::TB_RESULT_TO_MASK) >> bindings::TB_RESULT_TO_SHIFT);
-        let promotion =
-            (root & bindings::TB_RESULT_PROMOTES_MASK) >> bindings::TB_RESULT_PROMOTES_SHIFT;
-
-        let promotion_role = match promotion {
-            bindings::TB_PROMOTES_QUEEN => Piece::QUEEN,
-            bindings::TB_PROMOTES_ROOK => Piece::ROOK,
-            bindings::TB_PROMOTES_BISHOP => Piece::BISHOP,
-            bindings::TB_PROMOTES_KNIGHT => Piece::KNIGHT,
-            _ => Piece::NONE,
-        };
-
-        for m in b.legal_moves() {
-            if m.from() == from && m.to() == to && m.promotion() == promotion_role {
-                return Some((m.into(), wdl));
-            }
-        }
+    if success == 0 {
+        return None;
     }
-    None
+
+    let moves = results.moves[..results.size as usize]
+        .iter()
+        .filter_map(|m| Some((tb_move(b, m.move_)?, m.tbRank)))
+        .collect();
+
+    Some(moves)
 }
 
 #[cfg(not(feature = "fathom"))]
-pub fn probe_best_move(_b: &Board) -> Option<(Move, Wdl)> {
+pub fn probe_root(_b: &Board, _has_repeated: bool) -> Option<Vec<(Move, i32)>> {
     None
 }

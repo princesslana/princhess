@@ -115,10 +115,17 @@ impl TopTwoState {
         self.last_tc_sq
     }
 
-    pub fn next(&mut self, root_edges: &ArrayVec<RootEdge, 256>) -> usize {
+    pub fn next(
+        &mut self,
+        root_edges: &ArrayVec<RootEdge, 256>,
+        searchable_moves: &[bool],
+    ) -> usize {
         let mut leader = 0;
         let mut leader_avg = i64::MIN;
         for (i, edge) in root_edges.iter().enumerate() {
+            if !searchable_moves[i] {
+                continue;
+            }
             let r = edge.reward();
             if r.visits == 0 {
                 return i;
@@ -138,7 +145,7 @@ impl TopTwoState {
         let mut n_c = 0.0_f32;
 
         for (i, edge) in root_edges.iter().enumerate() {
-            if i == leader {
+            if i == leader || !searchable_moves[i] {
                 continue;
             }
             let r = edge.reward();
@@ -267,34 +274,61 @@ impl Engine {
         self.ttable.flip(|| self.mcts.clear_root_children_links());
     }
 
-    pub fn go(&self, tokens: Tokens, is_interactive: bool) -> Option<String> {
-        let state = self.mcts.root_state();
-        let mvs = state.available_moves();
+    pub fn go(&mut self, tokens: Tokens, is_interactive: bool) -> Option<String> {
+        let root_moves: Vec<String> = self
+            .mcts
+            .root_edges()
+            .iter()
+            .map(|edge| self.to_uci(*edge.get_move()))
+            .collect();
+        let searchmoves: Vec<&str> = tokens
+            .clone()
+            .skip_while(|&t| t != "searchmoves")
+            .skip(1)
+            .take_while(|t| root_moves.iter().any(|m| m == t))
+            .collect();
 
-        if mvs.len() == 1 {
-            let uci_mv = self.to_uci(mvs[0]);
-            println!(
-                "info depth 1 seldepth 1 nodes 1 nps 1 tbhits 0 score cp 0 time 1 pv {uci_mv}"
-            );
-            println!("bestmove {uci_mv}");
-            return None;
-        } else if let Some((mv, wdl)) = tablebase::probe_best_move(state.board()) {
-            let uci_mv = self.to_uci(mv);
+        let root_state = self.mcts.root_state();
+        let tablebase_root = if searchmoves.is_empty() {
+            tablebase::probe_root(root_state.board(), root_state.has_repeated())
+        } else {
+            None
+        };
+        let best_rank = tablebase_root
+            .as_ref()
+            .and_then(|ranked| ranked.iter().map(|&(_, rank)| rank).max());
 
-            let score = match wdl {
-                tablebase::Wdl::Win => 1000,
-                tablebase::Wdl::Loss => -1000,
-                tablebase::Wdl::Draw => 0,
-            };
-            println!(
-                "info depth 1 seldepth 1 nodes 1 nps 1 tbhits 1 score cp {score} time 1 pv {uci_mv}"
-            );
-            println!("bestmove {uci_mv}");
-            return None;
-        }
+        let searchable_moves: ArrayVec<bool, 256> = self
+            .mcts
+            .root_edges()
+            .iter()
+            .zip(&root_moves)
+            .map(|(edge, uci_mv)| {
+                let mv = *edge.get_move();
+                let is_searchmove =
+                    searchmoves.is_empty() || searchmoves.contains(&uci_mv.as_str());
+                let preserves_result = tablebase_root.as_ref().is_none_or(|ranked| {
+                    ranked
+                        .iter()
+                        .any(|&(m, rank)| m == mv && Some(rank) == best_rank)
+                });
 
-        let think_time =
-            TimeManagement::from_tokens(tokens, state, self.engine_options.is_policy_only);
+                is_searchmove && preserves_result
+            })
+            .collect();
+
+        let tablebase_score = best_rank.map(|rank| match rank {
+            900.. | ..=-900 => i64::from(rank) * SCALE as i64 / 1000,
+            _ => 0,
+        });
+
+        self.mcts.set_root_filter(searchable_moves, tablebase_score);
+
+        let think_time = TimeManagement::from_tokens(
+            tokens,
+            self.mcts.root_state(),
+            self.engine_options.is_policy_only,
+        );
 
         self.playout_parallel(think_time, is_interactive)
     }

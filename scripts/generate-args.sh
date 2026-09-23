@@ -17,6 +17,8 @@ Required:
 Optional:
   --threads <n>          Threads per game (default: 1)
   --syzygy <bool>        Use Syzygy tablebases: true/false (default: true)
+  --pgn <notation>       Save games to <test-type>.pgn: san/lan/uci (default: not saved)
+  --rounds <n>           Number of game pairs (default: set by test type)
   --max-cores <n>        Max cores available (overrides auto-detection)
   --variant <variant>    Chess variant: standard, dfrc (default: standard)
   -h, --help             Show this help
@@ -33,6 +35,8 @@ EOF
 # Defaults
 THREADS=1
 USE_SYZYGY=true
+PGN_NOTATION=""
+ROUNDS_OVERRIDE=""
 MAX_CORES=""
 TEST_TYPE=""
 TIME_CONTROL=""
@@ -66,6 +70,14 @@ while [[ $# -gt 0 ]]; do
             ;;
         --syzygy)
             USE_SYZYGY="$2"
+            shift 2
+            ;;
+        --pgn)
+            PGN_NOTATION="$2"
+            shift 2
+            ;;
+        --rounds)
+            ROUNDS_OVERRIDE="$2"
             shift 2
             ;;
         --max-cores)
@@ -107,6 +119,18 @@ fi
 # Validate syzygy
 if [ "$USE_SYZYGY" != "true" ] && [ "$USE_SYZYGY" != "false" ]; then
     echo "Invalid syzygy parameter: $USE_SYZYGY (must be 'true' or 'false')"
+    exit 1
+fi
+
+# Validate pgn notation if provided
+if [ -n "$PGN_NOTATION" ] && [ "$PGN_NOTATION" != "san" ] && [ "$PGN_NOTATION" != "lan" ] && [ "$PGN_NOTATION" != "uci" ]; then
+    echo "Invalid pgn notation: $PGN_NOTATION (must be 'san', 'lan' or 'uci')"
+    exit 1
+fi
+
+# Validate rounds if provided
+if [ -n "$ROUNDS_OVERRIDE" ] && ! [[ "$ROUNDS_OVERRIDE" =~ ^[1-9][0-9]*$ ]]; then
+    echo "Invalid rounds: $ROUNDS_OVERRIDE (must be positive integer)"
     exit 1
 fi
 
@@ -290,7 +314,7 @@ case $TEST_TYPE in
     debug)
         ROUNDS=50
         echo "-log file=$PGN_DIR/debug.log engine=true"
-        echo "-pgnout $PGN_DIR/debug.pgn"
+        echo "-pgnout file=$PGN_DIR/debug.pgn"
         ;;
     *)
         echo "Unknown test type: $TEST_TYPE"
@@ -299,11 +323,15 @@ case $TEST_TYPE in
 esac
 
 echo "-openings file=$BOOKS_DIR/$OPENING_BOOK format=epd order=random"
-echo "-games 2 -repeat -rounds $ROUNDS"
+echo "-games 2 -repeat -rounds ${ROUNDS_OVERRIDE:-$ROUNDS}"
 echo "-ratinginterval 10 -concurrency $CONCURRENCY"
 
 if [ "$TEST_TYPE" != "debug" ]; then
     echo "-recover"
+
+    if [ -n "$PGN_NOTATION" ]; then
+        echo "-pgnout file=$PGN_DIR/$TEST_TYPE.pgn notation=$PGN_NOTATION"
+    fi
 fi
 
 echo "-config outname=$STATE_DIR/current.json"
