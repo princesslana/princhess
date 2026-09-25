@@ -7,11 +7,11 @@ use fastapprox::faster;
 
 use crate::arena;
 use crate::chess;
-use crate::engine::{self, RootEdge, ThreadData, SCALE};
+use crate::engine::{self, RootEdge, ThreadData, MATE_SCORE, SCALE};
 use crate::evaluation::{self, Flag};
 use crate::graph::{
-    self, MoveEdge, PositionNode, DRAW_NODE, LOSS_NODE, TABLEBASE_DRAW_NODE, TABLEBASE_LOSS_NODE,
-    TABLEBASE_WIN_NODE, UNEXPANDED_NODE, WIN_NODE,
+    self, MoveEdge, PositionNode, DRAW_NODE, LOSS_NODE, PROVEN_MATE, TABLEBASE_DRAW_NODE,
+    TABLEBASE_LOSS_NODE, TABLEBASE_WIN_NODE, UNEXPANDED_NODE, WIN_NODE,
 };
 use crate::math;
 use crate::options::{EngineOptions, MctsOptions, TimeManagementOptions};
@@ -19,7 +19,7 @@ use crate::state::State;
 use crate::time_management::TimeManagement;
 use crate::transposition_table::LRTable;
 
-const MAX_PLAYOUT_LENGTH: usize = 256;
+pub const MAX_PLAYOUT_LENGTH: usize = 256;
 
 const PV_EVAL_MIN_DEPTH: usize = 4;
 
@@ -152,12 +152,14 @@ impl Mcts {
 
         let mut path: ArrayVec<(&'a MoveEdge, i64), MAX_PLAYOUT_LENGTH> = ArrayVec::new();
 
+        let search_proven = node.proof() != 0;
+
         loop {
             if node.is_stale(tld.ttable.current_generation()) {
                 return true;
             }
 
-            if node.edges().is_empty() {
+            if node.edges().is_empty() || (node.proof() != 0 && !search_proven) {
                 break;
             }
 
@@ -216,9 +218,16 @@ impl Mcts {
             node = new_node;
         }
 
-        evaln = node.flag().adjust_eval(evaln);
+        evaln = match node.proof() {
+            0 => node.flag().adjust_eval(evaln),
+            proof => i64::from(proof.signum()) * MATE_SCORE,
+        };
 
         Self::finish_playout(&mut tld.root_edges[root_edge_idx], &path, evaln);
+
+        if node.proof() != 0 {
+            Self::propagate_proof(root_edge_ref, &path, node.proof());
+        }
 
         let depth = path.len() + 1;
         tld.num_nodes += depth;
@@ -338,6 +347,27 @@ impl Mcts {
         root_edge.up(evaln_value);
     }
 
+    fn propagate_proof(root_edge: &MoveEdge, path: &[(&MoveEdge, i64)], mut proof: i16) {
+        for i in (0..path.len()).rev() {
+            let parent_edge = if i == 0 { root_edge } else { path[i - 1].0 };
+
+            let Some(parent) = parent_edge.child() else {
+                return;
+            };
+
+            if !parent.update_proof(proof) {
+                return;
+            }
+
+            proof = parent.proof();
+
+            // Root edge stats are buffered per thread, so only edges within the tree are set
+            if i > 0 {
+                parent_edge.set_proven_value(-i64::from(proof.signum()) * MATE_SCORE);
+            }
+        }
+    }
+
     pub fn root_state(&self) -> &State {
         &self.root_state
     }
@@ -422,7 +452,17 @@ impl Mcts {
 
     fn sort_edges_by_score<'b>(&self, edges: &'b [MoveEdge]) -> Vec<&'b MoveEdge> {
         let mut result: Vec<&MoveEdge> = edges.iter().collect();
-        result.sort_by(|a, b| self.move_score(b).total_cmp(&self.move_score(a)));
+        result.sort_by(|a, b| {
+            let (proof_a, proof_b) = (edge_proof(a), edge_proof(b));
+
+            proof_b.signum().cmp(&proof_a.signum()).then_with(|| {
+                if proof_a == 0 && proof_b == 0 {
+                    self.move_score(b).total_cmp(&self.move_score(a))
+                } else {
+                    proof_b.cmp(&proof_a)
+                }
+            })
+        });
         result
     }
 
@@ -502,18 +542,22 @@ impl Mcts {
                 write!(info_str, "movesleft {} ", self.root_state.moves_left()).unwrap();
             }
 
+            let proof = edge_proof(edge);
             let average = edge.reward().average;
-            let eval = self
-                .tablebase_score
-                .map_or(average, |tb| average.midpoint(tb)) as f32
-                / SCALE;
+            let eval = if proof == 0 {
+                self.tablebase_score
+                    .map_or(average, |tb| average.midpoint(tb)) as f32
+                    / SCALE
+            } else {
+                f32::from(proof.signum())
+            };
 
             if self.engine_options.show_wdl {
                 let wdl = UciWdl::from_eval(eval, self.root_state.phase());
                 write!(info_str, "wdl {wdl} ").unwrap();
             }
 
-            write!(info_str, "score {} ", engine::eval_in_cp(eval)).unwrap();
+            write!(info_str, "score {} ", format_score(proof, eval)).unwrap();
             write!(info_str, "time {search_time_ms} ").unwrap();
             write!(info_str, "multipv {} ", idx + 1).unwrap();
 
@@ -656,6 +700,22 @@ impl UciWdl {
             draw,
             black: loss,
         }
+    }
+}
+
+#[must_use]
+pub fn edge_proof(edge: &MoveEdge) -> i16 {
+    edge.child()
+        .map_or(0, |child| graph::parent_proof(child.proof()))
+}
+
+#[must_use]
+pub fn format_score(proof: i16, eval: f32) -> String {
+    if proof == 0 {
+        engine::eval_in_cp(eval)
+    } else {
+        let moves = (PROVEN_MATE - proof.abs() + 1) / 2;
+        format!("mate {}", proof.signum() * moves)
     }
 }
 

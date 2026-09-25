@@ -1,13 +1,14 @@
 use std::mem;
 use std::ptr::{self, NonNull};
 use std::slice;
-use std::sync::atomic::{AtomicI64, AtomicPtr, AtomicU32, Ordering};
+use std::sync::atomic::{AtomicI16, AtomicI64, AtomicPtr, AtomicU32, Ordering};
 use std::sync::LazyLock;
 
 use crate::arena::{self, ArenaRef};
 use crate::chess;
 use crate::engine::SCALE;
 use crate::evaluation::{self, Flag};
+use crate::mcts::MAX_PLAYOUT_LENGTH;
 use crate::state::State;
 use crate::transposition_table::AllocNodeResult;
 
@@ -23,14 +24,35 @@ pub struct MoveEdge {
 }
 
 #[repr(C)]
-#[derive(Clone)]
 pub struct PositionNode {
     edges_ptr: NonNull<MoveEdge>,
     edges_count: u8,
     flag: Flag,
     gini: u16,
     generation: u32,
-    _padding: [u8; 8],
+    proof: AtomicI16,
+    _padding: [u8; 6],
+}
+
+// Proofs are from the side to move: +(PROVEN_MATE - d) wins in d plies, -(PROVEN_MATE - d) is
+// mated in d plies, 0 is unproven. Higher is always better, so a win is the max over children.
+#[allow(clippy::cast_possible_wrap)]
+pub const PROVEN_MATE: i16 = MAX_PLAYOUT_LENGTH as i16;
+
+#[must_use]
+pub fn parent_proof(proof: i16) -> i16 {
+    match proof.signum() - proof {
+        0 => -proof.signum(),
+        parent => parent,
+    }
+}
+
+fn initial_proof(flag: Flag) -> i16 {
+    if flag == Flag::TERMINAL_LOSS {
+        -PROVEN_MATE
+    } else {
+        0
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -86,7 +108,8 @@ impl PositionNode {
             flag,
             gini,
             generation,
-            _padding: [0; 8],
+            proof: AtomicI16::new(initial_proof(flag)),
+            _padding: [0; 6],
         }
     }
 
@@ -97,8 +120,43 @@ impl PositionNode {
             flag,
             gini: 0,
             generation: 0,
-            _padding: [0; 8],
+            proof: AtomicI16::new(initial_proof(flag)),
+            _padding: [0; 6],
         }
+    }
+
+    pub fn proof(&self) -> i16 {
+        self.proof.load(Ordering::Relaxed)
+    }
+
+    pub fn set_proof(&mut self, proof: i16) {
+        *self.proof.get_mut() = proof;
+    }
+
+    pub fn update_proof(&self, child_proof: i16) -> bool {
+        let proof = parent_proof(child_proof);
+
+        if proof > 0 {
+            return self.proof.fetch_max(proof, Ordering::Relaxed) < proof;
+        }
+
+        let mut best = i16::MIN;
+
+        for edge in self.edges() {
+            let Some(child) = edge.child() else {
+                return false;
+            };
+
+            let child_proof = child.proof();
+
+            if child_proof <= 0 {
+                return false;
+            }
+
+            best = best.max(parent_proof(child_proof));
+        }
+
+        self.proof.swap(best, Ordering::Relaxed) != best
     }
 
     pub fn flag(&self) -> Flag {
@@ -210,6 +268,12 @@ impl MoveEdge {
 
     pub fn add_sum_evaluations(&self, delta: i64) -> i64 {
         self.sum_evaluations.fetch_add(delta, Ordering::Relaxed) + delta
+    }
+
+    pub fn set_proven_value(&self, value: i64) {
+        let visits = i64::from(self.visits.load(Ordering::Relaxed));
+        self.sum_evaluations
+            .store(value * visits, Ordering::Relaxed);
     }
 
     pub fn clear_stats(&self) {
