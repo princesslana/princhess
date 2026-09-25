@@ -159,7 +159,9 @@ impl Mcts {
                 return true;
             }
 
-            if node.edges().is_empty() || (node.proof() != 0 && !search_proven) {
+            if node.edges().is_empty()
+                || (node.proof() != 0 && !search_proven && trusted_proof(&state, node.proof()) != 0)
+            {
                 break;
             }
 
@@ -431,10 +433,22 @@ impl Mcts {
     ///
     /// Panics if the root node has no moves (e.g., checkmate or stalemate positions).
     pub fn best_edge(&self) -> &MoveEdge {
-        self.sort_edges_by_score(&self.root_edges)
+        self.sorted_root_edges()
             .into_iter()
             .next()
             .expect("Root node must have moves to determine best edge")
+            .0
+    }
+
+    fn root_edge_proof(&self, edge: &MoveEdge) -> i16 {
+        match edge.child().map_or(0, PositionNode::proof) {
+            0 => 0,
+            proof => {
+                let mut state = self.root_state.clone();
+                state.make_move(*edge.get_move());
+                graph::parent_proof(trusted_proof(&state, proof))
+            }
+        }
     }
 
     fn move_score(&self, edge: &MoveEdge) -> f32 {
@@ -450,11 +464,14 @@ impl Mcts {
         reward.average as f32 - visits_adj
     }
 
-    fn sort_edges_by_score<'b>(&self, edges: &'b [MoveEdge]) -> Vec<&'b MoveEdge> {
-        let mut result: Vec<&MoveEdge> = edges.iter().collect();
-        result.sort_by(|a, b| {
-            let (proof_a, proof_b) = (edge_proof(a), edge_proof(b));
+    fn sorted_root_edges(&self) -> Vec<(&MoveEdge, i16)> {
+        let mut result: Vec<(&MoveEdge, i16)> = self
+            .root_edges
+            .iter()
+            .map(|edge| (edge, self.root_edge_proof(edge)))
+            .collect();
 
+        result.sort_by(|&(a, proof_a), &(b, proof_b)| {
             proof_b.signum().cmp(&proof_a.signum()).then_with(|| {
                 if proof_a == 0 && proof_b == 0 {
                     self.move_score(b).total_cmp(&self.move_score(a))
@@ -524,11 +541,11 @@ impl Mcts {
             nodes * 1000 / search_time_ms as usize
         };
 
-        let moves = self.sort_edges_by_score(&self.root_edges);
+        let moves = self.sorted_root_edges();
 
         let is_chess960 = self.engine_options.is_chess960;
 
-        for (idx, edge) in moves.iter().enumerate().take(self.engine_options.multi_pv) {
+        for (idx, &(edge, proof)) in moves.iter().enumerate().take(self.engine_options.multi_pv) {
             info_str.clear();
             info_str.push_str("info ");
             write!(info_str, "depth {} ", depth.max(1)).unwrap();
@@ -542,7 +559,6 @@ impl Mcts {
                 write!(info_str, "movesleft {} ", self.root_state.moves_left()).unwrap();
             }
 
-            let proof = edge_proof(edge);
             let average = edge.reward().average;
             let eval = if proof == 0 {
                 self.tablebase_score
@@ -707,6 +723,21 @@ impl UciWdl {
 pub fn edge_proof(edge: &MoveEdge) -> i16 {
     edge.child()
         .map_or(0, |child| graph::parent_proof(child.proof()))
+}
+
+// Proofs are keyed by position, so ignore any whose line could hit the 50-move rule or, after an
+// earlier repetition, a threefold. A mate within one ply can't be drawn.
+fn trusted_proof(state: &State, proof: i16) -> i16 {
+    let distance = PROVEN_MATE - proof.abs();
+
+    if proof == 0
+        || distance <= 1
+        || (i16::from(state.halfmove_clock()) + distance <= 100 && !state.has_repeated())
+    {
+        proof
+    } else {
+        0
+    }
 }
 
 #[must_use]
