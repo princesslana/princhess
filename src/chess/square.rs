@@ -19,6 +19,7 @@ pub struct Rank(u8);
 impl Square {
     pub const A1: Square = Square(0);
     pub const C1: Square = Square(2);
+    pub const E1: Square = Square(4);
     pub const G1: Square = Square(6);
     pub const H1: Square = Square(7);
 
@@ -29,6 +30,7 @@ impl Square {
 
     pub const A8: Square = Square(56);
     pub const C8: Square = Square(58);
+    pub const E8: Square = Square(60);
     pub const G8: Square = Square(62);
     pub const H8: Square = Square(63);
 

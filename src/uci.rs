@@ -1,5 +1,5 @@
 use std::io;
-use std::str::SplitWhitespace;
+use std::io::{BufRead, Read};
 
 use crate::engine::Engine;
 use crate::graph;
@@ -10,7 +10,11 @@ use crate::state::{self, State};
 use crate::tablebase;
 use crate::time_management::TimeManagement;
 
-pub type Tokens<'a> = SplitWhitespace<'a>;
+pub mod command;
+pub mod parser;
+
+pub use command::{GoParams, PositionSpec, SetOptionParams, UciCommand};
+pub use parser::ParseError;
 
 const ENGINE_NAME: &str = "Princhess";
 const ENGINE_AUTHOR: &str = "Princess Lana";
@@ -58,64 +62,111 @@ impl Uci {
         }
     }
 
+    // parse line and dispatch uci command
     pub fn handle_command(&mut self, line: &str, is_interactive: bool) -> (bool, Option<String>) {
-        let mut tokens = line.split_whitespace();
+        let command = match UciCommand::parse(line) {
+            Ok(Some(cmd)) => cmd,
+            Ok(None) => return (false, None),
+            Err(ParseError::InvalidPosition | ParseError::InvalidFen) => {
+                println!("info string Couldn't parse '{line}' as position");
+                return (false, None);
+            }
+            Err(ParseError::MissingOptionName | ParseError::MalformedCommand) => {
+                return (false, None);
+            }
+        };
+
+        self.execute(command, is_interactive)
+    }
+
+    /// dispatch a parsed command, returns (quit, next line for go)
+    pub fn execute(
+        &mut self,
+        command: UciCommand<'_>,
+        is_interactive: bool,
+    ) -> (bool, Option<String>) {
         let mut next_line_from_go = None;
         let mut should_quit = false;
 
-        if let Some(first_word) = tokens.next() {
-            match first_word {
-                "uci" => Self::uci_info(),
-                "isready" => println!("readyok"),
-                "setoption" => self.handle_setoption(tokens),
-                "ucinewgame" => {
-                    self.engine = Engine::new(State::default(), self.engine_options);
-                }
-                "position" => self.handle_position(tokens, line),
-                "quit" => should_quit = true,
-                "go" => {
-                    next_line_from_go = self.handle_go(tokens, is_interactive);
-                }
-                "movelist" => self.engine.print_move_list(tokens),
-                "sizelist" => graph::print_size_list(),
-                "eval" => self.engine.print_eval(),
-                "bench" => self.run_bench(),
-                "randomopen" => self.generate_random_opening(),
-                "fingerprint" => Self::fingerprint(),
-                _ => (),
+        match command {
+            UciCommand::Uci => Self::uci_info(),
+            UciCommand::Debug(_) => (),
+            UciCommand::IsReady => println!("readyok"),
+            UciCommand::SetOption(params) => {
+                self.handle_setoption(params.name, params.value);
             }
+            UciCommand::UciNewGame => {
+                self.engine = Engine::new(State::default(), self.engine_options);
+            }
+            UciCommand::Position { spec, moves } => {
+                self.handle_position(spec, moves);
+            }
+            UciCommand::Quit => should_quit = true,
+            UciCommand::Stop | UciCommand::PonderHit => (),
+            UciCommand::Go(params) => {
+                next_line_from_go = self.handle_go(&params, is_interactive);
+            }
+            UciCommand::MoveList(moves) => self.engine.print_move_list(moves.split_whitespace()),
+            UciCommand::SizeList => graph::print_size_list(),
+            UciCommand::Eval => self.engine.print_eval(),
+            UciCommand::Bench => self.run_bench(),
+            UciCommand::RandomOpen => self.generate_random_opening(),
+            UciCommand::Fingerprint => Self::fingerprint(),
+            UciCommand::UnknownCommand(_) => (),
         }
+
         (should_quit, next_line_from_go)
     }
 
-    fn handle_setoption(&mut self, tokens: Tokens) {
-        if let Some((name, value)) = parse_set_option(tokens) {
-            let root_state = self.engine.root_state().clone();
+    // apply setoption, syzygypath updates tablebase dir
+    fn handle_setoption(&mut self, name: &str, value: Option<&str>) {
+        let Some(value) = value else {
+            println!("info string Option '{name}' is not a button and requires a value");
+            return;
+        };
 
-            self.options.set(&name, &value);
-            self.engine_options = EngineOptions::from(&self.options);
+        let root_state = self.engine.root_state().clone();
 
-            if name.eq_ignore_ascii_case("syzygypath") {
-                match tablebase::set_tablebase_directory(&value) {
-                    Ok(()) => println!("info string Success initializing tablebase at {value}"),
-                    Err(()) => println!("info string Error initializing tablebase at {value}"),
+        self.options.set(name, value);
+        self.engine_options = EngineOptions::from(&self.options);
+
+        if name.eq_ignore_ascii_case("syzygypath") {
+            match tablebase::set_tablebase_directory(value) {
+                Ok(()) => println!("info string Success initializing tablebase at {value}"),
+                Err(()) => println!("info string Error initializing tablebase at {value}"),
+            }
+        }
+
+        self.engine = Engine::new(root_state, self.engine_options);
+    }
+
+    // set up root state from startpos/fen and replay moves without allocating
+    fn handle_position(&mut self, spec: PositionSpec<'_>, moves: &str) {
+        let mut state = match spec {
+            PositionSpec::Startpos => State::default(),
+            PositionSpec::Fen(fen) => State::from_fen(fen),
+        };
+
+        for mov_str in moves.split_whitespace() {
+            let mut applied = false;
+            for mov in state.available_moves() {
+                if mov.matches_uci(mov_str, self.engine_options.is_chess960) {
+                    state.make_move(mov);
+                    applied = true;
+                    break;
                 }
             }
-
-            self.engine = Engine::new(root_state, self.engine_options);
+            if !applied {
+                println!("info string Couldn't parse '{mov_str}' as move");
+                return;
+            }
         }
+
+        self.engine.set_root_state(state);
     }
 
-    fn handle_position(&mut self, tokens: Tokens, line: &str) {
-        if let Some(state) = State::from_tokens(tokens, self.engine_options.is_chess960) {
-            self.engine.set_root_state(state);
-        } else {
-            println!("info string Couldn't parse '{line}' as position");
-        }
-    }
-
-    fn handle_go(&self, tokens: Tokens, is_interactive: bool) -> Option<String> {
-        self.engine.go(tokens, is_interactive)
+    fn handle_go(&self, params: &GoParams, is_interactive: bool) -> Option<String> {
+        self.engine.go(params, is_interactive)
     }
 
     fn run_bench(&mut self) {
@@ -201,35 +252,49 @@ impl Default for Uci {
 /// Panics if reading from stdin fails.
 #[must_use]
 pub fn read_stdin() -> String {
+    read_bounded_line(&mut io::stdin().lock())
+}
+
+// max bytes kept per input line; uci lines are tiny, this stops hostile input growing memory
+const MAX_UCI_LINE_BYTES: u64 = 1 << 20;
+
+// read one line capped at MAX_UCI_LINE_BYTES; overlong lines are drained and ignored
+fn read_bounded_line<R: BufRead>(reader: &mut R) -> String {
     let mut input = String::new();
-    io::stdin().read_line(&mut input).unwrap();
+    let bytes_read = (&mut *reader)
+        .take(MAX_UCI_LINE_BYTES + 1)
+        .read_line(&mut input)
+        .unwrap();
+
+    if bytes_read as u64 > MAX_UCI_LINE_BYTES {
+        // over the cap: drain the rest of the line so the next read starts clean
+        let mut drain = Vec::new();
+        let _ = reader.read_until(b'\n', &mut drain);
+        println!("info string ignoring oversized input line");
+        return String::new();
+    }
     input
 }
 
-#[must_use]
-pub fn parse_set_option(mut tokens: Tokens) -> Option<(String, String)> {
-    if tokens.next() != Some("name") {
-        return None;
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Cursor;
+
+    #[test]
+    fn test_bounded_line_keeps_normal_lines() {
+        let mut cursor = Cursor::new(b"isready\n".to_vec());
+        assert_eq!(read_bounded_line(&mut cursor), "isready\n");
     }
 
-    let mut name = tokens.next()?.to_owned();
-
-    for t in tokens.by_ref() {
-        if t == "value" {
-            break;
-        }
-
-        name = format!("{name} {t}");
+    #[test]
+    fn test_bounded_line_drains_oversized_line() {
+        let big = "x".repeat(2 * 1024 * 1024);
+        let data = format!("{big}\nquit\n");
+        let mut cursor = Cursor::new(data.into_bytes());
+        assert_eq!(read_bounded_line(&mut cursor), "");
+        // rest of the overlong line was drained, next read gets the following line
+        assert_eq!(read_bounded_line(&mut cursor), "quit\n");
     }
-
-    let mut value = None;
-
-    for t in tokens {
-        value = match value {
-            None => Some(t.to_owned()),
-            Some(s) => Some(format!("{s} {t}")),
-        }
-    }
-
-    Some((name, value?))
 }
+
