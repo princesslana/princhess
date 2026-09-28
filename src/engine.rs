@@ -19,6 +19,8 @@ use crate::transposition_table::{LRAllocator, LRTable};
 use crate::uci::{self, Tokens};
 
 pub const SCALE: f32 = 256. * 256.;
+pub const MATE_SCORE: i64 = 2 * SCALE as i64;
+pub const KNOWN_WIN: i64 = SCALE as i64;
 
 /// Thread-local buffer for root edge statistics to reduce atomic contention.
 #[derive(Clone, Copy)]
@@ -318,7 +320,7 @@ impl Engine {
             .collect();
 
         let tablebase_score = best_rank.map(|rank| match rank {
-            900.. | ..=-900 => i64::from(rank) * SCALE as i64 / 1000,
+            900.. | ..=-900 => i64::from(rank) * KNOWN_WIN / 1000,
             _ => 0,
         });
 
@@ -511,7 +513,7 @@ impl Engine {
                 mov.visits(),
                 mov.visits() as f32 / total_visits as f32 * 100.,
                 reward.average as f32 / (SCALE / 100.),
-                eval_in_cp(reward.average as f32 / SCALE),
+                mcts::format_score(mcts::edge_proof(mov), reward.average as f32 / SCALE),
                 u as f32 / (SCALE / 100.),
                 tc,
             );

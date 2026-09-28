@@ -128,6 +128,7 @@ impl TranspositionTable {
     pub fn lookup_into(&self, state: &State, dest: &mut PositionNode) -> bool {
         if let Some(src) = self.lookup(state) {
             dest.set_flag(src.flag());
+            dest.set_proof(src.proof());
             graph::copy_edge_stats(dest.edges(), src.edges());
             true
         } else {

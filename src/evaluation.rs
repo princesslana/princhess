@@ -2,7 +2,7 @@
 use std::mem;
 
 use crate::chess::MoveList;
-use crate::engine::SCALE;
+use crate::engine::{KNOWN_WIN, MATE_SCORE, SCALE};
 #[cfg(feature = "policy-net")]
 use crate::math;
 use crate::options::EvaluationOptions;
@@ -62,10 +62,10 @@ impl Flag {
     #[must_use]
     pub const fn adjust_eval(self, eval: i64) -> i64 {
         match self {
-            Self::TERMINAL_WIN => 2 * SCALE as i64,
-            Self::TERMINAL_LOSS => -2 * SCALE as i64,
-            Self::TABLEBASE_WIN => SCALE as i64,
-            Self::TABLEBASE_LOSS => -SCALE as i64,
+            Self::TERMINAL_WIN => MATE_SCORE,
+            Self::TERMINAL_LOSS => -MATE_SCORE,
+            Self::TABLEBASE_WIN => KNOWN_WIN,
+            Self::TABLEBASE_LOSS => -KNOWN_WIN,
             Self::TERMINAL_DRAW | Self::TABLEBASE_DRAW => 0,
             _ => eval,
         }

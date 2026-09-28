@@ -68,7 +68,7 @@ clippy:
 
 .PHONY: bench
 bench:
-	@scripts/bench.sh $(or $(ENGINE1),princhess) $(or $(ENGINE2),princhess-main) $(or $(RUNS),10)
+	@scripts/bench.sh $(or $(ENGINE1),princhess) $(or $(ENGINE2),princhess-main) $(or $(RUNS),20)
 
 .PHONY: clean
 clean:
