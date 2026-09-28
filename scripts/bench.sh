@@ -38,7 +38,7 @@ run_bench() {
     bench_out=$("$engine_path" bench 2>&1) || return 1
     read -r nodes nps <<< "$(printf '%s\n' "$bench_out" | awk '/^Bench:/ { print $2, $(NF-1) }')"
 
-    [[ "$nodes" =~ ^[0-9]+$ ]] && [[ "$nps" =~ ^[0-9]+$ ]] || return 1
+    [[ "$nodes" =~ ^[0-9]+$ ]] && [[ "$nps" =~ ^[1-9][0-9]*$ ]] || return 1
     echo "$nodes $nps"
 }
 
@@ -90,14 +90,25 @@ done
 
 echo ""
 
-# Mean of per-pair NPS ratios with a 95% confidence interval (needs at least two pairs)
+# Mean of per-pair NPS ratios with a 95% confidence interval using Student's t (needs two pairs)
 read -r AVG1 AVG2 MEAN LOW HIGH < <(
     paste <(printf '%s\n' "${NPS1[@]}") <(printf '%s\n' "${NPS2[@]}") | awk '
+        BEGIN {
+            split("12.706 4.303 3.182 2.776 2.571 2.447 2.365 2.306 2.262 2.228 " \
+                  "2.201 2.179 2.160 2.145 2.131 2.120 2.110 2.101 2.093 2.086 " \
+                  "2.080 2.074 2.069 2.064 2.060 2.056 2.052 2.048 2.045 2.042", t)
+        }
         { s1 += $1; s2 += $2; r[NR] = $1 / $2; sum += r[NR] }
         END {
             n = NR; mean = sum / n
+            if (n < 2) {
+                printf "%d %d %.2f - -\n", s1 / n, s2 / n, mean * 100
+                exit
+            }
             for (i = 1; i <= n; i++) ss += (r[i] - mean) ^ 2
-            half = n > 1 ? 1.96 * sqrt(ss / (n - 1)) / sqrt(n) : 0
+            df = n - 1
+            crit = df <= 30 ? t[df] : 1.96 + 2.4 / df
+            half = crit * sqrt(ss / df) / sqrt(n)
             printf "%d %d %.2f %.2f %.2f\n", s1 / n, s2 / n, mean * 100, (mean - half) * 100, (mean + half) * 100
         }'
 )
@@ -113,4 +124,10 @@ else
     NODE_STATUS="nodes MISMATCH: $ENGINE1=$NODES1 $ENGINE2=$NODES2"
 fi
 
-echo "Result: $ENGINE1 is ${MEAN}% of $ENGINE2 (95% CI ${LOW}% to ${HIGH}%)  $NODE_STATUS"
+if [ "$LOW" = "-" ]; then
+    CI="no CI with one pair"
+else
+    CI="95% CI ${LOW}% to ${HIGH}%"
+fi
+
+echo "Result: $ENGINE1 is ${MEAN}% of $ENGINE2 ($CI)  $NODE_STATUS"
