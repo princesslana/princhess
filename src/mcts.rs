@@ -7,11 +7,12 @@ use fastapprox::faster;
 
 use crate::arena;
 use crate::chess;
-use crate::engine::{self, RootEdge, ThreadData, SCALE};
+use crate::engine::{self, RootEdge, ThreadData, KNOWN_WIN, MATE_SCORE, SCALE};
 use crate::evaluation::{self, Flag};
 use crate::graph::{
-    self, MoveEdge, PositionNode, DRAW_NODE, LOSS_NODE, PROVEN_MATE, TABLEBASE_DRAW_NODE,
-    TABLEBASE_LOSS_NODE, TABLEBASE_WIN_NODE, UNEXPANDED_NODE, WIN_NODE,
+    self, MoveEdge, PositionNode, BOUND_INF, DRAW_NODE, LOSS_NODE, PATH_DRAW_NODE, PROVEN_MATE,
+    TABLEBASE_DRAW_NODE, TABLEBASE_LOSS_NODE, TABLEBASE_WIN_NODE, TB_WIN, UNEXPANDED_NODE,
+    WIN_NODE,
 };
 use crate::math;
 use crate::options::{EngineOptions, MctsOptions, TimeManagementOptions};
@@ -139,7 +140,7 @@ impl Mcts {
             || state.drawn_by_fifty_move_rule()
             || state.board().is_insufficient_material()
         {
-            node = &*DRAW_NODE;
+            node = &*PATH_DRAW_NODE;
         } else {
             node = match self.descend(&state, root_edge_ref, tld) {
                 Ok(r) => r,
@@ -201,7 +202,7 @@ impl Mcts {
                 || state.drawn_by_fifty_move_rule()
                 || state.board().is_insufficient_material()
             {
-                node = &*DRAW_NODE;
+                node = &*PATH_DRAW_NODE;
                 break;
             }
 
@@ -220,10 +221,10 @@ impl Mcts {
 
         Self::finish_playout(&mut tld.root_edges[root_edge_idx], &path, evaln);
 
-        let proof = node.proof();
-
-        if proof != 0 {
-            Self::propagate_proof(root_edge_ref, &path, proof);
+        if node.is_bounded() {
+            // Clamping at a tablebase root would override the DTZ root filtering
+            let clamp = self.tablebase_score.is_none();
+            Self::propagate_bounds(root_edge_ref, &path, node.bounds(), clamp);
         }
 
         let depth = path.len() + 1;
@@ -344,7 +345,12 @@ impl Mcts {
         root_edge.up(evaln_value);
     }
 
-    fn propagate_proof(root_edge: &MoveEdge, path: &[(&MoveEdge, i64)], mut proof: i16) {
+    fn propagate_bounds(
+        root_edge: &MoveEdge,
+        path: &[(&MoveEdge, i64)],
+        mut bounds: (i16, i16),
+        clamp: bool,
+    ) {
         for i in (0..path.len()).rev() {
             let parent_edge = if i == 0 { root_edge } else { path[i - 1].0 };
 
@@ -352,11 +358,20 @@ impl Mcts {
                 return;
             };
 
-            if !parent.update_proof(proof) {
+            if !parent.update_bounds(bounds) {
                 return;
             }
 
-            proof = parent.proof();
+            bounds = parent.bounds();
+
+            // Root edge stats are buffered per thread, so only edges within the tree are clamped
+            if clamp && i > 0 {
+                let (pess, opt) = bounds;
+                parent_edge.clamp_value(
+                    bound_value(graph::parent_bound(opt)),
+                    bound_value(graph::parent_bound(pess)),
+                );
+            }
         }
     }
 
@@ -524,14 +539,16 @@ impl Mcts {
                 write!(info_str, "movesleft {} ", self.root_state.moves_left()).unwrap();
             }
 
-            let proof = edge_proof(edge);
+            let bounds = edge_bounds(edge);
             let average = edge.reward().average;
-            let eval = if proof == 0 {
-                self.tablebase_score
-                    .map_or(average, |tb| average.midpoint(tb)) as f32
-                    / SCALE
-            } else {
-                f32::from(proof.signum())
+            let eval = match (proven_mate(bounds), bounds) {
+                (Some(plies), _) => f32::from(plies.signum()),
+                (None, (0, 0)) => 0.0,
+                (None, _) => {
+                    self.tablebase_score
+                        .map_or(average, |tb| average.midpoint(tb)) as f32
+                        / SCALE
+                }
             };
 
             if self.engine_options.show_wdl {
@@ -539,7 +556,7 @@ impl Mcts {
                 write!(info_str, "wdl {wdl} ").unwrap();
             }
 
-            write!(info_str, "score {} ", format_score(proof, eval)).unwrap();
+            write!(info_str, "score {} ", format_score(bounds, eval)).unwrap();
             write!(info_str, "time {search_time_ms} ").unwrap();
             write!(info_str, "multipv {} ", idx + 1).unwrap();
 
@@ -685,19 +702,55 @@ impl UciWdl {
     }
 }
 
+/// Bounds of an edge's child from the side choosing the edge.
 #[must_use]
-pub fn edge_proof(edge: &MoveEdge) -> i16 {
-    edge.child()
-        .map_or(0, |child| graph::parent_proof(child.proof()))
+pub fn edge_bounds(edge: &MoveEdge) -> (i16, i16) {
+    edge.child().map_or((-BOUND_INF, BOUND_INF), |child| {
+        let (pess, opt) = child.bounds();
+        (graph::parent_bound(opt), graph::parent_bound(pess))
+    })
+}
+
+/// Plies to a proven mate, negative when being mated.
+fn proven_mate((pess, opt): (i16, i16)) -> Option<i16> {
+    if pess > TB_WIN {
+        Some(PROVEN_MATE - pess)
+    } else if opt < -TB_WIN {
+        Some(-(PROVEN_MATE + opt))
+    } else {
+        None
+    }
+}
+
+fn bound_value(bound: i16) -> i64 {
+    let sign = i64::from(bound.signum());
+
+    match bound.abs() {
+        0 => 0,
+        magnitude if magnitude <= TB_WIN => sign * KNOWN_WIN,
+        _ => sign * MATE_SCORE,
+    }
 }
 
 #[must_use]
-pub fn format_score(proof: i16, eval: f32) -> String {
-    if proof == 0 {
-        engine::eval_in_cp(eval)
-    } else {
-        let moves = (PROVEN_MATE - proof.abs() + 1) / 2;
-        format!("mate {}", proof.signum() * moves)
+pub fn format_bound(bound: i16) -> String {
+    let sign = if bound < 0 { "-" } else { "+" };
+
+    match bound.abs() {
+        0 => "0".to_string(),
+        magnitude if magnitude <= TB_WIN => format!("{sign}TB"),
+        magnitude if magnitude <= PROVEN_MATE => {
+            format!("{sign}M{}", (PROVEN_MATE - magnitude + 1) / 2)
+        }
+        _ => format!("{sign}inf"),
+    }
+}
+
+#[must_use]
+pub fn format_score(bounds: (i16, i16), eval: f32) -> String {
+    match proven_mate(bounds) {
+        Some(plies) => format!("mate {}", plies.signum() * ((plies.abs() + 1) / 2)),
+        None => engine::eval_in_cp(eval),
     }
 }
 

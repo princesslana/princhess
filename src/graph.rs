@@ -30,28 +30,37 @@ pub struct PositionNode {
     flag: Flag,
     gini: u16,
     generation: u32,
-    proof: AtomicI16,
-    _padding: [u8; 6],
+    pess: AtomicI16,
+    opt: AtomicI16,
+    _padding: [u8; 4],
 }
 
-// Proofs are from the side to move: +(PROVEN_MATE - d) wins in d plies, -(PROVEN_MATE - d) is
-// mated in d plies, 0 is unproven. Higher is always better, so a win is the max over children.
+// Bounds are on one scale from the side to move, higher is better: ±(PROVEN_MATE - d) for mate in
+// d plies, ±TB_WIN for tablebase results, 0 for a draw and ±BOUND_INF when unknown.
+pub const TB_WIN: i16 = 1;
 #[allow(clippy::cast_possible_wrap)]
-pub const PROVEN_MATE: i16 = MAX_PLAYOUT_LENGTH as i16;
+pub const PROVEN_MATE: i16 = MAX_PLAYOUT_LENGTH as i16 + TB_WIN + 1;
+pub const BOUND_INF: i16 = PROVEN_MATE + 1;
 
+/// Maps a bound to the parent's side, one ply further from any mate.
 #[must_use]
-pub fn parent_proof(proof: i16) -> i16 {
-    match proof.signum() - proof {
-        0 => -proof.signum(),
-        parent => parent,
+pub fn parent_bound(bound: i16) -> i16 {
+    let magnitude = bound.abs();
+
+    if magnitude <= TB_WIN || magnitude > PROVEN_MATE {
+        return -bound;
     }
+
+    -bound.signum() * (magnitude - 1).max(TB_WIN + 1)
 }
 
-fn initial_proof(flag: Flag) -> i16 {
-    if flag == Flag::TERMINAL_LOSS {
-        -PROVEN_MATE
-    } else {
-        0
+fn initial_bounds(flag: Flag) -> (i16, i16) {
+    match flag {
+        Flag::TERMINAL_LOSS => (-PROVEN_MATE, -PROVEN_MATE),
+        Flag::TERMINAL_DRAW | Flag::TABLEBASE_DRAW => (0, 0),
+        Flag::TABLEBASE_WIN => (TB_WIN, BOUND_INF),
+        Flag::TABLEBASE_LOSS => (-BOUND_INF, -TB_WIN),
+        _ => (-BOUND_INF, BOUND_INF),
     }
 }
 
@@ -96,11 +105,20 @@ define_static_node!(TABLEBASE_LOSS_NODE, Flag::TABLEBASE_LOSS);
 
 define_static_node!(UNEXPANDED_NODE, Flag::STANDARD);
 
+// Draws detected during the playout carry no bounds, unlike stalemate (DRAW_NODE), since repetition
+// and the 50-move rule depend on the path
+pub static PATH_DRAW_NODE: LazyLock<PositionNode> = LazyLock::new(|| {
+    let mut node = PositionNode::new_static(Flag::TERMINAL_DRAW);
+    node.set_bounds((-BOUND_INF, BOUND_INF));
+    node
+});
+
 impl PositionNode {
     fn new(edges: NonNull<[MoveEdge]>, flag: Flag, gini: u16, generation: u32) -> Self {
         // SAFETY: Chess positions have < 255 legal moves, so this cast is always safe
         #[allow(clippy::cast_possible_truncation)]
         let edges_count = edges.len() as u8;
+        let (pess, opt) = initial_bounds(flag);
 
         Self {
             edges_ptr: edges.cast::<MoveEdge>(),
@@ -108,55 +126,74 @@ impl PositionNode {
             flag,
             gini,
             generation,
-            proof: AtomicI16::new(initial_proof(flag)),
-            _padding: [0; 6],
+            pess: AtomicI16::new(pess),
+            opt: AtomicI16::new(opt),
+            _padding: [0; 4],
         }
     }
 
     pub fn new_static(flag: Flag) -> Self {
+        let (pess, opt) = initial_bounds(flag);
+
         Self {
             edges_ptr: NonNull::dangling(),
             edges_count: 0,
             flag,
             gini: 0,
             generation: 0,
-            proof: AtomicI16::new(initial_proof(flag)),
-            _padding: [0; 6],
+            pess: AtomicI16::new(pess),
+            opt: AtomicI16::new(opt),
+            _padding: [0; 4],
         }
     }
 
-    pub fn proof(&self) -> i16 {
-        self.proof.load(Ordering::Relaxed)
+    pub fn bounds(&self) -> (i16, i16) {
+        (
+            self.pess.load(Ordering::Relaxed),
+            self.opt.load(Ordering::Relaxed),
+        )
     }
 
-    pub fn set_proof(&mut self, proof: i16) {
-        *self.proof.get_mut() = proof;
+    pub fn is_bounded(&self) -> bool {
+        let (pess, opt) = self.bounds();
+        pess > -BOUND_INF || opt < BOUND_INF
     }
 
-    pub fn update_proof(&self, child_proof: i16) -> bool {
-        let proof = parent_proof(child_proof);
+    pub fn set_bounds(&mut self, (pess, opt): (i16, i16)) {
+        *self.pess.get_mut() = pess;
+        *self.opt.get_mut() = opt;
+    }
 
-        if proof > 0 {
-            return self.proof.fetch_max(proof, Ordering::Relaxed) < proof;
-        }
+    /// Tightens the bounds after a child's bounds changed, returning whether either changed.
+    pub fn update_bounds(&self, (child_pess, child_opt): (i16, i16)) -> bool {
+        let (pess, opt) = self.bounds();
 
-        let mut best = i16::MIN;
+        let new_pess = parent_bound(child_opt);
+        let pess_changed =
+            new_pess > pess && self.pess.fetch_max(new_pess, Ordering::Relaxed) < new_pess;
+
+        // opt is the max over all children, so it can only fall if this child is below it
+        let opt_changed = parent_bound(child_pess) < opt && self.lower_opt(opt);
+
+        pess_changed || opt_changed
+    }
+
+    fn lower_opt(&self, opt: i16) -> bool {
+        let mut best = -BOUND_INF;
 
         for edge in self.edges() {
-            let Some(child) = edge.child() else {
-                return false;
-            };
+            let child_pess = edge
+                .child()
+                .map_or(-BOUND_INF, |child| child.pess.load(Ordering::Relaxed));
 
-            let child_proof = child.proof();
+            best = best.max(parent_bound(child_pess));
 
-            if child_proof <= 0 {
+            if best >= opt {
                 return false;
             }
-
-            best = best.max(parent_proof(child_proof));
         }
 
-        self.proof.swap(best, Ordering::Relaxed) != best
+        self.opt.fetch_min(best, Ordering::Relaxed) > best
     }
 
     pub fn flag(&self) -> Flag {
@@ -268,6 +305,22 @@ impl MoveEdge {
 
     pub fn add_sum_evaluations(&self, delta: i64) -> i64 {
         self.sum_evaluations.fetch_add(delta, Ordering::Relaxed) + delta
+    }
+
+    pub fn clamp_value(&self, low: i64, high: i64) {
+        let visits = i64::from(self.visits.load(Ordering::Relaxed));
+
+        if visits == 0 {
+            return;
+        }
+
+        let average = self.sum_evaluations.load(Ordering::Relaxed) / visits;
+        let clamped = average.clamp(low, high);
+
+        if clamped != average {
+            self.sum_evaluations
+                .store(clamped * visits, Ordering::Relaxed);
+        }
     }
 
     pub fn clear_stats(&self) {

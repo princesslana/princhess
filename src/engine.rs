@@ -506,16 +506,20 @@ impl Engine {
                 .max(0.0)
                 .sqrt();
 
+            let bounds = mcts::edge_bounds(mov);
+
             println!(
-                "info string {:7} M: {:>5.2} V: {:7} ({:>5.2}%) Q: {:>7.2} ({:>8}) U: {:>7.2} T: {:>7.2}",
+                "info string {:7} M: {:>5.2} V: {:7} ({:>5.2}%) Q: {:>7.2} ({:>8}) U: {:>7.2} T: {:>7.2} B: [{:>5}, {:>5}]",
                 self.to_uci(*mov.get_move()),
                 e * 100.,
                 mov.visits(),
                 mov.visits() as f32 / total_visits as f32 * 100.,
                 reward.average as f32 / (SCALE / 100.),
-                mcts::format_score(mcts::edge_proof(mov), reward.average as f32 / SCALE),
+                mcts::format_score(bounds, reward.average as f32 / SCALE),
                 u as f32 / (SCALE / 100.),
                 tc,
+                mcts::format_bound(bounds.0),
+                mcts::format_bound(bounds.1),
             );
         }
     }
