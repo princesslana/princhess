@@ -491,7 +491,7 @@ impl Engine {
         );
 
         let mut moves: Vec<(&MoveEdge, f32)> = node_moves.iter().zip(state_moves_eval).collect();
-        moves.sort_by_key(|(h, e)| (h.reward().average, (e * SCALE) as i64));
+        moves.sort_by_cached_key(|(h, e)| (h.reward().average, (e * SCALE) as i64));
 
         let leader_reward = moves.last().map_or(Reward::ZERO, |(m, _)| m.reward());
         let leader_avg = leader_reward.average;

@@ -1,3 +1,4 @@
+use std::cmp::Reverse;
 use std::f32;
 use std::fmt::{self, Display, Formatter, Write};
 use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU64, AtomicUsize, Ordering};
@@ -14,7 +15,7 @@ use crate::graph::{
     TABLEBASE_DRAW_NODE, TABLEBASE_LOSS_NODE, TABLEBASE_WIN_NODE, TB_WIN, UNEXPANDED_NODE,
     WIN_NODE,
 };
-use crate::math;
+use crate::math::{self, TotalF32};
 use crate::options::{EngineOptions, MctsOptions, TimeManagementOptions};
 use crate::state::State;
 use crate::time_management::TimeManagement;
@@ -459,7 +460,7 @@ impl Mcts {
 
     fn sort_edges_by_score<'b>(&self, edges: &'b [MoveEdge]) -> Vec<&'b MoveEdge> {
         let mut result: Vec<&MoveEdge> = edges.iter().collect();
-        result.sort_by(|a, b| self.move_score(b).total_cmp(&self.move_score(a)));
+        result.sort_by_cached_key(|edge| Reverse(TotalF32(self.move_score(edge))));
         result
     }
 

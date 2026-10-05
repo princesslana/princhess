@@ -1,4 +1,27 @@
+use std::cmp::Ordering;
 use std::time::{SystemTime, UNIX_EPOCH};
+
+pub struct TotalF32(pub f32);
+
+impl Eq for TotalF32 {}
+
+impl PartialEq for TotalF32 {
+    fn eq(&self, other: &Self) -> bool {
+        self.cmp(other) == Ordering::Equal
+    }
+}
+
+impl Ord for TotalF32 {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.0.total_cmp(&other.0)
+    }
+}
+
+impl PartialOrd for TotalF32 {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
 
 /// Calculate Gini impurity from a distribution of counts
 #[inline]
