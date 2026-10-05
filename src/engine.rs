@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use arrayvec::ArrayVec;
 use fastapprox::faster;
 
-use crate::chess::Move;
+use crate::chess::{Move, MoveListMask};
 use crate::evaluation;
 use crate::graph::{self, MoveEdge, PositionNode, Reward};
 use crate::math::{self, Rng};
@@ -120,12 +120,12 @@ impl TopTwoState {
     pub fn next(
         &mut self,
         root_edges: &ArrayVec<RootEdge, 256>,
-        searchable_moves: &[bool],
+        searchable_moves: MoveListMask,
     ) -> usize {
         let mut leader = 0;
         let mut leader_avg = i64::MIN;
         for (i, edge) in root_edges.iter().enumerate() {
-            if !searchable_moves[i] {
+            if !searchable_moves.contains(i) {
                 continue;
             }
             let r = edge.reward();
@@ -147,7 +147,7 @@ impl TopTwoState {
         let mut n_c = 0.0_f32;
 
         for (i, edge) in root_edges.iter().enumerate() {
-            if i == leader || !searchable_moves[i] {
+            if i == leader || !searchable_moves.contains(i) {
                 continue;
             }
             let r = edge.reward();
@@ -188,6 +188,7 @@ pub struct ThreadData<'a> {
     pub max_depth: usize,
     pub tb_hits: usize,
     pub root_edges: ArrayVec<RootEdge, 256>,
+    pub searchable_moves: MoveListMask,
     pub root_gini: f32,
     pub top_two_state: TopTwoState,
 }
@@ -197,6 +198,7 @@ impl<'a> ThreadData<'a> {
         ttable: &'a LRTable,
         thread_id: usize,
         root_edges: ArrayVec<RootEdge, 256>,
+        searchable_moves: MoveListMask,
         root_gini: f32,
     ) -> Self {
         Self {
@@ -208,6 +210,7 @@ impl<'a> ThreadData<'a> {
             max_depth: 0,
             tb_hits: 0,
             root_edges,
+            searchable_moves,
             root_gini,
             top_two_state: TopTwoState::new(),
         }
@@ -300,24 +303,19 @@ impl Engine {
             .as_ref()
             .and_then(|ranked| ranked.iter().map(|&(_, rank)| rank).max());
 
-        let searchable_moves: ArrayVec<bool, 256> = self
-            .mcts
-            .root_edges()
-            .iter()
-            .zip(&root_moves)
-            .map(|(edge, uci_mv)| {
-                let mv = *edge.get_move();
-                let is_searchmove =
-                    searchmoves.is_empty() || searchmoves.contains(&uci_mv.as_str());
-                let preserves_result = tablebase_root.as_ref().is_none_or(|ranked| {
-                    ranked
-                        .iter()
-                        .any(|&(m, rank)| m == mv && Some(rank) == best_rank)
-                });
+        let root_edges = self.mcts.root_edges();
+        let searchable_moves = MoveListMask::from_predicate(root_edges.len(), |i| {
+            let mv = *root_edges[i].get_move();
+            let uci_mv = &root_moves[i];
+            let is_searchmove = searchmoves.is_empty() || searchmoves.contains(&uci_mv.as_str());
+            let preserves_result = tablebase_root.as_ref().is_none_or(|ranked| {
+                ranked
+                    .iter()
+                    .any(|&(m, rank)| m == mv && Some(rank) == best_rank)
+            });
 
-                is_searchmove && preserves_result
-            })
-            .collect();
+            is_searchmove && preserves_result
+        });
 
         let tablebase_score = best_rank.map(|rank| match rank {
             900.. | ..=-900 => i64::from(rank) * KNOWN_WIN / 1000,
@@ -355,7 +353,13 @@ impl Engine {
         let root_edges = RootEdge::from_edges(self.mcts.root_edges());
 
         let run_search_thread = |options: &MctsOptions, tm: &TimeManagement, thread_id: usize| {
-            let mut tld = ThreadData::create(&self.ttable, thread_id, root_edges.clone(), 0.0);
+            let mut tld = ThreadData::create(
+                &self.ttable,
+                thread_id,
+                root_edges.clone(),
+                self.mcts.searchable_moves(),
+                0.0,
+            );
             while self.mcts.playout(&mut tld, options, tm, &stop_signal) {}
             self.mcts.flush_root_edges(&mut tld);
             self.mcts.flush_thread_stats(&mut tld);
@@ -416,7 +420,13 @@ impl Engine {
 
     pub fn playout_sync(&self, playouts: u64) {
         let root_edges = RootEdge::from_edges(self.mcts.root_edges());
-        let mut tld = ThreadData::create(&self.ttable, 0, root_edges, 0.0);
+        let mut tld = ThreadData::create(
+            &self.ttable,
+            0,
+            root_edges,
+            self.mcts.searchable_moves(),
+            0.0,
+        );
         let options = &self.engine_options.mcts_options;
         let tm = TimeManagement::infinite();
         let stop_signal = AtomicBool::new(false);

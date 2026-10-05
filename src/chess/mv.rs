@@ -10,6 +10,38 @@ pub struct Move(u16);
 
 pub type MoveList = ArrayVec<Move, 256>;
 
+/// A bitmask over move indices, sized to match `MoveList`'s capacity.
+#[must_use]
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+pub struct MoveListMask([u64; 4]);
+
+impl MoveListMask {
+    pub const NONE: Self = Self([0; 4]);
+
+    pub fn from_predicate<F: FnMut(usize) -> bool>(len: usize, mut predicate: F) -> Self {
+        let mut mask = Self::NONE;
+        for i in 0..len {
+            if predicate(i) {
+                mask.set(i);
+            }
+        }
+        mask
+    }
+
+    pub fn contains(self, index: usize) -> bool {
+        // `& 3` lets the compiler prove the index is in range, eliding a bounds check.
+        self.0[(index / 64) & 3] & (1 << (index % 64)) != 0
+    }
+
+    pub fn set(&mut self, index: usize) {
+        self.0[(index / 64) & 3] |= 1 << (index % 64);
+    }
+
+    pub fn count(self) -> u32 {
+        self.0.iter().map(|w| w.count_ones()).sum()
+    }
+}
+
 impl Move {
     pub const NONE: Self = Self(0);
 

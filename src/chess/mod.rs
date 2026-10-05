@@ -17,6 +17,7 @@ pub use crate::chess::castling::Castling;
 pub use crate::chess::color::Color;
 pub use crate::chess::mv::Move;
 pub use crate::chess::mv::MoveList;
+pub use crate::chess::mv::MoveListMask;
 pub use crate::chess::piece::Piece;
 pub use crate::chess::square::File;
 pub use crate::chess::square::Rank;

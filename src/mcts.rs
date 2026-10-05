@@ -7,7 +7,7 @@ use arrayvec::ArrayVec;
 use fastapprox::faster;
 
 use crate::arena;
-use crate::chess;
+use crate::chess::{self, MoveListMask};
 use crate::engine::{self, RootEdge, ThreadData, KNOWN_WIN, MATE_SCORE, SCALE};
 use crate::evaluation::{self, Flag};
 use crate::graph::{
@@ -36,7 +36,7 @@ pub fn exploration_bonus(explore_coef: i64, policy: u16, visits: u32) -> i64 {
 pub struct Mcts {
     root_edges: Box<[MoveEdge]>,
     root_state: State,
-    searchable_moves: ArrayVec<bool, 256>,
+    searchable_moves: MoveListMask,
     tablebase_score: Option<i64>,
 
     engine_options: EngineOptions,
@@ -68,7 +68,7 @@ impl Mcts {
         Self {
             root_state: state,
             root_edges: root_edges.into_boxed_slice(),
-            searchable_moves: moves.iter().map(|_| true).collect(),
+            searchable_moves: MoveListMask::from_predicate(moves.len(), |_| true),
             tablebase_score: None,
             engine_options,
             num_nodes: 1.into(),
@@ -122,7 +122,7 @@ impl Mcts {
 
         let root_edge_idx = tld
             .top_two_state
-            .next(&tld.root_edges, &self.searchable_moves);
+            .next(&tld.root_edges, tld.searchable_moves);
         let root_edge_ref = &self.root_edges[root_edge_idx];
 
         let mut state = self.root_state.clone();
@@ -390,17 +390,21 @@ impl Mcts {
 
     pub fn set_root_filter(
         &mut self,
-        searchable_moves: ArrayVec<bool, 256>,
+        searchable_moves: MoveListMask,
         tablebase_score: Option<i64>,
     ) {
-        for (edge, &searchable) in self.root_edges.iter().zip(&searchable_moves) {
-            if !searchable {
+        for (i, edge) in self.root_edges.iter().enumerate() {
+            if !searchable_moves.contains(i) {
                 edge.clear_stats();
             }
         }
 
         self.searchable_moves = searchable_moves;
         self.tablebase_score = tablebase_score;
+    }
+
+    pub fn searchable_moves(&self) -> MoveListMask {
+        self.searchable_moves
     }
 
     pub fn root_visits(&self) -> u64 {
@@ -465,7 +469,7 @@ impl Mcts {
     }
 
     fn soft_time_multiplier(&self, opts: &TimeManagementOptions, last_tc_sq: f32) -> f32 {
-        if self.searchable_moves.iter().filter(|&&s| s).count() == 1 {
+        if self.searchable_moves.count() == 1 {
             return 0.0;
         }
 
