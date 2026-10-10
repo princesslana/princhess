@@ -439,9 +439,12 @@ impl Mcts {
     ///
     /// Panics if the root node has no moves (e.g., checkmate or stalemate positions).
     pub fn best_edge(&self) -> &MoveEdge {
-        self.sort_edges_by_score(&self.root_edges)
-            .into_iter()
-            .next()
+        // Reverse(i) keeps the earliest edge on tied scores, matching the stable sort
+        self.root_edges
+            .iter()
+            .enumerate()
+            .max_by_key(|&(i, edge)| (TotalF32(self.move_score(edge)), Reverse(i)))
+            .map(|(_, edge)| edge)
             .expect("Root node must have moves to determine best edge")
     }
 
