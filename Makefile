@@ -73,7 +73,7 @@ bench:
 .PHONY: clean
 clean:
 	cargo clean
-	rm -rf target/fastchess target/tuning
+	rm -rf target/fastchess target/clop
 
 # Lichess bot targets
 .PHONY: lichess-bot

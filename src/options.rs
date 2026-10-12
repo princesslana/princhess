@@ -101,12 +101,12 @@ static POLICY_TEMPERATURE: UciOption = UciOption::spin("PolicyTemperature", 100,
 
 static TM_MIN_M: UciOption = UciOption::spin("TMMinM", 10, 0, 2 << 16);
 static TM_MAX_M: UciOption = UciOption::spin("TMMaxM", 500, 0, 2 << 16);
-static TM_VISITS_BASE: UciOption = UciOption::spin("TMVisitsBase", 140, 0, 2 << 16);
-static TM_VISITS_M: UciOption = UciOption::spin("TMVisitsM", 139, 0, 2 << 16);
+static TM_VISITS_C: UciOption = UciOption::spin("TMVisitsC", 18, 0, 100);
+static TM_VISITS_M: UciOption = UciOption::spin("TMVisitsM", 208, 0, 2 << 16);
 static TM_PV_DIFF_C: UciOption = UciOption::spin("TMPvDiffC", 0, 0, 100);
 static TM_PV_DIFF_M: UciOption = UciOption::spin("TMPvDiffM", 121, 0, 2 << 16);
-static TM_TOP_TWO_C: UciOption = UciOption::spin("TMTopTwoC", 25, 0, 50);
-static TM_TOP_TWO_M: UciOption = UciOption::spin("TMTopTwoM", 150, 0, 2 << 16);
+static TM_TOP_TWO_C: UciOption = UciOption::spin("TMTopTwoC", 36, 0, 50);
+static TM_TOP_TWO_M: UciOption = UciOption::spin("TMTopTwoM", 225, 0, 2 << 16);
 
 static ENABLE_MATERIAL_SCALING: UciOption = UciOption::check("EnableMaterialScaling", true);
 static ENABLE_50MR_SCALING: UciOption = UciOption::check("Enable50mrScaling", true);
@@ -132,7 +132,7 @@ static ALL_OPTIONS: &[UciOption] = &[
     POLICY_TEMPERATURE,
     TM_MIN_M,
     TM_MAX_M,
-    TM_VISITS_BASE,
+    TM_VISITS_C,
     TM_VISITS_M,
     TM_PV_DIFF_C,
     TM_PV_DIFF_M,
@@ -246,7 +246,7 @@ pub struct EngineOptions {
 pub struct TimeManagementOptions {
     pub min_m: f32,
     pub max_m: f32,
-    pub visits_base: f32,
+    pub visits_c: f32,
     pub visits_m: f32,
     pub pv_diff_c: f32,
     pub pv_diff_m: f32,
@@ -295,7 +295,7 @@ impl From<&UciOptionMap> for TimeManagementOptions {
         Self {
             min_m: map.get_f32(&TM_MIN_M),
             max_m: map.get_f32(&TM_MAX_M),
-            visits_base: map.get_f32(&TM_VISITS_BASE),
+            visits_c: map.get_f32(&TM_VISITS_C),
             visits_m: map.get_f32(&TM_VISITS_M),
             pv_diff_c: map.get_f32(&TM_PV_DIFF_C),
             pv_diff_m: map.get_f32(&TM_PV_DIFF_M),
