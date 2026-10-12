@@ -482,9 +482,9 @@ impl Mcts {
             .expect("Root node must have moves during active search for time management");
         let bm_reward = bm.reward();
 
-        let bm_frac = bm_reward.visits as f32 / self.root_visits() as f32;
+        let non_bm_frac = 1.0 - bm_reward.visits as f32 / self.root_visits() as f32;
 
-        m *= (opts.visits_base - bm_frac) * opts.visits_m;
+        m *= 1.0 + (non_bm_frac - opts.visits_c) * opts.visits_m;
 
         let pv_eval_depth = self.depth() / 2;
         if pv_eval_depth >= PV_EVAL_MIN_DEPTH {
@@ -503,8 +503,7 @@ impl Mcts {
         }
 
         let p_challenger = 1.0 / (2.0 + last_tc_sq.max(0.0).sqrt());
-        let top_two_adjustment = (p_challenger - opts.top_two_c) * opts.top_two_m;
-        m *= 1.0 + top_two_adjustment.max(0.0);
+        m *= 1.0 + (p_challenger - opts.top_two_c) * opts.top_two_m;
 
         m = m.clamp(opts.min_m, opts.max_m);
 
