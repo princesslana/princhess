@@ -3,7 +3,8 @@
 #![allow(clippy::cast_sign_loss, clippy::cast_possible_wrap)]
 
 use std::f64::consts::{LN_10, TAU};
-use std::fs::{self, File};
+use std::fs::{self, File, OpenOptions};
+use std::io::Write;
 use std::iter;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
@@ -34,8 +35,17 @@ const DEFAULT_BOX_PCT: f64 = 50.0;
 const CANDIDATES_PER_SLOT: u64 = 4;
 // Box half-widths below this are mostly lost to integer rounding of UCI spin values
 const MIN_HALF_WIDTH: f64 = 2.0;
-// Sample the box uniformly for this share of the games before focusing on the fitted optimum
+// Sample the box uniformly for this share of the games before sampling the region
 const UNIFORM_FRACTION: f64 = 0.1;
+// How local the fit is: samples whose fitted strength is this many confidence deviations below
+// the mean of all samples get weight 1/e. The value Coulom found to work across many surfaces.
+const LOCALITY: f64 = 3.;
+// Stop shrinking the region once a round keeps more than this share of the total weight
+const LOCALITY_CONVERGENCE: f64 = 0.99;
+// The region is shown as the range holding all but this share of its weight at each end
+const REGION_TAIL: f64 = 0.1;
+const GIBBS_SWEEPS: usize = 10;
+const GIBBS_TRIES: usize = 1000;
 
 // Gaussian prior precision on each coefficient, in logits. Weak, but keeps early fits finite
 const PRIOR_PRECISION: f64 = 1.0;
@@ -48,10 +58,12 @@ const ARGMAX_ASCENT_STEPS: usize = 100;
 const ESTIMATE_DRAWS: usize = 200;
 
 const DEFAULT_ENGINE: &str = "target/release/princhess";
+const DEFAULT_REFERENCE: &str = "builds/princhess-main";
 const BOOK: &str = "books/UHO_Lichess_4852_v1.epd";
 const SYZYGY: &str = "syzygy";
 const HASH_MB: u32 = 128;
 const WORK_DIR: &str = "target/clop";
+const PAIRS_CSV: &str = "target/clop/pairs.csv";
 const REFERENCE: &str = "ref";
 
 const POLL_INTERVAL: Duration = Duration::from_millis(500);
@@ -93,12 +105,12 @@ struct Pair {
 }
 
 /// Logistic quadratic model of the candidate's score against the reference:
-/// `P(score) = sigmoid(q(u))`. There is no constant term, since at the start values the candidate
-/// is the reference and scores exactly 50%. In logits, so Elo is `q * ELO_PER_LOGIT`.
+/// `P(score) = sigmoid(q(u))`. In logits, so Elo is `q * ELO_PER_LOGIT`. The fit is local, so
+/// `q` describes the region around the optimum and can be wrong far from it.
 #[derive(Clone)]
 struct Model {
     params: usize,
-    // Linear terms, then quadratic terms u_i * u_j for i <= j
+    // Constant, then linear terms, then quadratic terms u_i * u_j for i <= j
     beta: Vec<f64>,
     // Cholesky factor of the posterior precision (the negated Hessian of the log posterior,
     // scaled by the dispersion)
@@ -107,11 +119,12 @@ struct Model {
 
 impl Model {
     fn coefficients(params: usize) -> usize {
-        params + params * (params + 1) / 2
+        1 + params + params * (params + 1) / 2
     }
 
     fn features(u: &[f64]) -> Vec<f64> {
-        let mut phi = u.to_vec();
+        let mut phi = vec![1.];
+        phi.extend(u);
         for i in 0..u.len() {
             for j in i..u.len() {
                 phi.push(u[i] * u[j]);
@@ -120,8 +133,8 @@ impl Model {
         phi
     }
 
-    /// Maximum a posteriori fit by Newton's method.
-    fn fit(params: usize, pairs: &[Pair], warm: Option<&Model>) -> Self {
+    /// Weighted maximum a posteriori fit by Newton's method.
+    fn fit(params: usize, pairs: &[Pair], weights: &[f64], warm: Option<&Model>) -> Self {
         let m = Self::coefficients(params);
         let phis: Vec<Vec<f64>> = pairs.iter().map(|g| Self::features(&g.u)).collect();
         let mut beta = warm.map_or_else(|| vec![0.; m], |w| w.beta.clone());
@@ -135,11 +148,11 @@ impl Model {
             }
 
             // Each pair counts as two games
-            for (phi, pair) in phis.iter().zip(pairs) {
+            for ((phi, pair), &weight) in phis.iter().zip(pairs).zip(weights) {
                 let p = sigmoid(dot(&beta, phi));
-                let w = 2. * p * (1. - p);
+                let w = 2. * weight * p * (1. - p);
                 for i in 0..m {
-                    grad[i] += 2. * (pair.score - p) * phi[i];
+                    grad[i] += 2. * weight * (pair.score - p) * phi[i];
                     for j in 0..=i {
                         hess[i][j] += w * phi[i] * phi[j];
                     }
@@ -159,17 +172,18 @@ impl Model {
         // The logistic variance assumes independent wins and losses, but draws and the
         // anti-correlation within pairs make pair scores less variable. Scale the posterior by
         // the observed dispersion (quasi-likelihood) so its uncertainty matches the actual spread.
-        let dof = pairs.len().saturating_sub(m);
-        if dof > 0 {
+        let dof = weights.iter().sum::<f64>() - m as f64;
+        if dof > 0. {
             let pearson: f64 = phis
                 .iter()
                 .zip(pairs)
-                .map(|(phi, pair)| {
+                .zip(weights)
+                .map(|((phi, pair), &weight)| {
                     let p = sigmoid(dot(&beta, phi));
-                    2. * (pair.score - p).powi(2) / (p * (1. - p))
+                    2. * weight * (pair.score - p).powi(2) / (p * (1. - p))
                 })
                 .sum();
-            let scale = (dof as f64 / pearson).sqrt();
+            let scale = (dof / pearson).sqrt();
             for x in chol.iter_mut().flatten() {
                 *x *= scale;
             }
@@ -200,13 +214,13 @@ impl Model {
         let (i, j) = (i.min(j), i.max(j));
         // Quadratic terms of rows before i, then the offset within row i
         let row_start = i * self.params - i * (i.saturating_sub(1)) / 2;
-        self.beta[self.params + row_start + j - i]
+        self.beta[1 + self.params + row_start + j - i]
     }
 
     /// Maximises `q` over the box: best of random points, refined by projected gradient ascent.
     fn argmax(params: usize, beta: &[f64], rng: &mut Rng) -> Vec<f64> {
         let mut best = vec![0.; params];
-        let mut best_q = 0.;
+        let mut best_q = Self::q(beta, &best);
         for _ in 0..ARGMAX_RANDOM_POINTS {
             let u: Vec<f64> = (0..params).map(|_| uniform(rng) * 2. - 1.).collect();
             let q = Self::q(beta, &u);
@@ -218,13 +232,13 @@ impl Model {
 
         // The gradient's Lipschitz constant is at most twice the norm of the quadratic terms,
         // so its inverse is a step size that never overshoots
-        let lipschitz = 2. * beta[params..].iter().map(|b| b * b).sum::<f64>().sqrt();
+        let lipschitz = 2. * beta[1 + params..].iter().map(|b| b * b).sum::<f64>().sqrt();
         let step = 1. / lipschitz.max(f64::MIN_POSITIVE);
 
         let mut u = best;
         for _ in 0..ARGMAX_ASCENT_STEPS {
-            let mut grad = beta[..params].to_vec();
-            let mut k = params;
+            let mut grad = beta[1..=params].to_vec();
+            let mut k = 1 + params;
             for i in 0..params {
                 for j in i..params {
                     grad[i] += beta[k] * u[j];
@@ -240,18 +254,157 @@ impl Model {
     }
 }
 
+/// One round of shrinking the region: a point's weight is `exp((q(u) - mean) / scale)`, near zero
+/// where the fitted strength is confidently below the mean strength of the samples.
+#[derive(Clone)]
+struct Cut {
+    beta: Vec<f64>,
+    mean: f64,
+    scale: f64,
+}
+
+impl Cut {
+    fn weight(&self, u: &[f64]) -> f64 {
+        ((Model::q(&self.beta, u) - self.mean) / self.scale).exp()
+    }
+}
+
+/// The region of interest from Coulom's CLOP. Weighting the fit to it keeps the quadratic local,
+/// so poor regions of the box, which are rarely quadratic, can't distort it near the optimum.
+#[derive(Clone, Default)]
+struct Region {
+    cuts: Vec<Cut>,
+}
+
+impl Region {
+    fn weight(&self, u: &[f64]) -> f64 {
+        self.cuts.iter().map(|c| c.weight(u)).fold(1., f64::min)
+    }
+
+    /// Fits the model, shrinking the region until a round would keep nearly all of the weight.
+    /// Returns the model, the region and each pair's weight in it.
+    fn fit(params: usize, pairs: &[Pair], warm: Option<&Model>) -> (Model, Self, Vec<f64>) {
+        let mut region = Self::default();
+        let mut weights = vec![1.; pairs.len()];
+        let mut model = Model::fit(params, pairs, &weights, warm);
+
+        loop {
+            let (mean, sd) = logistic_mean(pairs, &weights);
+            let cut = Cut {
+                beta: model.beta.clone(),
+                mean,
+                scale: LOCALITY * sd,
+            };
+            let shrunk: Vec<f64> = pairs
+                .iter()
+                .zip(&weights)
+                .map(|(pair, &w)| w.min(cut.weight(&pair.u)))
+                .collect();
+
+            if shrunk.iter().sum::<f64>() > LOCALITY_CONVERGENCE * weights.iter().sum::<f64>() {
+                return (model, region, weights);
+            }
+
+            region.cuts.push(cut);
+            weights = shrunk;
+            model = Model::fit(params, pairs, &weights, Some(&model));
+        }
+    }
+
+    /// Draws a point distributed like the weight, by Gibbs sampling from a past sample in the
+    /// region. Each coordinate is resampled by rejection along its line, keeping its value if
+    /// every try is rejected.
+    fn sample(&self, pairs: &[Pair], weights: &[f64], rng: &mut Rng) -> Vec<f64> {
+        let mut target = uniform(rng) * weights.iter().sum::<f64>();
+        let start = weights
+            .iter()
+            .position(|&w| {
+                target -= w;
+                target <= 0.
+            })
+            .unwrap_or(weights.len() - 1);
+        let mut u: Vec<f64> = pairs[start].u.iter().map(|x| x.clamp(-1., 1.)).collect();
+
+        for _ in 0..GIBBS_SWEEPS {
+            for i in 0..u.len() {
+                let current = u[i];
+                for _ in 0..GIBBS_TRIES {
+                    u[i] = uniform(rng) * 2. - 1.;
+                    if uniform(rng) < self.weight(&u) {
+                        break;
+                    }
+                    u[i] = current;
+                }
+            }
+        }
+        u
+    }
+}
+
+/// Logit of the weighted mean score and its standard deviation, as games of independent results.
+fn logistic_mean(pairs: &[Pair], weights: &[f64]) -> (f64, f64) {
+    let total: f64 = weights.iter().sum();
+    let p = (pairs
+        .iter()
+        .zip(weights)
+        .map(|(g, w)| w * g.score)
+        .sum::<f64>()
+        / total)
+        .clamp(1e-6, 1. - 1e-6);
+    // Each pair counts as two games
+    ((p / (1. - p)).ln(), 1. / (2. * total * p * (1. - p)).sqrt())
+}
+
 #[derive(Clone)]
 struct Estimate {
-    // Normalised optimum, and the spread of the optimum across posterior draws in UCI units
-    best: Vec<f64>,
+    // Normalised optimum of the fit, and its spread across posterior draws in UCI units
+    peak: Vec<f64>,
     spread: Vec<f64>,
+    // Normalised weighted mean of the samples, which Coulom found more robust than the peak
+    mean: Vec<f64>,
+    // Normalised range of each parameter holding the middle of the region's weight
+    region: Vec<(f64, f64)>,
+    // Predicted at the mean
     gain: f64,
     gain_sd: f64,
 }
 
 impl Estimate {
-    fn new(model: &Model, params: &[Param], rng: &mut Rng) -> Self {
-        let best = Model::argmax(model.params, &model.beta, rng);
+    fn new(
+        model: &Model,
+        params: &[Param],
+        pairs: &[Pair],
+        weights: &[f64],
+        rng: &mut Rng,
+    ) -> Self {
+        let peak = Model::argmax(model.params, &model.beta, rng);
+
+        let total: f64 = weights.iter().sum();
+        let mean: Vec<f64> = (0..model.params)
+            .map(|i| {
+                pairs
+                    .iter()
+                    .zip(weights)
+                    .map(|(g, w)| w * g.u[i])
+                    .sum::<f64>()
+                    / total
+            })
+            .collect();
+
+        let region = (0..model.params)
+            .map(|i| {
+                let mut points: Vec<(f64, f64)> = pairs
+                    .iter()
+                    .zip(weights)
+                    .map(|(g, &w)| (g.u[i].clamp(-1., 1.), w))
+                    .collect();
+                points.sort_by(|a, b| a.0.total_cmp(&b.0));
+                (
+                    weighted_quantile(&points, total, REGION_TAIL),
+                    weighted_quantile(&points, total, 1. - REGION_TAIL),
+                )
+            })
+            .collect();
 
         let draws: Vec<Vec<f64>> = (0..ESTIMATE_DRAWS)
             .map(|_| Model::argmax(model.params, &model.draw(rng), rng))
@@ -268,23 +421,40 @@ impl Estimate {
             .collect();
 
         Self {
-            gain: Model::q(&model.beta, &best) * ELO_PER_LOGIT,
-            gain_sd: model.sd(&best) * ELO_PER_LOGIT,
-            best,
+            gain: Model::q(&model.beta, &mean) * ELO_PER_LOGIT,
+            gain_sd: model.sd(&mean) * ELO_PER_LOGIT,
+            peak,
             spread,
+            mean,
+            region,
         }
     }
+}
+
+/// The value below which `q` of the total weight lies, from points sorted by value.
+fn weighted_quantile(points: &[(f64, f64)], total: f64, q: f64) -> f64 {
+    let mut seen = 0.;
+    for &(x, w) in points {
+        seen += w;
+        if seen >= q * total {
+            return x;
+        }
+    }
+    points.last().map_or(0., |&(x, _)| x)
 }
 
 #[derive(Clone)]
 struct Clop {
     engine: PathBuf,
+    reference: PathBuf,
     tc: String,
     concurrency: u64,
     total_batches: u64,
     batches_done: u64,
     params: Vec<Param>,
     pairs: Vec<Pair>,
+    weights: Vec<f64>,
+    region: Region,
     model: Option<Model>,
     estimate: Option<Estimate>,
 }
@@ -309,6 +479,9 @@ impl Clop {
         let engine = args
             .flag::<String>("-e", "--engine")
             .unwrap_or_else(|| DEFAULT_ENGINE.to_string());
+        let reference = args
+            .flag::<String>("-r", "--reference")
+            .unwrap_or_else(|| DEFAULT_REFERENCE.to_string());
 
         let names = args.positional();
         assert!(!names.is_empty(), "No parameters given to tune");
@@ -327,20 +500,25 @@ impl Clop {
                     history: vec![(0., start)],
                 }
             })
-            .collect();
+            .collect::<Vec<Param>>();
 
         fs::create_dir_all(WORK_DIR).unwrap();
+        let names: Vec<&str> = params.iter().map(|p| p.name.as_str()).collect();
+        fs::write(PAIRS_CSV, format!("{},score\n", names.join(","))).unwrap();
 
         let batch_games = concurrency * CANDIDATES_PER_SLOT * 2;
 
         Self {
             engine: PathBuf::from(engine),
+            reference: PathBuf::from(reference),
             tc,
             concurrency,
             total_batches: games.div_ceil(batch_games),
             batches_done: 0,
             params,
             pairs: Vec::new(),
+            weights: Vec::new(),
+            region: Region::default(),
             model: None,
             estimate: None,
         }
@@ -370,12 +548,13 @@ impl Clop {
         (self.games_played() as f64) < UNIFORM_FRACTION * self.total_games() as f64
     }
 
-    /// Picks a candidate point: uniform over the box at first, then the optimum of a quadratic
-    /// drawn from the posterior, so sampling concentrates as the optimum becomes certain.
+    /// Picks a candidate point: uniform over the box at first, then distributed like the region's
+    /// weight, so sampling concentrates as the region shrinks.
     fn candidate(&self, rng: &mut Rng) -> Vec<f64> {
-        match &self.model {
-            Some(model) if !self.is_uniform() => Model::argmax(model.params, &model.draw(rng), rng),
-            _ => self.params.iter().map(|_| uniform(rng) * 2. - 1.).collect(),
+        if self.is_uniform() || self.pairs.is_empty() {
+            self.params.iter().map(|_| uniform(rng) * 2. - 1.).collect()
+        } else {
+            self.region.sample(&self.pairs, &self.weights, rng)
         }
     }
 
@@ -411,29 +590,36 @@ impl Clop {
         for (candidate, score) in results {
             totals[candidate] += score;
         }
+        let mut csv = OpenOptions::new()
+            .append(true)
+            .open(PAIRS_CSV)
+            .map_err(|e| e.to_string())?;
         for (values, total) in candidates.iter().zip(totals) {
             let u = values
                 .iter()
                 .zip(&self.params)
                 .map(|(&v, p)| (v as f64 - p.start) / p.half_width)
                 .collect();
-            self.pairs.push(Pair {
-                u,
-                score: total / 2.,
-            });
+            let score = total / 2.;
+            let row: Vec<String> = values.iter().map(ToString::to_string).collect();
+            writeln!(csv, "{},{score}", row.join(",")).map_err(|e| e.to_string())?;
+            self.pairs.push(Pair { u, score });
         }
 
-        let model = Model::fit(self.params.len(), &self.pairs, self.model.as_ref());
-        let estimate = Estimate::new(&model, &self.params, rng);
+        let (model, region, weights) =
+            Region::fit(self.params.len(), &self.pairs, self.model.as_ref());
+        let estimate = Estimate::new(&model, &self.params, &self.pairs, &weights, rng);
 
         self.batches_done += 1;
         let games = self.games_played() as f64;
-        for (p, &u) in self.params.iter_mut().zip(&estimate.best) {
+        for (p, &u) in self.params.iter_mut().zip(&estimate.mean) {
             let value = p.value(u);
             p.history.push((games, value));
         }
 
         self.model = Some(model);
+        self.region = region;
+        self.weights = weights;
         self.estimate = Some(estimate);
 
         Ok(true)
@@ -481,18 +667,19 @@ struct Fastchess<'a> {
 
 impl Fastchess<'_> {
     fn args(&self, candidates: &[Vec<i64>]) -> Vec<String> {
-        let engine = |name: String| {
+        let engine = |cmd: &Path, name: String| {
             vec![
                 "-engine".to_string(),
-                format!("cmd={}", self.clop.engine.display()),
+                format!("cmd={}", cmd.display()),
                 format!("name={name}"),
             ]
         };
 
-        // The reference runs at the engine's defaults, which are the start values
-        let mut args = engine(REFERENCE.to_string());
+        // The reference runs at its own defaults, so scores measure candidates against it as
+        // an SPRT would
+        let mut args = engine(&self.clop.reference, REFERENCE.to_string());
         for (i, values) in candidates.iter().enumerate() {
-            args.extend(engine(format!("c{i}")));
+            args.extend(engine(&self.clop.engine, format!("c{i}")));
             args.extend(
                 values
                     .iter()
@@ -588,6 +775,11 @@ fn main() {
     assert!(
         Path::new(BOOK).exists(),
         "Opening book {BOOK} not found, run from the repository root"
+    );
+    assert!(
+        clop.reference.exists(),
+        "Reference engine {} not found",
+        clop.reference.display()
     );
 
     let shared = Arc::new(Mutex::new(clop.clone()));
@@ -812,12 +1004,13 @@ fn render(frame: &mut Frame, clop: &Clop, progress: &BatchProgress, rate: &mut G
 
     let middle = Layout::default()
         .direction(Direction::Horizontal)
-        .constraints([Constraint::Ratio(1, 2), Constraint::Ratio(1, 2)])
+        .constraints([Constraint::Ratio(1, 3); 3])
         .split(chunks[1]);
 
     render_progress(frame, chunks[0], clop, progress, rate);
     render_params(frame, middle[0], clop);
-    render_surface(frame, middle[1], clop);
+    render_fit(frame, middle[1], clop);
+    render_surface(frame, middle[2], clop);
     render_chart(frame, chunks[2], clop);
 }
 
@@ -955,11 +1148,12 @@ fn render_box(frame: &mut Frame, area: Rect, title: &str, paragraph: Paragraph) 
     frame.render_widget(paragraph, inner);
 }
 
+/// Each parameter's start, the box it may be sampled in, and the region the fit is focused on.
 fn render_params(frame: &mut Frame, area: Rect, clop: &Clop) {
     let width = clop.params.iter().map(|p| p.name.len()).max().unwrap_or(0);
     let mut lines = vec![Line::raw(format!(
-        "{:<width$} {:>8} {:>8} {:>8} {:>8} {:>7}",
-        "", "Start", "Low", "High", "Best", "±"
+        "{:<width$} {:^8} {:^18} {:^18}",
+        "", "Start", "Box", "Region"
     ))];
     // Names are coloured to match their chart lines, so the table doubles as the legend
     for (i, (p, &color)) in clop
@@ -968,48 +1162,67 @@ fn render_params(frame: &mut Frame, area: Rect, clop: &Clop) {
         .zip(PARAM_COLORS.iter().cycle())
         .enumerate()
     {
-        let (best, spread) = clop.estimate.as_ref().map_or_else(
-            || (String::new(), String::new()),
-            |e| {
-                (
-                    format!("{:.2}", p.value(e.best[i])),
-                    format!("{:.2}", e.spread[i]),
-                )
-            },
-        );
+        let range =
+            |(low, high): (f64, f64)| format!("[{:>7.2}, {:>7.2}]", p.value(low), p.value(high));
+        let region = clop
+            .estimate
+            .as_ref()
+            .map_or_else(String::new, |e| range(e.region[i]));
         lines.push(Line::from(vec![
             Span::styled(format!("{:<width$}", p.name), Style::default().fg(color)),
             Span::raw(format!(
-                " {:>8.2} {:>8.2} {:>8.2} {best:>8} {spread:>7}",
+                " {:>8.2} {:>18} {region:>18}",
                 p.start,
-                p.value(-1.),
-                p.value(1.),
+                range((-1., 1.)),
             )),
         ]));
     }
     render_box(frame, area, "Parameters", Paragraph::new(lines));
 }
 
+/// The optimum of the fitted quadratic with its spread across posterior draws, and the weighted
+/// mean of the samples, which is the recommendation.
+fn render_fit(frame: &mut Frame, area: Rect, clop: &Clop) {
+    let mut lines = vec![Line::raw(format!("  {:^16} {:^8}", "Peak", "Mean"))];
+    if let Some(e) = &clop.estimate {
+        for (i, p) in clop.params.iter().enumerate() {
+            lines.push(Line::from(vec![
+                param_marker(i),
+                Span::raw(format!(
+                    " {:>7.2} ± {:>6.2} {:>8.2}",
+                    p.value(e.peak[i]),
+                    e.spread[i],
+                    p.value(e.mean[i])
+                )),
+            ]));
+        }
+    }
+    let paragraph = Paragraph::new(lines).alignment(Alignment::Center);
+    render_box(frame, area, "Fit", paragraph);
+}
+
+/// A square in the parameter's chart colour, to label rows and columns without its name.
+fn param_marker(i: usize) -> Span<'static> {
+    Span::styled(
+        "■",
+        Style::default().fg(PARAM_COLORS[i % PARAM_COLORS.len()]),
+    )
+}
+
 /// The quadratic terms in Elo at the box edge: the diagonal is each parameter's curvature
 /// (negative means it has a peak), off-diagonals are interactions between parameters.
 fn render_surface(frame: &mut Frame, area: Rect, clop: &Clop) {
-    let marker = |i: usize| {
-        Span::styled(
-            "■",
-            Style::default().fg(PARAM_COLORS[i % PARAM_COLORS.len()]),
-        )
-    };
     let n = clop.params.len();
 
     let mut header = vec![Span::raw(" ")];
     for j in 0..n {
-        header.extend([Span::raw(" ".repeat(7)), marker(j)]);
+        header.extend([Span::raw(" ".repeat(7)), param_marker(j)]);
     }
     let mut lines = vec![Line::from(header)];
 
     if let Some(model) = &clop.model {
         for i in 0..n {
-            let mut row = vec![marker(i)];
+            let mut row = vec![param_marker(i)];
             for j in 0..n {
                 let cell = if j < i {
                     String::new()
@@ -1081,7 +1294,7 @@ fn render_chart(frame: &mut Frame, area: Rect, clop: &Clop) {
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .title("Best change from start"),
+                .title("Mean change from start"),
         )
         .x_axis(Axis::default().bounds([0., x_max]))
         .y_axis(Axis::default().bounds([y_min, y_max]).labels(vec![
