@@ -69,14 +69,12 @@ The engine responds to standard UCI commands.
 
 ### Time Management
 Adaptive time allocation controls:
-- **TMMinM** (default: 10): Minimum time multiplier
-- **TMMaxM** (default: 500): Maximum time multiplier
 - **TMVisitsC** (default: 18): Share of visits away from the best move at which visits time scaling is neutral
-- **TMVisitsM** (default: 208): Visits multiplier for time scaling based on visits away from the best move
+- **TMVisitsM** (default: 231): Visits multiplier for time scaling based on visits away from the best move
 - **TMPvDiffC** (default: 0): PV difference threshold for time scaling based on eval stability
 - **TMPvDiffM** (default: 121): PV difference multiplier for time scaling based on eval stability
-- **TMTopTwoC** (default: 36): Challenger probability at which top-two time scaling is neutral
-- **TMTopTwoM** (default: 225): Multiplier for time scaling based on how likely the second-best move is to overtake the best
+- **TMTopTwoC** (default: 45): Challenger probability at which top-two time scaling is neutral
+- **TMTopTwoM** (default: 147): Multiplier for time scaling based on how likely the second-best move is to overtake the best
 
 ### Special Modes
 - **UCI_Chess960** (default: false): Enable Chess960

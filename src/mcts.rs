@@ -484,7 +484,7 @@ impl Mcts {
 
         let non_bm_frac = 1.0 - bm_reward.visits as f32 / self.root_visits() as f32;
 
-        m *= 1.0 + (non_bm_frac - opts.visits_c) * opts.visits_m;
+        m *= (1.0 + (non_bm_frac - opts.visits_c) * opts.visits_m).max(0.0);
 
         let pv_eval_depth = self.depth() / 2;
         if pv_eval_depth >= PV_EVAL_MIN_DEPTH {
@@ -499,15 +499,13 @@ impl Mcts {
             // depending on whether `diff_abs_normalized` is above or below `opts.pv_diff_c`.
             let adjustment = (diff_abs_normalized - opts.pv_diff_c) * opts.pv_diff_m;
 
-            m *= 1.0 + adjustment;
+            m *= (1.0 + adjustment).max(0.0);
         }
 
         let p_challenger = 1.0 / (2.0 + last_tc_sq.max(0.0).sqrt());
-        m *= 1.0 + (p_challenger - opts.top_two_c) * opts.top_two_m;
+        m *= (1.0 + (p_challenger - opts.top_two_c) * opts.top_two_m).max(0.0);
 
-        m = m.clamp(opts.min_m, opts.max_m);
-
-        m
+        m.max(0.0)
     }
 
     pub fn print_info(&self, time_management: &TimeManagement, hash_full: usize) {

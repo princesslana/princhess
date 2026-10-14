@@ -99,14 +99,12 @@ static CPUCT_GINI_MAX: UciOption = UciOption::spin("CPuctGiniMax", 210, 0, 2 << 
 static CVISITS_SELECTION: UciOption = UciOption::spin("CVisitsSelection", 1, 0, 100);
 static POLICY_TEMPERATURE: UciOption = UciOption::spin("PolicyTemperature", 100, 0, 2 << 16);
 
-static TM_MIN_M: UciOption = UciOption::spin("TMMinM", 10, 0, 2 << 16);
-static TM_MAX_M: UciOption = UciOption::spin("TMMaxM", 500, 0, 2 << 16);
 static TM_VISITS_C: UciOption = UciOption::spin("TMVisitsC", 18, 0, 100);
-static TM_VISITS_M: UciOption = UciOption::spin("TMVisitsM", 208, 0, 2 << 16);
+static TM_VISITS_M: UciOption = UciOption::spin("TMVisitsM", 231, 0, 2 << 16);
 static TM_PV_DIFF_C: UciOption = UciOption::spin("TMPvDiffC", 0, 0, 100);
 static TM_PV_DIFF_M: UciOption = UciOption::spin("TMPvDiffM", 121, 0, 2 << 16);
-static TM_TOP_TWO_C: UciOption = UciOption::spin("TMTopTwoC", 36, 0, 50);
-static TM_TOP_TWO_M: UciOption = UciOption::spin("TMTopTwoM", 225, 0, 2 << 16);
+static TM_TOP_TWO_C: UciOption = UciOption::spin("TMTopTwoC", 45, 0, 100);
+static TM_TOP_TWO_M: UciOption = UciOption::spin("TMTopTwoM", 147, 0, 2 << 16);
 
 static ENABLE_MATERIAL_SCALING: UciOption = UciOption::check("EnableMaterialScaling", true);
 static ENABLE_50MR_SCALING: UciOption = UciOption::check("Enable50mrScaling", true);
@@ -130,8 +128,6 @@ static ALL_OPTIONS: &[UciOption] = &[
     CPUCT_GINI_MAX,
     CVISITS_SELECTION,
     POLICY_TEMPERATURE,
-    TM_MIN_M,
-    TM_MAX_M,
     TM_VISITS_C,
     TM_VISITS_M,
     TM_PV_DIFF_C,
@@ -244,8 +240,6 @@ pub struct EngineOptions {
 #[allow(clippy::module_name_repetitions)]
 #[derive(Debug, Clone, Copy)]
 pub struct TimeManagementOptions {
-    pub min_m: f32,
-    pub max_m: f32,
     pub visits_c: f32,
     pub visits_m: f32,
     pub pv_diff_c: f32,
@@ -293,8 +287,6 @@ impl From<&UciOptionMap> for MctsOptions {
 impl From<&UciOptionMap> for TimeManagementOptions {
     fn from(map: &UciOptionMap) -> Self {
         Self {
-            min_m: map.get_f32(&TM_MIN_M),
-            max_m: map.get_f32(&TM_MAX_M),
             visits_c: map.get_f32(&TM_VISITS_C),
             visits_m: map.get_f32(&TM_VISITS_M),
             pv_diff_c: map.get_f32(&TM_PV_DIFF_C),
