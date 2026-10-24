@@ -1,43 +1,46 @@
-accuracy = 0.58258056640625
-info_gain = 0.581024169921875
-input_file = "data/princhess-20260723-1909-401m.data.shuffled"
-loss = 2.513458251953125
+accuracy = 0.554412841796875
+info_gain = 0.9337921142578125
+input_file = "data/princhess-20261008-1613-401m.data.shuffled"
+loss = 2.2232666015625
 network_info = "piecewise_tanh(ctx): [768->32] * relu({P/N/B/R/Q: SeeSplit([768->16; 64]), K: [768->16; 64]}), to+from"
-super_batch = 35
-super_batches_total = 35
+primary_temperature = 1.0
+soft_target_temperature = 4.0
+soft_target_weight = 0.10000000149011612
+super_batch = 75
+super_batches_total = 75
 
 [piece.b]
-accuracy = 0.5031890869140625
-info_gain = 0.0635223388671875
-wrong_piece = 0.33001708984375
-wrong_square = 0.1667633056640625
+accuracy = 0.50421142578125
+info_gain = 0.0931854248046875
+wrong_piece = 0.3215179443359375
+wrong_square = 0.1742401123046875
 
 [piece.k]
-accuracy = 0.6305694580078125
-info_gain = 0.0787200927734375
-wrong_piece = 0.16998291015625
-wrong_square = 0.1994171142578125
+accuracy = 0.590484619140625
+info_gain = 0.1358184814453125
+wrong_piece = 0.217132568359375
+wrong_square = 0.192352294921875
 
 [piece.n]
-accuracy = 0.54791259765625
-info_gain = 0.06365966796875
-wrong_piece = 0.31005859375
-wrong_square = 0.1420135498046875
+accuracy = 0.54071044921875
+info_gain = 0.093017578125
+wrong_piece = 0.3089141845703125
+wrong_square = 0.150360107421875
 
 [piece.p]
-accuracy = 0.682769775390625
-info_gain = 0.1293792724609375
-wrong_piece = 0.233367919921875
-wrong_square = 0.083831787109375
+accuracy = 0.6397705078125
+info_gain = 0.1829681396484375
+wrong_piece = 0.2750244140625
+wrong_square = 0.085174560546875
 
 [piece.q]
-accuracy = 0.50201416015625
-info_gain = 0.095367431640625
-wrong_piece = 0.2572784423828125
-wrong_square = 0.2406768798828125
+accuracy = 0.4973907470703125
+info_gain = 0.160858154296875
+wrong_piece = 0.2496795654296875
+wrong_square = 0.2529144287109375
 
 [piece.r]
-accuracy = 0.50469970703125
-info_gain = 0.1617279052734375
-wrong_piece = 0.2721710205078125
-wrong_square = 0.223114013671875
+accuracy = 0.5101470947265625
+info_gain = 0.2570343017578125
+wrong_piece = 0.259613037109375
+wrong_square = 0.2302093505859375

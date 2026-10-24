@@ -370,7 +370,7 @@ fn main() {
     let mut args = Args::from_env();
     let threads = args
         .flag("-t", "--threads")
-        .unwrap_or_else(system::default_thread_count) as usize;
+        .unwrap_or_else(|| system::default_thread_count(false)) as usize;
 
     assert!(
         threads > 0,

@@ -97,7 +97,7 @@ static CPUCT_GINI_BASE: UciOption = UciOption::spin("CPuctGiniBase", 68, 0, 2 <<
 static CPUCT_GINI_FACTOR: UciOption = UciOption::spin("CPuctGiniFactor", 163, 0, 2 << 16);
 static CPUCT_GINI_MAX: UciOption = UciOption::spin("CPuctGiniMax", 210, 0, 2 << 16);
 static CVISITS_SELECTION: UciOption = UciOption::spin("CVisitsSelection", 1, 0, 100);
-static POLICY_TEMPERATURE: UciOption = UciOption::spin("PolicyTemperature", 100, 0, 2 << 16);
+static POLICY_TEMPERATURE: UciOption = UciOption::spin("PolicyTemperature", 130, 0, 2 << 16);
 
 static TM_MIN_M: UciOption = UciOption::spin("TMMinM", 10, 0, 2 << 16);
 static TM_MAX_M: UciOption = UciOption::spin("TMMaxM", 500, 0, 2 << 16);
