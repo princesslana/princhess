@@ -25,6 +25,7 @@ use scc::{Guard, Queue};
 use toml::{Table, Value};
 
 use princhess::engine::{Engine, SCALE};
+use princhess::evaluation;
 use princhess::math::{self, Rng};
 use princhess::nets;
 use princhess::options::{EngineOptions, MctsOptions};
@@ -745,11 +746,19 @@ fn run_game(
             if legal_moves == 1 || legal_moves > TrainingPosition::MAX_MOVES {
                 game_stats.skipped += 1;
             } else {
-                let position = TrainingPosition::from(engine.mcts());
+                let tree = engine.mcts();
+                let root_moves = tree.root_state().available_moves();
+                let priors = evaluation::policy(
+                    tree.root_state(),
+                    &root_moves,
+                    tree.mcts_options().policy_temperature,
+                );
+
+                let position = TrainingPosition::from_tree_and_priors(tree, &priors);
                 let eval = position.evaluation();
 
                 // Track KL divergence between final visits and policy
-                let policy_kl = policy_kl_divergence(engine);
+                let policy_kl = policy_kl_divergence(engine, &priors);
                 let kl_bucket = to_bucket(policy_kl, &POLICY_KL_THRESHOLDS);
                 stats.policy_kl_buckets[kl_bucket].fetch_add(1, Ordering::Relaxed);
                 let kl_quantized = (policy_kl * SCALE) as u64;
@@ -918,13 +927,13 @@ fn random_start(rng: &mut Rng) -> State {
 ///
 /// Measures how much the MCTS search diverged from the neural network policy.
 /// Normalizes visits to the same scale as policies (SCALE) for fair Laplace smoothing.
-fn policy_kl_divergence(engine: &Engine) -> f32 {
+fn policy_kl_divergence(engine: &Engine, priors: &[f32]) -> f32 {
     let mut visits: ArrayVec<u32, { TrainingPosition::MAX_MOVES }> = ArrayVec::new();
     let mut policies: ArrayVec<u16, { TrainingPosition::MAX_MOVES }> = ArrayVec::new();
 
-    for edge in engine.root_edges() {
+    for (edge, &prior) in engine.root_edges().iter().zip(priors) {
         visits.push(edge.visits());
-        policies.push(edge.policy());
+        policies.push((prior * SCALE) as u16);
     }
 
     // Scale visits to match policy scale for fair Laplace smoothing
@@ -1549,7 +1558,7 @@ fn main() {
     let mut args = Args::from_env();
     let threads = args
         .flag("-t", "--threads")
-        .unwrap_or_else(system::default_thread_count)
+        .unwrap_or_else(|| system::default_thread_count(true))
         .min(MAX_THREADS);
     let max_positions = args
         .flag("-p", "--positions")

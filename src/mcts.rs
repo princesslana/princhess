@@ -81,6 +81,10 @@ impl Mcts {
         }
     }
 
+    pub fn mcts_options(&self) -> MctsOptions {
+        self.engine_options.mcts_options
+    }
+
     pub fn num_nodes(&self) -> usize {
         self.num_nodes.load(Ordering::Relaxed)
     }

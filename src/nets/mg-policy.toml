@@ -1,43 +1,43 @@
-accuracy = 0.4918670654296875
-info_gain = 0.9946136474609375
-input_file = "data/princhess-20260723-1909-401m.data.shuffled"
-loss = 2.8438873291015625
+accuracy = 0.5167236328125
+info_gain = 1.47784423828125
+input_file = "data/princhess-20261008-1613-401m.data.shuffled"
+loss = 2.36517333984375
 network_info = "hardtanh(ctx): [768->32] * relu({P/N/B/R/Q: SeeSplit([768->16; 64]), K: [768->16; 64]}), to+from"
-super_batch = 35
-super_batches_total = 35
+super_batch = 75
+super_batches_total = 75
 
 [piece.b]
-accuracy = 0.4938201904296875
-info_gain = 0.1850738525390625
-wrong_piece = 0.372467041015625
-wrong_square = 0.1336822509765625
+accuracy = 0.5263214111328125
+info_gain = 0.2595062255859375
+wrong_piece = 0.347198486328125
+wrong_square = 0.1264495849609375
 
 [piece.k]
-accuracy = 0.5657806396484375
-info_gain = 0.051422119140625
-wrong_piece = 0.35748291015625
-wrong_square = 0.07672119140625
+accuracy = 0.5868072509765625
+info_gain = 0.0807342529296875
+wrong_piece = 0.3392486572265625
+wrong_square = 0.07391357421875
 
 [piece.n]
-accuracy = 0.50958251953125
-info_gain = 0.20806884765625
-wrong_piece = 0.3613739013671875
-wrong_square = 0.1290130615234375
+accuracy = 0.5324859619140625
+info_gain = 0.2815093994140625
+wrong_piece = 0.342803955078125
+wrong_square = 0.1246795654296875
 
 [piece.p]
-accuracy = 0.52264404296875
-info_gain = 0.22601318359375
-wrong_piece = 0.348785400390625
-wrong_square = 0.1285552978515625
+accuracy = 0.5558624267578125
+info_gain = 0.323486328125
+wrong_piece = 0.323516845703125
+wrong_square = 0.12060546875
 
 [piece.q]
-accuracy = 0.4396209716796875
-info_gain = 0.1886749267578125
-wrong_piece = 0.3875885009765625
-wrong_square = 0.172760009765625
+accuracy = 0.4549560546875
+info_gain = 0.2587738037109375
+wrong_piece = 0.371917724609375
+wrong_square = 0.1731109619140625
 
 [piece.r]
-accuracy = 0.4504547119140625
-info_gain = 0.1630706787109375
-wrong_piece = 0.4001007080078125
-wrong_square = 0.1494293212890625
+accuracy = 0.471405029296875
+info_gain = 0.2449951171875
+wrong_piece = 0.3794708251953125
+wrong_square = 0.1490936279296875

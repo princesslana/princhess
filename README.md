@@ -65,7 +65,7 @@ The engine responds to standard UCI commands.
 - **CPuctGiniFactor** (default: 163): Logarithmic factor for Gini impurity scaling
 - **CPuctGiniMax** (default: 210): Maximum value for Gini-scaled exploration coefficient
 - **CVisitsSelection** (default: 1): How much to consider visits vs Q-value in final move selection
-- **PolicyTemperature** (default: 100): Softmax temperature for policy network during node expansion
+- **PolicyTemperature** (default: 130): Softmax temperature for policy network during node expansion
 
 ### Time Management
 Adaptive time allocation controls:

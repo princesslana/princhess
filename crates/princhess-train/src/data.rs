@@ -2,6 +2,7 @@ use arrayvec::ArrayVec;
 use bytemuck::{self, Pod, Zeroable};
 use princhess::chess::{Bitboard, Board, Castling, Color, Move, Piece, Square};
 use princhess::engine::SCALE;
+use princhess::math;
 use princhess::mcts::Mcts;
 use princhess::state::State;
 use std::fs::File;
@@ -21,10 +22,10 @@ pub struct TrainingPosition {
     stm: u8,
 
     legal_moves: [Move; TrainingPosition::MAX_MOVES],
-    visits: [u8; TrainingPosition::MAX_MOVES],
+    policy_target: [u8; TrainingPosition::MAX_MOVES],
 }
 
-// Updated size check: 8 (occupied) + 16 (pieces) + 4 (evaluation) + 1 (result) + 1 (stm) + 108 (legal_moves) + 54 (visits) = 192
+// Updated size check: 8 (occupied) + 16 (pieces) + 4 (evaluation) + 1 (result) + 1 (stm) + 108 (legal_moves) + 54 (policy_target) = 192
 const _SIZE_CHECK: () = assert!(mem::size_of::<TrainingPosition>() == 192);
 
 impl TrainingPosition {
@@ -98,7 +99,7 @@ impl TrainingPosition {
     pub fn moves(&self) -> ArrayVec<(Move, u8), { Self::MAX_MOVES }> {
         self.legal_moves
             .iter()
-            .zip(self.visits.iter())
+            .zip(self.policy_target.iter())
             .take_while(|(m, _)| **m != Move::NONE)
             .map(|(m, v)| (*m, *v))
             .collect()
@@ -109,8 +110,9 @@ impl TrainingPosition {
     }
 }
 
-impl From<&Mcts> for TrainingPosition {
-    fn from(tree: &Mcts) -> Self {
+impl TrainingPosition {
+    #[must_use]
+    pub fn from_tree_and_priors(tree: &Mcts, priors: &[f32]) -> Self {
         let board = tree.root_state().board();
 
         let occupied = board.occupied();
@@ -127,24 +129,72 @@ impl From<&Mcts> for TrainingPosition {
             pieces_for_tp[idx / 2] |= pc << (4 * (idx & 1));
         }
 
-        let mut nodes = [(Move::NONE, 0); Self::MAX_MOVES];
-        let mut max_visits = 0;
+        let root_edges = tree.root_edges();
+        let total_visits = tree.root_visits();
+        #[allow(clippy::redundant_closure_for_method_calls)]
+        let gini = math::gini(root_edges.iter().map(|e| e.visits()), total_visits);
+        let explore_coef =
+            tree.exploration_coefficient(&tree.mcts_options(), total_visits, false, gini);
+        let lambda_n = explore_coef as f32 / (root_edges.len() as f32 + total_visits as f32);
 
-        for (node, edge) in nodes.iter_mut().zip(tree.root_edges().iter()) {
-            let vs = edge.visits();
-            max_visits = max_visits.max(vs);
-            *node = (*edge.get_move(), vs);
+        // Grill et al. (2020) Eq. 8: pi_bar(a) = lambda_n * prior(a) / (alpha - Q(a)),
+        // alpha found by bisection (Prop. 4 / Eq. 21-22) so the distribution sums to 1.
+        // Cache each edge's Q (reward() costs two atomic loads) since bisection reads
+        // it on every iteration, not just once.
+        let mut qs = [0.0_f32; Self::MAX_MOVES];
+        let mut max_q = f32::NEG_INFINITY;
+        let mut alpha_min = f32::NEG_INFINITY;
+
+        for ((q, edge), &prior) in qs.iter_mut().zip(root_edges.iter()).zip(priors) {
+            *q = edge.reward().average as f32;
+            max_q = max_q.max(*q);
+            alpha_min = alpha_min.max(*q + lambda_n * prior);
+        }
+        let mut alpha_max = max_q + lambda_n;
+        let inv_lambda_n = 1.0 / lambda_n;
+
+        for _ in 0..25 {
+            let mid = f32::midpoint(alpha_min, alpha_max);
+            let sum_p: f32 = qs[..root_edges.len()]
+                .iter()
+                .zip(priors)
+                .map(|(&q, &prior)| prior / (mid - q))
+                .sum();
+
+            if sum_p > inv_lambda_n {
+                alpha_min = mid;
+            } else {
+                alpha_max = mid;
+            }
+        }
+        let alpha = f32::midpoint(alpha_min, alpha_max);
+
+        let mut nodes = [(Move::NONE, 0.0_f32); Self::MAX_MOVES];
+        let mut max_weight = 0.0_f32;
+
+        for (((node, &q), &prior), edge) in nodes
+            .iter_mut()
+            .zip(qs.iter())
+            .zip(priors)
+            .zip(root_edges.iter())
+        {
+            let weight = (lambda_n * prior / (alpha - q)).max(0.0);
+            max_weight = max_weight.max(weight);
+            *node = (*edge.get_move(), weight);
         }
 
         let mut legal_moves = [Move::NONE; Self::MAX_MOVES];
-        let mut visits = [0; Self::MAX_MOVES];
+        let mut policy_target = [0; Self::MAX_MOVES];
 
-        for (idx, (mv, vs)) in nodes.iter().enumerate() {
+        for (idx, (mv, weight)) in nodes.iter().enumerate() {
             legal_moves[idx] = *mv;
 
-            let scaled_visits = (*vs * u32::from(u8::MAX)).div_ceil(max_visits.max(1));
-            assert!(u8::try_from(scaled_visits).is_ok());
-            visits[idx] = scaled_visits as u8;
+            let scaled = if max_weight > 0.0 {
+                (*weight / max_weight * f32::from(u8::MAX)).round()
+            } else {
+                0.0
+            };
+            policy_target[idx] = scaled as u8;
         }
 
         let pv = tree.best_edge();
@@ -162,7 +212,7 @@ impl From<&Mcts> for TrainingPosition {
             occupied,
             pieces: pieces_for_tp,
             legal_moves,
-            visits,
+            policy_target,
             evaluation,
             result,
             stm: u8::from(stm),
@@ -298,13 +348,23 @@ mod tests {
     const KIWIPETE_NO_CASTLING_STMB: &str =
         "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R b - - 0 1";
 
+    // Priors can be zeros — these tests only check board-state round-tripping.
+    fn training_position_for(fen: &str) -> (State, TrainingPosition) {
+        let state_before = State::from_fen(fen);
+        let engine = Engine::new(state_before.clone(), EngineOptions::default());
+        let tree = engine.mcts();
+
+        let priors = vec![0.0; tree.root_edges().len()];
+
+        (
+            state_before,
+            TrainingPosition::from_tree_and_priors(tree, &priors),
+        )
+    }
+
     #[test]
     fn test_startpos_conversion() {
-        let state_before = State::from_fen(STARTPOS_NO_CASTLING);
-        let engine = Engine::new(state_before.clone(), EngineOptions::default());
-
-        let training_position = TrainingPosition::from(engine.mcts());
-
+        let (state_before, training_position) = training_position_for(STARTPOS_NO_CASTLING);
         let state_after = State::from(&training_position);
 
         assert_eq!(state_before, state_after);
@@ -312,11 +372,7 @@ mod tests {
 
     #[test]
     fn test_kiwipete_conversion() {
-        let state_before = State::from_fen(KIWIPETE_NO_CASTLING);
-        let engine = Engine::new(state_before.clone(), EngineOptions::default());
-
-        let training_position = TrainingPosition::from(engine.mcts());
-
+        let (state_before, training_position) = training_position_for(KIWIPETE_NO_CASTLING);
         let state_after = State::from(&training_position);
 
         assert_eq!(state_before, state_after);
@@ -324,11 +380,7 @@ mod tests {
 
     #[test]
     fn test_kiwipete_stm_black_conversion() {
-        let state_before = State::from_fen(KIWIPETE_NO_CASTLING_STMB);
-        let engine = Engine::new(state_before.clone(), EngineOptions::default());
-
-        let training_position = TrainingPosition::from(engine.mcts());
-
+        let (state_before, training_position) = training_position_for(KIWIPETE_NO_CASTLING_STMB);
         let state_after = State::from(&training_position);
 
         assert_eq!(state_before, state_after);

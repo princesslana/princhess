@@ -344,7 +344,7 @@ impl Clop {
         };
         let concurrency = args
             .flag("-c", "--concurrency")
-            .unwrap_or_else(|| u64::from(system::default_thread_count()));
+            .unwrap_or_else(|| u64::from(system::default_thread_count(false)));
         let box_pct = args
             .flag("--box-pct", "--box-pct")
             .unwrap_or(DEFAULT_BOX_PCT);
