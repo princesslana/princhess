@@ -40,8 +40,8 @@ Prefer `make` targets over direct `cargo` commands when a target exists.
 make build               # Build engine
 make train               # Build training binaries (native CPU)
 make native              # Build engine with native CPU optimizations
+make lint                # Check formatting and clippy warnings
 cargo fmt                # Format code
-cargo clippy             # Check for warnings
 ```
 
 - **Always use exact version pinning** (`=X.Y.Z`) - even patch updates can affect ELO and require testing

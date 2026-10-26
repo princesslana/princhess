@@ -4,6 +4,9 @@ on:
   push:
     tags: ["*.*.*"]
 
+permissions:
+  contents: write
+
 jobs:
   release:
     runs-on: ubuntu-22.04
@@ -39,9 +42,10 @@ jobs:
       - name: Set version
         run: sed -i '0,/^version = .*/{s/^version = .*/version = "'"$(git describe --tags --dirty --always)"'"/}' Cargo.toml
         shell: bash
-      - run: cargo rustc --release --bin princhess -- -C target-feature=+crt-static -C target-cpu=$TARGET_CPU
+      - run: cargo rustc --release --bin princhess -- -C target-feature=+crt-static
         env:
-          TARGET_CPU: ${{ matrix.cpu }}
+          PRINCHESS_TARGET_CPU: ${{ matrix.cpu }}
+          RUSTFLAGS: -C target-cpu=${{ matrix.cpu }}
       - run: ls target/release
       - name: Upload Assets to Release
         uses: csexton/release-asset-action@v2

@@ -6,8 +6,11 @@ on:
   pull_request:
     branches: [ main ]
 
+permissions:
+  contents: read
+
 jobs:
-  clippy:
+  lint:
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v2
@@ -19,14 +22,14 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: ubuntu-cargo-clippy-${{ hashFiles('**/Cargo.lock') }}
+          key: ubuntu-cargo-lint-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            ubuntu-cargo-clippy-
+            ubuntu-cargo-lint-
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: stable
-          components: clippy
-      - run: make clippy
+          components: clippy, rustfmt
+      - run: make lint
 
   build:
     strategy:
@@ -56,6 +59,7 @@ jobs:
         with:
           toolchain: stable
       - run: cargo test --release
-      - run: cargo rustc --release --bin princhess -- -C target-feature=+crt-static -C target-cpu=$TARGET_CPU
+      - run: cargo rustc --release --bin princhess -- -C target-feature=+crt-static
         env:
-          TARGET_CPU: ${{ matrix.cpu }}
+          PRINCHESS_TARGET_CPU: ${{ matrix.cpu }}
+          RUSTFLAGS: -C target-cpu=${{ matrix.cpu }}
