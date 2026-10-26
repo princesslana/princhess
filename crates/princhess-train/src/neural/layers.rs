@@ -54,36 +54,6 @@ impl<T: Activation, const M: usize, const N: usize> DenseConnected<T, M, N> {
     }
 
     #[must_use]
-    pub fn weights_norm(&self) -> f32 {
-        let mut norm_sq = 0.0f32;
-        for row in 0..M {
-            for col in 0..N {
-                let w = self.weights[row][col];
-                norm_sq += w * w;
-            }
-        }
-        for col in 0..N {
-            let b = self.bias[col];
-            norm_sq += b * b;
-        }
-        norm_sq.sqrt()
-    }
-
-    #[must_use]
-    pub fn l1_norm(&self) -> f32 {
-        let mut sum = 0.0f32;
-        for row in 0..M {
-            for col in 0..N {
-                sum += self.weights[row][col].abs();
-            }
-        }
-        for col in 0..N {
-            sum += self.bias[col].abs();
-        }
-        sum
-    }
-
-    #[must_use]
     pub const fn zeroed() -> Self {
         Self::from_raw(Matrix::zeroed(), Vector::zeroed())
     }
@@ -199,36 +169,6 @@ impl<T: Activation, const M: usize, const N: usize> SparseConnected<T, M, N> {
     #[must_use]
     pub fn bias(&self) -> Vector<N> {
         self.bias
-    }
-
-    #[must_use]
-    pub fn weights_norm(&self) -> f32 {
-        let mut norm_sq = 0.0f32;
-        for row in 0..M {
-            for col in 0..N {
-                let w = self.weights[row][col];
-                norm_sq += w * w;
-            }
-        }
-        for col in 0..N {
-            let b = self.bias[col];
-            norm_sq += b * b;
-        }
-        norm_sq.sqrt()
-    }
-
-    #[must_use]
-    pub fn l1_norm(&self) -> f32 {
-        let mut sum = 0.0f32;
-        for row in 0..M {
-            for col in 0..N {
-                sum += self.weights[row][col].abs();
-            }
-        }
-        for col in 0..N {
-            sum += self.bias[col].abs();
-        }
-        sum
     }
 
     #[must_use]

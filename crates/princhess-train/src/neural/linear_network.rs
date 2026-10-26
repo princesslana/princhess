@@ -29,11 +29,6 @@ impl<const I: usize, const A: usize> LinearNetwork<I, A> {
         let mut rng = Rng::default();
         self.output = *SparseConnected::randomized(&mut rng);
     }
-
-    #[must_use]
-    pub fn l1_norm(&self) -> f32 {
-        self.output.l1_norm()
-    }
 }
 
 impl<const I: usize, const A: usize> Display for LinearNetwork<I, A> {

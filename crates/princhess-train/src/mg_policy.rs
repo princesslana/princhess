@@ -109,17 +109,6 @@ impl MgPolicyNetwork {
     }
 
     #[must_use]
-    pub fn l1_norm(&self) -> f32 {
-        self.ctx.l1_norm()
-            + self.pawn.l1_norm()
-            + self.knight.l1_norm()
-            + self.bishop.l1_norm()
-            + self.rook.l1_norm()
-            + self.queen.l1_norm()
-            + self.king.l1_norm()
-    }
-
-    #[must_use]
     pub fn random() -> Box<Self> {
         let mut rng = princhess::math::Rng::default();
         let mut network = Self::zeroed();

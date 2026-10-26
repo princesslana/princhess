@@ -7,7 +7,7 @@ help:
 	@echo "  build         - Build release binary (x86-64-v3)"
 	@echo "  native        - Build with native CPU optimizations"
 	@echo "  train         - Build training binaries with native CPU (NODEFAULTFEATURES=1 to skip default features)"
-	@echo "  clippy        - Run clippy with warnings as errors"
+	@echo "  lint          - Check formatting and run clippy with warnings as errors"
 	@echo "  clean         - Clean all build artifacts"
 	@echo "  bench         - Compare NPS: princhess vs princhess-main (ENGINE1, ENGINE2, RUNS)"
 	@echo ""
@@ -44,7 +44,7 @@ PRINCHESS_TARGET_CPU ?= x86-64-v3
 
 .PHONY: build
 build:
-	PRINCHESS_TARGET_CPU=$(PRINCHESS_TARGET_CPU) cargo rustc --release --bin princhess $(BUILD_FEATURES) -- -C target-cpu=$(PRINCHESS_TARGET_CPU)
+	PRINCHESS_TARGET_CPU=$(PRINCHESS_TARGET_CPU) RUSTFLAGS="-C target-cpu=$(PRINCHESS_TARGET_CPU)" cargo rustc --release --bin princhess $(BUILD_FEATURES)
 
 .PHONY: native
 native:
@@ -62,8 +62,9 @@ train:
 	fi
 	RUSTFLAGS="-C target-cpu=native" cargo build --release --package princhess-train $(TRAIN_FEATURES)
 
-.PHONY: clippy
-clippy:
+.PHONY: lint
+lint:
+	cargo fmt --all --check
 	cargo clippy --all-targets --keep-going -- -D warnings
 
 .PHONY: bench

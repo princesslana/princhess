@@ -42,10 +42,6 @@ impl<const A: usize> DivAssign<f32> for SquareSubnets<A> {
 }
 
 impl<const A: usize> SquareSubnets<A> {
-    pub fn l1_norm(&self) -> f32 {
-        self.0.iter().map(PolicyLinearNetwork::<A>::l1_norm).sum()
-    }
-
     pub fn randomize(&mut self) {
         for s in &mut self.0 {
             s.randomize();
@@ -75,11 +71,6 @@ impl<const A: usize> DivAssign<f32> for SeeSplitSubnets<A> {
 }
 
 impl<const A: usize> SeeSplitSubnets<A> {
-    #[must_use]
-    pub fn l1_norm(&self) -> f32 {
-        self.base.l1_norm() + self.good_see.l1_norm()
-    }
-
     pub fn randomize(&mut self) {
         self.base.randomize();
         self.good_see.randomize();
