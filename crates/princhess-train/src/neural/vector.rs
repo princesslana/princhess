@@ -1,21 +1,15 @@
-use crate::neural::activation::Activation;
-use bytemuck::Zeroable;
 use std::ops::{
     Add, AddAssign, Deref, Div, DivAssign, Index, IndexMut, Mul, MulAssign, Sub, SubAssign,
 };
 
-#[repr(C)]
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct SparseVector {
-    inner: Vec<usize>,
-}
+use bytemuck::Zeroable;
 
-impl Add<SparseVector> for SparseVector {
-    type Output = SparseVector;
-    fn add(mut self, mut rhs: SparseVector) -> Self::Output {
-        self.inner.append(&mut rhs.inner);
-        self
-    }
+use crate::neural::activation::Activation;
+use princhess::nets::FeatureVector;
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct SparseVector {
+    inner: FeatureVector,
 }
 
 impl Deref for SparseVector {
@@ -25,16 +19,9 @@ impl Deref for SparseVector {
     }
 }
 
-impl SparseVector {
-    #[must_use]
-    pub fn with_capacity(cap: usize) -> Self {
-        Self {
-            inner: Vec::with_capacity(cap),
-        }
-    }
-
-    pub fn push(&mut self, val: usize) {
-        self.inner.push(val);
+impl From<FeatureVector> for SparseVector {
+    fn from(inner: FeatureVector) -> Self {
+        Self { inner }
     }
 }
 

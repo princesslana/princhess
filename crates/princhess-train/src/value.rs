@@ -174,16 +174,16 @@ impl OutputLayer<Vector<OUTPUT_SIZE>> for ValueNetworkLayers {
 }
 
 impl FeedForwardNetwork for ValueNetwork {
-    type InputType = SparseVector;
+    type InputType = (SparseVector, SparseVector);
     type OutputType = Vector<OUTPUT_SIZE>;
     type Layers = ValueNetworkLayers;
 
     fn out_with_layers(&self, input: &Self::InputType) -> Self::Layers {
-        let (stm_input, nstm_input) = split_sparse(input);
+        let (stm_input, nstm_input) = input;
 
         let (stm_layers, nstm_layers) = (
-            self.stm.out_with_layers(&stm_input),
-            self.nstm.out_with_layers(&nstm_input),
+            self.stm.out_with_layers(stm_input),
+            self.nstm.out_with_layers(nstm_input),
         );
 
         let output_layer = self.output.out_with_layers(&concat_dense(
@@ -212,29 +212,16 @@ impl FeedForwardNetwork for ValueNetwork {
             &layers.output,
         );
 
-        let (stm_input, nstm_input) = split_sparse(input);
+        let (stm_input, nstm_input) = input;
         let (stm_errs, nstm_errs) = split_dense(&feature_errs);
 
         self.stm
-            .backprop(&stm_input, &mut grad.stm, stm_errs, &layers.stm);
+            .backprop(stm_input, &mut grad.stm, stm_errs, &layers.stm);
         self.nstm
-            .backprop(&nstm_input, &mut grad.nstm, nstm_errs, &layers.nstm);
+            .backprop(nstm_input, &mut grad.nstm, nstm_errs, &layers.nstm);
 
-        SparseVector::with_capacity(0)
+        (SparseVector::default(), SparseVector::default())
     }
-}
-
-fn split_sparse(input: &SparseVector) -> (SparseVector, SparseVector) {
-    let mut lhs = SparseVector::with_capacity(32);
-    let mut rhs = SparseVector::with_capacity(32);
-    for idx in input.iter() {
-        if *idx < INPUT_SIZE {
-            lhs.push(*idx);
-        } else {
-            rhs.push(*idx - INPUT_SIZE);
-        }
-    }
-    (lhs, rhs)
 }
 
 fn concat_dense(

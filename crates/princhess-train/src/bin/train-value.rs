@@ -23,7 +23,7 @@ use princhess_train::args::Args;
 use princhess_train::data::{TrainingData, TrainingPosition};
 use princhess_train::neural::{
     AdamWOptimizer, FeedForwardNetwork, LRScheduler, OutputLayer, PolynomialWarmupDecayLRScheduler,
-    SparseVector, Vector,
+    Vector,
 };
 use princhess_train::system;
 use princhess_train::tui;
@@ -546,8 +546,8 @@ fn update_gradient(
     gradients: &mut ValueNetwork,
     loss: &mut f32,
 ) {
-    let mut features = SparseVector::with_capacity(64);
-    State::from(position).value_features_map(|feature| features.push(feature));
+    let (stm_features, nstm_features) = State::from(position).value_features();
+    let features = (stm_features.into(), nstm_features.into());
 
     let net_out = network.out_with_layers(&features);
 
