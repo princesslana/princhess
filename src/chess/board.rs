@@ -23,6 +23,12 @@ pub struct Board {
     hash: u64,
 }
 
+pub struct SeeThreats {
+    all: Bitboard,
+    sliders: Bitboard,
+    pawns: Bitboard,
+}
+
 impl Board {
     fn empty() -> Self {
         Self {
@@ -682,13 +688,6 @@ impl Board {
 
         self.side_to_move() != us
     }
-}
-
-/// Squares attacked by the side not to move, computed once per position for `Board::see`.
-pub struct SeeThreats {
-    all: Bitboard,
-    sliders: Bitboard,
-    pawns: Bitboard,
 }
 
 fn get_scharnagl_back_rank(scharnagl: usize) -> [Piece; 8] {
