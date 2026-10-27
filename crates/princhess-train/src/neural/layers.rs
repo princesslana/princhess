@@ -219,24 +219,6 @@ impl<const N: usize> OutputLayer<Vector<N>> for SparseConnectedLayers<N> {
     }
 }
 
-impl<T: Activation, const M: usize, const N: usize> SparseConnected<T, M, N> {
-    #[must_use]
-    pub fn out_with_layers_and_addend(
-        &self,
-        input: &SparseVector,
-        addend: Vector<N>,
-    ) -> SparseConnectedLayers<N> {
-        let mut pre_activation = self.bias + addend;
-        for &feat in input.iter() {
-            pre_activation += self.weights[feat];
-        }
-        SparseConnectedLayers {
-            pre_activation,
-            post_activation: pre_activation.activate::<T>(),
-        }
-    }
-}
-
 impl<T: Activation, const M: usize, const N: usize> FeedForwardNetwork
     for SparseConnected<T, M, N>
 {
@@ -271,6 +253,6 @@ impl<T: Activation, const M: usize, const N: usize> FeedForwardNetwork
         }
 
         grad.bias += linear_err;
-        SparseVector::with_capacity(0)
+        SparseVector::default()
     }
 }

@@ -829,11 +829,7 @@ fn update_gradient(
 
     let moves = position.moves();
 
-    let mut features = SparseVector::with_capacity(64);
-    state
-        .policy_features()
-        .iter()
-        .for_each(|&f| features.push(f));
+    let features = SparseVector::from(state.policy_features());
 
     let only_moves = moves.iter().map(|(mv, _)| *mv).collect();
     let move_idxes = state.moves_to_indexes(&only_moves).collect::<Vec<_>>();
