@@ -18,7 +18,7 @@ use ratatui::Frame;
 use scc::{Guard, Queue};
 
 use princhess::engine::SCALE;
-use princhess::state::State;
+use princhess::state::{State, VALUE_NUMBER_FEATURES};
 use princhess_train::args::Args;
 use princhess_train::data::{TrainingData, TrainingPosition};
 use princhess_train::neural::{
@@ -546,8 +546,13 @@ fn update_gradient(
     gradients: &mut ValueNetwork,
     loss: &mut f32,
 ) {
+    let (stm_features, nstm_features) = State::from(position).value_features();
+
     let mut features = SparseVector::with_capacity(64);
-    State::from(position).value_features_map(|feature| features.push(feature));
+    stm_features.iter().for_each(|&f| features.push(f));
+    nstm_features
+        .iter()
+        .for_each(|&f| features.push(f + VALUE_NUMBER_FEATURES));
 
     let net_out = network.out_with_layers(&features);
 

@@ -1,6 +1,5 @@
 use std::path::Path;
 
-use arrayvec::ArrayVec;
 use bytemuck::{self, allocation, Pod, Zeroable};
 
 use crate::chess::{Piece, Square};
@@ -27,8 +26,6 @@ pub type RawSquareBias = [RawLinearBias; Square::COUNT];
 
 pub type QuantizedMgSquareSubnets =
     QuantizedLinearNetwork<{ Square::COUNT }, INPUT_SIZE, ATTENTION_SIZE>;
-
-type FeatureVector = ArrayVec<usize, 32>;
 
 #[repr(C)]
 #[derive(Copy, Clone, Zeroable)]
@@ -110,16 +107,15 @@ impl QuantizedMgPolicyNetwork {
         move_idxes: I,
         out: &mut [f32],
     ) {
-        let mut features = FeatureVector::new();
+        let features = state.policy_features();
         let mut ctx = *self.ctx.bias;
 
-        state.policy_features_map(|f| {
-            features.push(f);
-            // SAFETY: policy_features_map guarantees f < POLICY_NUMBER_FEATURES == INPUT_SIZE.
+        for &f in &features {
+            // SAFETY: policy_features guarantees f < POLICY_NUMBER_FEATURES == INPUT_SIZE.
             unsafe {
                 ctx.set(self.ctx.weights.get_unchecked(f));
             }
-        });
+        }
 
         ctx.hardtanh::<QA>();
         let [ctx_to, ctx_from]: &[Accumulator<i16, ATTENTION_SIZE>; 2] = bytemuck::cast_ref(&ctx);

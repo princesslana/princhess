@@ -73,16 +73,10 @@ impl QuantizedValueNetwork {
     #[must_use]
     #[allow(clippy::cast_possible_wrap)]
     pub fn get(&self, state: &State, eval_options: EvaluationOptions) -> f32 {
-        let mut stm = self.stm_bias;
-        let mut nstm = self.nstm_bias;
+        let (stm_features, nstm_features) = state.value_features();
 
-        state.value_features_map(|idx| {
-            if idx < INPUT_SIZE {
-                stm.set(&self.stm_weights[idx]);
-            } else {
-                nstm.set(&self.nstm_weights[idx % INPUT_SIZE]);
-            }
-        });
+        let stm = Accumulator::from_features(&self.stm_bias, &self.stm_weights, &stm_features);
+        let nstm = Accumulator::from_features(&self.nstm_bias, &self.nstm_weights, &nstm_features);
 
         let mut result: i32 = 0;
 

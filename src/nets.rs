@@ -3,9 +3,11 @@ use std::io::Write;
 use std::ops::AddAssign;
 use std::path::Path;
 
+use arrayvec::ArrayVec;
 use bytemuck::{self, Pod, Zeroable};
 
 use crate::chess::{Piece, Rank, Square};
+use crate::mem::Align64;
 
 #[cfg(feature = "value-net")]
 pub const NET_MD5_VALUE: &str = env!("PRINCHESS_NET_MD5_VALUE");
@@ -21,6 +23,8 @@ pub const NET_MD5_MG_POLICY: &str = "none";
 pub const NET_MD5_EG_POLICY: &str = env!("PRINCHESS_NET_MD5_EG_POLICY");
 #[cfg(not(feature = "policy-net"))]
 pub const NET_MD5_EG_POLICY: &str = "none";
+
+pub type FeatureVector = ArrayVec<usize, 32>;
 
 #[derive(Clone, Copy, Debug, Zeroable)]
 #[repr(C)]
@@ -41,7 +45,32 @@ impl<T: AddAssign, const H: usize> Accumulator<T, H> {
     }
 }
 
+const TILE: usize = 128;
+
 impl<const H: usize> Accumulator<i16, H> {
+    #[must_use]
+    pub fn from_features(bias: &Self, weights: &[Align64<Self>], features: &[usize]) -> Self {
+        const { assert!(H.is_multiple_of(TILE)) };
+
+        let mut out = *bias;
+
+        for (t, out_tile) in out.vals.as_chunks_mut::<TILE>().0.iter_mut().enumerate() {
+            let mut tile = *out_tile;
+
+            for &f in features {
+                let row = &weights[f].vals.as_chunks::<TILE>().0[t];
+
+                for (a, w) in tile.iter_mut().zip(row) {
+                    *a += w;
+                }
+            }
+
+            *out_tile = tile;
+        }
+
+        out
+    }
+
     #[must_use]
     pub fn dot_relu<const Q: i32>(&self, rhs: &Accumulator<i16, H>) -> f32 {
         let mut result: i32 = 0;

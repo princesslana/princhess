@@ -3,7 +3,7 @@ use arrayvec::ArrayVec;
 use crate::chess::{Board, Color, File, Move, MoveList, Square};
 use crate::evaluation;
 use crate::math::Rng;
-use crate::nets::MoveIndex;
+use crate::nets::{FeatureVector, MoveIndex};
 use crate::uci::Tokens;
 
 pub const NUMBER_KING_BUCKETS: usize = 3;
@@ -167,11 +167,12 @@ impl State {
         KING_BUCKETS[king_sq]
     }
 
+    #[must_use]
     #[allow(clippy::similar_names)]
-    pub fn value_features_map<F>(&self, mut f: F)
-    where
-        F: FnMut(usize),
-    {
+    pub fn value_features(&self) -> (FeatureVector, FeatureVector) {
+        let mut stm_features = FeatureVector::new();
+        let mut nstm_features = FeatureVector::new();
+
         let stm = self.side_to_move();
         let b = &self.board;
         let occ = b.occupied();
@@ -206,7 +207,7 @@ impl State {
                 let position = [0, 384][side_idx] + piece_idx * 64 + sq_idx;
                 let index = bucket * 768 + position;
 
-                f(index);
+                stm_features.push(index);
             }
 
             {
@@ -216,15 +217,17 @@ impl State {
                 let position = [384, 0][side_idx] + piece_idx * 64 + sq_idx;
                 let index = bucket * 768 + position;
 
-                f(index + VALUE_NUMBER_FEATURES);
+                nstm_features.push(index);
             }
         }
+
+        (stm_features, nstm_features)
     }
 
-    pub fn policy_features_map<F>(&self, mut f: F)
-    where
-        F: FnMut(usize),
-    {
+    #[must_use]
+    pub fn policy_features(&self) -> FeatureVector {
+        let mut features = FeatureVector::new();
+
         let stm = self.side_to_move();
         let b = &self.board;
         let occ = b.occupied();
@@ -242,8 +245,10 @@ impl State {
 
             let index = [0, 384][side_idx] + piece_idx * 64 + sq_idx;
 
-            f(index);
+            features.push(index);
         }
+
+        features
     }
 
     pub fn moves_to_indexes<'a>(
