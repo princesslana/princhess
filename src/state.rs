@@ -261,6 +261,8 @@ impl State {
         let flip = [0u8, Square::FLIP_RANK_MASK][usize::from(color == Color::BLACK)]
             | [0u8, Square::FLIP_FILE_MASK][usize::from(b.king_of(color).file() <= File::D)];
 
+        let see_threats = b.see_threats();
+
         mvs.iter().map(move |mv| {
             let piece = b.piece_at(mv.from());
 
@@ -274,7 +276,9 @@ impl State {
                 flip_to
             };
 
-            MoveIndex::new(piece, mv.promotion(), flip_from, adj_to, b.see(*mv, 8))
+            let good_see = b.see(*mv, 8, &see_threats);
+
+            MoveIndex::new(piece, mv.promotion(), flip_from, adj_to, good_see)
         })
     }
 }

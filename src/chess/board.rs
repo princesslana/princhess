@@ -536,13 +536,78 @@ impl Board {
         self.piece_at(mv.to()).see_value() + promotion_value
     }
 
+    #[must_use]
+    pub fn see_threats(&self) -> SeeThreats {
+        let them = !self.stm;
+        let color = self.colors[them];
+        let occ = self.occupied();
+
+        let mut sliders = Bitboard::EMPTY;
+
+        for sq in (self.queens() | self.rooks()) & color {
+            sliders |= attacks::rook(sq, occ);
+        }
+
+        for sq in (self.queens() | self.bishops()) & color {
+            sliders |= attacks::bishop(sq, occ);
+        }
+
+        let mut pawns = Bitboard::EMPTY;
+
+        for sq in self.pawns() & color {
+            pawns |= attacks::pawn(them, sq);
+        }
+
+        let mut all = sliders | pawns;
+
+        for sq in self.knights() & color {
+            all |= attacks::knight(sq);
+        }
+
+        for sq in self.kings() & color {
+            all |= attacks::king(sq);
+        }
+
+        SeeThreats {
+            all,
+            sliders,
+            pawns,
+        }
+    }
+
     /// Static Exchange Evaluation - determines if a move is tactically profitable.
     ///
+    /// Shortcuts the exchange for the common cases, with the same result:
+    /// - No opponent piece can capture on `to`, even after `from` is vacated: true.
+    /// - An opponent pawn recaptures on `to` and that alone loses enough: false.
+    #[must_use]
+    #[inline]
+    pub fn see(&self, mv: Move, threshold: i32, threats: &SeeThreats) -> bool {
+        if !threats.all.contains(mv.to())
+            && !threats.sliders.contains(mv.from())
+            && !mv.is_enpassant()
+        {
+            return true;
+        }
+
+        if threats.pawns.contains(mv.to()) {
+            let next = match mv.promotion() {
+                Piece::NONE => self.piece_at(mv.from()),
+                p => p,
+            };
+
+            if next.see_value() - self.gain(mv) > Piece::PAWN.see_value() - threshold {
+                return false;
+            }
+        }
+
+        self.see_exchange(mv, threshold)
+    }
+
     /// # Panics
     ///
     /// Panics if there's a logic error in the bitboard iteration (should never happen).
-    #[must_use]
-    pub fn see(&self, mv: Move, threshold: i32) -> bool {
+    fn see_exchange(&self, mv: Move, threshold: i32) -> bool {
         let sq = mv.to();
 
         let mut next = match mv.promotion() {
@@ -617,6 +682,13 @@ impl Board {
 
         self.side_to_move() != us
     }
+}
+
+/// Squares attacked by the side not to move, computed once per position for `Board::see`.
+pub struct SeeThreats {
+    all: Bitboard,
+    sliders: Bitboard,
+    pawns: Bitboard,
 }
 
 fn get_scharnagl_back_rank(scharnagl: usize) -> [Piece; 8] {
@@ -769,7 +841,8 @@ mod test {
     }
 
     fn assert_see_mv(expected: bool, fen: &str, mv: Move) {
-        let result = Board::from_fen(fen).see(mv, -108);
+        let board = Board::from_fen(fen);
+        let result = board.see(mv, -108, &board.see_threats());
 
         assert_eq!(result, expected);
     }
