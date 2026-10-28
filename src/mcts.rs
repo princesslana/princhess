@@ -266,9 +266,9 @@ impl Mcts {
             return false;
         }
 
-        let elapsed = time_management.elapsed();
-
         if tld.playouts.is_multiple_of(128) {
+            let elapsed = time_management.elapsed();
+
             if let Some(hard_limit) = time_management.hard_limit() {
                 if elapsed >= hard_limit {
                     return false;
