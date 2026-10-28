@@ -17,6 +17,7 @@ use crate::graph::{
 };
 use crate::math::{self, TotalF32};
 use crate::options::{EngineOptions, MctsOptions, TimeManagementOptions};
+use crate::quantized_value::QAB;
 use crate::state::State;
 use crate::time_management::TimeManagement;
 use crate::transposition_table::LRTable;
@@ -24,6 +25,8 @@ use crate::transposition_table::LRTable;
 pub const MAX_PLAYOUT_LENGTH: usize = 256;
 
 const PV_EVAL_MIN_DEPTH: usize = 4;
+
+const CORRECTION_MIN_VISITS: u32 = 16;
 
 /// Calculate exploration bonus U(s,a) for PUCT
 pub fn exploration_bonus(explore_coef: i64, policy: u16, visits: u32) -> i64 {
@@ -136,7 +139,7 @@ impl Mcts {
         let mut evaln = 0;
 
         if tld.root_edges[root_edge_idx].visits() == 0 {
-            let Some((expanded_node, eval)) = self.expand_edge(&state) else {
+            let Some((expanded_node, eval)) = self.expand_edge(&state, tld) else {
                 return true;
             };
             node = expanded_node;
@@ -147,7 +150,7 @@ impl Mcts {
         {
             node = &*PATH_DRAW_NODE;
         } else {
-            node = match self.descend(&state, root_edge_ref, tld) {
+            node = match self.descend(&state, root_edge_ref, None, tld) {
                 Ok(r) => r,
                 Err(arena::Error::Full) => {
                     tld.ttable.flip_if_full(|| self.clear_root_children_links());
@@ -183,7 +186,7 @@ impl Mcts {
             }
 
             if path.len() >= MAX_PLAYOUT_LENGTH {
-                evaln = evaluation::value(&state, self.engine_options.evaluation_options);
+                evaln = self.value(&state, tld);
                 break;
             }
 
@@ -194,8 +197,10 @@ impl Mcts {
             path.push((choice, parent_q));
             state.make_move(*choice.get_move());
 
-            if choice.visits() == 1 {
-                let Some((expanded_node, eval)) = self.expand_edge(&state) else {
+            let visits = choice.visits();
+
+            if visits == 1 {
+                let Some((expanded_node, eval)) = self.expand_edge(&state, tld) else {
                     return true;
                 };
                 node = expanded_node;
@@ -211,13 +216,20 @@ impl Mcts {
                 break;
             }
 
-            let new_node = match self.descend(&state, choice, tld) {
+            // The node is created a visit after its net eval, so recover that eval from the edge
+            let first_eval = (visits == 2).then(|| parent_q - choice.sum_evaluations());
+
+            let new_node = match self.descend(&state, choice, first_eval, tld) {
                 Ok(r) => r,
                 Err(arena::Error::Full) => {
                     tld.ttable.flip_if_full(|| self.clear_root_children_links());
                     return true;
                 }
             };
+
+            if visits >= CORRECTION_MIN_VISITS && visits.is_power_of_two() {
+                Self::update_correction(&state, new_node, visits, tld);
+            }
 
             node = new_node;
         }
@@ -303,6 +315,7 @@ impl Mcts {
         &self,
         state: &State,
         choice: &'a MoveEdge,
+        first_eval: Option<i64>,
         tld: &mut ThreadData<'a>,
     ) -> Result<&'a PositionNode, arena::Error> {
         let current_arena_generation = tld.ttable.current_generation();
@@ -330,6 +343,10 @@ impl Mcts {
             |sz| tld.allocator.alloc_node(sz),
             self.engine_options.mcts_options.policy_temperature,
         )?;
+
+        if let Some(eval) = first_eval {
+            created_node_arena_ref.set_eval(eval);
+        }
 
         // Copy any history
         tld.ttable.lookup_into(state, &mut created_node_arena_ref);
@@ -588,7 +605,7 @@ impl Mcts {
 
     /// Expands an edge that's being visited for the first time.
     /// Returns the node and evaluation, or None if the flag is invalid.
-    fn expand_edge<'a>(&self, state: &State) -> Option<(&'a PositionNode, i64)> {
+    fn expand_edge<'a>(&self, state: &State, tld: &ThreadData) -> Option<(&'a PositionNode, i64)> {
         let flag = evaluation::evaluate_state_flag(state, state.is_available_move());
 
         let (node, eval) = match flag {
@@ -598,14 +615,44 @@ impl Mcts {
             Flag::TABLEBASE_WIN => (&*TABLEBASE_WIN_NODE, 0),
             Flag::TABLEBASE_LOSS => (&*TABLEBASE_LOSS_NODE, 0),
             Flag::TABLEBASE_DRAW => (&*TABLEBASE_DRAW_NODE, 0),
-            Flag::STANDARD => {
-                let eval = evaluation::value(state, self.engine_options.evaluation_options);
-                (&*UNEXPANDED_NODE, eval)
-            }
+            Flag::STANDARD => (&*UNEXPANDED_NODE, self.value(state, tld)),
             _ => return None,
         };
 
         Some((node, eval))
+    }
+
+    fn value(&self, state: &State, tld: &ThreadData) -> i64 {
+        evaluation::value(
+            state,
+            self.engine_options.evaluation_options,
+            tld.correction.correction(state),
+        )
+    }
+
+    fn update_correction(state: &State, node: &PositionNode, visits: u32, tld: &ThreadData) {
+        if !node.flag().is_standard() || state.is_check() {
+            return;
+        }
+
+        let Some(eval) = node.eval() else {
+            return;
+        };
+
+        let Some(best) = graph::select_edge_by_visits(node.edges()) else {
+            return;
+        };
+
+        if best.visits() == 0 || state.board().is_noisy(*best.get_move()) {
+            return;
+        }
+
+        let logit = |v: i64| (v as f32 / SCALE).clamp(-0.99, 0.99).atanh();
+        let diff = logit(best.reward().average) - logit(eval);
+
+        #[allow(clippy::cast_possible_truncation)]
+        tld.correction
+            .update(state, (diff * QAB as f32) as i32, visits);
     }
 
     /// Calculate exploration coefficient using GPUCT formula with trend adjustment and Gini scaling

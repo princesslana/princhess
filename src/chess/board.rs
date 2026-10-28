@@ -21,6 +21,7 @@ pub struct Board {
     fullmove_counter: u16,
 
     hash: u64,
+    pawn_hash: u64,
 }
 
 pub struct SeeThreats {
@@ -41,6 +42,7 @@ impl Board {
             halfmove_clock: 0,
             fullmove_counter: 1,
             hash: 0,
+            pawn_hash: 0,
         }
     }
 
@@ -89,7 +91,7 @@ impl Board {
 
         board.castling = Castling::from_squares(*wks, *wqs, *bks, *bqs);
 
-        board.hash = board.generate_zobrist_hash();
+        board.rehash();
 
         board
     }
@@ -116,7 +118,7 @@ impl Board {
             }
         }
 
-        board.hash = board.generate_zobrist_hash();
+        board.rehash();
 
         board
     }
@@ -184,7 +186,7 @@ impl Board {
         board.halfmove_clock = fen_halfmove.parse().unwrap();
         board.fullmove_counter = fen_fullmove.parse().unwrap();
 
-        board.hash = board.generate_zobrist_hash();
+        board.rehash();
 
         board
     }
@@ -307,6 +309,11 @@ impl Board {
         self.hash
     }
 
+    #[must_use]
+    pub fn pawn_hash(&self) -> u64 {
+        self.pawn_hash
+    }
+
     pub fn king_of(&self, color: Color) -> Square {
         Square::from(self.kings() & self.colors[color])
     }
@@ -361,6 +368,13 @@ impl Board {
 
     pub fn occupied(&self) -> Bitboard {
         self.white() | self.black()
+    }
+
+    #[must_use]
+    pub fn is_noisy(&self, mv: Move) -> bool {
+        mv.is_enpassant()
+            || mv.is_promotion()
+            || (!mv.is_castle() && self.occupied().contains(mv.to()))
     }
 
     pub fn make_move(&mut self, mov: Move) {
@@ -503,7 +517,27 @@ impl Board {
 
         self.piece_at[square] ^= piece;
 
-        self.hash ^= zobrist::piece(color, piece, square);
+        let key = zobrist::piece(color, piece, square);
+        self.hash ^= key;
+
+        if piece == Piece::PAWN {
+            self.pawn_hash ^= key;
+        }
+    }
+
+    fn rehash(&mut self) {
+        self.hash = self.generate_zobrist_hash();
+        self.pawn_hash = self.generate_pawn_hash();
+    }
+
+    fn generate_pawn_hash(&self) -> u64 {
+        let mut hash = 0;
+
+        for sq in self.pawns() {
+            hash ^= zobrist::piece(self.color_at(sq), Piece::PAWN, sq);
+        }
+
+        hash
     }
 
     fn generate_zobrist_hash(&self) -> u64 {
@@ -844,6 +878,33 @@ mod test {
         let result = board.see(mv, -108, &board.see_threats());
 
         assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn test_incremental_hashes() {
+        fn walk(board: &Board, depth: usize) {
+            assert_eq!(board.hash(), board.generate_zobrist_hash());
+            assert_eq!(board.pawn_hash(), board.generate_pawn_hash());
+
+            if depth == 0 {
+                return;
+            }
+
+            for mv in board.legal_moves().iter() {
+                let mut child = *board;
+                child.make_move(*mv);
+                walk(&child, depth - 1);
+            }
+        }
+
+        for fen in [
+            STARTPOS_FEN,
+            "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1",
+            "rnbqkbnr/ppp1p1pp/8/3pPp2/8/8/PPPP1PPP/RNBQKBNR w KQkq f6 0 3",
+            "n1n5/PPPk4/8/8/8/8/4Kppp/5N1N b - - 0 1",
+        ] {
+            walk(&Board::from_fen(fen), 3);
+        }
     }
 
     #[test]
