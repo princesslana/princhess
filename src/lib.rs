@@ -22,6 +22,7 @@ pub mod transposition_table;
 pub mod uci;
 
 mod arena;
+mod correction;
 mod graph;
 mod mem;
 mod threadpool;

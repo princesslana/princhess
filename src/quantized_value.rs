@@ -72,7 +72,7 @@ impl QuantizedValueNetwork {
 
     #[must_use]
     #[allow(clippy::cast_possible_wrap)]
-    pub fn get(&self, state: &State, eval_options: EvaluationOptions) -> f32 {
+    pub fn get(&self, state: &State, eval_options: EvaluationOptions, correction: i32) -> f32 {
         let (stm_features, nstm_features) = state.value_features();
 
         let stm = Accumulator::from_features(&self.stm_bias, &self.stm_weights, &stm_features);
@@ -106,6 +106,6 @@ impl QuantizedValueNetwork {
         result =
             [result, result * dampen_factor / 256][usize::from(eval_options.enable_50mr_scaling)];
 
-        (result as f32 / QAB as f32).tanh()
+        ((result + correction) as f32 / QAB as f32).tanh()
     }
 }

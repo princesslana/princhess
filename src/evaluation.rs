@@ -78,13 +78,13 @@ static VALUE_NETWORK: QuantizedValueNetwork =
 
 #[must_use]
 #[cfg(feature = "value-net")]
-pub fn value(state: &State, eval_options: EvaluationOptions) -> i64 {
-    (VALUE_NETWORK.get(state, eval_options) * SCALE) as i64
+pub fn value(state: &State, eval_options: EvaluationOptions, correction: i32) -> i64 {
+    (VALUE_NETWORK.get(state, eval_options, correction) * SCALE) as i64
 }
 
 #[must_use]
 #[cfg(not(feature = "value-net"))]
-pub fn value(_state: &State, _eval_options: EvaluationOptions) -> i64 {
+pub fn value(_state: &State, _eval_options: EvaluationOptions, _correction: i32) -> i64 {
     0
 }
 

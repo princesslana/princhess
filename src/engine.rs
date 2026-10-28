@@ -6,6 +6,7 @@ use arrayvec::ArrayVec;
 use fastapprox::faster;
 
 use crate::chess::Move;
+use crate::correction::CorrectionTable;
 use crate::evaluation;
 use crate::graph::{self, MoveEdge, PositionNode, Reward};
 use crate::math::{self, Rng};
@@ -181,6 +182,7 @@ impl TopTwoState {
 
 pub struct ThreadData<'a> {
     pub ttable: &'a LRTable,
+    pub correction: &'a CorrectionTable,
     pub allocator: LRAllocator<'a>,
     pub playouts: usize,
     pub thread_id: usize,
@@ -195,12 +197,14 @@ pub struct ThreadData<'a> {
 impl<'a> ThreadData<'a> {
     fn create(
         ttable: &'a LRTable,
+        correction: &'a CorrectionTable,
         thread_id: usize,
         root_edges: ArrayVec<RootEdge, 256>,
         root_gini: f32,
     ) -> Self {
         Self {
             ttable,
+            correction,
             allocator: ttable.allocator(),
             playouts: 0,
             thread_id,
@@ -224,6 +228,7 @@ pub struct Engine {
     mcts: Mcts,
     engine_options: EngineOptions,
     ttable: LRTable,
+    correction: CorrectionTable,
     threads: ThreadPool,
 }
 
@@ -236,6 +241,7 @@ impl Engine {
             mcts,
             engine_options,
             ttable,
+            correction: CorrectionTable::new(),
             threads,
         }
     }
@@ -355,7 +361,13 @@ impl Engine {
         let root_edges = RootEdge::from_edges(self.mcts.root_edges());
 
         let run_search_thread = |options: &MctsOptions, tm: &TimeManagement, thread_id: usize| {
-            let mut tld = ThreadData::create(&self.ttable, thread_id, root_edges.clone(), 0.0);
+            let mut tld = ThreadData::create(
+                &self.ttable,
+                &self.correction,
+                thread_id,
+                root_edges.clone(),
+                0.0,
+            );
             while self.mcts.playout(&mut tld, options, tm, &stop_signal) {}
             self.mcts.flush_root_edges(&mut tld);
             self.mcts.flush_thread_stats(&mut tld);
@@ -416,7 +428,7 @@ impl Engine {
 
     pub fn playout_sync(&self, playouts: u64) {
         let root_edges = RootEdge::from_edges(self.mcts.root_edges());
-        let mut tld = ThreadData::create(&self.ttable, 0, root_edges, 0.0);
+        let mut tld = ThreadData::create(&self.ttable, &self.correction, 0, root_edges, 0.0);
         let options = &self.engine_options.mcts_options;
         let tm = TimeManagement::infinite();
         let stop_signal = AtomicBool::new(false);
@@ -528,6 +540,7 @@ impl Engine {
         let eval = evaluation::value(
             self.mcts.root_state(),
             self.engine_options.evaluation_options,
+            0,
         );
         let scaled = eval as f32 / SCALE;
         println!(

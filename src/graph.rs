@@ -32,8 +32,10 @@ pub struct PositionNode {
     generation: u32,
     pess: AtomicI16,
     opt: AtomicI16,
-    _padding: [u8; 4],
+    eval: i32,
 }
+
+const NO_EVAL: i32 = i32::MIN;
 
 // Bounds are on one scale from the side to move, higher is better: ±(PROVEN_MATE - d) for mate in
 // d plies, ±TB_WIN for tablebase results, 0 for a draw and ±BOUND_INF when unknown.
@@ -128,7 +130,7 @@ impl PositionNode {
             generation,
             pess: AtomicI16::new(pess),
             opt: AtomicI16::new(opt),
-            _padding: [0; 4],
+            eval: NO_EVAL,
         }
     }
 
@@ -143,8 +145,18 @@ impl PositionNode {
             generation: 0,
             pess: AtomicI16::new(pess),
             opt: AtomicI16::new(opt),
-            _padding: [0; 4],
+            eval: NO_EVAL,
         }
+    }
+
+    pub fn eval(&self) -> Option<i64> {
+        (self.eval != NO_EVAL).then_some(i64::from(self.eval))
+    }
+
+    pub fn set_eval(&mut self, eval: i64) {
+        #[allow(clippy::cast_possible_truncation)]
+        let eval = eval.clamp(-(SCALE as i64), SCALE as i64) as i32;
+        self.eval = eval;
     }
 
     pub fn bounds(&self) -> (i16, i16) {

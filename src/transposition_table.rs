@@ -129,6 +129,9 @@ impl TranspositionTable {
         if let Some(src) = self.lookup(state) {
             dest.set_flag(src.flag());
             dest.set_bounds(src.bounds());
+            if let Some(eval) = src.eval() {
+                dest.set_eval(eval);
+            }
             graph::copy_edge_stats(dest.edges(), src.edges());
             true
         } else {
