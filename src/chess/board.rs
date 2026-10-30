@@ -22,6 +22,7 @@ pub struct Board {
 
     hash: u64,
     pawn_hash: u64,
+    non_pawn_hash: [u64; Color::COUNT],
 }
 
 pub struct SeeThreats {
@@ -43,6 +44,7 @@ impl Board {
             fullmove_counter: 1,
             hash: 0,
             pawn_hash: 0,
+            non_pawn_hash: [0; Color::COUNT],
         }
     }
 
@@ -314,6 +316,11 @@ impl Board {
         self.pawn_hash
     }
 
+    #[must_use]
+    pub fn non_pawn_hash(&self, color: Color) -> u64 {
+        self.non_pawn_hash[color]
+    }
+
     pub fn king_of(&self, color: Color) -> Square {
         Square::from(self.kings() & self.colors[color])
     }
@@ -522,12 +529,15 @@ impl Board {
 
         if piece == Piece::PAWN {
             self.pawn_hash ^= key;
+        } else {
+            self.non_pawn_hash[color] ^= key;
         }
     }
 
     fn rehash(&mut self) {
         self.hash = self.generate_zobrist_hash();
         self.pawn_hash = self.generate_pawn_hash();
+        self.non_pawn_hash = [Color::WHITE, Color::BLACK].map(|c| self.generate_non_pawn_hash(c));
     }
 
     fn generate_pawn_hash(&self) -> u64 {
@@ -535,6 +545,16 @@ impl Board {
 
         for sq in self.pawns() {
             hash ^= zobrist::piece(self.color_at(sq), Piece::PAWN, sq);
+        }
+
+        hash
+    }
+
+    fn generate_non_pawn_hash(&self, color: Color) -> u64 {
+        let mut hash = 0;
+
+        for sq in self.colors[color] & !self.pawns() {
+            hash ^= zobrist::piece(color, self.piece_at(sq), sq);
         }
 
         hash
@@ -885,6 +905,13 @@ mod test {
         fn walk(board: &Board, depth: usize) {
             assert_eq!(board.hash(), board.generate_zobrist_hash());
             assert_eq!(board.pawn_hash(), board.generate_pawn_hash());
+
+            for color in [Color::WHITE, Color::BLACK] {
+                assert_eq!(
+                    board.non_pawn_hash(color),
+                    board.generate_non_pawn_hash(color)
+                );
+            }
 
             if depth == 0 {
                 return;
