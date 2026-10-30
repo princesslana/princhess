@@ -15,6 +15,7 @@ pub struct TimeManagement {
     soft_limit: Option<Duration>,
     hard_limit: Option<Duration>,
     node_limit: usize,
+    playout_limit: usize,
 }
 
 impl Default for TimeManagement {
@@ -30,6 +31,7 @@ impl TimeManagement {
             soft_limit: None,
             hard_limit: Some(d),
             node_limit: usize::MAX,
+            playout_limit: usize::MAX,
         }
     }
 
@@ -39,6 +41,7 @@ impl TimeManagement {
             soft_limit: Some(soft),
             hard_limit: Some(hard),
             node_limit: usize::MAX,
+            playout_limit: usize::MAX,
         }
     }
 
@@ -48,6 +51,7 @@ impl TimeManagement {
             soft_limit: None,
             hard_limit: None,
             node_limit: usize::MAX,
+            playout_limit: usize::MAX,
         }
     }
 
@@ -71,8 +75,18 @@ impl TimeManagement {
         self.node_limit
     }
 
-    pub fn set_node_limit(&mut self, node_limit: usize) {
-        self.node_limit = node_limit;
+    #[must_use]
+    pub fn playout_limit(&self) -> usize {
+        self.playout_limit
+    }
+
+    pub fn with_playout_limit(mut self, playout_limit: usize) -> Self {
+        self.playout_limit = playout_limit;
+        self
+    }
+
+    fn parse_limit(tokens: &mut Tokens) -> usize {
+        tokens.next().unwrap_or("").parse().unwrap_or(usize::MAX)
     }
 
     fn parse_ms(tokens: &mut Tokens) -> Option<Duration> {
@@ -93,6 +107,7 @@ impl TimeManagement {
         let mut remaining = None;
         let mut movestogo: Option<u32> = None;
         let mut node_limit = usize::MAX;
+        let mut playout_limit = usize::MAX;
 
         while let Some(s) = tokens.next() {
             match s {
@@ -121,14 +136,8 @@ impl TimeManagement {
                 "movestogo" => {
                     movestogo = tokens.next().unwrap_or("").parse().ok();
                 }
-                "nodes" => {
-                    node_limit = tokens
-                        .next()
-                        .unwrap_or("")
-                        .parse()
-                        .ok()
-                        .unwrap_or(usize::MAX);
-                }
+                "nodes" => node_limit = Self::parse_limit(&mut tokens),
+                "playouts" => playout_limit = Self::parse_limit(&mut tokens),
                 _ => (),
             }
         }
@@ -158,13 +167,16 @@ impl TimeManagement {
 
             // Ensure the soft limit is never more than the hard limit.
             think_time = TimeManagement::from_limits(soft_limit.min(hard_limit), hard_limit);
+        } else if node_limit != usize::MAX || playout_limit != usize::MAX {
+            think_time = TimeManagement::infinite();
         }
 
         if is_policy_only {
             node_limit = 1;
         }
 
-        think_time.set_node_limit(node_limit);
+        think_time.node_limit = node_limit;
+        think_time.playout_limit = playout_limit;
         think_time
     }
 }
@@ -213,13 +225,25 @@ mod tests {
         let tokens = create_tokens("nodes 100000");
         let tm = TimeManagement::from_tokens(tokens, &state, false);
 
-        // Default time limits apply if not specified
+        // No time limit when only a node limit is given
         assert_eq!(tm.soft_limit(), None);
-        assert_eq!(
-            tm.hard_limit(),
-            Some(Duration::from_secs(DEFAULT_MOVE_TIME_SECS))
-        );
+        assert_eq!(tm.hard_limit(), None);
         assert_eq!(tm.node_limit(), 100_000);
+        assert_eq!(tm.playout_limit(), usize::MAX);
+    }
+
+    // Test for "go playouts <n>"
+    #[test]
+    fn test_from_tokens_playouts() {
+        let state = State::default();
+        let tokens = create_tokens("playouts 5000");
+        let tm = TimeManagement::from_tokens(tokens, &state, false);
+
+        // No time limit when only a playout limit is given
+        assert_eq!(tm.soft_limit(), None);
+        assert_eq!(tm.hard_limit(), None);
+        assert_eq!(tm.node_limit(), usize::MAX);
+        assert_eq!(tm.playout_limit(), 5000);
     }
 
     // Test for "go wtime <ms> btime <ms>" (White to move)

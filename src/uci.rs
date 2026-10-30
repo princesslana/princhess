@@ -1,5 +1,6 @@
 use std::io;
 use std::str::SplitWhitespace;
+use std::time::{Duration, Instant};
 
 use crate::engine::Engine;
 use crate::graph;
@@ -17,7 +18,7 @@ const ENGINE_AUTHOR: &str = "Princess Lana";
 const VERSION: Option<&'static str> = option_env!("CARGO_PKG_VERSION");
 
 const BENCH_FENS: &str = include_str!("../resources/fens.txt");
-const BENCH_PLAYOUTS_PER_POSITION: u64 = 5000;
+const BENCH_PLAYOUTS_PER_POSITION: usize = 5000;
 
 pub struct Uci {
     options: UciOptionMap,
@@ -79,7 +80,7 @@ impl Uci {
                 "movelist" => self.engine.print_move_list(tokens),
                 "sizelist" => graph::print_size_list(),
                 "eval" => self.engine.print_eval(),
-                "bench" => self.run_bench(),
+                "bench" => self.run_bench(&tokens),
                 "randomopen" => self.generate_random_opening(),
                 "fingerprint" => Self::fingerprint(),
                 _ => (),
@@ -118,28 +119,36 @@ impl Uci {
         self.engine.go(tokens, is_interactive)
     }
 
-    fn run_bench(&mut self) {
+    fn run_bench(&mut self, tokens: &Tokens) {
         let mut total_nodes = 0;
-        let mut total_elapsed_time_ms = 0;
+        let mut total_elapsed = Duration::ZERO;
+
+        let mut local_engine = Engine::new(State::default(), self.engine_options);
+        let has_limits = tokens.clone().next().is_some();
 
         for fen_line in BENCH_FENS.lines().filter(|line| !line.is_empty()) {
             println!("info string {fen_line}");
 
-            let state = State::from_fen(fen_line);
-            let local_engine = Engine::new(state, self.engine_options);
-            let time_management = TimeManagement::infinite();
+            local_engine.set_root_state(State::from_fen(fen_line));
 
-            local_engine.playout_sync(BENCH_PLAYOUTS_PER_POSITION);
+            let time_management = if has_limits {
+                TimeManagement::from_tokens(
+                    tokens.clone(),
+                    local_engine.mcts().root_state(),
+                    self.engine_options.is_policy_only,
+                )
+            } else {
+                TimeManagement::infinite().with_playout_limit(BENCH_PLAYOUTS_PER_POSITION)
+            };
+            let start = Instant::now();
+
+            local_engine.playout_parallel(time_management, false);
             total_nodes += local_engine.mcts().num_nodes() as u64;
-            total_elapsed_time_ms += time_management.elapsed().as_millis() as u64;
-
-            local_engine
-                .mcts()
-                .print_info(&time_management, local_engine.table_full());
+            total_elapsed += start.elapsed();
         }
 
         let nps = (total_nodes * 1000)
-            .checked_div(total_elapsed_time_ms)
+            .checked_div(total_elapsed.as_millis() as u64)
             .unwrap_or(0);
 
         println!("Bench: {total_nodes} nodes {nps} nps");
