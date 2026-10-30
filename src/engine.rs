@@ -341,7 +341,7 @@ impl Engine {
         self.playout_parallel(think_time, is_interactive)
     }
 
-    fn playout_parallel(
+    pub fn playout_parallel(
         &self,
         time_management: TimeManagement,
         is_interactive: bool,

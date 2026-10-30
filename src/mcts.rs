@@ -254,8 +254,10 @@ impl Mcts {
         }
 
         if tld.is_main_thread()
-            && self.num_nodes.load(Ordering::Relaxed) + tld.num_nodes
+            && (self.num_nodes.load(Ordering::Relaxed) + tld.num_nodes
                 >= time_management.node_limit()
+                || self.playouts.load(Ordering::Relaxed) + tld.playouts
+                    >= time_management.playout_limit())
         {
             return false;
         }
