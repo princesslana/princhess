@@ -11,11 +11,34 @@ PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 ENGINE1="${1:-princhess}"
 ENGINE2="${2:-princhess-main}"
 RUNS="${3:-20}"
+TIME="${4:-}"
+THREADS="${5:-1}"
 
 if ! [[ "$RUNS" =~ ^[1-9][0-9]*$ ]]; then
     echo "Error: RUNS must be a positive integer, got '$RUNS'"
     exit 1
 fi
+
+if [ -n "$TIME" ] && ! [[ "$TIME" =~ ^[1-9][0-9]*$ ]]; then
+    echo "Error: TIME must be a positive integer (ms), got '$TIME'"
+    exit 1
+fi
+
+if ! [[ "$THREADS" =~ ^[1-9][0-9]*$ ]]; then
+    echo "Error: THREADS must be a positive integer, got '$THREADS'"
+    exit 1
+fi
+
+# Timed and threaded searches don't stop at a fixed node count, so nodes can't be compared
+BENCH_CMD=("setoption name Threads value $THREADS")
+if [ -n "$TIME" ]; then
+    BENCH_CMD+=("bench wtime $TIME btime $TIME")
+    MODE="${TIME}ms, $THREADS threads"
+else
+    BENCH_CMD+=("bench")
+    MODE="5000 playouts, $THREADS threads"
+fi
+DETERMINISTIC=$([ -z "$TIME" ] && [ "$THREADS" -eq 1 ] && echo true || echo false)
 
 get_engine_path() {
     local engine=$1
@@ -35,7 +58,7 @@ print_fingerprint() {
 run_bench() {
     local engine_path=$1
     local bench_out nodes nps
-    bench_out=$("$engine_path" bench 2>&1) || return 1
+    bench_out=$("$engine_path" "${BENCH_CMD[@]}" 2>&1) || return 1
     read -r nodes nps <<< "$(printf '%s\n' "$bench_out" | awk '/^Bench:/ { print $2, $(NF-1) }')"
 
     [[ "$nodes" =~ ^[0-9]+$ ]] && [[ "$nps" =~ ^[1-9][0-9]*$ ]] || return 1
@@ -52,7 +75,7 @@ for path in "$ENGINE1_PATH" "$ENGINE2_PATH"; do
     fi
 done
 
-echo "Bench: $ENGINE1 vs $ENGINE2 ($RUNS interleaved pairs)"
+echo "Bench: $ENGINE1 vs $ENGINE2 ($RUNS interleaved pairs, $MODE)"
 echo ""
 echo "$ENGINE1 ($ENGINE1_PATH):"
 print_fingerprint "$ENGINE1_PATH"
@@ -116,7 +139,9 @@ read -r AVG1 AVG2 MEAN LOW HIGH < <(
 printf "  avg: %s %d nps  %s %d nps\n" "$ENGINE1" "$AVG1" "$ENGINE2" "$AVG2"
 echo ""
 
-if [ "$NODES_OK" != true ]; then
+if [ "$DETERMINISTIC" != true ]; then
+    NODE_STATUS="nodes not compared ($MODE)"
+elif [ "$NODES_OK" != true ]; then
     NODE_STATUS="nodes INCONSISTENT"
 elif [ "$NODES1" = "$NODES2" ]; then
     NODE_STATUS="nodes match ($NODES1)"
