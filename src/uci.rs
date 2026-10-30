@@ -1,6 +1,6 @@
 use std::io;
 use std::str::SplitWhitespace;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use crate::engine::Engine;
 use crate::graph;
@@ -121,7 +121,7 @@ impl Uci {
 
     fn run_bench(&mut self, tokens: &Tokens) {
         let mut total_nodes = 0;
-        let mut total_elapsed_time_ms = 0;
+        let mut total_elapsed = Duration::ZERO;
 
         let mut local_engine = Engine::new(State::default(), self.engine_options);
         let has_limits = tokens.clone().next().is_some();
@@ -144,11 +144,11 @@ impl Uci {
 
             local_engine.playout_parallel(time_management, false);
             total_nodes += local_engine.mcts().num_nodes() as u64;
-            total_elapsed_time_ms += start.elapsed().as_millis() as u64;
+            total_elapsed += start.elapsed();
         }
 
         let nps = (total_nodes * 1000)
-            .checked_div(total_elapsed_time_ms)
+            .checked_div(total_elapsed.as_millis() as u64)
             .unwrap_or(0);
 
         println!("Bench: {total_nodes} nodes {nps} nps");

@@ -167,6 +167,8 @@ impl TimeManagement {
 
             // Ensure the soft limit is never more than the hard limit.
             think_time = TimeManagement::from_limits(soft_limit.min(hard_limit), hard_limit);
+        } else if node_limit != usize::MAX || playout_limit != usize::MAX {
+            think_time = TimeManagement::infinite();
         }
 
         if is_policy_only {
@@ -223,13 +225,25 @@ mod tests {
         let tokens = create_tokens("nodes 100000");
         let tm = TimeManagement::from_tokens(tokens, &state, false);
 
-        // Default time limits apply if not specified
+        // No time limit when only a node limit is given
         assert_eq!(tm.soft_limit(), None);
-        assert_eq!(
-            tm.hard_limit(),
-            Some(Duration::from_secs(DEFAULT_MOVE_TIME_SECS))
-        );
+        assert_eq!(tm.hard_limit(), None);
         assert_eq!(tm.node_limit(), 100_000);
+        assert_eq!(tm.playout_limit(), usize::MAX);
+    }
+
+    // Test for "go playouts <n>"
+    #[test]
+    fn test_from_tokens_playouts() {
+        let state = State::default();
+        let tokens = create_tokens("playouts 5000");
+        let tm = TimeManagement::from_tokens(tokens, &state, false);
+
+        // No time limit when only a playout limit is given
+        assert_eq!(tm.soft_limit(), None);
+        assert_eq!(tm.hard_limit(), None);
+        assert_eq!(tm.node_limit(), usize::MAX);
+        assert_eq!(tm.playout_limit(), 5000);
     }
 
     // Test for "go wtime <ms> btime <ms>" (White to move)
