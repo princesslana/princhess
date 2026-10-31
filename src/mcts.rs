@@ -1,5 +1,4 @@
 use std::cmp::Reverse;
-use std::f32;
 use std::fmt::{self, Display, Formatter, Write};
 use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU64, AtomicUsize, Ordering};
 
