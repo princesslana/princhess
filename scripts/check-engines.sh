@@ -42,6 +42,13 @@ describe_to_commit() {
     git -C "$PROJECT_ROOT" rev-parse --verify -q "$ref^{commit}"
 }
 
+require_known() {
+    local engine=$1 field=$2 value=$3
+    if [ -z "$value" ] || [ "$value" = unknown ]; then
+        error "$engine has no $field in its fingerprint"
+    fi
+}
+
 check_princhess_main() {
     local git=$1
     local commit
@@ -68,6 +75,9 @@ for engine in "$ENGINE1" "$ENGINE2"; do
     RUSTC[$engine]=$(fingerprint_field "$path" rustc)
     CPU[$engine]=$(fingerprint_field "$path" target-cpu)
     echo "$engine: git ${GIT[$engine]:-unknown}, ${RUSTC[$engine]:-rustc unknown}, target-cpu ${CPU[$engine]:-unknown}"
+
+    require_known "$engine" rustc "${RUSTC[$engine]}"
+    require_known "$engine" target-cpu "${CPU[$engine]}"
 
     if [ "$engine" = princhess-main ]; then
         check_princhess_main "${GIT[$engine]}"
