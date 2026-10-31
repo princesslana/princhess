@@ -30,7 +30,7 @@ const CORRECTION_MIN_VISITS: u32 = 16;
 
 /// Calculate exploration bonus U(s,a) for PUCT
 pub fn exploration_bonus(explore_coef: f32, policy: f32, visits: u32) -> f32 {
-    explore_coef * policy / (visits + 1) as f32
+    explore_coef * policy / (visits as f32 + 1.0)
 }
 
 /// Monte Carlo Tree Search implementation using PUCT algorithm.
