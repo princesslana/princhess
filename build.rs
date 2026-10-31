@@ -28,7 +28,7 @@ fn emit_fingerprint_vars() {
     println!("cargo:rustc-env=PRINCHESS_GIT_DESCRIBE={git}");
 
     let cpu = env::var("PRINCHESS_TARGET_CPU").unwrap_or_else(|_| "unknown".to_string());
-    println!("cargo:rustc-env=PRINCHESS_PRINCHESS_TARGET_CPU={cpu}");
+    println!("cargo:rustc-env=PRINCHESS_TARGET_CPU={cpu}");
 
     for (name, path) in [
         ("VALUE", "src/nets/value.bin"),

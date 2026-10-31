@@ -20,6 +20,7 @@ Optional:
   --pgn <notation>       Save games to <test-type>.pgn: san/lan/uci (default: not saved)
   --rounds <n>           Number of game pairs (default: set by test type)
   --max-cores <n>        Max cores available (overrides auto-detection)
+  --force                Run even if the engine check fails
   -h, --help             Show this help
 EOF
     exit 0
@@ -27,10 +28,25 @@ EOF
 
 # Parse arguments and forward to generate-args.sh
 ARGS=()
+FORCE_ARG=()
 while [[ $# -gt 0 ]]; do
     case $1 in
         -h|--help)
             show_help
+            ;;
+        --force)
+            FORCE_ARG=(--force)
+            shift
+            ;;
+        --engine1)
+            ENGINE1=$2
+            ARGS+=("$1" "$2")
+            shift 2
+            ;;
+        --engine2)
+            ENGINE2=$2
+            ARGS+=("$1" "$2")
+            shift 2
             ;;
         *)
             ARGS+=("$1")
@@ -41,6 +57,8 @@ done
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+
+"$SCRIPT_DIR/check-engines.sh" "$ENGINE1" "$ENGINE2" "${FORCE_ARG[@]}"
 
 # Auto-detect native fastchess vs Docker
 USE_NATIVE=false

@@ -158,4 +158,4 @@ start-test:
 		echo "  VARIANT: standard, dfrc (optional, default: standard)"; \
 		exit 1; \
 	fi
-	@scripts/start-test.sh --test-type $(TYPE) --tc $(TC) --engine1 $(ENGINE1) --engine2 $(ENGINE2) $(if $(THREADS),--threads $(THREADS)) $(if $(MAX_CORES),--max-cores $(MAX_CORES)) $(if $(VARIANT),--variant $(VARIANT))
+	@scripts/start-test.sh --test-type $(TYPE) --tc $(TC) --engine1 $(ENGINE1) --engine2 $(ENGINE2) $(if $(THREADS),--threads $(THREADS)) $(if $(MAX_CORES),--max-cores $(MAX_CORES)) $(if $(VARIANT),--variant $(VARIANT)) $(if $(FORCE),--force)
