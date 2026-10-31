@@ -1,5 +1,4 @@
 use std::cmp::Reverse;
-use std::f32;
 use std::fmt::{self, Display, Formatter, Write};
 use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU64, AtomicUsize, Ordering};
 
@@ -29,8 +28,8 @@ const PV_EVAL_MIN_DEPTH: usize = 4;
 const CORRECTION_MIN_VISITS: u32 = 16;
 
 /// Calculate exploration bonus U(s,a) for PUCT
-pub fn exploration_bonus(explore_coef: i64, policy: u16, visits: u32) -> i64 {
-    explore_coef * i64::from(policy) / ((i64::from(visits) + 1) * SCALE as i64)
+pub fn exploration_bonus(explore_coef: f32, policy: f32, visits: u32) -> f32 {
+    explore_coef * policy / (visits as f32 + 1.0)
 }
 
 /// Monte Carlo Tree Search implementation using PUCT algorithm.
@@ -192,7 +191,7 @@ impl Mcts {
 
             let parent_q = path.last().map_or(0, |(x, _)| -x.reward().average);
 
-            let choice = self.select(node, parent_q, tld, options);
+            let choice = self.select(node, parent_q as f32, tld, options);
             choice.down(parent_q);
             path.push((choice, parent_q));
             state.make_move(*choice.get_move());
@@ -664,7 +663,7 @@ impl Mcts {
         total_visits: u64,
         apply_trend_adjustment: bool,
         gini: f32,
-    ) -> i64 {
+    ) -> f32 {
         // Apply trend adjustment (main thread only)
         let mut cpuct = if apply_trend_adjustment {
             let winning_trend = self.winning_trend.load(Ordering::Relaxed);
@@ -684,8 +683,7 @@ impl Mcts {
         cpuct *= gini_scale;
 
         // Calculate exploration coefficient
-        (cpuct * faster::exp(options.cpuct_tau * faster::ln((total_visits + 1) as f32)) * SCALE)
-            as i64
+        cpuct * faster::exp(options.cpuct_tau * faster::ln((total_visits + 1) as f32))
     }
 
     /// PUCT selection: choose best child using Q(action) + U(action)
@@ -693,7 +691,7 @@ impl Mcts {
     fn select<'a>(
         &self,
         node: &'a PositionNode,
-        fpu: i64,
+        fpu: f32,
         tld: &ThreadData,
         options: &MctsOptions,
     ) -> &'a MoveEdge {
@@ -704,16 +702,16 @@ impl Mcts {
             self.exploration_coefficient(options, total_visits, tld.is_main_thread(), gini);
 
         let mut best_move = &moves[0];
-        let mut best_score = i64::MIN;
+        let mut best_score = f32::NEG_INFINITY;
 
         for mov in moves {
-            let reward = mov.reward();
-            let q = if reward.visits > 0 {
-                reward.average
+            let visits = mov.visits();
+            let q = if visits > 0 {
+                mov.sum_evaluations() as f32 / visits as f32
             } else {
                 fpu
             };
-            let u = exploration_bonus(explore_coef, mov.policy(), reward.visits);
+            let u = exploration_bonus(explore_coef, f32::from(mov.policy()), visits);
             let score = q + u;
 
             if score > best_score {
