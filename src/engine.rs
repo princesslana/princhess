@@ -511,8 +511,7 @@ impl Engine {
 
         for (mov, e) in moves {
             let reward = mov.reward();
-            #[allow(clippy::cast_sign_loss)]
-            let u = mcts::exploration_bonus(explore_coef, (e * SCALE) as u16, reward.visits);
+            let u = mcts::exploration_bonus(explore_coef, e * SCALE, reward.visits);
             let gap = (leader_avg - reward.average) as f32 / SCALE;
             let tc = (gap * gap / (inv_n_leader + 1.0 / reward.visits as f32))
                 .max(0.0)
@@ -528,7 +527,7 @@ impl Engine {
                 mov.visits() as f32 / total_visits as f32 * 100.,
                 reward.average as f32 / (SCALE / 100.),
                 mcts::format_score(bounds, reward.average as f32 / SCALE),
-                u as f32 / (SCALE / 100.),
+                u / (SCALE / 100.),
                 tc,
                 mcts::format_bound(bounds.0),
                 mcts::format_bound(bounds.1),
