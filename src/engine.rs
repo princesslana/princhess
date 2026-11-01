@@ -30,31 +30,20 @@ pub struct RootEdge {
     synced_sum_evaluations: i64,
     delta_visits: u32,
     delta_sum_evaluations: i64,
-}
-
-impl Default for RootEdge {
-    fn default() -> Self {
-        Self::new()
-    }
+    average: i64,
 }
 
 impl RootEdge {
-    pub const fn new() -> Self {
-        Self {
-            synced_visits: 0,
-            synced_sum_evaluations: 0,
-            delta_visits: 0,
-            delta_sum_evaluations: 0,
-        }
-    }
-
     pub fn from_edge(edge: &MoveEdge) -> Self {
-        Self {
+        let mut root_edge = Self {
             synced_visits: edge.visits(),
             synced_sum_evaluations: edge.sum_evaluations(),
             delta_visits: 0,
             delta_sum_evaluations: 0,
-        }
+            average: 0,
+        };
+        root_edge.update_average();
+        root_edge
     }
 
     pub fn from_edges(edges: &[MoveEdge]) -> ArrayVec<RootEdge, 256> {
@@ -65,39 +54,39 @@ impl RootEdge {
         root_edges
     }
 
-    pub fn clear(&mut self) {
-        self.delta_visits = 0;
-        self.delta_sum_evaluations = 0;
-    }
-
     pub fn visits(&self) -> u32 {
         self.synced_visits + self.delta_visits
     }
 
     pub fn reward(&self) -> Reward {
-        let visits = self.visits();
-
-        if visits == 0 {
-            return Reward::ZERO;
-        }
-
-        let sum = self.synced_sum_evaluations + self.delta_sum_evaluations;
-
         Reward {
-            average: sum / i64::from(visits),
-            visits,
+            average: self.average,
+            visits: self.visits(),
         }
     }
 
     pub fn up(&mut self, evaln: i64) {
         self.delta_visits += 1;
         self.delta_sum_evaluations += evaln;
+        self.update_average();
     }
 
     pub fn flush(&mut self, edge: &MoveEdge) {
         self.synced_visits = edge.add_visits(self.delta_visits);
         self.synced_sum_evaluations = edge.add_sum_evaluations(self.delta_sum_evaluations);
-        self.clear();
+        self.delta_visits = 0;
+        self.delta_sum_evaluations = 0;
+        self.update_average();
+    }
+
+    fn update_average(&mut self) {
+        let visits = self.visits();
+
+        self.average = if visits == 0 {
+            Reward::ZERO.average
+        } else {
+            (self.synced_sum_evaluations + self.delta_sum_evaluations) / i64::from(visits)
+        };
     }
 }
 
@@ -490,10 +479,7 @@ impl Engine {
             (node.visits(), f32::from(node.gini()) / SCALE)
         } else {
             let total: u64 = node_moves.iter().map(|e| u64::from(e.visits())).sum();
-            (
-                total,
-                math::gini(node_moves.iter().map(MoveEdge::visits), total),
-            )
+            (total, math::gini(node_moves.iter().map(MoveEdge::visits)))
         };
         let explore_coef = self.mcts.exploration_coefficient(
             &self.engine_options.mcts_options,
