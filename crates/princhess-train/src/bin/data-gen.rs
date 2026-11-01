@@ -149,9 +149,8 @@ fn bucket_labels(thresholds: &[f32; 11]) -> [String; 6] {
 /// Returns a value in [0.0, 1.0] where:
 /// - 0.0 = concentrated policy (all visits on one move)
 /// - 1.0 = uniform policy (visits evenly distributed)
-fn compute_policy_gini<I: Iterator<Item = u8> + Clone>(visits: I) -> f32 {
-    let total_visits: u64 = visits.clone().map(u64::from).sum();
-    math::gini(visits.map(u32::from), total_visits)
+fn compute_policy_gini<I: Iterator<Item = u8>>(visits: I) -> f32 {
+    math::gini(visits.map(u32::from))
 }
 
 /// Computes KL divergence KL(P || Q) = Σ P(i) * ln(P(i) / Q(i)) between two distributions.

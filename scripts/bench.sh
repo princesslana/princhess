@@ -10,9 +10,14 @@ PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 
 ENGINE1="${1:-princhess}"
 ENGINE2="${2:-princhess-main}"
-RUNS="${3:-20}"
+RUNS="${3:-}"
 TIME="${4:-}"
 THREADS="${5:-1}"
+
+# Timed runs are slow, so they get fewer pairs by default.
+if [ -z "$RUNS" ]; then
+    RUNS=$([ -n "$TIME" ] && echo 5 || echo 20)
+fi
 
 if ! [[ "$RUNS" =~ ^[1-9][0-9]*$ ]]; then
     echo "Error: RUNS must be a positive integer, got '$RUNS'"

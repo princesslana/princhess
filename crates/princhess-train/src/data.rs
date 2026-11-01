@@ -132,7 +132,7 @@ impl TrainingPosition {
         let root_edges = tree.root_edges();
         let total_visits = tree.root_visits();
         #[allow(clippy::redundant_closure_for_method_calls)]
-        let gini = math::gini(root_edges.iter().map(|e| e.visits()), total_visits);
+        let gini = math::gini(root_edges.iter().map(|e| e.visits()));
         let explore_coef =
             tree.exploration_coefficient(&tree.mcts_options(), total_visits, false, gini);
         let lambda_n = explore_coef as f32 / (root_edges.len() as f32 + total_visits as f32);

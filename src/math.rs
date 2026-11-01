@@ -25,18 +25,20 @@ impl PartialOrd for TotalF32 {
 
 /// Calculate Gini impurity from a distribution of counts
 #[inline]
-pub fn gini<I>(counts: I, total: u64) -> f32
+pub fn gini<I>(counts: I) -> f32
 where
     I: IntoIterator<Item = u32>,
 {
-    if total == 0 {
-        return 0.0;
-    }
-
+    let mut total = 0u64;
     let mut sum_squares = 0.0_f32;
     for count in counts {
+        total += u64::from(count);
         let v = count as f32;
         sum_squares += v * v;
+    }
+
+    if total == 0 {
+        return 0.0;
     }
 
     let total_f = total as f32;

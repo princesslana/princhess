@@ -8,7 +8,9 @@ use crate::chess::{Piece, Square};
 #[repr(transparent)]
 pub struct Move(u16);
 
-pub type MoveList = ArrayVec<Move, 256>;
+pub const MAX_MOVES: usize = 256;
+
+pub type MoveList = ArrayVec<Move, MAX_MOVES>;
 
 impl Move {
     pub const NONE: Self = Self(0);

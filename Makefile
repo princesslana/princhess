@@ -9,7 +9,7 @@ help:
 	@echo "  train         - Build training binaries with native CPU (NODEFAULTFEATURES=1 to skip default features)"
 	@echo "  lint          - Check formatting and run clippy with warnings as errors"
 	@echo "  clean         - Clean all build artifacts"
-	@echo "  bench         - Compare NPS: princhess vs princhess-main (ENGINE1, ENGINE2, RUNS, TIME ms, THREADS)"
+	@echo "  bench         - Compare NPS: princhess vs princhess-main (ENGINE1, ENGINE2, RUNS (20, or 5 with TIME), TIME ms, THREADS)"
 	@echo ""
 	@echo "Lichess Bots:"
 	@echo "  lichess-bot        - Build and run lichess bot (requires LICHESS_TOKEN)"
@@ -69,7 +69,7 @@ lint:
 
 .PHONY: bench
 bench:
-	@scripts/bench.sh $(or $(ENGINE1),princhess) $(or $(ENGINE2),princhess-main) $(or $(RUNS),20) "$(TIME)" $(or $(THREADS),1)
+	@scripts/bench.sh $(or $(ENGINE1),princhess) $(or $(ENGINE2),princhess-main) "$(RUNS)" "$(TIME)" $(or $(THREADS),1)
 
 .PHONY: clean
 clean:

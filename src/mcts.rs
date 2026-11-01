@@ -120,10 +120,8 @@ impl Mcts {
         time_management: &TimeManagement,
         stop_signal: &AtomicBool,
     ) -> bool {
-        let total_visits: u64 = tld.root_edges.iter().map(|re| u64::from(re.visits())).sum();
-
         if tld.playouts.is_multiple_of(1024) {
-            tld.root_gini = math::gini(tld.root_edges.iter().map(RootEdge::visits), total_visits);
+            tld.root_gini = math::gini(tld.root_edges.iter().map(RootEdge::visits));
         }
 
         let root_edge_idx = tld
