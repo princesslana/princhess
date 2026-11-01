@@ -1101,6 +1101,7 @@ dependencies = [
  "bytemuck",
  "cc",
  "fastapprox",
+ "libc",
  "nohash-hasher",
  "scc",
 ]
