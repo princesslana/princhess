@@ -6,7 +6,7 @@ use std::ptr::{self, NonNull};
 use std::slice;
 use std::sync::atomic::{AtomicU32, AtomicUsize, Ordering};
 
-use crate::mem::Align64;
+use crate::mem::{AlignHugePage, HUGE_PAGE_SIZE};
 
 #[derive(Debug)]
 pub enum Error {
@@ -17,11 +17,25 @@ const BYTES_PER_MB: usize = 1 << 20;
 const CHUNK_SIZE_MB: usize = 2;
 const CHUNK_SIZE: usize = BYTES_PER_MB * CHUNK_SIZE_MB;
 
-type Chunk = Align64<[u8; CHUNK_SIZE]>;
+type Chunk = AlignHugePage<[u8; CHUNK_SIZE]>;
+
+const _: () = assert!(CHUNK_SIZE.is_multiple_of(HUGE_PAGE_SIZE));
 
 // Global counter for arena generations, starting at 1.
 // 0 is reserved for "invalid" allocators.
 static GLOBAL_ARENA_GENERATION: AtomicU32 = AtomicU32::new(1);
+
+#[cfg(target_os = "linux")]
+fn advise_huge_pages(ptr: *mut u8, len: usize) {
+    // SAFETY: The range is the arena's allocation, and madvise only changes paging hints.
+    // It's best effort, so a failure is ignored.
+    unsafe {
+        libc::madvise(ptr.cast(), len, libc::MADV_HUGEPAGE);
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
+fn advise_huge_pages(_ptr: *mut u8, _len: usize) {}
 
 pub struct Arena {
     chunks: UnsafeCell<Box<[Chunk]>>,
@@ -40,6 +54,7 @@ impl Arena {
             if raw.is_null() {
                 alloc::handle_alloc_error(layout);
             }
+            advise_huge_pages(raw, layout.size());
             let slice = slice::from_raw_parts_mut(raw.cast(), max);
             Box::from_raw(slice)
         };
@@ -81,8 +96,6 @@ impl Arena {
         // The `UnsafeCell` allows us to get a mutable pointer to the `Box<[Chunk]>`
         // from an immutable `&self`. We then dereference this to get a mutable
         // slice `&mut [Chunk]`, and then index into it to get `&mut Chunk`.
-        // The `Align64` wrapper implements `DerefMut` to `[u8; CHUNK_SIZE]`,
-        // which can then be converted to `&mut [u8]`.
         let chunk_ref: &mut Chunk = unsafe { &mut (*self.chunks.get())[idx] };
         Ok(&mut **chunk_ref)
     }
