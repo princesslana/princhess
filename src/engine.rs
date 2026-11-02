@@ -180,6 +180,7 @@ const HOT_THRESHOLD_ROOT_SHARE: u64 = 100;
 
 pub struct HotSlot<'a> {
     node: Option<&'a PositionNode>,
+    generation: u32,
     used: bool,
     visits: Vec<u32>,
     sums: Vec<i64>,
@@ -235,6 +236,7 @@ impl<'a> HotBuffer<'a> {
             slots: (0..HOT_SLOTS)
                 .map(|_| HotSlot {
                     node: None,
+                    generation: 0,
                     used: false,
                     visits: Vec::new(),
                     sums: Vec::new(),
@@ -249,11 +251,12 @@ impl<'a> HotBuffer<'a> {
         let slot = &mut self.slots[idx];
 
         match slot.node {
-            Some(held) if ptr::eq(held, node) => {}
+            Some(held) if ptr::eq(held, node) && slot.generation == node.generation() => {}
             Some(_) => return None,
             None => {
                 let len = node.edges().len();
                 slot.node = Some(node);
+                slot.generation = node.generation();
                 slot.visits.clear();
                 slot.visits.resize(len, 0);
                 slot.sums.clear();
@@ -285,7 +288,7 @@ impl<'a> HotBuffer<'a> {
                 continue;
             };
 
-            if !slot.used || node.is_stale(generation) {
+            if !slot.used || slot.generation != generation {
                 slot.node = None;
                 continue;
             }
