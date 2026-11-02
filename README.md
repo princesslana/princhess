@@ -11,6 +11,8 @@ Princhess is a chess engine written in Rust. It implements a Monte Carlo Tree Se
 *   **DAG-Based MCTS:** Uses a directed acyclic graph rather than a tree to support transpositions. Rewards and visit counts are stored on edges instead of nodes.
 *   **Dynamic CPUCT Adjustments:** Multiple mechanisms for adjusting exploration including Gini impurity, per-thread jitter for search diversity, and trend-based adjustments for winning/losing positions.
 *   **Custom Memory Allocator:** Includes an arena memory allocator with half flipping for managing the MCTS graph within a fixed memory size, allowing unbounded search depth with bounded memory usage.
+*   **Score-Bounded MCTS:** Propagates proven win, loss and draw bounds through the graph, clamping edge values to them and reporting proven mate scores.
+*   **Value Correction History:** Learns the value network's error during search and adjusts its evaluations accordingly.
 *   **Top Two Root Selection:** Uses the Top Two sampling rule for root move selection, based on [EB-TCε](https://arxiv.org/abs/2305.16041). Treats root move selection as a best arm identification problem, using transportation cost to identify the leader and challenger.
 *   **Phase-Aware Policy Networks:** Dynamically loads separate policy networks for middle-game and endgame phases.
 *   **Endgame Tablebase Integration:** Integrates with Fathom tablebases for endgame evaluation.
@@ -77,6 +79,10 @@ Adaptive time allocation controls:
 - **TMPvDiffM** (default: 121): PV difference multiplier for time scaling based on eval stability
 - **TMTopTwoC** (default: 36): Challenger probability at which top-two time scaling is neutral
 - **TMTopTwoM** (default: 225): Multiplier for time scaling based on how likely the second-best move is to overtake the best
+
+### Evaluation
+- **EnableMaterialScaling** (default: true): Scale the value network's evaluation by the remaining non-pawn material
+- **Enable50mrScaling** (default: true): Dampen the evaluation as the fifty-move counter rises
 
 ### Special Modes
 - **UCI_Chess960** (default: false): Enable Chess960
