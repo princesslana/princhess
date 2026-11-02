@@ -7,7 +7,7 @@ Princhess is a chess engine written in Rust. It implements a Monte Carlo Tree Se
 *   **CPU-Only MCTS:** Implements Monte Carlo Tree Search for CPU execution.
 *   **UCI Protocol Support:** Compatible with the Universal Chess Interface (UCI).
 *   **Bitboard Representation:** Uses bitboards for board representation and move generation.
-*   **Multi-threading:** Supports multi-threaded operation.
+*   **Multi-threading:** Supports multi-threaded operation, with thread-local buffering of MCTS statistics for hot nodes.
 *   **DAG-Based MCTS:** Uses a directed acyclic graph rather than a tree to support transpositions. Rewards and visit counts are stored on edges instead of nodes.
 *   **Dynamic CPUCT Adjustments:** Multiple mechanisms for adjusting exploration including Gini impurity, per-thread jitter for search diversity, and trend-based adjustments for winning/losing positions.
 *   **Custom Memory Allocator:** Includes an arena memory allocator with half flipping for managing the MCTS graph within a fixed memory size, allowing unbounded search depth with bounded memory usage.
