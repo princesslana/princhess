@@ -7,12 +7,14 @@ use fastapprox::faster;
 
 use crate::arena;
 use crate::chess;
-use crate::engine::{self, RootEdge, ThreadData, KNOWN_WIN, MATE_SCORE, SCALE};
+use crate::engine::{
+    self, HotBuffer, HotSlot, RootEdge, ThreadData, FLUSH_PLAYOUTS, KNOWN_WIN, MATE_SCORE, SCALE,
+};
 use crate::evaluation::{self, Flag};
 use crate::graph::{
-    self, MoveEdge, PositionNode, BOUND_INF, DRAW_NODE, LOSS_NODE, PATH_DRAW_NODE, PROVEN_MATE,
-    TABLEBASE_DRAW_NODE, TABLEBASE_LOSS_NODE, TABLEBASE_WIN_NODE, TB_WIN, UNEXPANDED_NODE,
-    WIN_NODE,
+    self, MoveEdge, PositionNode, Reward, BOUND_INF, DRAW_NODE, LOSS_NODE, PATH_DRAW_NODE,
+    PROVEN_MATE, TABLEBASE_DRAW_NODE, TABLEBASE_LOSS_NODE, TABLEBASE_WIN_NODE, TB_WIN,
+    UNEXPANDED_NODE, WIN_NODE,
 };
 use crate::math::{self, TotalF32};
 use crate::options::{EngineOptions, MctsOptions, TimeManagementOptions};
@@ -26,6 +28,22 @@ pub const MAX_PLAYOUT_LENGTH: usize = 256;
 const PV_EVAL_MIN_DEPTH: usize = 4;
 
 const CORRECTION_MIN_VISITS: u32 = 16;
+
+#[derive(Clone, Copy)]
+struct PathEntry<'a> {
+    edge: &'a MoveEdge,
+    virtual_loss: i64,
+    slot: Option<(usize, usize)>,
+}
+
+impl PathEntry<'_> {
+    fn reward(&self, hot_buffer: &HotBuffer) -> Reward {
+        match self.slot {
+            Some((slot, idx)) => hot_buffer.get(slot).reward(self.edge, idx),
+            None => self.edge.reward(),
+        }
+    }
+}
 
 /// Calculate exploration bonus U(s,a) for PUCT
 pub fn exploration_bonus(explore_coef: f32, policy: f32, visits: u32) -> f32 {
@@ -156,7 +174,8 @@ impl Mcts {
             };
         }
 
-        let mut path: ArrayVec<(&'a MoveEdge, i64), MAX_PLAYOUT_LENGTH> = ArrayVec::new();
+        let mut path: ArrayVec<PathEntry<'a>, MAX_PLAYOUT_LENGTH> = ArrayVec::new();
+        let mut hot = true;
 
         loop {
             if node.is_stale(tld.ttable.current_generation()) {
@@ -187,14 +206,42 @@ impl Mcts {
                 break;
             }
 
-            let parent_q = path.last().map_or(0, |(x, _)| -x.reward().average);
+            let parent_q = path
+                .last()
+                .map_or(0, |entry| -entry.reward(&tld.hot_buffer).average);
 
-            let choice = self.select(node, parent_q as f32, tld, options);
-            choice.down(parent_q);
-            path.push((choice, parent_q));
+            // Visits only shrink going down, so stop checking once a node isn't hot
+            let node_visits = node.visits();
+            hot = hot && node_visits >= tld.hot_buffer.threshold;
+            let slot = if hot { tld.hot_buffer.slot(node) } else { None };
+
+            let hot_slot = slot.map(|slot| tld.hot_buffer.get(slot));
+            let idx = self.select(
+                node,
+                node_visits,
+                hot_slot,
+                parent_q as f32,
+                tld.is_main_thread(),
+                options,
+            );
+            let choice = &node.edges()[idx];
+
+            let (pending_visits, pending_sum) = if let Some(slot) = slot {
+                let slot = tld.hot_buffer.get_mut(slot);
+                slot.down(idx, parent_q);
+                slot.delta(idx)
+            } else {
+                choice.down(parent_q);
+                (0, 0)
+            };
+            path.push(PathEntry {
+                edge: choice,
+                virtual_loss: parent_q,
+                slot: slot.map(|slot| (slot, idx)),
+            });
             state.make_move(*choice.get_move());
 
-            let visits = choice.visits();
+            let visits = choice.visits() + pending_visits;
 
             if visits == 1 {
                 let Some((expanded_node, eval)) = self.expand_edge(&state, tld) else {
@@ -214,7 +261,8 @@ impl Mcts {
             }
 
             // The node is created a visit after its net eval, so recover that eval from the edge
-            let first_eval = (visits == 2).then(|| parent_q - choice.sum_evaluations());
+            let first_eval =
+                (visits == 2).then(|| parent_q - (choice.sum_evaluations() + pending_sum));
 
             let new_node = match self.descend(&state, choice, first_eval, tld) {
                 Ok(r) => r,
@@ -233,7 +281,12 @@ impl Mcts {
 
         evaln = node.flag().adjust_eval(evaln);
 
-        Self::finish_playout(&mut tld.root_edges[root_edge_idx], &path, evaln);
+        Self::finish_playout(
+            &mut tld.root_edges[root_edge_idx],
+            &mut tld.hot_buffer,
+            &path,
+            evaln,
+        );
 
         if node.is_bounded() {
             // Clamping at a tablebase root would override the DTZ root filtering
@@ -259,7 +312,7 @@ impl Mcts {
             return false;
         }
 
-        if tld.playouts.is_multiple_of(1024) {
+        if tld.playouts.is_multiple_of(FLUSH_PLAYOUTS) {
             self.flush_root_edges(tld);
             self.flush_thread_stats(tld);
 
@@ -357,10 +410,22 @@ impl Mcts {
         Ok(inserted)
     }
 
-    fn finish_playout(root_edge: &mut RootEdge, path: &[(&MoveEdge, i64)], evaln: i64) {
+    fn finish_playout(
+        root_edge: &mut RootEdge,
+        hot_buffer: &mut HotBuffer,
+        path: &[PathEntry],
+        evaln: i64,
+    ) {
         let mut evaln_value = -evaln;
-        for (move_info, virtual_loss) in path.iter().rev() {
-            move_info.up(evaln_value, *virtual_loss);
+        for entry in path.iter().rev() {
+            match entry.slot {
+                Some((slot, idx)) => {
+                    hot_buffer
+                        .get_mut(slot)
+                        .up(idx, evaln_value, entry.virtual_loss);
+                }
+                None => entry.edge.up(evaln_value, entry.virtual_loss),
+            }
             evaln_value = -evaln_value;
         }
         root_edge.up(evaln_value);
@@ -368,12 +433,12 @@ impl Mcts {
 
     fn propagate_bounds(
         root_edge: &MoveEdge,
-        path: &[(&MoveEdge, i64)],
+        path: &[PathEntry],
         mut bounds: (i16, i16),
         clamp: bool,
     ) {
         for i in (0..path.len()).rev() {
-            let parent_edge = if i == 0 { root_edge } else { path[i - 1].0 };
+            let parent_edge = if i == 0 { root_edge } else { path[i - 1].edge };
 
             let Some(parent) = parent_edge.child() else {
                 return;
@@ -435,6 +500,11 @@ impl Mcts {
         for (root_edge, edge) in tld.root_edges.iter_mut().zip(&self.root_edges) {
             root_edge.flush(edge);
         }
+
+        tld.hot_buffer.flush(tld.ttable.current_generation());
+
+        let root_visits = tld.root_edges.iter().map(|e| u64::from(e.visits())).sum();
+        tld.hot_buffer.update_threshold(root_visits);
     }
 
     pub fn flush_thread_stats(&self, tld: &mut ThreadData) {
@@ -686,26 +756,41 @@ impl Mcts {
 
     /// PUCT selection: choose best child using Q(action) + U(action)
     /// where U incorporates policy priors and visit counts
-    fn select<'a>(
+    fn select(
         &self,
-        node: &'a PositionNode,
+        node: &PositionNode,
+        node_visits: u64,
+        slot: Option<&HotSlot>,
         fpu: f32,
-        tld: &ThreadData,
+        is_main_thread: bool,
         options: &MctsOptions,
-    ) -> &'a MoveEdge {
+    ) -> usize {
         let moves = node.edges();
-        let total_visits = node.visits();
+        let deltas = slot.map(HotSlot::deltas);
+        // SAFETY: A slot's arrays are sized to its node's edges when claimed, and i indexes moves
+        let pending = |i: usize| {
+            deltas.map_or((0, 0), |(visits, sums)| unsafe {
+                (*visits.get_unchecked(i), *sums.get_unchecked(i))
+            })
+        };
+        let pending_visits: u64 =
+            deltas.map_or(0, |(visits, _)| visits.iter().map(|&v| u64::from(v)).sum());
         let gini = f32::from(node.gini()) / SCALE;
-        let explore_coef =
-            self.exploration_coefficient(options, total_visits, tld.is_main_thread(), gini);
+        let explore_coef = self.exploration_coefficient(
+            options,
+            node_visits + pending_visits,
+            is_main_thread,
+            gini,
+        );
 
-        let mut best_move = &moves[0];
+        let mut best = 0;
         let mut best_score = f32::NEG_INFINITY;
 
-        for mov in moves {
-            let visits = mov.visits();
+        for (i, mov) in moves.iter().enumerate() {
+            let (pending_visits, pending_sum) = pending(i);
+            let visits = mov.visits() + pending_visits;
             let q = if visits > 0 {
-                mov.sum_evaluations() as f32 / visits as f32
+                (mov.sum_evaluations() + pending_sum) as f32 / visits as f32
             } else {
                 fpu
             };
@@ -714,11 +799,11 @@ impl Mcts {
 
             if score > best_score {
                 best_score = score;
-                best_move = mov;
+                best = i;
             }
         }
 
-        best_move
+        best
     }
 }
 
