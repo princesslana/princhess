@@ -1,6 +1,5 @@
 use std::f32::consts::FRAC_PI_2;
 use std::process;
-use std::ptr;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use arrayvec::ArrayVec;
@@ -10,6 +9,7 @@ use crate::chess::Move;
 use crate::correction::CorrectionTable;
 use crate::evaluation;
 use crate::graph::{self, MoveEdge, PositionNode, Reward};
+use crate::hot_table::{HotSlot, HotTable};
 use crate::math::{self, Rng};
 use crate::mcts::{self, Mcts};
 use crate::options::{EngineOptions, MctsOptions};
@@ -23,73 +23,6 @@ use crate::uci::{self, Tokens};
 pub const SCALE: f32 = 256. * 256.;
 pub const MATE_SCORE: i64 = 2 * SCALE as i64;
 pub const KNOWN_WIN: i64 = SCALE as i64;
-
-/// Thread-local buffer for root edge statistics to reduce atomic contention.
-#[derive(Clone, Copy)]
-pub struct RootEdge {
-    synced_visits: u32,
-    synced_sum_evaluations: i64,
-    delta_visits: u32,
-    delta_sum_evaluations: i64,
-    average: i64,
-}
-
-impl RootEdge {
-    pub fn from_edge(edge: &MoveEdge) -> Self {
-        let mut root_edge = Self {
-            synced_visits: edge.visits(),
-            synced_sum_evaluations: edge.sum_evaluations(),
-            delta_visits: 0,
-            delta_sum_evaluations: 0,
-            average: 0,
-        };
-        root_edge.update_average();
-        root_edge
-    }
-
-    pub fn from_edges(edges: &[MoveEdge]) -> ArrayVec<RootEdge, 256> {
-        let mut root_edges = ArrayVec::new();
-        for edge in edges {
-            root_edges.push(RootEdge::from_edge(edge));
-        }
-        root_edges
-    }
-
-    pub fn visits(&self) -> u32 {
-        self.synced_visits + self.delta_visits
-    }
-
-    pub fn reward(&self) -> Reward {
-        Reward {
-            average: self.average,
-            visits: self.visits(),
-        }
-    }
-
-    pub fn up(&mut self, evaln: i64) {
-        self.delta_visits += 1;
-        self.delta_sum_evaluations += evaln;
-        self.update_average();
-    }
-
-    pub fn flush(&mut self, edge: &MoveEdge) {
-        self.synced_visits = edge.add_visits(self.delta_visits);
-        self.synced_sum_evaluations = edge.add_sum_evaluations(self.delta_sum_evaluations);
-        self.delta_visits = 0;
-        self.delta_sum_evaluations = 0;
-        self.update_average();
-    }
-
-    fn update_average(&mut self) {
-        let visits = self.visits();
-
-        self.average = if visits == 0 {
-            Reward::ZERO.average
-        } else {
-            (self.synced_sum_evaluations + self.delta_sum_evaluations) / i64::from(visits)
-        };
-    }
-}
 
 pub struct TopTwoState {
     challenger_deficit: f32,
@@ -108,14 +41,10 @@ impl TopTwoState {
         self.last_tc_sq
     }
 
-    pub fn next(
-        &mut self,
-        root_edges: &ArrayVec<RootEdge, 256>,
-        searchable_moves: &[bool],
-    ) -> usize {
+    pub fn next(&mut self, root: &HotSlot, searchable_moves: &[bool]) -> usize {
         let mut leader = 0;
         let mut leader_avg = i64::MIN;
-        for (i, edge) in root_edges.iter().enumerate() {
+        for (i, edge) in root.edges().iter().enumerate() {
             if !searchable_moves[i] {
                 continue;
             }
@@ -129,7 +58,7 @@ impl TopTwoState {
             }
         }
 
-        let leader_reward = root_edges[leader].reward();
+        let leader_reward = root.edges()[leader].reward();
         // 0 visits → ∞, so unvisited moves get tc_sq = 0 (best challenger)
         let inv_n_leader = 1.0 / leader_reward.visits as f32;
 
@@ -137,7 +66,7 @@ impl TopTwoState {
         let mut challenger = 0;
         let mut n_c = 0.0_f32;
 
-        for (i, edge) in root_edges.iter().enumerate() {
+        for (i, edge) in root.edges().iter().enumerate() {
             if i == leader || !searchable_moves[i] {
                 continue;
             }
@@ -170,150 +99,6 @@ impl TopTwoState {
     }
 }
 
-pub const FLUSH_PLAYOUTS: usize = 1024;
-
-const HOT_SLOTS: usize = 64;
-
-// A node is hot from K × threads × FLUSH_PLAYOUTS visits, or 1 / ROOT_SHARE of the root's visits
-const HOT_THRESHOLD_K: u64 = 4;
-const HOT_THRESHOLD_ROOT_SHARE: u64 = 100;
-
-pub struct HotSlot<'a> {
-    node: Option<&'a PositionNode>,
-    generation: u32,
-    used: bool,
-    visits: Vec<u32>,
-    sums: Vec<i64>,
-}
-
-impl HotSlot<'_> {
-    pub fn delta(&self, idx: usize) -> (u32, i64) {
-        (self.visits[idx], self.sums[idx])
-    }
-
-    pub fn deltas(&self) -> (&[u32], &[i64]) {
-        (&self.visits, &self.sums)
-    }
-
-    pub fn reward(&self, edge: &MoveEdge, idx: usize) -> Reward {
-        let visits = edge.visits() + self.visits[idx];
-
-        Reward {
-            average: (edge.sum_evaluations() + self.sums[idx]) / i64::from(visits),
-            visits,
-        }
-    }
-
-    pub fn down(&mut self, idx: usize, virtual_loss: i64) {
-        self.visits[idx] += 1;
-        self.sums[idx] += virtual_loss;
-    }
-
-    pub fn up(&mut self, idx: usize, evaln: i64, virtual_loss: i64) {
-        self.sums[idx] += evaln - virtual_loss;
-    }
-}
-
-/// Stores the most visited nodes' edge stats per thread, to avoid contention on them.
-pub struct HotBuffer<'a> {
-    pub threshold: u64,
-    min_threshold: u64,
-    slots: Vec<HotSlot<'a>>,
-}
-
-impl<'a> HotBuffer<'a> {
-    fn new(threads: usize) -> Self {
-        // A single thread has no contention to avoid
-        let min_threshold = if threads == 1 {
-            u64::MAX
-        } else {
-            HOT_THRESHOLD_K * threads as u64 * FLUSH_PLAYOUTS as u64
-        };
-
-        Self {
-            threshold: min_threshold,
-            min_threshold,
-            slots: (0..HOT_SLOTS)
-                .map(|_| HotSlot {
-                    node: None,
-                    generation: 0,
-                    used: false,
-                    visits: Vec::new(),
-                    sums: Vec::new(),
-                })
-                .collect(),
-        }
-    }
-
-    pub fn slot(&mut self, node: &'a PositionNode) -> Option<usize> {
-        let hash = (ptr::from_ref(node).addr() >> 3).wrapping_mul(0x9E37_79B9_7F4A_7C15);
-        let idx = hash >> (usize::BITS - HOT_SLOTS.trailing_zeros());
-        let slot = &mut self.slots[idx];
-
-        match slot.node {
-            Some(held) if ptr::eq(held, node) && slot.generation == node.generation() => {}
-            Some(_) => return None,
-            None => {
-                let len = node.edges().len();
-                slot.node = Some(node);
-                slot.generation = node.generation();
-                slot.visits.clear();
-                slot.visits.resize(len, 0);
-                slot.sums.clear();
-                slot.sums.resize(len, 0);
-            }
-        }
-
-        slot.used = true;
-        Some(idx)
-    }
-
-    pub fn update_threshold(&mut self, root_visits: u64) {
-        self.threshold = self
-            .min_threshold
-            .max(root_visits / HOT_THRESHOLD_ROOT_SHARE);
-    }
-
-    pub fn get(&self, idx: usize) -> &HotSlot<'a> {
-        &self.slots[idx]
-    }
-
-    pub fn get_mut(&mut self, idx: usize) -> &mut HotSlot<'a> {
-        &mut self.slots[idx]
-    }
-
-    pub fn flush(&mut self, generation: u32) {
-        for slot in &mut self.slots {
-            let Some(node) = slot.node else {
-                continue;
-            };
-
-            if !slot.used || slot.generation != generation {
-                slot.node = None;
-                continue;
-            }
-
-            slot.used = false;
-
-            for ((edge, visits), sum) in node
-                .edges()
-                .iter()
-                .zip(&mut slot.visits)
-                .zip(&mut slot.sums)
-            {
-                if *visits > 0 {
-                    edge.add_visits(*visits);
-                    *visits = 0;
-                }
-                if *sum != 0 {
-                    edge.add_sum_evaluations(*sum);
-                    *sum = 0;
-                }
-            }
-        }
-    }
-}
-
 pub struct ThreadData<'a> {
     pub ttable: &'a LRTable,
     pub correction: &'a CorrectionTable,
@@ -323,8 +108,7 @@ pub struct ThreadData<'a> {
     pub num_nodes: usize,
     pub max_depth: usize,
     pub tb_hits: usize,
-    pub root_edges: ArrayVec<RootEdge, 256>,
-    pub hot_buffer: HotBuffer<'a>,
+    pub hot_table: HotTable<'a>,
     pub root_gini: f32,
     pub top_two_state: TopTwoState,
 }
@@ -335,7 +119,7 @@ impl<'a> ThreadData<'a> {
         correction: &'a CorrectionTable,
         thread_id: usize,
         threads: usize,
-        root_edges: ArrayVec<RootEdge, 256>,
+        root_edges: &[MoveEdge],
         root_gini: f32,
     ) -> Self {
         Self {
@@ -347,8 +131,7 @@ impl<'a> ThreadData<'a> {
             num_nodes: 0,
             max_depth: 0,
             tb_hits: 0,
-            hot_buffer: HotBuffer::new(threads),
-            root_edges,
+            hot_table: HotTable::new(threads, root_edges),
             root_gini,
             top_two_state: TopTwoState::new(),
         }
@@ -495,7 +278,6 @@ impl Engine {
 
         let mut rng = Rng::default();
         let mut returned_line: Option<String> = None;
-        let root_edges = RootEdge::from_edges(self.mcts.root_edges());
 
         let run_search_thread = |options: &MctsOptions, tm: &TimeManagement, thread_id: usize| {
             let mut tld = ThreadData::create(
@@ -503,11 +285,11 @@ impl Engine {
                 &self.correction,
                 thread_id,
                 thread_count,
-                root_edges.clone(),
+                self.mcts.root_edges(),
                 0.0,
             );
             while self.mcts.playout(&mut tld, options, tm, &stop_signal) {}
-            self.mcts.flush_root_edges(&mut tld);
+            self.mcts.flush_hot_table(&mut tld);
             self.mcts.flush_thread_stats(&mut tld);
         };
 
@@ -565,8 +347,14 @@ impl Engine {
     }
 
     pub fn playout_sync(&self, playouts: u64) {
-        let root_edges = RootEdge::from_edges(self.mcts.root_edges());
-        let mut tld = ThreadData::create(&self.ttable, &self.correction, 0, 1, root_edges, 0.0);
+        let mut tld = ThreadData::create(
+            &self.ttable,
+            &self.correction,
+            0,
+            1,
+            self.mcts.root_edges(),
+            0.0,
+        );
         let options = &self.engine_options.mcts_options;
         let tm = TimeManagement::infinite();
         let stop_signal = AtomicBool::new(false);
@@ -577,7 +365,7 @@ impl Engine {
             }
         }
 
-        self.mcts.flush_root_edges(&mut tld);
+        self.mcts.flush_hot_table(&mut tld);
         self.mcts.flush_thread_stats(&mut tld);
     }
 

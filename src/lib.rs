@@ -24,5 +24,6 @@ pub mod uci;
 mod arena;
 mod correction;
 mod graph;
+mod hot_table;
 mod mem;
 mod threadpool;
