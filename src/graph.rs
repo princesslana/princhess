@@ -1,11 +1,11 @@
-use std::mem;
+use std::mem::{self, MaybeUninit};
 use std::ptr::{self, NonNull};
 use std::slice;
 use std::sync::atomic::{AtomicI16, AtomicI64, AtomicPtr, AtomicU32, Ordering};
 use std::sync::LazyLock;
 
 use crate::arena::{self, ArenaRef};
-use crate::chess;
+use crate::chess::{self, MAX_MOVES};
 use crate::engine::SCALE;
 use crate::evaluation::{self, Flag};
 use crate::mcts::MAX_PLAYOUT_LENGTH;
@@ -432,6 +432,45 @@ where
     ));
 
     Ok(node_arena_ref)
+}
+
+/// The root's node with its edges right after it, allocated outside the arenas so a table flip
+/// can't free it. Its generation is 0, so it's never stale.
+#[repr(C)]
+pub struct RootNode {
+    node: MaybeUninit<PositionNode>,
+    edges: [MaybeUninit<MoveEdge>; MAX_MOVES],
+}
+
+impl RootNode {
+    /// # Panics
+    ///
+    /// Never panics, allocating into the root's own memory can't fail.
+    pub fn new(state: &State, policy_t: f32) -> Box<Self> {
+        // SAFETY: Every field is MaybeUninit, so uninitialized memory is a valid RootNode
+        let mut root = unsafe { Box::<Self>::new_uninit().assume_init() };
+        let node_ptr = NonNull::from(&mut root.node);
+        let edges_ptr = NonNull::from(&mut root.edges).cast::<MaybeUninit<MoveEdge>>();
+
+        create_node(
+            state,
+            |sz| {
+                Ok((
+                    ArenaRef::from_raw_parts(node_ptr, 0),
+                    ArenaRef::from_raw_parts(NonNull::slice_from_raw_parts(edges_ptr, sz), 0),
+                ))
+            },
+            policy_t,
+        )
+        .expect("Root node allocation can't fail");
+
+        root
+    }
+
+    pub fn node(&self) -> &PositionNode {
+        // SAFETY: `new` initializes the node before returning
+        unsafe { self.node.assume_init_ref() }
+    }
 }
 
 const _: () = assert!(mem::size_of::<PositionNode>() == 24);
