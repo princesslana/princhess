@@ -1,5 +1,6 @@
 use std::cmp::Reverse;
 use std::fmt::{self, Display, Formatter, Write};
+use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU64, AtomicUsize, Ordering};
 
 use arrayvec::ArrayVec;
@@ -44,7 +45,7 @@ pub fn exploration_bonus(explore_coef: f32, policy: f32, visits: u32) -> f32 {
 /// Despite the name "tree search", this forms a graph due to transposition handling
 /// where the same position can be reached via different move sequences.
 pub struct Mcts {
-    root: Box<RootNode>,
+    root: Pin<Box<RootNode>>,
     root_state: State,
     searchable_moves: ArrayVec<bool, 256>,
     tablebase_score: Option<i64>,
@@ -477,6 +478,7 @@ impl Mcts {
         self.root_edges()
             .iter()
             .enumerate()
+            .filter(|&(i, _)| self.searchable_moves[i])
             .max_by_key(|&(i, edge)| (TotalF32(self.move_score(edge)), Reverse(i)))
             .map(|(_, edge)| edge)
             .expect("Root node must have moves to determine best edge")
