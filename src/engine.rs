@@ -10,7 +10,7 @@ use crate::correction::CorrectionTable;
 use crate::evaluation;
 use crate::graph::{self, MoveEdge, PositionNode, Reward};
 use crate::hot_table::{HotSlot, HotTable};
-use crate::math::{self, Rng};
+use crate::math::Rng;
 use crate::mcts::{self, Mcts};
 use crate::options::{EngineOptions, MctsOptions};
 use crate::state::State;
@@ -119,7 +119,7 @@ impl<'a> ThreadData<'a> {
         correction: &'a CorrectionTable,
         thread_id: usize,
         threads: usize,
-        root_edges: &[MoveEdge],
+        root: &'a PositionNode,
         root_gini: f32,
     ) -> Self {
         Self {
@@ -131,7 +131,7 @@ impl<'a> ThreadData<'a> {
             num_nodes: 0,
             max_depth: 0,
             tb_hits: 0,
-            hot_table: HotTable::new(threads, root_edges),
+            hot_table: HotTable::new(threads, root),
             root_gini,
             top_two_state: TopTwoState::new(),
         }
@@ -176,10 +176,6 @@ impl Engine {
 
     pub fn root_edges(&self) -> &[MoveEdge] {
         self.mcts.root_edges()
-    }
-
-    pub fn root_edges_mut(&mut self) -> &mut [MoveEdge] {
-        self.mcts.root_edges_mut()
     }
 
     pub fn root_state(&self) -> &State {
@@ -285,7 +281,7 @@ impl Engine {
                 &self.correction,
                 thread_id,
                 thread_count,
-                self.mcts.root_edges(),
+                self.mcts.root_node(),
                 0.0,
             );
             while self.mcts.playout(&mut tld, options, tm, &stop_signal) {}
@@ -352,7 +348,7 @@ impl Engine {
             &self.correction,
             0,
             1,
-            self.mcts.root_edges(),
+            self.mcts.root_node(),
             0.0,
         );
         let options = &self.engine_options.mcts_options;
@@ -370,21 +366,20 @@ impl Engine {
     }
 
     pub fn print_move_list(&self, tokens: Tokens) {
-        let mut current_node: Option<&PositionNode> = None;
-        let mut current_edges = self.mcts.root_edges();
+        let mut current_node = self.mcts.root_node();
         let mut current_state = self.mcts.root_state().clone();
 
         // Navigate down the tree following the move sequence
         for move_str in tokens {
-            let edge = current_edges
+            let edge = current_node
+                .edges()
                 .iter()
                 .find(|e| self.to_uci(*e.get_move()) == move_str);
 
             match edge {
                 Some(e) if e.visits() > 0 => {
                     if let Some(child) = e.child() {
-                        current_node = Some(child);
-                        current_edges = child.edges();
+                        current_node = child;
                         current_state.make_move(*e.get_move());
                     } else {
                         println!("info string error: move {move_str} has no child node");
@@ -402,7 +397,7 @@ impl Engine {
             }
         }
 
-        let node_moves = current_edges;
+        let node_moves = current_node.edges();
 
         let state_moves = current_state.available_moves();
         let state_moves_eval = evaluation::policy(
@@ -412,12 +407,8 @@ impl Engine {
         );
 
         // Calculate exploration coefficient for Q+U display
-        let (total_visits, gini) = if let Some(node) = current_node {
-            (node.visits(), f32::from(node.gini()) / SCALE)
-        } else {
-            let total: u64 = node_moves.iter().map(|e| u64::from(e.visits())).sum();
-            (total, math::gini(node_moves.iter().map(MoveEdge::visits)))
-        };
+        let total_visits = current_node.visits();
+        let gini = f32::from(current_node.gini()) / SCALE;
         let explore_coef = self.mcts.exploration_coefficient(
             &self.engine_options.mcts_options,
             total_visits,

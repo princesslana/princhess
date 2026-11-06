@@ -172,7 +172,7 @@ impl TimeManagement {
         }
 
         if is_policy_only {
-            node_limit = 1;
+            playout_limit = 0;
         }
 
         think_time.node_limit = node_limit;
@@ -347,7 +347,7 @@ mod tests {
         let tokens = create_tokens("infinite"); // Time control doesn't matter much here
         let tm = TimeManagement::from_tokens(tokens, &state, true); // is_policy_only = true
 
-        assert_eq!(tm.node_limit(), 1);
+        assert_eq!(tm.playout_limit(), 0);
         // Time limits should still be infinite as per "infinite" token
         assert_eq!(tm.soft_limit(), None);
         assert_eq!(tm.hard_limit(), None);
