@@ -1,4 +1,6 @@
+use std::marker::PhantomPinned;
 use std::mem::{self, MaybeUninit};
+use std::pin::Pin;
 use std::ptr::{self, NonNull};
 use std::slice;
 use std::sync::atomic::{AtomicI16, AtomicI64, AtomicPtr, AtomicU32, Ordering};
@@ -440,14 +442,15 @@ where
 pub struct RootNode {
     node: MaybeUninit<PositionNode>,
     edges: [MaybeUninit<MoveEdge>; MAX_MOVES],
+    _pin: PhantomPinned,
 }
 
 impl RootNode {
     /// # Panics
     ///
     /// Never panics, allocating into the root's own memory can't fail.
-    pub fn new(state: &State, policy_t: f32) -> Box<Self> {
-        // SAFETY: Every field is MaybeUninit, so uninitialized memory is a valid RootNode
+    pub fn new(state: &State, policy_t: f32) -> Pin<Box<Self>> {
+        // SAFETY: Every field is MaybeUninit or zero-sized, so uninitialized memory is a valid RootNode
         let mut root = unsafe { Box::<Self>::new_uninit().assume_init() };
         let node_ptr = NonNull::from(&mut root.node);
         let edges_ptr = NonNull::from(&mut root.edges).cast::<MaybeUninit<MoveEdge>>();
@@ -464,7 +467,7 @@ impl RootNode {
         )
         .expect("Root node allocation can't fail");
 
-        root
+        Box::into_pin(root)
     }
 
     pub fn node(&self) -> &PositionNode {
