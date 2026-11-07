@@ -5,7 +5,7 @@ use std::cmp::Reverse;
 use std::ffi::CStr;
 #[cfg(target_os = "linux")]
 use std::fs::DirBuilder;
-use std::fs::{self, File};
+use std::fs::{self, File, OpenOptions};
 use std::io::{self, Write};
 #[cfg(target_os = "linux")]
 use std::mem::MaybeUninit;
@@ -63,13 +63,14 @@ fn map(key: &str, bytes: &[u8]) -> Option<NonNull<u8>> {
 // Renamed into place, so a file at `path` is always complete
 fn create(path: &Path, bytes: &[u8], len: usize) -> io::Result<File> {
     let tmp = path.with_extension(format!("{}.tmp", process::id()));
+    let mut file = OpenOptions::new().write(true).create_new(true).open(&tmp)?;
 
-    let written = File::create(&tmp).and_then(|mut file| {
-        file.write_all(bytes)?;
-        file.set_len(len as u64)
-    });
+    let written = file
+        .write_all(bytes)
+        .and_then(|()| file.set_len(len as u64))
+        .and_then(|()| fs::rename(&tmp, path));
 
-    if let Err(e) = written.and_then(|()| fs::rename(&tmp, path)) {
+    if let Err(e) = written {
         let _ = fs::remove_file(&tmp);
         return Err(e);
     }
