@@ -1,5 +1,5 @@
 #[cfg(any(feature = "value-net", feature = "policy-net"))]
-use std::mem;
+use std::sync::LazyLock;
 
 use crate::chess::MoveList;
 use crate::engine::{KNOWN_WIN, MATE_SCORE, SCALE};
@@ -12,6 +12,8 @@ use crate::quantized_eg_policy::QuantizedEgPolicyNetwork;
 use crate::quantized_mg_policy::QuantizedMgPolicyNetwork;
 #[cfg(feature = "value-net")]
 use crate::quantized_value::QuantizedValueNetwork;
+#[cfg(any(feature = "value-net", feature = "policy-net"))]
+use crate::shm;
 use crate::state::State;
 use crate::tablebase::{self, Wdl};
 
@@ -73,8 +75,24 @@ impl Flag {
 }
 
 #[cfg(feature = "value-net")]
-static VALUE_NETWORK: QuantizedValueNetwork =
-    unsafe { mem::transmute(*include_bytes!("nets/value.bin")) };
+static VALUE_NETWORK_EMBEDDED: QuantizedValueNetwork =
+    bytemuck::must_cast(*include_bytes!("nets/value.bin"));
+
+#[cfg(feature = "value-net")]
+static VALUE_NETWORK: LazyLock<&QuantizedValueNetwork> =
+    LazyLock::new(|| shm::share(env!("PRINCHESS_NET_MD5_VALUE"), &VALUE_NETWORK_EMBEDDED));
+
+/// Loads the nets now, so the first search doesn't pay for it.
+pub fn init_nets() {
+    #[cfg(feature = "value-net")]
+    LazyLock::force(&VALUE_NETWORK);
+
+    #[cfg(feature = "policy-net")]
+    {
+        LazyLock::force(&MG_POLICY_NETWORK);
+        LazyLock::force(&EG_POLICY_NETWORK);
+    }
+}
 
 #[must_use]
 #[cfg(feature = "value-net")]
@@ -115,16 +133,28 @@ pub fn evaluate_state_flag(state: &State, is_legal_moves: bool) -> Flag {
 }
 
 #[cfg(feature = "policy-net")]
-// SAFETY: include_bytes! embeds exactly size_of::<QuantizedMgPolicyNetwork>() bytes; Pod
-// guarantees any bit pattern is valid.
-static MG_POLICY_NETWORK: QuantizedMgPolicyNetwork =
-    unsafe { mem::transmute(*include_bytes!("nets/mg-policy.bin")) };
+static MG_POLICY_NETWORK_EMBEDDED: QuantizedMgPolicyNetwork =
+    bytemuck::must_cast(*include_bytes!("nets/mg-policy.bin"));
 
 #[cfg(feature = "policy-net")]
-// SAFETY: include_bytes! embeds exactly size_of::<QuantizedEgPolicyNetwork>() bytes; Pod
-// guarantees any bit pattern is valid.
-static EG_POLICY_NETWORK: QuantizedEgPolicyNetwork =
-    unsafe { mem::transmute(*include_bytes!("nets/eg-policy.bin")) };
+static MG_POLICY_NETWORK: LazyLock<&QuantizedMgPolicyNetwork> = LazyLock::new(|| {
+    shm::share(
+        env!("PRINCHESS_NET_MD5_MG_POLICY"),
+        &MG_POLICY_NETWORK_EMBEDDED,
+    )
+});
+
+#[cfg(feature = "policy-net")]
+static EG_POLICY_NETWORK_EMBEDDED: QuantizedEgPolicyNetwork =
+    bytemuck::must_cast(*include_bytes!("nets/eg-policy.bin"));
+
+#[cfg(feature = "policy-net")]
+static EG_POLICY_NETWORK: LazyLock<&QuantizedEgPolicyNetwork> = LazyLock::new(|| {
+    shm::share(
+        env!("PRINCHESS_NET_MD5_EG_POLICY"),
+        &EG_POLICY_NETWORK_EMBEDDED,
+    )
+});
 
 #[cfg(not(feature = "policy-net"))]
 fn run_policy_net(_state: &State, moves: &MoveList, _t: f32) -> Vec<f32> {

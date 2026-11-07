@@ -26,4 +26,5 @@ mod correction;
 mod graph;
 mod hot_table;
 mod mem;
+mod shm;
 mod threadpool;
