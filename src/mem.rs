@@ -44,6 +44,17 @@ impl<T> DerefMut for AlignHugePage<T> {
     }
 }
 
+#[cfg(target_os = "linux")]
+pub fn advise_huge_pages(ptr: *mut u8, len: usize) {
+    // SAFETY: madvise only changes paging hints. It's best effort, so a failure is ignored.
+    unsafe {
+        libc::madvise(ptr.cast(), len, libc::MADV_HUGEPAGE);
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
+pub fn advise_huge_pages(_ptr: *mut u8, _len: usize) {}
+
 #[derive(Debug, Clone, Copy, Zeroable)]
 #[repr(C, align(16))]
 pub struct Align16<T>(pub T);

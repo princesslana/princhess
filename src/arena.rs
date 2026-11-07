@@ -1,12 +1,12 @@
 use std::alloc::{self, Layout};
 use std::cell::UnsafeCell;
-use std::mem::{self, MaybeUninit};
+use std::mem::MaybeUninit;
 use std::ops::{Deref, DerefMut};
 use std::ptr::{self, NonNull};
 use std::slice;
 use std::sync::atomic::{AtomicU32, AtomicUsize, Ordering};
 
-use crate::mem::{AlignHugePage, HUGE_PAGE_SIZE};
+use crate::mem::{self, AlignHugePage, HUGE_PAGE_SIZE};
 
 #[derive(Debug)]
 pub enum Error {
@@ -25,18 +25,6 @@ const _: () = assert!(CHUNK_SIZE.is_multiple_of(HUGE_PAGE_SIZE));
 // 0 is reserved for "invalid" allocators.
 static GLOBAL_ARENA_GENERATION: AtomicU32 = AtomicU32::new(1);
 
-#[cfg(target_os = "linux")]
-fn advise_huge_pages(ptr: *mut u8, len: usize) {
-    // SAFETY: The range is the arena's allocation, and madvise only changes paging hints.
-    // It's best effort, so a failure is ignored.
-    unsafe {
-        libc::madvise(ptr.cast(), len, libc::MADV_HUGEPAGE);
-    }
-}
-
-#[cfg(not(target_os = "linux"))]
-fn advise_huge_pages(_ptr: *mut u8, _len: usize) {}
-
 pub struct Arena {
     chunks: UnsafeCell<Box<[Chunk]>>,
     max: usize,
@@ -54,7 +42,7 @@ impl Arena {
             if raw.is_null() {
                 alloc::handle_alloc_error(layout);
             }
-            advise_huge_pages(raw, layout.size());
+            mem::advise_huge_pages(raw, layout.size());
             let slice = slice::from_raw_parts_mut(raw.cast(), max);
             Box::from_raw(slice)
         };
@@ -194,8 +182,8 @@ impl<'a> Allocator<'a> {
     }
 
     pub fn alloc_one<T>(&self) -> Result<ArenaRef<MaybeUninit<T>>, Error> {
-        assert!(ALIGN.is_multiple_of(mem::align_of::<T>()));
-        let x = mem::size_of::<T>();
+        assert!(ALIGN.is_multiple_of(align_of::<T>()));
+        let x = size_of::<T>();
         let x = (x + ALIGN - 1) & !(ALIGN - 1);
         let x = self.get_memory(x)?;
         let current_generation = self.arena.generation.load(Ordering::Acquire);
@@ -206,8 +194,8 @@ impl<'a> Allocator<'a> {
     }
 
     pub fn alloc_slice<T>(&self, sz: usize) -> Result<ArenaRef<[MaybeUninit<T>]>, Error> {
-        assert!(ALIGN.is_multiple_of(mem::align_of::<T>()));
-        let x = mem::size_of::<T>();
+        assert!(ALIGN.is_multiple_of(align_of::<T>()));
+        let x = size_of::<T>();
         let x = (x + ALIGN - 1) & !(ALIGN - 1);
         let x = self.get_memory(x * sz)?;
         let current_generation = self.arena.generation.load(Ordering::Acquire);

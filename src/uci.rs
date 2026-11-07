@@ -3,6 +3,7 @@ use std::str::SplitWhitespace;
 use std::time::{Duration, Instant};
 
 use crate::engine::Engine;
+use crate::evaluation;
 use crate::graph;
 use crate::math::Rng;
 use crate::nets;
@@ -29,6 +30,8 @@ pub struct Uci {
 impl Uci {
     #[must_use]
     pub fn new() -> Self {
+        evaluation::init_nets();
+
         let options = UciOptionMap::default();
         let engine_options = EngineOptions::from(&options);
         let engine = Engine::new(State::default(), engine_options);
