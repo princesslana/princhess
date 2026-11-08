@@ -5,6 +5,8 @@ use crate::chess::MoveList;
 use crate::engine::{KNOWN_WIN, MATE_SCORE, SCALE};
 #[cfg(feature = "policy-net")]
 use crate::math;
+#[cfg(any(feature = "value-net", feature = "policy-net"))]
+use crate::nets;
 use crate::options::EvaluationOptions;
 #[cfg(feature = "policy-net")]
 use crate::quantized_eg_policy::QuantizedEgPolicyNetwork;
@@ -80,7 +82,7 @@ static VALUE_NETWORK_EMBEDDED: QuantizedValueNetwork =
 
 #[cfg(feature = "value-net")]
 static VALUE_NETWORK: LazyLock<&QuantizedValueNetwork> =
-    LazyLock::new(|| shm::share(env!("PRINCHESS_NET_MD5_VALUE"), &VALUE_NETWORK_EMBEDDED));
+    LazyLock::new(|| shm::share(nets::NET_MD5_VALUE, &VALUE_NETWORK_EMBEDDED));
 
 /// Loads the nets now, so the first search doesn't pay for it.
 pub fn init_nets() {
@@ -137,24 +139,16 @@ static MG_POLICY_NETWORK_EMBEDDED: QuantizedMgPolicyNetwork =
     bytemuck::must_cast(*include_bytes!("nets/mg-policy.bin"));
 
 #[cfg(feature = "policy-net")]
-static MG_POLICY_NETWORK: LazyLock<&QuantizedMgPolicyNetwork> = LazyLock::new(|| {
-    shm::share(
-        env!("PRINCHESS_NET_MD5_MG_POLICY"),
-        &MG_POLICY_NETWORK_EMBEDDED,
-    )
-});
+static MG_POLICY_NETWORK: LazyLock<&QuantizedMgPolicyNetwork> =
+    LazyLock::new(|| shm::share(nets::NET_MD5_MG_POLICY, &MG_POLICY_NETWORK_EMBEDDED));
 
 #[cfg(feature = "policy-net")]
 static EG_POLICY_NETWORK_EMBEDDED: QuantizedEgPolicyNetwork =
     bytemuck::must_cast(*include_bytes!("nets/eg-policy.bin"));
 
 #[cfg(feature = "policy-net")]
-static EG_POLICY_NETWORK: LazyLock<&QuantizedEgPolicyNetwork> = LazyLock::new(|| {
-    shm::share(
-        env!("PRINCHESS_NET_MD5_EG_POLICY"),
-        &EG_POLICY_NETWORK_EMBEDDED,
-    )
-});
+static EG_POLICY_NETWORK: LazyLock<&QuantizedEgPolicyNetwork> =
+    LazyLock::new(|| shm::share(nets::NET_MD5_EG_POLICY, &EG_POLICY_NETWORK_EMBEDDED));
 
 #[cfg(not(feature = "policy-net"))]
 fn run_policy_net(_state: &State, moves: &MoveList, _t: f32) -> Vec<f32> {
