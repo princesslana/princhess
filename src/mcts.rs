@@ -497,8 +497,14 @@ impl Mcts {
         reward.average as f32 - visits_adj
     }
 
-    fn sort_edges_by_score<'b>(&self, edges: &'b [MoveEdge]) -> Vec<&'b MoveEdge> {
-        let mut result: Vec<&MoveEdge> = edges.iter().collect();
+    fn sort_root_edges_by_score(&self) -> Vec<&MoveEdge> {
+        let mut result: Vec<&MoveEdge> = self
+            .root_edges()
+            .iter()
+            .zip(&self.searchable_moves)
+            .filter(|&(_, &searchable)| searchable)
+            .map(|(edge, _)| edge)
+            .collect();
         result.sort_by_cached_key(|edge| Reverse(TotalF32(self.move_score(edge))));
         result
     }
@@ -560,7 +566,7 @@ impl Mcts {
             nodes * 1000 / search_time_ms as usize
         };
 
-        let moves = self.sort_edges_by_score(self.root_edges());
+        let moves = self.sort_root_edges_by_score();
 
         let is_chess960 = self.engine_options.is_chess960;
 
