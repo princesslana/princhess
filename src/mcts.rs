@@ -1,5 +1,6 @@
 use std::cmp::Reverse;
 use std::fmt::{self, Display, Formatter, Write};
+use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU64, AtomicUsize, Ordering};
 
 use arrayvec::ArrayVec;
@@ -10,9 +11,9 @@ use crate::chess;
 use crate::engine::{self, ThreadData, KNOWN_WIN, MATE_SCORE, SCALE};
 use crate::evaluation::{self, Flag};
 use crate::graph::{
-    self, MoveEdge, PositionNode, BOUND_INF, DRAW_NODE, LOSS_NODE, PATH_DRAW_NODE, PROVEN_MATE,
-    TABLEBASE_DRAW_NODE, TABLEBASE_LOSS_NODE, TABLEBASE_WIN_NODE, TB_WIN, UNEXPANDED_NODE,
-    WIN_NODE,
+    self, MoveEdge, PositionNode, RootNode, BOUND_INF, DRAW_NODE, LOSS_NODE, PATH_DRAW_NODE,
+    PROVEN_MATE, TABLEBASE_DRAW_NODE, TABLEBASE_LOSS_NODE, TABLEBASE_WIN_NODE, TB_WIN,
+    UNEXPANDED_NODE, WIN_NODE,
 };
 use crate::hot_table::{HotEdge, HotSlot, HotTable, FLUSH_PLAYOUTS};
 use crate::math::{self, TotalF32};
@@ -44,7 +45,7 @@ pub fn exploration_bonus(explore_coef: f32, policy: f32, visits: u32) -> f32 {
 /// Despite the name "tree search", this forms a graph due to transposition handling
 /// where the same position can be reached via different move sequences.
 pub struct Mcts {
-    root_edges: Box<[MoveEdge]>,
+    root: Pin<Box<RootNode>>,
     root_state: State,
     searchable_moves: ArrayVec<bool, 256>,
     tablebase_score: Option<i64>,
@@ -64,21 +65,17 @@ pub struct Mcts {
 impl Mcts {
     /// Creates a new MCTS instance with the given root state.
     pub fn new(state: State, table: &LRTable, engine_options: EngineOptions) -> Self {
-        let moves = state.available_moves();
-        let mut root_edges = Vec::with_capacity(moves.len());
-        for mv in &moves {
-            root_edges.push(MoveEdge::new(0, *mv));
-        }
+        let root = RootNode::new(&state, engine_options.mcts_options.policy_temperature);
 
         // Warm-start: copy statistics from transposition table if available
         if let Some(cached) = table.lookup_from_all(&state) {
-            graph::copy_edge_stats(&root_edges, cached.edges());
+            graph::copy_edge_stats(root.node().edges(), cached.edges());
         }
 
         Self {
+            searchable_moves: root.node().edges().iter().map(|_| true).collect(),
             root_state: state,
-            root_edges: root_edges.into_boxed_slice(),
-            searchable_moves: moves.iter().map(|_| true).collect(),
+            root,
             tablebase_score: None,
             engine_options,
             num_nodes: 1.into(),
@@ -128,72 +125,78 @@ impl Mcts {
         time_management: &TimeManagement,
         stop_signal: &AtomicBool,
     ) -> bool {
+        if tld.is_main_thread()
+            && (self.num_nodes.load(Ordering::Relaxed) + tld.num_nodes
+                >= time_management.node_limit()
+                || self.playouts.load(Ordering::Relaxed) + tld.playouts
+                    >= time_management.playout_limit())
+        {
+            return false;
+        }
+
         if tld.playouts.is_multiple_of(1024) {
             tld.root_gini = math::gini(tld.hot_table.root().edges().iter().map(HotEdge::visits));
         }
 
         let mut state = self.root_state.clone();
         let mut path: ArrayVec<PathEntry<'a>, MAX_PLAYOUT_LENGTH> = ArrayVec::new();
-        let mut node: Option<&'a PositionNode> = None;
+        let mut node = self.root.node();
         let mut evaln = 0;
         let mut parent_q = 0;
         let mut hot = true;
 
         let node = loop {
-            let (edges, idx, slot) = match node {
-                None => {
-                    let idx = tld
-                        .top_two_state
-                        .next(tld.hot_table.root(), &self.searchable_moves);
-                    (&self.root_edges[..], idx, Some(HotTable::ROOT))
+            let (idx, slot) = if path.is_empty() {
+                let idx = tld
+                    .top_two_state
+                    .next(tld.hot_table.root(), &self.searchable_moves);
+                (idx, Some(HotTable::ROOT))
+            } else {
+                if node.is_stale(tld.ttable.current_generation()) {
+                    return true;
                 }
-                Some(node) => {
-                    if node.is_stale(tld.ttable.current_generation()) {
+
+                if node.edges().is_empty() {
+                    break node;
+                }
+
+                if !node.flag().is_standard() {
+                    if !node.flag().is_valid() {
                         return true;
                     }
-
-                    if node.edges().is_empty() {
+                    if node.is_terminal() {
                         break node;
                     }
-
-                    if !node.flag().is_standard() {
-                        if !node.flag().is_valid() {
-                            return true;
-                        }
-                        if node.is_terminal() {
-                            break node;
-                        }
-                        if node.is_tablebase()
-                            && state.halfmove_clock() == 0
-                            && self.tablebase_score.is_none()
-                        {
-                            break node;
-                        }
-                    }
-
-                    if path.len() >= MAX_PLAYOUT_LENGTH {
-                        evaln = self.value(&state, tld);
+                    if node.is_tablebase()
+                        && state.halfmove_clock() == 0
+                        && self.tablebase_score.is_none()
+                    {
                         break node;
                     }
-
-                    // Visits only shrink going down, so stop checking once a node isn't hot
-                    let node_visits = node.visits();
-                    hot = hot && node_visits >= tld.hot_table.threshold;
-                    let slot = if hot { tld.hot_table.slot(node) } else { None };
-
-                    let hot_slot = slot.map(|slot| tld.hot_table.get(slot));
-                    let idx = self.select(
-                        node,
-                        node_visits,
-                        hot_slot,
-                        parent_q as f32,
-                        tld.is_main_thread(),
-                        options,
-                    );
-                    (node.edges(), idx, slot)
                 }
+
+                if path.len() >= MAX_PLAYOUT_LENGTH {
+                    evaln = self.value(&state, tld);
+                    break node;
+                }
+
+                // Visits only shrink going down, so stop checking once a node isn't hot
+                let node_visits = node.visits();
+                hot = hot && node_visits >= tld.hot_table.threshold;
+                let slot = if hot { tld.hot_table.slot(node) } else { None };
+
+                let hot_slot = slot.map(|slot| tld.hot_table.get(slot));
+                let idx = self.select(
+                    node,
+                    node_visits,
+                    hot_slot,
+                    parent_q as f32,
+                    tld.is_main_thread(),
+                    options,
+                );
+                (idx, slot)
             };
-            let choice = &edges[idx];
+            let choice = &node.edges()[idx];
             let virtual_loss = parent_q;
 
             // The next level's parent Q is this edge's, without this playout's virtual visit
@@ -250,7 +253,7 @@ impl Mcts {
                 Self::update_correction(&state, new_node, visits, tld);
             }
 
-            node = Some(new_node);
+            node = new_node;
         };
 
         evaln = node.flag().adjust_eval(evaln);
@@ -270,15 +273,6 @@ impl Mcts {
 
         if node.is_tablebase() {
             tld.tb_hits += 1;
-        }
-
-        if tld.is_main_thread()
-            && (self.num_nodes.load(Ordering::Relaxed) + tld.num_nodes
-                >= time_management.node_limit()
-                || self.playouts.load(Ordering::Relaxed) + tld.playouts
-                    >= time_management.playout_limit())
-        {
-            return false;
         }
 
         if tld.playouts.is_multiple_of(FLUSH_PLAYOUTS) {
@@ -423,12 +417,12 @@ impl Mcts {
         &self.root_state
     }
 
-    pub fn root_edges(&self) -> &[MoveEdge] {
-        &self.root_edges
+    pub fn root_node(&self) -> &PositionNode {
+        self.root.node()
     }
 
-    pub fn root_edges_mut(&mut self) -> &mut [MoveEdge] {
-        &mut self.root_edges
+    pub fn root_edges(&self) -> &[MoveEdge] {
+        self.root.node().edges()
     }
 
     pub fn set_root_filter(
@@ -436,7 +430,7 @@ impl Mcts {
         searchable_moves: ArrayVec<bool, 256>,
         tablebase_score: Option<i64>,
     ) {
-        for (edge, &searchable) in self.root_edges.iter().zip(&searchable_moves) {
+        for (edge, &searchable) in self.root_edges().iter().zip(&searchable_moves) {
             if !searchable {
                 edge.clear_stats();
             }
@@ -447,16 +441,15 @@ impl Mcts {
     }
 
     pub fn root_visits(&self) -> u64 {
-        self.root_edges.iter().map(|x| u64::from(x.visits())).sum()
+        self.root.node().visits()
     }
 
     pub fn clear_root_children_links(&self) {
-        graph::clear_edge_children(&self.root_edges);
+        graph::clear_edge_children(self.root_edges());
     }
 
     pub fn flush_hot_table(&self, tld: &mut ThreadData) {
-        tld.hot_table
-            .flush(&self.root_edges, tld.ttable.current_generation());
+        tld.hot_table.flush(tld.ttable.current_generation());
     }
 
     pub fn flush_thread_stats(&self, tld: &mut ThreadData) {
@@ -482,9 +475,10 @@ impl Mcts {
     /// Panics if the root node has no moves (e.g., checkmate or stalemate positions).
     pub fn best_edge(&self) -> &MoveEdge {
         // Reverse(i) keeps the earliest edge on tied scores, matching the stable sort
-        self.root_edges
+        self.root_edges()
             .iter()
             .enumerate()
+            .filter(|&(i, _)| self.searchable_moves[i])
             .max_by_key(|&(i, edge)| (TotalF32(self.move_score(edge)), Reverse(i)))
             .map(|(_, edge)| edge)
             .expect("Root node must have moves to determine best edge")
@@ -503,8 +497,14 @@ impl Mcts {
         reward.average as f32 - visits_adj
     }
 
-    fn sort_edges_by_score<'b>(&self, edges: &'b [MoveEdge]) -> Vec<&'b MoveEdge> {
-        let mut result: Vec<&MoveEdge> = edges.iter().collect();
+    fn sort_root_edges_by_score(&self) -> Vec<&MoveEdge> {
+        let mut result: Vec<&MoveEdge> = self
+            .root_edges()
+            .iter()
+            .zip(&self.searchable_moves)
+            .filter(|&(_, &searchable)| searchable)
+            .map(|(edge, _)| edge)
+            .collect();
         result.sort_by_cached_key(|edge| Reverse(TotalF32(self.move_score(edge))));
         result
     }
@@ -520,7 +520,7 @@ impl Mcts {
 
         let mut m = 1.0;
 
-        let bm = graph::select_edge_by_rewards(&self.root_edges)
+        let bm = graph::select_edge_by_rewards(self.root_edges())
             .expect("Root node must have moves during active search for time management");
         let bm_reward = bm.reward();
 
@@ -566,7 +566,7 @@ impl Mcts {
             nodes * 1000 / search_time_ms as usize
         };
 
-        let moves = self.sort_edges_by_score(&self.root_edges);
+        let moves = self.sort_root_edges_by_score();
 
         let is_chess960 = self.engine_options.is_chess960;
 

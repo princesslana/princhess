@@ -145,13 +145,14 @@ impl HotSlot<'_> {
 pub struct HotTable<'a> {
     pub threshold: u64,
     min_threshold: u64,
+    root: &'a PositionNode,
     slots: [HotSlot<'a>; HOT_SLOTS + 1],
 }
 
 impl<'a> HotTable<'a> {
     pub const ROOT: usize = HOT_SLOTS;
 
-    pub fn new(threads: usize, root_edges: &[MoveEdge]) -> Self {
+    pub fn new(threads: usize, root: &'a PositionNode) -> Self {
         // A single thread has no contention to avoid
         let min_threshold = if threads == 1 {
             u64::MAX
@@ -160,11 +161,12 @@ impl<'a> HotTable<'a> {
         };
 
         let mut slots: [HotSlot<'a>; HOT_SLOTS + 1] = array::from_fn(|_| HotSlot::empty());
-        slots[Self::ROOT].claim(root_edges);
+        slots[Self::ROOT].claim(root.edges());
 
         Self {
             threshold: min_threshold,
             min_threshold,
+            root,
             slots,
         }
     }
@@ -200,8 +202,8 @@ impl<'a> HotTable<'a> {
         &mut self.slots[idx]
     }
 
-    pub fn flush(&mut self, root_edges: &[MoveEdge], generation: u32) {
-        self.slots[Self::ROOT].flush(root_edges);
+    pub fn flush(&mut self, generation: u32) {
+        self.slots[Self::ROOT].flush(self.root.edges());
 
         for slot in &mut self.slots[..HOT_SLOTS] {
             let Some(node) = slot.node else {
