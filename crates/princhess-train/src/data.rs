@@ -135,7 +135,7 @@ impl TrainingPosition {
         let gini = math::gini(root_edges.iter().map(|e| e.visits()));
         let explore_coef =
             tree.exploration_coefficient(&tree.mcts_options(), total_visits, false, gini);
-        let lambda_n = explore_coef as f32 / (root_edges.len() as f32 + total_visits as f32);
+        let lambda_n = explore_coef * SCALE / (root_edges.len() as f32 + total_visits as f32);
 
         // Grill et al. (2020) Eq. 8: pi_bar(a) = lambda_n * prior(a) / (alpha - Q(a)),
         // alpha found by bisection (Prop. 4 / Eq. 21-22) so the distribution sums to 1.
