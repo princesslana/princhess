@@ -121,18 +121,18 @@ impl QuantizedMgPolicyNetwork {
         let [ctx_to, ctx_from]: &[Accumulator<i16, ATTENTION_SIZE>; 2] = bytemuck::cast_ref(&ctx);
 
         for (i, move_idx) in move_idxes.enumerate() {
-            let from_sq = move_idx.from_sq();
-            let to_sq = move_idx.to_sq_for_piece_subnet();
+            let from_slot = move_idx.from_slot();
+            let to_slot = move_idx.to_slot();
 
             let from_piece = self.piece_base_subnets(move_idx.piece());
             let to_piece = self.piece_to_subnets(move_idx.piece(), move_idx.good_see());
 
-            let mut from_piece_sq = from_piece.get_bias(from_sq.index());
-            let mut to_piece_sq = to_piece.get_bias(to_sq.index());
+            let mut from_piece_sq = from_piece.get_bias(from_slot);
+            let mut to_piece_sq = to_piece.get_bias(to_slot);
 
             for f in &features {
-                from_piece.set(from_sq.index(), *f, &mut from_piece_sq);
-                to_piece.set(to_sq.index(), *f, &mut to_piece_sq);
+                from_piece.set(from_slot, *f, &mut from_piece_sq);
+                to_piece.set(to_slot, *f, &mut to_piece_sq);
             }
 
             out[i] = ctx_to.linear_dot_relu::<QA>(&to_piece_sq)

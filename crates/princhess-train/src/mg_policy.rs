@@ -186,14 +186,14 @@ impl MgPolicyNetwork {
         let mut move_layers = ArrayVec::new();
 
         for (i, &move_idx) in move_idxes.iter().enumerate() {
-            let from_sq = move_idx.from_sq();
-            let to_piece_sq = move_idx.to_sq_for_piece_subnet();
+            let from_slot = move_idx.from_slot();
+            let to_slot = move_idx.to_slot();
 
             let from_piece = self.piece_base_subnets(move_idx.piece());
             let to_piece = self.piece_to_subnets(move_idx);
 
-            let from_piece_sq = from_piece[from_sq].output.out_with_layers(features);
-            let to_piece_sq = to_piece[to_piece_sq].output.out_with_layers(features);
+            let from_piece_sq = from_piece[from_slot].output.out_with_layers(features);
+            let to_piece_sq = to_piece[to_slot].output.out_with_layers(features);
 
             out[i] = ctx_to.dot(&to_piece_sq.output_layer())
                 + ctx_from.dot(&from_piece_sq.output_layer());
@@ -230,8 +230,8 @@ impl MgPolicyNetwork {
             .zip(errors.iter())
             .zip(cache.move_layers.iter())
         {
-            let from_sq = move_idx.from_sq();
-            let to_piece_sq = move_idx.to_sq_for_piece_subnet();
+            let from_slot = move_idx.from_slot();
+            let to_slot = move_idx.to_slot();
 
             let from_piece = self.piece_base_subnets(move_idx.piece());
             let to_piece = self.piece_to_subnets(move_idx);
@@ -239,16 +239,16 @@ impl MgPolicyNetwork {
             ctx_err.madd_slice(&layers.to_piece_sq.output_layer(), error, 0);
             ctx_err.madd_slice(&layers.from_piece_sq.output_layer(), error, ATTENTION_SIZE);
 
-            from_piece[from_sq].backprop(
+            from_piece[from_slot].backprop(
                 features,
-                &mut g.piece_base_subnets_mut(move_idx.piece())[from_sq],
+                &mut g.piece_base_subnets_mut(move_idx.piece())[from_slot],
                 error * ctx_from,
                 &layers.from_piece_sq,
             );
 
-            to_piece[to_piece_sq].backprop(
+            to_piece[to_slot].backprop(
                 features,
-                &mut g.piece_to_subnets_mut(move_idx)[to_piece_sq],
+                &mut g.piece_to_subnets_mut(move_idx)[to_slot],
                 error * ctx_to,
                 &layers.to_piece_sq,
             );

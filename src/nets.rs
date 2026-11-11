@@ -160,10 +160,6 @@ pub struct MoveIndex {
 }
 
 impl MoveIndex {
-    pub const SQ_COUNT: usize = Square::COUNT;
-    pub const FROM_PIECE_SQ_COUNT: usize = Piece::COUNT * Square::COUNT;
-    pub const TO_PIECE_SQ_COUNT: usize = (5 + Piece::COUNT) * Square::COUNT;
-
     pub fn new(piece: Piece, promotion: Piece, from: Square, to: Square, good_see: bool) -> Self {
         Self {
             piece,
@@ -178,42 +174,23 @@ impl MoveIndex {
         self.piece
     }
 
-    pub fn from_sq(self) -> Square {
-        self.from_sq
-    }
-
-    pub fn to_sq(self) -> Square {
-        self.to_sq
-    }
-
-    #[must_use]
-    pub fn from_piece_sq_index(self) -> usize {
-        self.piece.index() * Square::COUNT + self.from_sq.index()
-    }
-
-    #[must_use]
-    pub fn to_piece_sq_index(self) -> usize {
-        let bucket = match self.piece {
-            Piece::KING => self.piece.index(),
-            p => [0, 6][usize::from(self.good_see)] + p.index(),
-        };
-        let to_sq = match self.promotion {
-            Piece::KNIGHT => self.to_sq.with_rank(Rank::_1),
-            Piece::BISHOP | Piece::ROOK => self.to_sq.with_rank(Rank::_2),
-            _ => self.to_sq,
-        };
-        bucket * Square::COUNT + to_sq.index()
-    }
-
     pub fn good_see(self) -> bool {
         self.good_see
     }
 
-    pub fn to_sq_for_piece_subnet(self) -> Square {
-        match self.promotion {
+    #[must_use]
+    pub fn from_slot(self) -> usize {
+        self.from_sq.index()
+    }
+
+    // Underpromotions take the slots on ranks 1 and 2, which a pawn can never move to
+    #[must_use]
+    pub fn to_slot(self) -> usize {
+        let sq = match self.promotion {
             Piece::KNIGHT => self.to_sq.with_rank(Rank::_1),
             Piece::BISHOP | Piece::ROOK => self.to_sq.with_rank(Rank::_2),
             _ => self.to_sq,
-        }
+        };
+        sq.index()
     }
 }

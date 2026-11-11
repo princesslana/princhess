@@ -96,7 +96,11 @@ cargo fmt                # Format code
 1. `sprt-equal-ltc` AND `sprt-equal-dfrc-ltc` (LTC equal for both variants)
 2. Nice-to-have: `sprt-equal` AND `sprt-equal-dfrc` (STC equal confirms no performance kill)
 
-## Neural Network Analysis
-- `./target/release/value-net-analysis nets/path/value.bin` - Analyze value network weights, feature importance, bucket differentiation
-- `./target/release/policy-net-analysis nets/path/eg-policy.bin` - Analyze policy network weights and attention patterns
-- `./target/release/data-summary data/file.data` - Analyze training data distribution and statistics (very slow, ask user to run)
+## Training Binaries
+Built by `make train`, in `crates/princhess-train/src/bin/`:
+- `data-gen` - Generate self-play training data for all nets (value, mg-policy, eg-policy)
+- `data-shuffle` - Shuffle a training data file
+- `train-value`, `train-mg-policy`, `train-eg-policy` - Train each network
+- `clop` - CLOP-style parameter tuner
+
+There are no network analysis binaries; write new tooling in the trainer crate when needed.

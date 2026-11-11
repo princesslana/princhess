@@ -7,7 +7,7 @@ help:
 	@echo "  build         - Build release binary (x86-64-v3)"
 	@echo "  native        - Build with native CPU optimizations"
 	@echo "  train         - Build training binaries with native CPU (NODEFAULTFEATURES=1 to skip default features)"
-	@echo "  lint          - Check formatting and run clippy with warnings as errors"
+	@echo "  lint          - Check formatting and run clippy with warnings as errors (NODEFAULTFEATURES=1 to skip default features)"
 	@echo "  clean         - Clean all build artifacts"
 	@echo "  bench         - Compare NPS: princhess vs princhess-main (ENGINE1, ENGINE2, RUNS (20, or 5 with TIME), TIME ms, THREADS)"
 	@echo ""
@@ -65,7 +65,7 @@ train:
 .PHONY: lint
 lint:
 	cargo fmt --all --check
-	cargo clippy --all-targets --keep-going -- -D warnings
+	cargo clippy --all-targets --keep-going $(BUILD_FEATURES) -- -D warnings
 
 .PHONY: bench
 bench:
