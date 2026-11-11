@@ -97,7 +97,7 @@ cargo fmt                # Format code
 2. Nice-to-have: `sprt-equal` AND `sprt-equal-dfrc` (STC equal confirms no performance kill)
 
 ## Training Binaries
-Built by `make train`, in `crates/princhess-train/src/bin/`:
+Sources in `crates/princhess-train/src/bin/`; `make train` builds them into `target/release/`:
 - `data-gen` - Generate self-play training data for all nets (value, mg-policy, eg-policy)
 - `data-shuffle` - Shuffle a training data file
 - `train-value`, `train-mg-policy`, `train-eg-policy` - Train each network
