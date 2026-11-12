@@ -201,7 +201,7 @@ impl Board {
         self.colors[Color::BLACK]
     }
 
-    fn by_color(&self, color: Color) -> Bitboard {
+    pub fn by_color(&self, color: Color) -> Bitboard {
         self.colors[color]
     }
 
@@ -323,6 +323,27 @@ impl Board {
 
     pub fn king_of(&self, color: Color) -> Square {
         Square::from(self.kings() & self.colors[color])
+    }
+
+    /// Pieces of `color` pinned to their king.
+    pub fn pinned(&self, color: Color) -> Bitboard {
+        let occ = self.occupied();
+        let us = self.by_color(color);
+        let them = self.by_color(!color);
+        let king_sq = self.king_of(color);
+
+        let rook_pinners =
+            attacks::xray_rook(king_sq, occ, us) & them & (self.rooks() | self.queens());
+        let bishop_pinners =
+            attacks::xray_bishop(king_sq, occ, us) & them & (self.bishops() | self.queens());
+
+        let mut pinned = Bitboard::EMPTY;
+
+        for sq in rook_pinners | bishop_pinners {
+            pinned |= attacks::between(sq, king_sq) & us;
+        }
+
+        pinned
     }
 
     #[must_use]

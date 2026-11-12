@@ -19,12 +19,14 @@ macro_rules! shortcircuit {
 
 impl MoveGen<'_> {
     pub fn new(board: &Board) -> MoveGen<'_> {
-        let king_sq = board.king_of(board.side_to_move());
-        let threats = threats(board);
-        let pinned = pinned(board);
+        let us = board.side_to_move();
+        let king_sq = board.king_of(us);
+        let threats =
+            board.threats_by(!us, board.occupied() ^ (board.kings() & board.by_color(us)));
+        let pinned = board.pinned(us);
 
         let checkers = if threats.contains(king_sq) {
-            board.attackers(king_sq, !board.side_to_move(), board.occupied())
+            board.attackers(king_sq, !us, board.occupied())
         } else {
             Bitboard::EMPTY
         };
@@ -270,66 +272,6 @@ impl MoveGen<'_> {
         };
         targets & !self.us_pieces()
     }
-}
-
-fn threats(board: &Board) -> Bitboard {
-    let us = board.side_to_move();
-    let us_pieces = us.fold(board.white(), board.black());
-    let them = !us;
-    let them_pieces = them.fold(board.white(), board.black());
-    let occ = board.occupied() ^ (board.kings() & us_pieces);
-
-    let mut threats = Bitboard::EMPTY;
-
-    for sq in board.kings() & them_pieces {
-        threats |= attacks::king(sq);
-    }
-
-    for sq in (board.queens() | board.rooks()) & them_pieces {
-        threats |= attacks::rook(sq, occ);
-    }
-
-    for sq in (board.queens() | board.bishops()) & them_pieces {
-        threats |= attacks::bishop(sq, occ);
-    }
-
-    for sq in board.knights() & them_pieces {
-        threats |= attacks::knight(sq);
-    }
-
-    for sq in board.pawns() & them_pieces {
-        threats |= attacks::pawn(them, sq);
-    }
-
-    threats
-}
-
-fn pinned(board: &Board) -> Bitboard {
-    let occ = board.occupied();
-
-    let us = board.side_to_move();
-    let us_pieces = us.fold(board.white(), board.black());
-
-    let them = !us;
-    let them_pieces = them.fold(board.white(), board.black());
-
-    let king_sq = board.king_of(us);
-
-    let mut pinned = Bitboard::EMPTY;
-
-    let rook_pinners = attacks::xray_rook(king_sq, occ, us_pieces)
-        & them_pieces
-        & (board.rooks() | board.queens());
-
-    let bishop_pinners = attacks::xray_bishop(king_sq, occ, us_pieces)
-        & them_pieces
-        & (board.bishops() | board.queens());
-
-    for sq in rook_pinners | bishop_pinners {
-        pinned |= attacks::between(sq, king_sq) & us_pieces;
-    }
-
-    pinned
 }
 
 fn pawn_pushes(color: Color, from: Square, occ: Bitboard) -> Bitboard {

@@ -1,21 +1,6 @@
-#[cfg(any(feature = "value-net", feature = "policy-net"))]
-use std::sync::LazyLock;
-
 use crate::chess::MoveList;
-use crate::engine::{KNOWN_WIN, MATE_SCORE, SCALE};
-#[cfg(feature = "policy-net")]
-use crate::math;
-#[cfg(any(feature = "value-net", feature = "policy-net"))]
-use crate::nets;
+use crate::engine::{KNOWN_WIN, MATE_SCORE};
 use crate::options::EvaluationOptions;
-#[cfg(feature = "policy-net")]
-use crate::quantized_eg_policy::QuantizedEgPolicyNetwork;
-#[cfg(feature = "policy-net")]
-use crate::quantized_mg_policy::QuantizedMgPolicyNetwork;
-#[cfg(feature = "value-net")]
-use crate::quantized_value::QuantizedValueNetwork;
-#[cfg(any(feature = "value-net", feature = "policy-net"))]
-use crate::shm;
 use crate::state::State;
 use crate::tablebase::{self, Wdl};
 
@@ -76,41 +61,20 @@ impl Flag {
     }
 }
 
-#[cfg(feature = "value-net")]
-static VALUE_NETWORK_EMBEDDED: QuantizedValueNetwork =
-    bytemuck::must_cast(*include_bytes!("nets/value.bin"));
-
-#[cfg(feature = "value-net")]
-static VALUE_NETWORK: LazyLock<&QuantizedValueNetwork> =
-    LazyLock::new(|| shm::share(nets::NET_MD5_VALUE, &VALUE_NETWORK_EMBEDDED));
-
 /// Loads the nets now, so the first search doesn't pay for it.
 pub fn init_nets() {
-    #[cfg(feature = "value-net")]
-    LazyLock::force(&VALUE_NETWORK);
-
-    #[cfg(feature = "policy-net")]
-    {
-        LazyLock::force(&MG_POLICY_NETWORK);
-        LazyLock::force(&EG_POLICY_NETWORK);
-    }
+    value_net::init();
+    policy_net::init();
 }
 
 #[must_use]
-#[cfg(feature = "value-net")]
 pub fn value(state: &State, eval_options: EvaluationOptions, correction: i32) -> i64 {
-    (VALUE_NETWORK.get(state, eval_options, correction) * SCALE) as i64
-}
-
-#[must_use]
-#[cfg(not(feature = "value-net"))]
-pub fn value(_state: &State, _eval_options: EvaluationOptions, _correction: i32) -> i64 {
-    0
+    value_net::value(state, eval_options, correction)
 }
 
 #[must_use]
 pub fn policy(state: &State, moves: &MoveList, t: f32) -> Vec<f32> {
-    run_policy_net(state, moves, t)
+    policy_net::policy(state, moves, t)
 }
 
 #[must_use]
@@ -134,48 +98,99 @@ pub fn evaluate_state_flag(state: &State, is_legal_moves: bool) -> Flag {
     }
 }
 
-#[cfg(feature = "policy-net")]
-static MG_POLICY_NETWORK_EMBEDDED: QuantizedMgPolicyNetwork =
-    bytemuck::must_cast(*include_bytes!("nets/mg-policy.bin"));
+#[cfg(feature = "value-net")]
+mod value_net {
+    use std::sync::LazyLock;
 
-#[cfg(feature = "policy-net")]
-static MG_POLICY_NETWORK: LazyLock<&QuantizedMgPolicyNetwork> =
-    LazyLock::new(|| shm::share(nets::NET_MD5_MG_POLICY, &MG_POLICY_NETWORK_EMBEDDED));
+    use crate::engine::SCALE;
+    use crate::nets;
+    use crate::options::EvaluationOptions;
+    use crate::quantized_value::QuantizedValueNetwork;
+    use crate::shm;
+    use crate::state::State;
 
-#[cfg(feature = "policy-net")]
-static EG_POLICY_NETWORK_EMBEDDED: QuantizedEgPolicyNetwork =
-    bytemuck::must_cast(*include_bytes!("nets/eg-policy.bin"));
+    static EMBEDDED: QuantizedValueNetwork = bytemuck::must_cast(*include_bytes!("nets/value.bin"));
 
-#[cfg(feature = "policy-net")]
-static EG_POLICY_NETWORK: LazyLock<&QuantizedEgPolicyNetwork> =
-    LazyLock::new(|| shm::share(nets::NET_MD5_EG_POLICY, &EG_POLICY_NETWORK_EMBEDDED));
+    static NETWORK: LazyLock<&QuantizedValueNetwork> =
+        LazyLock::new(|| shm::share(nets::NET_MD5_VALUE, &EMBEDDED));
 
-#[cfg(not(feature = "policy-net"))]
-fn run_policy_net(_state: &State, moves: &MoveList, _t: f32) -> Vec<f32> {
-    let mut evalns = Vec::with_capacity(moves.len());
-
-    for _ in moves {
-        evalns.push(1.0 / moves.len() as f32);
+    pub fn init() {
+        LazyLock::force(&NETWORK);
     }
 
-    evalns
+    pub fn value(state: &State, eval_options: EvaluationOptions, correction: i32) -> i64 {
+        (NETWORK.get(state, eval_options, correction) * SCALE) as i64
+    }
+}
+
+#[cfg(not(feature = "value-net"))]
+mod value_net {
+    use crate::options::EvaluationOptions;
+    use crate::state::State;
+
+    pub fn init() {}
+
+    pub fn value(_state: &State, _eval_options: EvaluationOptions, _correction: i32) -> i64 {
+        0
+    }
 }
 
 #[cfg(feature = "policy-net")]
-fn run_policy_net(state: &State, moves: &MoveList, t: f32) -> Vec<f32> {
-    let mut evalns = vec![0.0; moves.len()];
+mod policy_net {
+    use std::sync::LazyLock;
 
-    if moves.is_empty() {
-        return evalns;
+    use crate::chess::MoveList;
+    use crate::math;
+    use crate::nets;
+    use crate::quantized_eg_policy::QuantizedEgPolicyNetwork;
+    use crate::quantized_mg_policy::QuantizedMgPolicyNetwork;
+    use crate::shm;
+    use crate::state::State;
+
+    static MG_EMBEDDED: QuantizedMgPolicyNetwork =
+        bytemuck::must_cast(*include_bytes!("nets/mg-policy.bin"));
+
+    static MG_NETWORK: LazyLock<&QuantizedMgPolicyNetwork> =
+        LazyLock::new(|| shm::share(nets::NET_MD5_MG_POLICY, &MG_EMBEDDED));
+
+    static EG_EMBEDDED: QuantizedEgPolicyNetwork =
+        bytemuck::must_cast(*include_bytes!("nets/eg-policy.bin"));
+
+    static EG_NETWORK: LazyLock<&QuantizedEgPolicyNetwork> =
+        LazyLock::new(|| shm::share(nets::NET_MD5_EG_POLICY, &EG_EMBEDDED));
+
+    pub fn init() {
+        LazyLock::force(&MG_NETWORK);
+        LazyLock::force(&EG_NETWORK);
     }
 
-    if state.is_endgame() {
-        EG_POLICY_NETWORK.get_all(state, state.moves_to_indexes(moves), &mut evalns);
-    } else {
-        MG_POLICY_NETWORK.get_all(state, state.moves_to_indexes(moves), &mut evalns);
+    pub fn policy(state: &State, moves: &MoveList, t: f32) -> Vec<f32> {
+        let mut evalns = vec![0.0; moves.len()];
+
+        if moves.is_empty() {
+            return evalns;
+        }
+
+        if state.is_endgame() {
+            EG_NETWORK.get_all(state, state.moves_to_indexes(moves), &mut evalns);
+        } else {
+            MG_NETWORK.get_all(state, state.moves_to_indexes(moves), &mut evalns);
+        }
+
+        math::softmax(&mut evalns, t);
+
+        evalns
     }
+}
 
-    math::softmax(&mut evalns, t);
+#[cfg(not(feature = "policy-net"))]
+mod policy_net {
+    use crate::chess::MoveList;
+    use crate::state::State;
 
-    evalns
+    pub fn init() {}
+
+    pub fn policy(_state: &State, moves: &MoveList, _t: f32) -> Vec<f32> {
+        vec![1.0 / moves.len() as f32; moves.len()]
+    }
 }

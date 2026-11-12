@@ -26,5 +26,6 @@ mod correction;
 mod graph;
 mod hot_table;
 mod mem;
+#[cfg(any(feature = "value-net", feature = "policy-net"))]
 mod shm;
 mod threadpool;
