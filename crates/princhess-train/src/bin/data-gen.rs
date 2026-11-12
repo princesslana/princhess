@@ -24,6 +24,7 @@ use ratatui::Frame;
 use scc::{Guard, Queue};
 use toml::{Table, Value};
 
+use princhess::chess::Move;
 use princhess::engine::{Engine, SCALE};
 use princhess::evaluation;
 use princhess::math::{self, Rng};
@@ -47,7 +48,9 @@ const POLICY_TEMPERATURE: f32 = 1.0;
 const MAX_THREADS: u16 = 64;
 const DFRC_PCT: u64 = 10;
 
-const VARIATION_MIN_EVAL: f32 = 0.25;
+const OPENING_MAX_EVAL: f32 = 0.9;
+
+const VARIATION_MIN_EVAL: f32 = 0.0;
 const VARIATION_MAX_EVAL: f32 = 0.75;
 const VARIATION_MIN_PHASE: usize = 16;
 
@@ -186,6 +189,8 @@ where
 struct Stats {
     start: Instant,
     games: AtomicU64,
+    openings: AtomicU64,
+    discarded_openings: AtomicU64,
     positions: AtomicU64,
     skipped: AtomicU64,
     aborted: AtomicU64,
@@ -195,6 +200,7 @@ struct Stats {
     blunders_win_draw: AtomicU64,
     blunders_win_loss: AtomicU64,
     variations: AtomicUsize,
+    variation_q_gap_sum: AtomicI64,
     nodes: AtomicUsize,
     playouts: AtomicUsize,
     visits: AtomicUsize,
@@ -231,6 +237,7 @@ struct GameStats {
     pub blunders_win_draw: u64,
     pub blunders_win_loss: u64,
     pub variations: usize,
+    pub variation_q_gap_sum: i64,
     pub nodes: usize,
     pub playouts: usize,
     pub visits: usize,
@@ -243,6 +250,8 @@ impl Stats {
         Self {
             start: Instant::now(),
             games: AtomicU64::new(0),
+            openings: AtomicU64::new(0),
+            discarded_openings: AtomicU64::new(0),
             positions: AtomicU64::new(0),
             skipped: AtomicU64::new(0),
             aborted: AtomicU64::new(0),
@@ -252,6 +261,7 @@ impl Stats {
             blunders_win_draw: AtomicU64::new(0),
             blunders_win_loss: AtomicU64::new(0),
             variations: AtomicUsize::new(0),
+            variation_q_gap_sum: AtomicI64::new(0),
             nodes: AtomicUsize::new(0),
             playouts: AtomicUsize::new(0),
             visits: AtomicUsize::new(0),
@@ -293,6 +303,8 @@ impl Stats {
             .fetch_add(game.blunders_win_loss, Ordering::Relaxed);
         self.variations
             .fetch_add(game.variations, Ordering::Relaxed);
+        self.variation_q_gap_sum
+            .fetch_add(game.variation_q_gap_sum, Ordering::Relaxed);
         self.nodes.fetch_add(game.nodes, Ordering::Relaxed);
         self.playouts.fetch_add(game.playouts, Ordering::Relaxed);
         self.visits.fetch_add(game.visits, Ordering::Relaxed);
@@ -349,6 +361,8 @@ impl Stats {
 
         StatsView {
             games: self.games.load(Ordering::Relaxed),
+            openings: self.openings.load(Ordering::Relaxed),
+            discarded_openings: self.discarded_openings.load(Ordering::Relaxed),
             positions: self.positions.load(Ordering::Relaxed),
             white_wins: self.white_wins.load(Ordering::Relaxed),
             draws: self.draws.load(Ordering::Relaxed),
@@ -358,6 +372,7 @@ impl Stats {
             blunders_win_draw: self.blunders_win_draw.load(Ordering::Relaxed),
             blunders_win_loss: self.blunders_win_loss.load(Ordering::Relaxed),
             variations: self.variations.load(Ordering::Relaxed),
+            variation_q_gap_sum: self.variation_q_gap_sum.load(Ordering::Relaxed),
             nodes: self.nodes.load(Ordering::Relaxed),
             playouts: self.playouts.load(Ordering::Relaxed),
             visits: self.visits.load(Ordering::Relaxed),
@@ -391,6 +406,8 @@ impl Stats {
 
 struct StatsView {
     games: u64,
+    openings: u64,
+    discarded_openings: u64,
     positions: u64,
     white_wins: u64,
     draws: u64,
@@ -400,6 +417,7 @@ struct StatsView {
     blunders_win_draw: u64,
     blunders_win_loss: u64,
     variations: usize,
+    variation_q_gap_sum: i64,
     nodes: usize,
     playouts: usize,
     visits: usize,
@@ -472,6 +490,18 @@ impl StatsView {
 
     fn variation_pct(&self) -> f32 {
         self.per_position(self.variations as f32) * 100.0
+    }
+
+    fn discarded_openings_pct(&self) -> f32 {
+        100.0 * self.discarded_openings as f32 / self.openings.max(1) as f32
+    }
+
+    fn avg_variation_q_gap(&self) -> f32 {
+        if self.variations > 0 {
+            self.variation_q_gap_sum as f32 / self.variations as f32 / SCALE
+        } else {
+            0.0
+        }
     }
 
     fn skipped_pct(&self) -> f32 {
@@ -581,6 +611,15 @@ impl StatsView {
         let mut t = Table::new();
         t.insert("positions".into(), i(self.positions));
         t.insert("games".into(), i(self.games));
+        t.insert("openings".into(), i(self.openings));
+        t.insert(
+            "games_per_opening".into(),
+            (self.games as f32 / self.openings.max(1) as f32).into(),
+        );
+        t.insert(
+            "discarded_openings_pct".into(),
+            self.discarded_openings_pct().into(),
+        );
         t.insert("white_wins".into(), i(self.white_wins));
         t.insert("draws".into(), i(self.draws));
         t.insert("black_wins".into(), i(self.black_wins));
@@ -588,6 +627,10 @@ impl StatsView {
         t.insert("skipped_pct".into(), self.skipped_pct().into());
         t.insert("aborted_pct".into(), self.aborted_pct().into());
         t.insert("variation_pct".into(), self.variation_pct().into());
+        t.insert(
+            "avg_variation_q_gap".into(),
+            self.avg_variation_q_gap().into(),
+        );
         t.insert(
             "blunder_win_draw_pct".into(),
             self.blunder_win_draw_pct().into(),
@@ -655,6 +698,7 @@ impl GameStats {
             blunders_win_draw: 0,
             blunders_win_loss: 0,
             variations: 0,
+            variation_q_gap_sum: 0,
             nodes: 0,
             playouts: 0,
             visits: 0,
@@ -709,6 +753,7 @@ fn run_game(
     let mut seen_positions = HashSet::new();
 
     variations.push(random_start(rng));
+    stats.openings.fetch_add(1, Ordering::Relaxed);
 
     while let Some(mut state) = variations.pop() {
         if stop_signal.load(Ordering::Relaxed) {
@@ -727,7 +772,6 @@ fn run_game(
         }
 
         let mut game_stats = GameStats::zero();
-        engine.set_root_state(state.clone());
 
         let mut game_positions = Vec::with_capacity(256);
         let mut is_first_move = true;
@@ -755,6 +799,13 @@ fn run_game(
 
                 let position = TrainingPosition::from_tree_and_priors(tree, &priors);
                 let eval = position.evaluation();
+                let is_opening = variations_count == 0;
+
+                // Nothing has been recorded or branched from this opening yet
+                if is_first_move && is_opening && eval.abs() > OPENING_MAX_EVAL {
+                    stats.discarded_openings.fetch_add(1, Ordering::Relaxed);
+                    return;
+                }
 
                 // Track KL divergence between final visits and policy
                 let policy_kl = policy_kl_divergence(engine, &priors);
@@ -768,8 +819,16 @@ fn run_game(
                     .window_policy_kl
                     .fetch_add(kl_quantized, Ordering::Relaxed);
 
-                if variations_count < MAX_VARIATIONS {
-                    let variation = engine.most_visited_move();
+                // Branch on a sample from the stored π̄ (ACT), whose weights are scaled to u8
+                let pi_bar = position.moves();
+                let pi_bar_total: f32 = pi_bar.iter().map(|&(_, w)| f32::from(w)).sum();
+
+                if variations_count < MAX_VARIATIONS && pi_bar_total > 0.0 {
+                    let weights: Vec<f32> = pi_bar
+                        .iter()
+                        .map(|&(_, w)| f32::from(w) / pi_bar_total)
+                        .collect();
+                    let variation = pi_bar[rng.weighted(&weights)].0;
 
                     if variation != best_move
                         && (VARIATION_MIN_EVAL..=VARIATION_MAX_EVAL)
@@ -778,6 +837,14 @@ fn run_game(
                     {
                         let explore_probability = 1.0 / (variations_count + 1) as f32;
                         if rng.next_f32() < explore_probability {
+                            let q = |mv: Move| {
+                                engine
+                                    .root_edges()
+                                    .iter()
+                                    .find(|e| *e.get_move() == mv)
+                                    .map_or(0, |e| e.reward().average)
+                            };
+                            game_stats.variation_q_gap_sum += q(best_move) - q(variation);
                             game_stats.variations += 1;
                             let mut variation_state = state.clone();
                             variation_state.make_move(variation);
@@ -797,7 +864,7 @@ fn run_game(
                     stats.opening_eval_distribution[opening_eval_bucket]
                         .fetch_add(1, Ordering::Relaxed);
 
-                    if variations_count == 0 {
+                    if is_opening {
                         stats.add_opening_eval((eval * SCALE) as i64);
                     } else {
                         stats.add_variation_eval((eval * SCALE) as i64);
@@ -1304,18 +1371,20 @@ fn render_tui(frame: &mut Frame, view: &StatsView) {
         bottom_row[0],
         "Quality Metrics",
         format!(
-            "Blunders: {:>5.1}% [D:{:.1} L:{:.1}]\nSkipped:  {:>5.1}%\nOpening:   {:>+5.2}",
+            "Blunders: {:>5.1}% [D:{:.1} L:{:.1}]\nSkipped:  {:>5.1}%\nOpening:   {:>+5.2} [Discard: {:.1}%]",
             view.blunder_win_draw_pct() + view.blunder_win_loss_pct(),
             view.blunder_win_draw_pct(),
             view.blunder_win_loss_pct(),
             view.skipped_pct(),
             view.avg_opening_eval(),
+            view.discarded_openings_pct(),
         ),
         format!(
-            "Variations: {:>5.1}%\nAborted:    {:>5.1}%\nEval:        {:>+5.2}",
+            "Variations: {:>5.1}%\nAborted:    {:>5.1}%\nEval:        {:>+5.2} [Gap: {:.3}]",
             view.variation_pct(),
             view.aborted_pct(),
             view.avg_variation_eval(),
+            view.avg_variation_q_gap(),
         ),
     );
 
