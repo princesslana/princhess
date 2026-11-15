@@ -878,6 +878,7 @@ fn run_game(
                     stats.eval_delta_distribution[delta_bucket].fetch_add(1, Ordering::Relaxed);
                 }
                 previous_eval = eval;
+                is_first_move = false;
 
                 game_positions.push(position);
 
@@ -892,8 +893,6 @@ fn run_game(
                 game_stats.depth += engine.mcts().depth();
                 game_stats.seldepth += engine.mcts().max_depth();
             }
-
-            is_first_move = false;
 
             state.make_move(best_move);
 
