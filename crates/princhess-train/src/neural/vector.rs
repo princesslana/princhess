@@ -1,3 +1,4 @@
+use std::array;
 use std::ops::{
     Add, AddAssign, Deref, Div, DivAssign, Index, IndexMut, Mul, MulAssign, Sub, SubAssign,
 };
@@ -140,14 +141,10 @@ impl<const N: usize> SubAssign<Vector<N>> for Vector<N> {
 }
 
 impl<const N: usize> Vector<N> {
-    pub fn from_fn<F: FnMut(usize) -> f32>(mut f: F) -> Self {
-        let mut res = Self::zeroed();
-
-        for i in 0..N {
-            res.inner[i] = f(i);
+    pub fn from_fn<F: FnMut(usize) -> f32>(f: F) -> Self {
+        Self {
+            inner: array::from_fn(f),
         }
-
-        res
     }
 
     #[must_use]

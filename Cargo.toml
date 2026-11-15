@@ -19,7 +19,6 @@ default-members = [".", "crates/princhess-train"]
 
 [workspace.dependencies]
 arrayvec = "=0.7.8"
-princhess = { version = "0.0.0-dev", path = "." }
 scc = "=3.8.6"
 
 [workspace.dependencies.bytemuck]

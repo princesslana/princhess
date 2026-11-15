@@ -64,8 +64,8 @@ impl Board {
         let mut board = Self::empty();
 
         for color in &[Color::WHITE, Color::BLACK] {
-            let back_rank = color.fold(Rank::_1, Rank::_8);
-            let pawn_rank = color.fold(Rank::_2, Rank::_7);
+            let back_rank = color.fold(Rank::R1, Rank::R8);
+            let pawn_rank = color.fold(Rank::R2, Rank::R7);
 
             for (file, piece) in color
                 .fold(white_back_rank, black_back_rank)
@@ -484,13 +484,13 @@ impl Board {
             Piece::PAWN => {
                 let from_rank = mov.from().rank();
                 let to_rank = mov.to().rank();
-                let is_double_push = from_rank == Rank::_2 && to_rank == Rank::_4
-                    || from_rank == Rank::_7 && to_rank == Rank::_5;
+                let is_double_push = from_rank == Rank::R2 && to_rank == Rank::R4
+                    || from_rank == Rank::R7 && to_rank == Rank::R5;
 
                 if is_double_push {
                     let ep_sq = color.fold(
-                        mov.from().with_rank(Rank::_3),
-                        mov.from().with_rank(Rank::_6),
+                        mov.from().with_rank(Rank::R3),
+                        mov.from().with_rank(Rank::R6),
                     );
 
                     let attacking_pawns =

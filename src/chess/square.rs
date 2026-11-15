@@ -91,14 +91,14 @@ impl File {
 }
 
 impl Rank {
-    pub const _1: Rank = Rank(0);
-    pub const _2: Rank = Rank(1);
-    pub const _3: Rank = Rank(2);
-    pub const _4: Rank = Rank(3);
-    pub const _5: Rank = Rank(4);
-    pub const _6: Rank = Rank(5);
-    pub const _7: Rank = Rank(6);
-    pub const _8: Rank = Rank(7);
+    pub const R1: Rank = Rank(0);
+    pub const R2: Rank = Rank(1);
+    pub const R3: Rank = Rank(2);
+    pub const R4: Rank = Rank(3);
+    pub const R5: Rank = Rank(4);
+    pub const R6: Rank = Rank(5);
+    pub const R7: Rank = Rank(6);
+    pub const R8: Rank = Rank(7);
 }
 
 impl From<u8> for File {
