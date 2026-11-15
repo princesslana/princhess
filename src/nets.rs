@@ -187,8 +187,8 @@ impl MoveIndex {
     #[must_use]
     pub fn to_slot(self) -> usize {
         let sq = match self.promotion {
-            Piece::KNIGHT => self.to_sq.with_rank(Rank::_1),
-            Piece::BISHOP | Piece::ROOK => self.to_sq.with_rank(Rank::_2),
+            Piece::KNIGHT => self.to_sq.with_rank(Rank::R1),
+            Piece::BISHOP | Piece::ROOK => self.to_sq.with_rank(Rank::R2),
             _ => self.to_sq,
         };
         sq.index()

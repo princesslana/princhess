@@ -41,27 +41,27 @@ impl Castling {
         for c in chars {
             match c {
                 b'K' => {
-                    castling.white_king = (board.white() & board.rooks() & Rank::_1).last_square();
+                    castling.white_king = (board.white() & board.rooks() & Rank::R1).last_square();
                 }
                 b'Q' => {
                     castling.white_queen =
-                        (board.white() & board.rooks() & Rank::_1).first_square();
+                        (board.white() & board.rooks() & Rank::R1).first_square();
                 }
                 b'k' => {
-                    castling.black_king = (board.black() & board.rooks() & Rank::_8).last_square();
+                    castling.black_king = (board.black() & board.rooks() & Rank::R8).last_square();
                 }
                 b'q' => {
                     castling.black_queen =
-                        (board.black() & board.rooks() & Rank::_8).first_square();
+                        (board.black() & board.rooks() & Rank::R8).first_square();
                 }
                 b'A'..=b'H' => {
                     let king_file = board.king_of(Color::WHITE).file();
                     let rook_file = File::from(c - b'A');
 
                     if rook_file < king_file {
-                        castling.white_queen = Square::from_coords(rook_file, Rank::_1);
+                        castling.white_queen = Square::from_coords(rook_file, Rank::R1);
                     } else {
-                        castling.white_king = Square::from_coords(rook_file, Rank::_1);
+                        castling.white_king = Square::from_coords(rook_file, Rank::R1);
                     }
                 }
                 b'a'..=b'h' => {
@@ -69,9 +69,9 @@ impl Castling {
                     let rook_file = File::from(c - b'a');
 
                     if rook_file < king_file {
-                        castling.black_queen = Square::from_coords(rook_file, Rank::_8);
+                        castling.black_queen = Square::from_coords(rook_file, Rank::R8);
                     } else {
-                        castling.black_king = Square::from_coords(rook_file, Rank::_8);
+                        castling.black_king = Square::from_coords(rook_file, Rank::R8);
                     }
                 }
                 _ => {}

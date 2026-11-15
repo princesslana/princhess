@@ -115,7 +115,7 @@ impl MoveGen<'_> {
             let moves = (quiets | attacks) & targets;
 
             for to in moves {
-                if to.rank() == Rank::_1 || to.rank() == Rank::_8 {
+                if to.rank() == Rank::R1 || to.rank() == Rank::R8 {
                     for pc in &[Piece::QUEEN, Piece::ROOK, Piece::BISHOP, Piece::KNIGHT] {
                         shortcircuit!(f(Move::new_promotion(from, to, *pc)));
                     }
@@ -133,7 +133,7 @@ impl MoveGen<'_> {
                 let moves = (quiets | attacks) & targets;
 
                 for to in moves {
-                    if to.rank() == Rank::_1 || to.rank() == Rank::_8 {
+                    if to.rank() == Rank::R1 || to.rank() == Rank::R8 {
                         for pc in &[Piece::QUEEN, Piece::ROOK, Piece::BISHOP, Piece::KNIGHT] {
                             shortcircuit!(f(Move::new_promotion(from, to, *pc)));
                         }
@@ -212,7 +212,7 @@ impl MoveGen<'_> {
         F: FnMut(Move) -> ControlFlow<R>,
     {
         let us = self.us();
-        let back_rank = us.fold(Rank::_1, Rank::_8);
+        let back_rank = us.fold(Rank::R1, Rank::R8);
         let king_from = self.board.king_of(us);
 
         let (king_side_rook, queen_side_rook) = self.board.castling_rights().by_color(self.us());
@@ -282,7 +282,7 @@ fn pawn_pushes(color: Color, from: Square, occ: Bitboard) -> Bitboard {
     pushes.toggle(single);
     pushes &= !occ;
 
-    if pushes.any() && color.fold(from.rank() == Rank::_2, from.rank() == Rank::_7) {
+    if pushes.any() && color.fold(from.rank() == Rank::R2, from.rank() == Rank::R7) {
         // fold is not appropriate here because it may overflow with the square maths
         let double = match color {
             Color::WHITE => from + 16,
