@@ -296,6 +296,10 @@ fn write_training_toml(dir: &Path, sb: usize, stats: &TrainingStats, config: &Tr
     doc.insert("input_file".into(), config.input_file.clone().into());
     doc.insert("loss".into(), loss.into());
 
+    let guard = Guard::new();
+    let loss_history = stats.loss_history.iter(&guard).map(|&v| v.into()).collect();
+    doc.insert("loss_history".into(), Value::Array(loss_history));
+
     let path = dir.join("value.toml");
     let mut file = File::create(path).expect("Failed to create training TOML");
     write!(file, "{doc}").expect("Failed to write training TOML");

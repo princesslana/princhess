@@ -467,6 +467,11 @@ fn write_training_toml(dir: &Path, sb: usize, stats: &TrainingStats, config: &Tr
     doc.insert("accuracy".into(), accuracy.into());
     doc.insert("info_gain".into(), info_gain.into());
 
+    let guard = Guard::new();
+    let history = |q: &Queue<f32>| Value::Array(q.iter(&guard).map(|&v| v.into()).collect());
+    doc.insert("loss_history".into(), history(&stats.loss_history));
+    doc.insert("accuracy_history".into(), history(&stats.accuracy_history));
+
     let mut pieces = Table::new();
     for (i, name) in piece_names.iter().enumerate() {
         let mut p = Table::new();
