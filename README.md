@@ -67,7 +67,7 @@ The engine responds to standard UCI commands.
 - **CPuctGiniFactor** (default: 163): Logarithmic factor for Gini impurity scaling
 - **CPuctGiniMax** (default: 210): Maximum value for Gini-scaled exploration coefficient
 - **CVisitsSelection** (default: 1): How much to consider visits vs Q-value in final move selection
-- **PolicyTemperature** (default: 130): Softmax temperature for policy network during node expansion
+- **PolicyTemperature** (default: 145): Softmax temperature for policy network during node expansion
 
 ### Time Management
 Adaptive time allocation controls:
@@ -95,6 +95,13 @@ Adaptive time allocation controls:
 Contributions are welcome! Please follow Rust conventions and ensure code is properly formatted with `cargo fmt` and passes `cargo clippy`.
 
 Commit messages use [Emoji Log](https://github.com/ahmadawais/Emoji-Log) format.
+
+## AI Assistance
+
+All changes are developed and reviewed with human involvement, with help from these AI tools:
+
+*   **[Claude Code](https://claude.com/claude-code):** The primary development environment since July 2025 (0.21.0 onwards).
+*   **[CodeRabbit](https://coderabbit.ai):** Reviews pull requests since May 2025 (0.21.0 onwards).
 
 ## License
 
