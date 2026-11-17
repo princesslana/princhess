@@ -33,7 +33,10 @@ enum Format {
 
 impl Format {
     fn of(path: &Path) -> Self {
-        if path.to_string_lossy().contains(".value") {
+        let is_value = path
+            .file_name()
+            .is_some_and(|name| name.to_string_lossy().contains(".value"));
+        if is_value {
             Format::Value
         } else {
             Format::Full

@@ -201,7 +201,9 @@ fn main() {
     let input = args.expect("input file");
 
     assert!(
-        input.contains(".value"),
+        Path::new(&input)
+            .file_name()
+            .is_some_and(|name| name.to_string_lossy().contains(".value")),
         "{input} is not a value-format file (no .value in its name); convert it with data-shuffle --output value"
     );
 
