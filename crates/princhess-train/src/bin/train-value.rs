@@ -20,7 +20,7 @@ use scc::{Guard, Queue};
 use princhess::engine::SCALE;
 use princhess::state::State;
 use princhess_train::args::Args;
-use princhess_train::data::{TrainingData, TrainingPosition};
+use princhess_train::data::{TrainingData, ValuePosition};
 use princhess_train::neural::{
     AdamWOptimizer, FeedForwardNetwork, LRScheduler, OutputLayer, PolynomialWarmupDecayLRScheduler,
     Vector,
@@ -45,7 +45,7 @@ const WDL_WEIGHT: f32 = 0.3;
 
 const SAVE_EVERY_N_SUPER_BATCHES: usize = 10;
 
-const _BUFFER_SIZE_CHECK: () = assert!(TrainingPosition::BUFFER_SIZE.is_multiple_of(BATCH_SIZE));
+const _BUFFER_SIZE_CHECK: () = assert!(ValuePosition::BUFFER_COUNT.is_multiple_of(BATCH_SIZE));
 
 #[derive(Debug, Default, Clone, Copy)]
 struct BatchMetrics {
@@ -200,21 +200,19 @@ fn main() {
 
     let input = args.expect("input file");
 
-    let file = File::open(&input).unwrap();
-    let data_positions = file.metadata().unwrap().len() as usize / TrainingPosition::SIZE;
-
     assert!(
-        data_positions >= TrainingPosition::BUFFER_COUNT,
-        "Input file has {data_positions} positions, need at least {} (BUFFER_COUNT)",
-        TrainingPosition::BUFFER_COUNT
+        input.contains(".value"),
+        "{input} is not a value-format file (no .value in its name); convert it with data-shuffle --output value"
     );
+
+    let data = TrainingData::<ValuePosition>::new(&input);
 
     let network = ValueNetwork::random();
 
     let config = TrainingConfig {
         input_file: input.clone(),
         network_info: format!("{network}"),
-        data_positions,
+        data_positions: data.positions(),
         threads,
     };
 
@@ -223,13 +221,14 @@ fn main() {
     let scheduler = PolynomialWarmupDecayLRScheduler::linear(LEARNING_RATE, 0.05, total_steps);
     let optimizer = AdamWOptimizer::new(&*network, scheduler).weight_decay(WEIGHT_DECAY);
 
-    run_training_loop(network, optimizer, config);
+    run_training_loop(network, optimizer, config, data);
 }
 
 fn run_training_loop<S: LRScheduler>(
     mut network: Box<ValueNetwork>,
     mut optimizer: AdamWOptimizer<ValueNetwork, S>,
     config: TrainingConfig,
+    mut data: TrainingData<ValuePosition>,
 ) {
     let timestamp = Utc::now().format("%Y%m%d-%H%M").to_string();
 
@@ -247,8 +246,6 @@ fn run_training_loop<S: LRScheduler>(
             stop_clone.store(true, Ordering::Relaxed);
         }
     });
-
-    let mut data = TrainingData::new(&config.input_file);
 
     // Training loop
     for sb in 0..TOTAL_SUPER_BATCHES {
@@ -451,7 +448,7 @@ fn train_super_batch<S: LRScheduler>(
     optimizer: &mut AdamWOptimizer<ValueNetwork, S>,
     config: &TrainingConfig,
     stats: &TrainingStats,
-    data: &mut TrainingData,
+    data: &mut TrainingData<ValuePosition>,
 ) {
     let mut batches_processed = 0;
     let mut gradients = ValueNetwork::zeroed();
@@ -500,7 +497,7 @@ fn train_super_batch<S: LRScheduler>(
 fn gradients_batch(
     network: &ValueNetwork,
     gradients: &mut ValueNetwork,
-    batch: &[TrainingPosition],
+    batch: &[ValuePosition],
     threads: usize,
 ) -> BatchMetrics {
     let size = (batch.len() / threads) + 1;
@@ -545,7 +542,7 @@ fn gradients_batch(
 }
 
 fn update_gradient(
-    position: &TrainingPosition,
+    position: &ValuePosition,
     network: &ValueNetwork,
     gradients: &mut ValueNetwork,
     loss: &mut f32,

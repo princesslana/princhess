@@ -798,7 +798,7 @@ fn run_game(
                 );
 
                 let position = TrainingPosition::from_tree_and_priors(tree, &priors);
-                let eval = position.evaluation();
+                let eval = position.value().evaluation();
                 let is_opening = variations_count == 0;
 
                 // Nothing has been recorded or branched from this opening yet
@@ -831,8 +831,7 @@ fn run_game(
                     let variation = pi_bar[rng.weighted(&weights)].0;
 
                     if variation != best_move
-                        && (VARIATION_MIN_EVAL..=VARIATION_MAX_EVAL)
-                            .contains(&position.evaluation().abs())
+                        && (VARIATION_MIN_EVAL..=VARIATION_MAX_EVAL).contains(&eval.abs())
                         && state.phase() >= VARIATION_MIN_PHASE
                     {
                         let explore_probability = 1.0 / (variations_count + 1) as f32;
@@ -925,9 +924,10 @@ fn run_game(
 
         for position in &mut game_positions {
             position.set_result(i8::from(result));
+            let value = position.value();
 
-            let eval_white = position.evaluation();
-            let eval_stm = position.stm_relative_evaluation();
+            let eval_white = value.evaluation();
+            let eval_stm = value.stm_relative_evaluation();
 
             let disagreement = (eval_white - f32::from(i8::from(result))).abs();
             stats.eval_result_agreement_buckets
@@ -953,9 +953,9 @@ fn run_game(
             let eval_bucket = to_bucket(eval_stm, &EVAL_DISTRIBUTION_THRESHOLDS);
             stats.eval_distribution_buckets[eval_bucket].fetch_add(1, Ordering::Relaxed);
 
-            let piece_count = position.piece_count();
+            let piece_count = value.piece_count();
             stats.piece_count_distribution[piece_count].fetch_add(1, Ordering::Relaxed);
-            stats.phase_distribution[position.phase()].fetch_add(1, Ordering::Relaxed);
+            stats.phase_distribution[value.phase()].fetch_add(1, Ordering::Relaxed);
 
             match result {
                 GameResult::WhiteWin => blunder_win_loss |= eval_white < -0.5,
