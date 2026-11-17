@@ -9,6 +9,7 @@ use std::fs::File;
 use std::io::{self, ErrorKind, Read, Seek, SeekFrom, Write};
 use std::marker::PhantomData;
 use std::mem;
+use std::path::Path;
 use std::sync::mpsc::{sync_channel, Receiver, SyncSender};
 use std::thread;
 
@@ -44,6 +45,20 @@ pub struct ValuePosition {
 const _VALUE_SIZE_CHECK: () = assert!(mem::size_of::<ValuePosition>() == 32);
 
 pub const BUFFER_COUNT: usize = 1 << 16;
+
+#[must_use]
+pub fn is_value_file(path: &Path) -> bool {
+    path.file_name().is_some_and(|name| {
+        let name = name.to_string_lossy();
+        name.ends_with(".value") || name.ends_with(".value.shuffled")
+    })
+}
+
+#[must_use]
+pub fn is_shuffled_file(path: &Path) -> bool {
+    path.file_name()
+        .is_some_and(|name| name.to_string_lossy().ends_with(".shuffled"))
+}
 
 impl TrainingPosition {
     pub const MAX_MOVES: usize = 54;

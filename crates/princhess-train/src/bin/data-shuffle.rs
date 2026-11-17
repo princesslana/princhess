@@ -20,7 +20,7 @@ use toml::{Table, Value};
 use bytemuck::Pod;
 use princhess::math::Rng;
 use princhess_train::args::Args;
-use princhess_train::data::{TrainingPosition, ValuePosition, BUFFER_COUNT};
+use princhess_train::data::{self, TrainingPosition, ValuePosition, BUFFER_COUNT};
 use princhess_train::tui;
 
 const IO_BUFFER_SIZE: usize = 4 << 20;
@@ -33,10 +33,7 @@ enum Format {
 
 impl Format {
     fn of(path: &Path) -> Self {
-        let is_value = path
-            .file_name()
-            .is_some_and(|name| name.to_string_lossy().contains(".value"));
-        if is_value {
+        if data::is_value_file(path) {
             Format::Value
         } else {
             Format::Full
@@ -63,10 +60,7 @@ struct FileInfo {
 impl FileInfo {
     fn new(path: PathBuf) -> io::Result<Self> {
         let format = Format::of(&path);
-        let is_shuffled = path
-            .to_str()
-            .map(|s| s.contains(".shuffled"))
-            .unwrap_or(false);
+        let is_shuffled = data::is_shuffled_file(&path);
 
         let metadata = fs::metadata(&path)?;
         let file_size = metadata.len() as usize;
@@ -297,6 +291,21 @@ fn shuffle_file(
         ),
         (Format::Value, Format::Full) => unreachable!("policy output refuses value inputs"),
     }
+}
+
+fn shuffled_path(file: &FileInfo, output_format: Format) -> PathBuf {
+    let ext = file
+        .path
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("data");
+    let converted = if file.format == output_format {
+        ""
+    } else {
+        ".value"
+    };
+    file.path
+        .with_extension(format!("{ext}{converted}.shuffled"))
 }
 
 fn shuffle_records<I: Pod, O: Pod>(
@@ -824,6 +833,18 @@ fn main() {
         }
     }
 
+    for file in files.iter().filter(|f| !f.is_shuffled) {
+        let output_path = shuffled_path(file, output_format);
+        if files.iter().any(|f| f.path == output_path) {
+            eprintln!(
+                "ERROR: shuffling {} would overwrite input {}",
+                file.path.display(),
+                output_path.display()
+            );
+            process::exit(1);
+        }
+    }
+
     const SHUFFLE_LIMIT: usize = 25_000_000;
     const CLEANUP_SAFETY_THRESHOLD: usize = 150_000_000;
 
@@ -899,17 +920,7 @@ fn main() {
                 progress.shuffle_current_file.store(idx, Ordering::Relaxed);
                 progress.reset_shuffle_phase_progress();
 
-                let mut output_path = file.path.clone();
-                let current_ext = output_path
-                    .extension()
-                    .and_then(|e| e.to_str())
-                    .unwrap_or("data");
-                let converted = if file.format == output_format {
-                    ""
-                } else {
-                    ".value"
-                };
-                output_path.set_extension(format!("{current_ext}{converted}.shuffled"));
+                let output_path = shuffled_path(file, output_format);
 
                 if let Err(e) = shuffle_file(file, &output_path, output_format, &mut rng, &progress)
                 {

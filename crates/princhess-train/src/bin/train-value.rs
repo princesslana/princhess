@@ -20,7 +20,7 @@ use scc::{Guard, Queue};
 use princhess::engine::SCALE;
 use princhess::state::State;
 use princhess_train::args::Args;
-use princhess_train::data::{TrainingData, ValuePosition};
+use princhess_train::data::{self, TrainingData, ValuePosition};
 use princhess_train::neural::{
     AdamWOptimizer, FeedForwardNetwork, LRScheduler, OutputLayer, PolynomialWarmupDecayLRScheduler,
     Vector,
@@ -201,9 +201,7 @@ fn main() {
     let input = args.expect("input file");
 
     assert!(
-        Path::new(&input)
-            .file_name()
-            .is_some_and(|name| name.to_string_lossy().contains(".value")),
+        data::is_value_file(Path::new(&input)),
         "{input} is not a value-format file (no .value in its name); convert it with data-shuffle --output value"
     );
 
