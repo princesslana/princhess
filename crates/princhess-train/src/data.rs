@@ -7,7 +7,9 @@ use princhess::mcts::Mcts;
 use princhess::state::State;
 use std::fs::File;
 use std::io::{self, ErrorKind, Read, Seek, SeekFrom, Write};
+use std::marker::PhantomData;
 use std::mem;
+use std::path::Path;
 use std::sync::mpsc::{sync_channel, Receiver, SyncSender};
 use std::thread;
 
@@ -28,12 +30,42 @@ pub struct TrainingPosition {
 // Updated size check: 8 (occupied) + 16 (pieces) + 4 (evaluation) + 1 (result) + 1 (stm) + 108 (legal_moves) + 54 (policy_target) = 192
 const _SIZE_CHECK: () = assert!(mem::size_of::<TrainingPosition>() == 192);
 
+#[derive(Clone, Copy, Debug, Pod, Zeroable)]
+#[repr(C)]
+pub struct ValuePosition {
+    occupied: Bitboard,
+    pieces: [u8; 16],
+
+    evaluation: i32,
+    result: i8,
+    stm: u8,
+    _padding: [u8; 2],
+}
+
+const _VALUE_SIZE_CHECK: () = assert!(mem::size_of::<ValuePosition>() == 32);
+
+pub const BUFFER_COUNT: usize = 1 << 16;
+
+#[must_use]
+pub fn is_value_file(path: &Path) -> bool {
+    path.file_name().is_some_and(|name| {
+        let name = name.to_string_lossy();
+        name.ends_with(".value") || name.ends_with(".value.shuffled")
+    })
+}
+
+#[must_use]
+pub fn is_shuffled_file(path: &Path) -> bool {
+    path.file_name()
+        .is_some_and(|name| name.to_string_lossy().ends_with(".shuffled"))
+}
+
 impl TrainingPosition {
     pub const MAX_MOVES: usize = 54;
 
     pub const SIZE: usize = mem::size_of::<Self>();
     pub const BATCH_SIZE: usize = 16384;
-    pub const BUFFER_COUNT: usize = 1 << 16;
+    pub const BUFFER_COUNT: usize = BUFFER_COUNT;
     pub const BUFFER_SIZE: usize = Self::BUFFER_COUNT * Self::SIZE;
 
     /// # Errors
@@ -53,46 +85,15 @@ impl TrainingPosition {
     }
 
     #[must_use]
-    pub fn evaluation(&self) -> f32 {
-        self.evaluation as f32 / SCALE
-    }
-
-    pub fn stm(&self) -> Color {
-        Color::from(self.stm)
-    }
-
-    #[must_use]
-    pub fn stm_relative_evaluation(&self) -> f32 {
-        let e = self.evaluation();
-        self.stm().fold(e, -e)
-    }
-
-    #[must_use]
-    pub fn stm_relative_result(&self) -> i8 {
-        self.stm().fold(self.result, -self.result)
-    }
-
-    #[must_use]
-    pub fn piece_count(&self) -> usize {
-        self.occupied.count()
-    }
-
-    #[must_use]
-    pub fn phase(&self) -> usize {
-        let mut phase = 0;
-
-        for idx in 0..self.occupied.count() {
-            let packed_piece = self.pieces[idx / 2] >> (4 * (idx & 1));
-            let piece_type = packed_piece & 7;
-            match Piece::from(piece_type) {
-                Piece::KNIGHT | Piece::BISHOP => phase += 1,
-                Piece::ROOK => phase += 2,
-                Piece::QUEEN => phase += 4,
-                _ => {}
-            }
+    pub fn value(&self) -> ValuePosition {
+        ValuePosition {
+            occupied: self.occupied,
+            pieces: self.pieces,
+            evaluation: self.evaluation,
+            result: self.result,
+            stm: self.stm,
+            _padding: [0; 2],
         }
-
-        phase.clamp(0, 24)
     }
 
     #[must_use]
@@ -220,8 +221,62 @@ impl TrainingPosition {
     }
 }
 
+impl ValuePosition {
+    pub const SIZE: usize = mem::size_of::<Self>();
+    pub const BUFFER_COUNT: usize = BUFFER_COUNT;
+
+    #[must_use]
+    pub fn evaluation(&self) -> f32 {
+        self.evaluation as f32 / SCALE
+    }
+
+    pub fn stm(&self) -> Color {
+        Color::from(self.stm)
+    }
+
+    #[must_use]
+    pub fn stm_relative_evaluation(&self) -> f32 {
+        let e = self.evaluation();
+        self.stm().fold(e, -e)
+    }
+
+    #[must_use]
+    pub fn stm_relative_result(&self) -> i8 {
+        self.stm().fold(self.result, -self.result)
+    }
+
+    #[must_use]
+    pub fn piece_count(&self) -> usize {
+        self.occupied.count()
+    }
+
+    #[must_use]
+    pub fn phase(&self) -> usize {
+        let mut phase = 0;
+
+        for idx in 0..self.occupied.count() {
+            let packed_piece = self.pieces[idx / 2] >> (4 * (idx & 1));
+            let piece_type = packed_piece & 7;
+            match Piece::from(piece_type) {
+                Piece::KNIGHT | Piece::BISHOP => phase += 1,
+                Piece::ROOK => phase += 2,
+                Piece::QUEEN => phase += 4,
+                _ => {}
+            }
+        }
+
+        phase.clamp(0, 24)
+    }
+}
+
 impl From<&TrainingPosition> for State {
     fn from(position: &TrainingPosition) -> Self {
+        State::from(&position.value())
+    }
+}
+
+impl From<&ValuePosition> for State {
+    fn from(position: &ValuePosition) -> Self {
         let mut colors = [Bitboard::EMPTY; 2];
         let mut pieces = [Bitboard::EMPTY; 6];
 
@@ -246,36 +301,43 @@ impl From<&TrainingPosition> for State {
     }
 }
 
-pub struct TrainingData {
+pub struct TrainingData<T: Pod = TrainingPosition> {
     file_positions: usize,
     full_rx: Receiver<(Vec<u8>, u64)>,
     empty_tx: SyncSender<Vec<u8>>,
     current_buf: Vec<u8>,
     positions_consumed: u64,
     _reader: thread::JoinHandle<()>,
+    _record: PhantomData<T>,
 }
 
-impl TrainingData {
+impl<T: Pod> TrainingData<T> {
+    const BUFFER_SIZE: usize = BUFFER_COUNT * mem::size_of::<T>();
+
     /// # Panics
     ///
-    /// Panics if the file cannot be opened or is smaller than one full buffer.
+    /// Panics if the file cannot be opened, is not a whole number of records, or
+    /// is smaller than one full buffer.
     #[must_use]
     pub fn new(path: &str) -> Self {
         let file = File::open(path).expect("Failed to open training data file");
-        let file_positions = file.metadata().unwrap().len() as usize / TrainingPosition::SIZE;
+        let file_size = file.metadata().unwrap().len() as usize;
         assert!(
-            file_positions >= TrainingPosition::BUFFER_COUNT,
-            "Training file has {file_positions} positions, need at least {} (BUFFER_COUNT)",
-            TrainingPosition::BUFFER_COUNT
+            file_size.is_multiple_of(mem::size_of::<T>()),
+            "Training file size {file_size} is not a multiple of the record size {}",
+            mem::size_of::<T>()
+        );
+        let file_positions = file_size / mem::size_of::<T>();
+        assert!(
+            file_positions >= BUFFER_COUNT,
+            "Training file has {file_positions} positions, need at least {BUFFER_COUNT} (BUFFER_COUNT)"
         );
 
         let (full_tx, full_rx) = sync_channel(1);
         let (empty_tx, empty_rx) = sync_channel(1);
 
         // Seed the reader with one empty buffer so it starts prefetching immediately.
-        empty_tx
-            .send(vec![0u8; TrainingPosition::BUFFER_SIZE])
-            .unwrap();
+        empty_tx.send(vec![0u8; Self::BUFFER_SIZE]).unwrap();
 
         let path = path.to_string();
         let reader = thread::spawn(move || {
@@ -286,7 +348,7 @@ impl TrainingData {
                 loop {
                     match file.read_exact(&mut buf) {
                         Ok(()) => {
-                            positions_consumed += TrainingPosition::BUFFER_COUNT as u64;
+                            positions_consumed += BUFFER_COUNT as u64;
                             if full_tx.send((buf, positions_consumed)).is_err() {
                                 return;
                             }
@@ -306,9 +368,10 @@ impl TrainingData {
             file_positions,
             full_rx,
             empty_tx,
-            current_buf: vec![0u8; TrainingPosition::BUFFER_SIZE],
+            current_buf: vec![0u8; Self::BUFFER_SIZE],
             positions_consumed: 0,
             _reader: reader,
+            _record: PhantomData,
         }
     }
 
@@ -325,13 +388,13 @@ impl TrainingData {
     /// # Panics
     ///
     /// Panics on unexpected I/O errors reading the data file.
-    pub fn next_buffer(&mut self) -> &[TrainingPosition; TrainingPosition::BUFFER_COUNT] {
+    pub fn next_buffer(&mut self) -> &[T] {
         let (new_buf, consumed) = self.full_rx.recv().expect("Reader thread died");
         // Return the processed buffer to the reader to be refilled, take the new one.
         let old_buf = mem::replace(&mut self.current_buf, new_buf);
         let _ = self.empty_tx.send(old_buf);
         self.positions_consumed = consumed;
-        TrainingPosition::read_buffer(&self.current_buf)
+        bytemuck::cast_slice(&self.current_buf)
     }
 }
 
@@ -384,5 +447,26 @@ mod tests {
         let state_after = State::from(&training_position);
 
         assert_eq!(state_before, state_after);
+    }
+
+    #[test]
+    fn test_value_position_matches_training_position() {
+        let (state_before, mut training_position) =
+            training_position_for(KIWIPETE_NO_CASTLING_STMB);
+        training_position.set_result(-1);
+
+        let value = training_position.value();
+
+        assert_eq!(state_before, State::from(&value));
+        assert_eq!(value.stm(), Color::BLACK);
+        assert_eq!(value.stm_relative_result(), 1);
+        assert_eq!(
+            value.evaluation(),
+            training_position.evaluation as f32 / SCALE
+        );
+        assert_eq!(
+            &bytemuck::bytes_of(&value)[..30],
+            &bytemuck::bytes_of(&training_position)[..30]
+        );
     }
 }

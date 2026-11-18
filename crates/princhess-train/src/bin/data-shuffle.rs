@@ -1,6 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::fs::{self, File};
-use std::io::{self, BufRead, BufReader, BufWriter, ErrorKind, Read, Write};
+use std::io::{self, BufReader, BufWriter, ErrorKind, Read, Write};
+use std::mem;
 use std::path::{Path, PathBuf};
 use std::process;
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
@@ -16,14 +17,41 @@ use ratatui::widgets::{Block, Borders, Gauge, Paragraph};
 use ratatui::Frame;
 use toml::{Table, Value};
 
+use bytemuck::Pod;
 use princhess::math::Rng;
 use princhess_train::args::Args;
-use princhess_train::data::TrainingPosition;
+use princhess_train::data::{self, TrainingPosition, ValuePosition, BUFFER_COUNT};
 use princhess_train::tui;
+
+const IO_BUFFER_SIZE: usize = 4 << 20;
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Format {
+    Full,
+    Value,
+}
+
+impl Format {
+    fn of(path: &Path) -> Self {
+        if data::is_value_file(path) {
+            Format::Value
+        } else {
+            Format::Full
+        }
+    }
+
+    fn record_size(self) -> usize {
+        match self {
+            Format::Full => TrainingPosition::SIZE,
+            Format::Value => ValuePosition::SIZE,
+        }
+    }
+}
 
 #[derive(Clone)]
 struct FileInfo {
     path: PathBuf,
+    format: Format,
     is_shuffled: bool,
     position_count: usize,
     source_toml: Option<Arc<Table>>,
@@ -31,26 +59,24 @@ struct FileInfo {
 
 impl FileInfo {
     fn new(path: PathBuf) -> io::Result<Self> {
-        let is_shuffled = path
-            .to_str()
-            .map(|s| s.contains(".shuffled"))
-            .unwrap_or(false);
+        let format = Format::of(&path);
+        let is_shuffled = data::is_shuffled_file(&path);
 
         let metadata = fs::metadata(&path)?;
         let file_size = metadata.len() as usize;
 
-        if !file_size.is_multiple_of(TrainingPosition::SIZE) {
+        if !file_size.is_multiple_of(format.record_size()) {
             return Err(io::Error::new(
                 ErrorKind::InvalidData,
                 format!(
                     "File size {} is not a multiple of position size {}",
                     file_size,
-                    TrainingPosition::SIZE
+                    format.record_size()
                 ),
             ));
         }
 
-        let position_count = file_size / TrainingPosition::SIZE;
+        let position_count = file_size / format.record_size();
 
         if position_count == 0 {
             return Err(io::Error::new(
@@ -59,19 +85,19 @@ impl FileInfo {
             ));
         }
 
-        if !position_count.is_multiple_of(TrainingPosition::BUFFER_COUNT) {
+        if !position_count.is_multiple_of(BUFFER_COUNT) {
             return Err(io::Error::new(
                 ErrorKind::InvalidData,
                 format!(
                     "Position count {} is not a multiple of buffer count {}",
-                    position_count,
-                    TrainingPosition::BUFFER_COUNT
+                    position_count, BUFFER_COUNT
                 ),
             ));
         }
 
         Ok(Self {
             path,
+            format,
             is_shuffled,
             position_count,
             source_toml: None,
@@ -235,44 +261,73 @@ impl ProgressState {
 }
 
 fn shuffle_file(
+    input: &FileInfo,
+    output_path: &Path,
+    output_format: Format,
+    rng: &mut Rng,
+    progress: &ProgressState,
+) -> io::Result<()> {
+    match (input.format, output_format) {
+        (Format::Full, Format::Full) => shuffle_records(
+            &input.path,
+            output_path,
+            rng,
+            progress,
+            |p: &TrainingPosition| *p,
+        ),
+        (Format::Full, Format::Value) => shuffle_records(
+            &input.path,
+            output_path,
+            rng,
+            progress,
+            TrainingPosition::value,
+        ),
+        (Format::Value, Format::Value) => shuffle_records(
+            &input.path,
+            output_path,
+            rng,
+            progress,
+            |p: &ValuePosition| *p,
+        ),
+        (Format::Value, Format::Full) => unreachable!("policy output refuses value inputs"),
+    }
+}
+
+fn shuffled_path(file: &FileInfo, output_format: Format) -> PathBuf {
+    let ext = file
+        .path
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("data");
+    let converted = if file.format == output_format {
+        ""
+    } else {
+        ".value"
+    };
+    file.path
+        .with_extension(format!("{ext}{converted}.shuffled"))
+}
+
+fn shuffle_records<I: Pod, O: Pod>(
     input_path: &Path,
     output_path: &Path,
     rng: &mut Rng,
     progress: &ProgressState,
+    convert: impl Fn(&I) -> O,
 ) -> io::Result<()> {
     // Phase 1: Load
-    let file = File::open(input_path)?;
+    let mut file = File::open(input_path)?;
     let file_size = file.metadata()?.len() as usize;
-    let total_positions = file_size / TrainingPosition::SIZE;
-    let mut positions = Vec::with_capacity(total_positions);
-    let mut buffer = BufReader::with_capacity(TrainingPosition::BUFFER_SIZE, file);
+    let total_positions = file_size / mem::size_of::<I>();
+    let mut positions: Vec<O> = Vec::with_capacity(total_positions);
+    let mut buffer = vec![0u8; BUFFER_COUNT * mem::size_of::<I>()];
 
-    let mut loaded = 0;
-    while let Ok(bytes) = buffer.fill_buf() {
-        if bytes.is_empty() {
-            break;
-        }
+    while positions.len() < total_positions {
+        file.read_exact(&mut buffer)?;
+        positions.extend(bytemuck::cast_slice::<u8, I>(&buffer).iter().map(&convert));
 
-        if bytes.len() != TrainingPosition::BUFFER_SIZE {
-            return Err(io::Error::new(
-                ErrorKind::UnexpectedEof,
-                format!(
-                    "Expected {} bytes, got {}",
-                    TrainingPosition::BUFFER_SIZE,
-                    bytes.len()
-                ),
-            ));
-        }
-
-        let data = TrainingPosition::read_buffer(bytes);
-        loaded += data.len();
-        positions.extend_from_slice(data);
-
-        let pct = ((loaded as f64 / total_positions as f64) * 100.0) as usize;
+        let pct = ((positions.len() as f64 / total_positions as f64) * 100.0) as usize;
         progress.shuffle_load_progress.store(pct, Ordering::Relaxed);
-
-        let consumed = bytes.len();
-        buffer.consume(consumed);
     }
 
     progress.shuffle_load_progress.store(100, Ordering::Relaxed);
@@ -298,8 +353,8 @@ fn shuffle_file(
     let mut writer = BufWriter::new(File::create(output_path)?);
 
     let mut written = 0usize;
-    for chunk in positions.chunks(TrainingPosition::BUFFER_COUNT) {
-        TrainingPosition::write_buffer(&mut writer, chunk)?;
+    for chunk in positions.chunks(BUFFER_COUNT) {
+        writer.write_all(bytemuck::cast_slice(chunk))?;
         written += chunk.len();
         let pct = ((written as f64 / total_positions as f64) * 100.0) as usize;
         progress
@@ -318,22 +373,36 @@ fn shuffle_file(
 fn interleave_files(
     input_paths: &[PathBuf],
     output_path: &Path,
+    output_format: Format,
     rng: &mut Rng,
     progress: &ProgressState,
 ) -> io::Result<()> {
+    if let [path] = input_paths {
+        if Format::of(path) != output_format {
+            return convert_file(path, output_path, progress);
+        }
+    }
+
     let mut inputs = Vec::new();
     let mut total = 0;
 
     for path in input_paths {
+        let format = Format::of(path);
         let file = File::open(path)?;
-        let count = file.metadata()?.len() as usize / TrainingPosition::SIZE;
-        inputs.push((count, BufReader::new(file)));
+        let count = file.metadata()?.len() as usize / format.record_size();
+        inputs.push((
+            count,
+            format,
+            BufReader::with_capacity(IO_BUFFER_SIZE, file),
+        ));
         total += count;
     }
 
+    let mut record = [0; TrainingPosition::SIZE];
+
     let mut remaining = total;
     let mut written = 0;
-    let mut writer = BufWriter::new(File::create(output_path)?);
+    let mut writer = BufWriter::with_capacity(IO_BUFFER_SIZE, File::create(output_path)?);
 
     while remaining > 0 {
         let mut choice = rng.next_usize() % remaining;
@@ -343,10 +412,16 @@ fn interleave_files(
             idx += 1;
         }
 
-        let (count, reader) = &mut inputs[idx];
-        let mut value = [0; TrainingPosition::SIZE];
-        reader.read_exact(&mut value)?;
-        writer.write_all(&value)?;
+        let (count, format, reader) = &mut inputs[idx];
+        let record = &mut record[..format.record_size()];
+        reader.read_exact(record)?;
+
+        if *format == output_format {
+            writer.write_all(record)?;
+        } else {
+            let position: TrainingPosition = bytemuck::pod_read_unaligned(record);
+            writer.write_all(bytemuck::bytes_of(&position.value()))?;
+        }
 
         written += 1;
         remaining -= 1;
@@ -363,12 +438,42 @@ fn interleave_files(
         }
     }
 
+    writer.flush()?;
+
     progress
         .interleave_positions_done
         .store(total as u64, Ordering::Relaxed);
 
     Ok(())
 }
+
+fn convert_file(input_path: &Path, output_path: &Path, progress: &ProgressState) -> io::Result<()> {
+    let mut reader = File::open(input_path)?;
+    let total = reader.metadata()?.len() as usize / TrainingPosition::SIZE;
+    let mut writer = File::create(output_path)?;
+
+    let mut buffer = vec![0u8; TrainingPosition::BUFFER_SIZE];
+    let mut values = Vec::with_capacity(BUFFER_COUNT);
+
+    for done in (BUFFER_COUNT..=total).step_by(BUFFER_COUNT) {
+        reader.read_exact(&mut buffer)?;
+
+        values.clear();
+        values.extend(
+            TrainingPosition::read_buffer(&buffer)
+                .iter()
+                .map(TrainingPosition::value),
+        );
+        writer.write_all(bytemuck::cast_slice(&values))?;
+
+        progress
+            .interleave_positions_done
+            .store(done as u64, Ordering::Relaxed);
+    }
+
+    Ok(())
+}
+
 fn render_tui(frame: &mut Frame, files: &[FileInfo], progress: &ProgressState) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
@@ -670,12 +775,26 @@ fn main() {
 
     let cleanup = args.has("--cleanup");
     let force = args.has("--force");
+    let output = args
+        .flag::<String>("-o", "--output")
+        .unwrap_or_else(|| "policy".into());
     let input_files: Vec<PathBuf> = args.positional().iter().map(PathBuf::from).collect();
 
+    let output_format = match output.as_str() {
+        "policy" => Format::Full,
+        "value" => Format::Value,
+        _ => {
+            eprintln!("ERROR: --output must be policy or value, got {output}");
+            process::exit(1);
+        }
+    };
+
     if input_files.is_empty() {
-        eprintln!("Usage: data-shuffle <files...> [--cleanup] [--force]");
+        eprintln!("Usage: data-shuffle <files...> [--output policy|value] [--cleanup] [--force]");
         eprintln!();
         eprintln!("Options:");
+        eprintln!("  --output   policy (default): full records, for every net");
+        eprintln!("             value: value-only records, converting full inputs");
         eprintln!("  --cleanup  Delete input files after successful shuffle");
         eprintln!("  --force    Required with --cleanup if any file >= 150M positions");
         process::exit(1);
@@ -703,6 +822,28 @@ fn main() {
             info
         })
         .collect();
+
+    if output_format == Format::Full {
+        if let Some(file) = files.iter().find(|f| f.format == Format::Value) {
+            eprintln!(
+                "ERROR: {} is value-only, it can't go into policy output",
+                file.path.display()
+            );
+            process::exit(1);
+        }
+    }
+
+    for file in files.iter().filter(|f| !f.is_shuffled) {
+        let output_path = shuffled_path(file, output_format);
+        if files.iter().any(|f| f.path == output_path) {
+            eprintln!(
+                "ERROR: shuffling {} would overwrite input {}",
+                file.path.display(),
+                output_path.display()
+            );
+            process::exit(1);
+        }
+    }
 
     const SHUFFLE_LIMIT: usize = 25_000_000;
     const CLEANUP_SAFETY_THRESHOLD: usize = 150_000_000;
@@ -779,14 +920,10 @@ fn main() {
                 progress.shuffle_current_file.store(idx, Ordering::Relaxed);
                 progress.reset_shuffle_phase_progress();
 
-                let mut output_path = file.path.clone();
-                let current_ext = output_path
-                    .extension()
-                    .and_then(|e| e.to_str())
-                    .unwrap_or("data");
-                output_path.set_extension(format!("{}.shuffled", current_ext));
+                let output_path = shuffled_path(file, output_format);
 
-                if let Err(e) = shuffle_file(&file.path, &output_path, &mut rng, &progress) {
+                if let Err(e) = shuffle_file(file, &output_path, output_format, &mut rng, &progress)
+                {
                     eprintln!("Error shuffling {}: {}", file.path.display(), e);
                     progress.stop_signal.store(true, Ordering::Relaxed);
                     return;
@@ -806,15 +943,38 @@ fn main() {
 
         // Phase 2: Interleave all files
         if !progress.stop_signal.load(Ordering::Relaxed) {
-            let timestamp = Utc::now().format("%Y%m%d-%H%M").to_string();
-            let output_filename = format!(
-                "data/princhess-{}-{}m.data.shuffled",
-                timestamp,
-                total_positions / 1_000_000
-            );
-            let output_path = PathBuf::from(&output_filename);
+            let output_ext = match output_format {
+                Format::Full => "data",
+                Format::Value => "value",
+            };
+            // A converted run keeps its name; its toml can't reuse the run's own
+            let (stem, toml_ext) = match files.as_slice() {
+                [file] if file.format != output_format => {
+                    let name = file.path.file_name().unwrap().to_string_lossy();
+                    let stem = name.split('.').next().unwrap().to_string();
+                    (stem, format!("{output_ext}.toml"))
+                }
+                _ => {
+                    let timestamp = Utc::now().format("%Y%m%d-%H%M");
+                    let stem = format!("princhess-{timestamp}-{}m", total_positions / 1_000_000);
+                    (stem, "toml".to_string())
+                }
+            };
+            let output_path = PathBuf::from(format!("data/{stem}.{output_ext}.shuffled"));
 
-            if let Err(e) = interleave_files(&shuffled_paths, &output_path, &mut rng, &progress) {
+            if output_path.exists() {
+                eprintln!("ERROR: {} already exists", output_path.display());
+                progress.stop_signal.store(true, Ordering::Relaxed);
+                return;
+            }
+
+            if let Err(e) = interleave_files(
+                &shuffled_paths,
+                &output_path,
+                output_format,
+                &mut rng,
+                &progress,
+            ) {
                 eprintln!("Error interleaving files: {}", e);
                 progress.stop_signal.store(true, Ordering::Relaxed);
                 return;
@@ -822,11 +982,7 @@ fn main() {
 
             progress.interleave_complete.store(true, Ordering::Relaxed);
 
-            let toml_path = PathBuf::from(format!(
-                "data/princhess-{}-{}m.toml",
-                timestamp,
-                total_positions / 1_000_000
-            ));
+            let toml_path = PathBuf::from(format!("data/{stem}.{toml_ext}"));
             write_shuffle_toml(&toml_path, &output_path, &files);
 
             // Cleanup temp shuffled files after interleaving if requested
