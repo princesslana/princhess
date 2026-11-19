@@ -218,10 +218,6 @@ impl Engine {
         } else {
             None
         };
-        let best_rank = tablebase_root
-            .as_ref()
-            .and_then(|ranked| ranked.iter().map(|&(_, rank)| rank).max());
-
         let searchable_moves: ArrayVec<bool, 256> = self
             .mcts
             .root_edges()
@@ -231,20 +227,15 @@ impl Engine {
                 let mv = *edge.get_move();
                 let is_searchmove =
                     searchmoves.is_empty() || searchmoves.contains(&uci_mv.as_str());
-                let preserves_result = tablebase_root.as_ref().is_none_or(|ranked| {
-                    ranked
-                        .iter()
-                        .any(|&(m, rank)| m == mv && Some(rank) == best_rank)
-                });
+                let preserves_result = tablebase_root
+                    .as_ref()
+                    .is_none_or(|tb| tb.moves.contains(&mv));
 
                 is_searchmove && preserves_result
             })
             .collect();
 
-        let tablebase_score = best_rank.map(|rank| match rank {
-            900.. | ..=-900 => i64::from(rank) * KNOWN_WIN / 1000,
-            _ => 0,
-        });
+        let tablebase_score = tablebase_root.map(|tb| tb.score);
 
         self.mcts.set_root_filter(searchable_moves, tablebase_score);
 

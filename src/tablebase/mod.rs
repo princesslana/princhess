@@ -1,21 +1,39 @@
-#![allow(
-    dead_code,
-    non_camel_case_types,
-    non_snake_case,
-    non_upper_case_globals,
-    clippy::all,
-    clippy::pedantic
-)]
-
 #[cfg(feature = "fathom")]
-mod bindings;
+mod fathom;
+mod probe;
+
+// Without Fathom no tables load, so `max_pieces` is 0 and no probe reaches a table read.
+#[cfg(not(feature = "fathom"))]
+mod fathom {
+    use crate::chess::Board;
+    use crate::tablebase::Outcome;
+
+    #[allow(dead_code)]
+    pub enum DtzEntry {
+        Value(i32),
+        OtherSide,
+    }
+
+    pub fn init(_paths: &str) -> bool {
+        false
+    }
+
+    pub fn max_pieces() -> usize {
+        0
+    }
+
+    pub fn probe_wdl_table(_b: &Board) -> Option<Outcome> {
+        None
+    }
+
+    pub fn probe_dtz_table(_b: &Board, _outcome: Outcome) -> Option<DtzEntry> {
+        None
+    }
+}
+
+use std::ops::Neg;
 
 use crate::chess::{Board, Move};
-#[cfg(feature = "fathom")]
-use crate::chess::{Color, Piece, Square};
-
-#[cfg(feature = "fathom")]
-use std::ffi::CString;
 
 pub enum Wdl {
     Win,
@@ -23,150 +41,63 @@ pub enum Wdl {
     Loss,
 }
 
-#[cfg(feature = "fathom")]
-fn max_pieces() -> usize {
-    unsafe { bindings::TB_LARGEST as usize }
+pub struct RootProbe {
+    /// The legal moves that keep the best result available.
+    pub moves: Vec<Move>,
+    pub score: i64,
 }
 
-#[cfg(not(feature = "fathom"))]
-fn max_pieces() -> usize {
-    0
+/// A position's result from the side to move. Cursed wins and blessed losses are wins and
+/// losses that the 50-move rule turns into draws.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+enum Outcome {
+    Loss,
+    BlessedLoss,
+    Draw,
+    CursedWin,
+    Win,
 }
 
-#[cfg(feature = "fathom")]
-pub fn set_tablebase_directory(paths: &str) -> Result<(), ()> {
-    let c_paths = CString::new(paths).unwrap();
+impl Neg for Outcome {
+    type Output = Self;
 
-    unsafe {
-        if bindings::tb_init(c_paths.as_ptr()) {
-            Ok(())
-        } else {
-            Err(())
+    fn neg(self) -> Self {
+        match self {
+            Self::Loss => Self::Win,
+            Self::BlessedLoss => Self::CursedWin,
+            Self::Draw => Self::Draw,
+            Self::CursedWin => Self::BlessedLoss,
+            Self::Win => Self::Loss,
         }
     }
 }
 
-#[cfg(not(feature = "fathom"))]
-pub fn set_tablebase_directory(_paths: &str) -> Result<(), ()> {
-    Err(())
+pub fn set_tablebase_directory(paths: &str) -> bool {
+    fathom::init(paths)
 }
 
-// Fathom uses 0 for no en passant square, which is safe as a1 can never be one
-#[cfg(feature = "fathom")]
-fn ep_square(b: &Board) -> u32 {
-    match b.ep_square() {
-        Square::NONE => 0,
-        sq => sq.index() as u32,
-    }
-}
-
-#[cfg(feature = "fathom")]
+/// Ignores the 50-move rule: cursed wins and blessed losses are draws.
 pub fn probe_wdl(b: &Board) -> Option<Wdl> {
-    if b.occupied().count() > max_pieces() {
+    if !is_probeable(b) {
         return None;
     }
 
-    if b.is_castling_rights() {
-        return None;
-    }
-
-    unsafe {
-        let wdl = bindings::tb_probe_wdl(
-            b.white().0,
-            b.black().0,
-            b.kings().0,
-            b.queens().0,
-            b.rooks().0,
-            b.bishops().0,
-            b.knights().0,
-            b.pawns().0,
-            0,
-            0,
-            ep_square(b),
-            b.side_to_move() == Color::WHITE,
-        );
-
-        match wdl {
-            bindings::TB_WIN => Some(Wdl::Win),
-            bindings::TB_LOSS => Some(Wdl::Loss),
-            bindings::TB_DRAW | bindings::TB_CURSED_WIN | bindings::TB_BLESSED_LOSS => {
-                Some(Wdl::Draw)
-            }
-            _ => None,
-        }
+    match probe::probe_wdl(b)? {
+        Outcome::Win => Some(Wdl::Win),
+        Outcome::CursedWin | Outcome::Draw | Outcome::BlessedLoss => Some(Wdl::Draw),
+        Outcome::Loss => Some(Wdl::Loss),
     }
 }
 
-#[cfg(not(feature = "fathom"))]
-pub fn probe_wdl(_b: &Board) -> Option<Wdl> {
-    None
-}
-
-#[cfg(feature = "fathom")]
-fn tb_move(b: &Board, mv: bindings::TbMove) -> Option<Move> {
-    let from = Square::from((mv >> 6) & 0x3F);
-    let to = Square::from(mv & 0x3F);
-    let promotion = u32::from((mv >> 12) & 0x7);
-
-    let promotion_role = match promotion {
-        bindings::TB_PROMOTES_QUEEN => Piece::QUEEN,
-        bindings::TB_PROMOTES_ROOK => Piece::ROOK,
-        bindings::TB_PROMOTES_BISHOP => Piece::BISHOP,
-        bindings::TB_PROMOTES_KNIGHT => Piece::KNIGHT,
-        _ => Piece::NONE,
-    };
-
-    b.legal_moves()
-        .into_iter()
-        .find(|m| m.from() == from && m.to() == to && m.promotion() == promotion_role)
-}
-
-#[cfg(feature = "fathom")]
-pub fn probe_root(b: &Board, has_repeated: bool) -> Option<Vec<(Move, i32)>> {
-    if b.occupied().count() > max_pieces() {
+/// `None` when the position is outside the tables or has no legal moves.
+pub fn probe_root(b: &Board, has_repeated: bool) -> Option<RootProbe> {
+    if !is_probeable(b) {
         return None;
     }
 
-    if b.is_castling_rights() {
-        return None;
-    }
-
-    // SAFETY: TbRootMoves is plain integers, for which all-zero bytes are valid.
-    let mut results = unsafe { Box::<bindings::TbRootMoves>::new_zeroed().assume_init() };
-
-    let success = unsafe {
-        bindings::tb_probe_root_dtz(
-            b.white().0,
-            b.black().0,
-            b.kings().0,
-            b.queens().0,
-            b.rooks().0,
-            b.bishops().0,
-            b.knights().0,
-            b.pawns().0,
-            u32::from(b.halfmove_clock()),
-            0,
-            ep_square(b),
-            b.side_to_move() == Color::WHITE,
-            has_repeated,
-            true,
-            &mut *results,
-        )
-    };
-
-    if success == 0 {
-        return None;
-    }
-
-    let moves = results.moves[..results.size as usize]
-        .iter()
-        .filter_map(|m| Some((tb_move(b, m.move_)?, m.tbRank)))
-        .collect();
-
-    Some(moves)
+    probe::probe_root(b, has_repeated)
 }
 
-#[cfg(not(feature = "fathom"))]
-pub fn probe_root(_b: &Board, _has_repeated: bool) -> Option<Vec<(Move, i32)>> {
-    None
+fn is_probeable(b: &Board) -> bool {
+    b.occupied().count() <= fathom::max_pieces() && !b.is_castling_rights()
 }
