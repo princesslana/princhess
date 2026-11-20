@@ -124,6 +124,11 @@ impl Material {
 
     /// From a table name such as `KRPvKR`, its first side as white.
     fn from_name(name: &str) -> Option<Self> {
+        // Longer names could overflow a count into the next piece's before the size check
+        if name.chars().filter(|&c| c != 'v').count() > MAX_PIECES {
+            return None;
+        }
+
         let (white, black) = name.split_once('v')?;
         let mut material = Self(0);
 
