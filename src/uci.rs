@@ -100,9 +100,10 @@ impl Uci {
             self.engine_options = EngineOptions::from(&self.options);
 
             if name.eq_ignore_ascii_case("syzygypath") {
-                match tablebase::set_tablebase_directory(&value) {
-                    Ok(()) => println!("info string Success initializing tablebase at {value}"),
-                    Err(()) => println!("info string Error initializing tablebase at {value}"),
+                if tablebase::set_tablebase_directory(&value) {
+                    println!("info string Success initializing tablebase at {value}");
+                } else {
+                    println!("info string Error initializing tablebase at {value}");
                 }
             }
 

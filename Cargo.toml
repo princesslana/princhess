@@ -47,7 +47,6 @@ value-net = []
 fathom = []
 
 [build-dependencies]
-bindgen = "=0.72.1"
 cc = "=1.4.3"
 
 [profile.release]
