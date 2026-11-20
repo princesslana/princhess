@@ -15,7 +15,7 @@ Princhess is a chess engine written in Rust. It implements a Monte Carlo Tree Se
 *   **Value Correction History:** Learns the value network's error during search and adjusts its evaluations accordingly.
 *   **Top Two Root Selection:** Uses the Top Two sampling rule for root move selection, based on [EB-TCε](https://arxiv.org/abs/2305.16041). Treats root move selection as a best arm identification problem, using transportation cost to identify the leader and challenger.
 *   **Phase-Aware Policy Networks:** Dynamically loads separate policy networks for middle-game and endgame phases.
-*   **Endgame Tablebase Integration:** Integrates with Fathom tablebases for endgame evaluation.
+*   **Endgame Tablebase Integration:** Probes Syzygy WDL and DTZ tablebases through its own Rust implementation of the table format.
 *   **Self-Play & Training Infrastructure:** The `princhess-train` crate provides tools for self-play data generation. The policy and value networks are trained on this self-play data and are designed to be small enough to run efficiently on the CPU.
 
 ## Development Status
@@ -33,8 +33,6 @@ git clone https://github.com/princesslana/princhess.git
 cd princhess
 cargo build --release
 ```
-
-The `build.rs` script compiles the vendored Fathom C library and generates Rust bindings.
 
 ### Pre-built Binaries
 
@@ -109,7 +107,7 @@ Princhess is licensed under the **GNU General Public License v3.0 (GPL-3.0)**. S
 
 The project's initial codebase was [Sashimi](https://github.com/zxqfl/sashimi), which is licensed under the [MIT License](LICENSE.sashimi).
 
-The Fathom tablebase library (`deps/fathom/`) is licensed under the [MIT License](LICENSE.fathom).
+The Syzygy tablebase reader (`src/tablebase/`) is ported from the [Fathom](https://github.com/jdart1/Fathom) library, which is licensed under the [MIT License](LICENSE.fathom).
 
 The neural network training components (`crates/princhess-train/src/neural/`) are based on the [Goober](https://github.com/jw1912/goober/) library by Jamie Whiting, which is licensed under the [MIT License](LICENSE.goober).
 

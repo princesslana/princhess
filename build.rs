@@ -4,10 +4,6 @@ use std::process::Command;
 
 fn main() {
     emit_fingerprint_vars();
-
-    if env::var("CARGO_FEATURE_FATHOM").is_ok() {
-        build_fathom();
-    }
 }
 
 fn emit_fingerprint_vars() {
@@ -55,24 +51,4 @@ fn net_md5(path: &Path) -> String {
                 .and_then(|s| s.split_whitespace().next().map(str::to_string))
         })
         .unwrap_or_else(|| "unknown".to_string())
-}
-
-fn build_fathom() {
-    let cc = &mut cc::Build::new();
-
-    cc.file("./deps/fathom/src/tbprobe.c");
-    cc.include("./deps/fathom/src");
-    cc.define("_CRT_SECURE_NO_WARNINGS", None);
-    cc.flag("-Wno-sign-compare");
-
-    let target_cpu = env::var("PRINCHESS_TARGET_CPU").unwrap_or("native".to_string());
-
-    cc.flag(format!("-march={target_cpu}"));
-
-    // MSVC doesn't support stdatomic.h, so use clang on Windows
-    if env::consts::OS == "windows" {
-        cc.compiler("clang");
-    }
-
-    cc.compile("fathom");
 }

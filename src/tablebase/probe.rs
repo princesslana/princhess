@@ -3,7 +3,7 @@ use std::ops::Neg;
 
 use crate::chess::{Board, Move, Piece};
 use crate::engine::KNOWN_WIN;
-use crate::tablebase::fathom::{self, DtzEntry};
+use crate::tablebase::tables::{self, DtzEntry};
 use crate::tablebase::{Outcome, RootProbe};
 
 /// Root rank of a win (or, negated, a loss) that holds whatever happens to the 50-move counter.
@@ -127,7 +127,7 @@ fn probe_ab(b: &Board, mut alpha: Outcome, beta: Outcome) -> Option<Outcome> {
         }
     }
 
-    Some(alpha.max(fathom::probe_wdl_table(b)?))
+    Some(alpha.max(tables::probe_wdl_table(b)?))
 }
 
 fn probe_wdl_full(b: &Board) -> Option<WdlProbe> {
@@ -161,7 +161,7 @@ fn probe_wdl_full(b: &Board) -> Option<WdlProbe> {
         }
     }
 
-    let table = fathom::probe_wdl_table(b)?;
+    let table = tables::probe_wdl_table(b)?;
 
     if let Some(ep) = best_ep.filter(|&ep| Some(ep) > best_capture) {
         if ep > table {
@@ -235,7 +235,7 @@ fn probe_dtz(b: &Board) -> Option<i32> {
 
     // The best move is not en passant, so the table's outcome (which ignores en passant) is
     // this position's, and its DTZ entry applies.
-    if let DtzEntry::Value(dtz) = fathom::probe_dtz_table(b, outcome)? {
+    if let DtzEntry::Value(dtz) = tables::probe_dtz_table(b, outcome)? {
         return Some(outcome.zeroing_dtz() + if winning { dtz } else { -dtz });
     }
 

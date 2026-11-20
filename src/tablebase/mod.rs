@@ -1,35 +1,9 @@
-#[cfg(feature = "fathom")]
-mod fathom;
+mod compression;
+mod encoding;
 mod probe;
-
-// Without Fathom no tables load, so `max_pieces` is 0 and no probe reaches a table read.
-#[cfg(not(feature = "fathom"))]
-mod fathom {
-    use crate::chess::Board;
-    use crate::tablebase::Outcome;
-
-    #[allow(dead_code)]
-    pub enum DtzEntry {
-        Value(i32),
-        OtherSide,
-    }
-
-    pub fn init(_paths: &str) -> bool {
-        false
-    }
-
-    pub fn max_pieces() -> usize {
-        0
-    }
-
-    pub fn probe_wdl_table(_b: &Board) -> Option<Outcome> {
-        None
-    }
-
-    pub fn probe_dtz_table(_b: &Board, _outcome: Outcome) -> Option<DtzEntry> {
-        None
-    }
-}
+mod reader;
+mod table;
+mod tables;
 
 use std::ops::Neg;
 
@@ -72,8 +46,10 @@ impl Neg for Outcome {
     }
 }
 
-pub fn set_tablebase_directory(paths: &str) -> bool {
-    fathom::init(paths)
+/// Loads the tables found in a path list, replacing any loaded before. Returns the number of
+/// tables found, or `None` for an empty path, which clears them.
+pub fn set_tablebase_directory(paths: &str) -> Option<usize> {
+    tables::init(paths)
 }
 
 /// Ignores the 50-move rule: cursed wins and blessed losses are draws.
@@ -99,5 +75,5 @@ pub fn probe_root(b: &Board, has_repeated: bool) -> Option<RootProbe> {
 }
 
 fn is_probeable(b: &Board) -> bool {
-    b.occupied().count() <= fathom::max_pieces() && !b.is_castling_rights()
+    b.occupied().count() <= tables::max_pieces() && !b.is_castling_rights()
 }
