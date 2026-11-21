@@ -27,13 +27,16 @@ const PIECE_LETTERS: [(char, Piece); 5] = [
     ('P', Piece::PAWN),
 ];
 
-/// The set in use: null, or a leaked `Tablebases`. A set is never freed, since a probe may
-/// still be reading it when a new path replaces it; that only happens when a UCI option is set.
+/// The set in use: null, or a `Tablebases` boxed by `init`, which frees it when replacing it.
 static TABLEBASES: AtomicPtr<Tablebases> = AtomicPtr::new(ptr::null_mut());
 
-/// Loads the tables found in a path list (`:`-separated, `;` on Windows), replacing any loaded
+/// Loads the tables found in a path list (`:`-separated, `;` on Windows), freeing any loaded
 /// before. Returns the number of tables found, or `None` for an empty path, which clears them.
-pub fn init(paths: &str) -> Option<usize> {
+///
+/// # Safety
+///
+/// No probe may be in progress, on any thread, and none may start until this returns.
+pub unsafe fn init(paths: &str) -> Option<usize> {
     let set = if matches!(paths, "" | "<empty>") {
         None
     } else {
@@ -45,7 +48,11 @@ pub fn init(paths: &str) -> Option<usize> {
         Some(set) if !set.entries.is_empty() => Box::into_raw(Box::new(set)),
         _ => ptr::null_mut(),
     };
-    TABLEBASES.store(set, Ordering::Release);
+    let old = TABLEBASES.swap(set, Ordering::AcqRel);
+    if !old.is_null() {
+        // SAFETY: `old` was boxed here, and the caller guarantees no probe can be reading it
+        drop(unsafe { Box::from_raw(old) });
+    }
 
     found
 }
@@ -78,7 +85,8 @@ pub fn probe_dtz_table(b: &Board, outcome: Outcome) -> Option<DtzEntry> {
 }
 
 fn loaded() -> Option<&'static Tablebases> {
-    // SAFETY: `TABLEBASES` only ever holds null or a leaked box, which is never freed.
+    // SAFETY: `TABLEBASES` holds null or a live box, which `init` only frees when no probe is
+    // in progress
     unsafe { TABLEBASES.load(Ordering::Acquire).as_ref() }
 }
 

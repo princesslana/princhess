@@ -3,6 +3,7 @@
 use std::fs::{File, OpenOptions};
 use std::io;
 use std::path::Path;
+use std::slice;
 
 use arrayvec::ArrayVec;
 use bytemuck::{Pod, Zeroable};
@@ -110,9 +111,12 @@ struct FileTable {
     dtz: Option<DtzValues>,
 }
 
+/// The sections' `'static` borrows really last as long as `_map`, which they never outlive:
+/// they stay private to the table, and the mapped region doesn't move when the table does.
 pub struct Table {
     has_pawns: bool,
     files: ArrayVec<FileTable, 4>,
+    _map: Mmap,
 }
 
 impl Table {
@@ -127,19 +131,17 @@ impl Table {
         #[cfg(unix)]
         let _ = map.advise(memmap2::Advice::Random);
 
-        // Tables are never unloaded (see `tables`), so a loaded table's sections borrow the
-        // mapping for good
-        let map = Box::into_raw(Box::new(map));
+        // SAFETY: The table returned owns `map`, so the borrow lasts as long as the table (see
+        // `Table`)
+        let data = unsafe { slice::from_raw_parts(map.as_ptr(), map.len()) };
 
-        // SAFETY: `map` is a live box until freed below
-        let result = read(unsafe { &*map }, kind, layout);
+        let (has_pawns, files) = read(data, kind, layout)?;
 
-        if result.is_err() {
-            // SAFETY: Reading failed, so nothing borrows the mapping
-            drop(unsafe { Box::from_raw(map) });
-        }
-
-        result
+        Ok(Self {
+            has_pawns,
+            files,
+            _map: map,
+        })
     }
 
     pub fn wdl(&self, b: &Board, view: View) -> Option<Outcome> {
@@ -248,8 +250,13 @@ fn open_for_random_access(path: &Path) -> io::Result<File> {
 }
 
 /// The file's sections in order: piece descriptors, pairs headers, DTZ value maps, then every
-/// sub-table's index table, every block size table and every data section.
-fn read(data: &'static [u8], kind: Kind, layout: &Layout) -> LoadResult<Table> {
+/// sub-table's index table, every block size table and every data section. Returns whether the
+/// table has pawns, and its file tables.
+fn read(
+    data: &'static [u8],
+    kind: Kind,
+    layout: &Layout,
+) -> LoadResult<(bool, ArrayVec<FileTable, 4>)> {
     let mut cursor = Cursor::new(data);
 
     let header: &FileHeader = cursor.take_pod()?;
@@ -341,10 +348,7 @@ fn read(data: &'static [u8], kind: Kind, layout: &Layout) -> LoadResult<Table> {
         })
         .collect();
 
-    Ok(Table {
-        has_pawns: layout.has_pawns(),
-        files,
-    })
+    Ok((layout.has_pawns(), files))
 }
 
 fn read_dtz_values(cursor: &mut Cursor, flags: &[u8]) -> LoadResult<Vec<DtzValues>> {
