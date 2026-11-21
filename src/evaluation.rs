@@ -2,7 +2,7 @@ use crate::chess::MoveList;
 use crate::engine::{KNOWN_WIN, MATE_SCORE};
 use crate::options::EvaluationOptions;
 use crate::state::State;
-use crate::tablebase::{self, Wdl};
+use crate::tablebase::{Tablebases, Wdl};
 
 /// Bitflag representation for position evaluation state.
 /// Bits 0-1: outcome (00=standard, 01=loss, 10=win, 11=draw)
@@ -78,7 +78,7 @@ pub fn policy(state: &State, moves: &MoveList, t: f32) -> Vec<f32> {
 }
 
 #[must_use]
-pub fn evaluate_state_flag(state: &State, is_legal_moves: bool) -> Flag {
+pub fn evaluate_state_flag(state: &State, is_legal_moves: bool, tablebases: &Tablebases) -> Flag {
     if !is_legal_moves {
         if state.is_check() {
             Flag::TERMINAL_LOSS
@@ -87,7 +87,7 @@ pub fn evaluate_state_flag(state: &State, is_legal_moves: bool) -> Flag {
         }
     } else if state.halfmove_clock() != 0 {
         Flag::STANDARD
-    } else if let Some(wdl) = tablebase::probe_wdl(state.board()) {
+    } else if let Some(wdl) = tablebases.probe_wdl(state.board()) {
         match wdl {
             Wdl::Win => Flag::TABLEBASE_WIN,
             Wdl::Loss => Flag::TABLEBASE_LOSS,

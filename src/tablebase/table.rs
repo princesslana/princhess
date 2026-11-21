@@ -3,7 +3,6 @@
 use std::fs::{File, OpenOptions};
 use std::io;
 use std::path::Path;
-use std::slice;
 
 use arrayvec::ArrayVec;
 use bytemuck::{Pod, Zeroable};
@@ -12,7 +11,7 @@ use memmap2::Mmap;
 use crate::chess::{Board, Color, Piece, Square};
 use crate::tablebase::compression::{Pairs, PairsHeader};
 use crate::tablebase::encoding::{self, Encoding, Layout, Squares};
-use crate::tablebase::reader::{Cursor, LoadError, LoadResult};
+use crate::tablebase::reader::{Cursor, LoadError, LoadResult, Span};
 use crate::tablebase::Outcome;
 
 /// Each sub-table's data starts on this boundary, and so does the trailer.
@@ -77,15 +76,15 @@ struct DtzValues {
     maps: Option<DtzMaps>,
 }
 
-/// Value maps for wins, losses, cursed wins and blessed losses. Wide maps hold little-endian
-/// `u16`s.
+/// Value maps for wins, losses, cursed wins and blessed losses. Narrow maps hold bytes, wide
+/// maps little-endian `u16`s.
 enum DtzMaps {
-    Narrow([&'static [u8]; 4]),
-    Wide([&'static [[u8; 2]]; 4]),
+    Narrow([Span; 4]),
+    Wide([Span; 4]),
 }
 
 impl DtzMaps {
-    fn get(&self, outcome: Outcome, raw: u16) -> Option<i32> {
+    fn get(&self, file: &[u8], outcome: Outcome, raw: u16) -> Option<i32> {
         let map = match outcome {
             Outcome::Win => 0,
             Outcome::Loss => 1,
@@ -96,8 +95,11 @@ impl DtzMaps {
         let raw = usize::from(raw);
 
         match self {
-            Self::Narrow(maps) => maps[map].get(raw).map(|&v| i32::from(v)),
+            Self::Narrow(maps) => maps[map].of(file)?.get(raw).map(|&v| i32::from(v)),
             Self::Wide(maps) => maps[map]
+                .of(file)?
+                .as_chunks::<2>()
+                .0
                 .get(raw)
                 .map(|&v| i32::from(u16::from_le_bytes(v))),
         }
@@ -111,12 +113,11 @@ struct FileTable {
     dtz: Option<DtzValues>,
 }
 
-/// The sections' `'static` borrows really last as long as `_map`, which they never outlive:
-/// they stay private to the table, and the mapped region doesn't move when the table does.
+/// The parsed structures locate their sections in `map` by `Span`.
 pub struct Table {
     has_pawns: bool,
     files: ArrayVec<FileTable, 4>,
-    _map: Mmap,
+    map: Mmap,
 }
 
 impl Table {
@@ -131,16 +132,12 @@ impl Table {
         #[cfg(unix)]
         let _ = map.advise(memmap2::Advice::Random);
 
-        // SAFETY: The table returned owns `map`, so the borrow lasts as long as the table (see
-        // `Table`)
-        let data = unsafe { slice::from_raw_parts(map.as_ptr(), map.len()) };
-
-        let (has_pawns, files) = read(data, kind, layout)?;
+        let (has_pawns, files) = read(&map, kind, layout)?;
 
         Ok(Self {
             has_pawns,
             files,
-            _map: map,
+            map,
         })
     }
 
@@ -171,7 +168,7 @@ impl Table {
 
         let raw = self.value(b, view, &file.sides[0])?;
         let v = match &values.maps {
-            Some(maps) => maps.get(outcome, raw)?,
+            Some(maps) => maps.get(&self.map, outcome, raw)?,
             None => i32::from(raw),
         };
 
@@ -186,7 +183,7 @@ impl Table {
 
     fn value(&self, b: &Board, view: View, sub: &SubTable) -> Option<u16> {
         let idx = sub.encoding.index(self.squares(b, view, &sub.encoding)?)?;
-        sub.pairs.value(idx)
+        sub.pairs.value(&self.map, idx)
     }
 
     /// Pawn tables have a sub-table per file of the leading pawn. Its piece comes first in every
@@ -252,11 +249,7 @@ fn open_for_random_access(path: &Path) -> io::Result<File> {
 /// The file's sections in order: piece descriptors, pairs headers, DTZ value maps, then every
 /// sub-table's index table, every block size table and every data section. Returns whether the
 /// table has pawns, and its file tables.
-fn read(
-    data: &'static [u8],
-    kind: Kind,
-    layout: &Layout,
-) -> LoadResult<(bool, ArrayVec<FileTable, 4>)> {
+fn read(data: &[u8], kind: Kind, layout: &Layout) -> LoadResult<(bool, ArrayVec<FileTable, 4>)> {
     let mut cursor = Cursor::new(data);
 
     let header: &FileHeader = cursor.take_pod()?;
@@ -359,13 +352,13 @@ fn read_dtz_values(cursor: &mut Cursor, flags: &[u8]) -> LoadResult<Vec<DtzValue
                 (false, _) => None,
                 (true, false) => Some(DtzMaps::Narrow(read_maps(cursor, |c| {
                     let [len] = c.take_array::<1>()?;
-                    c.take(usize::from(len))
+                    c.take_span(usize::from(len))
                 })?)),
                 (true, true) => {
                     cursor.align(2)?;
                     Some(DtzMaps::Wide(read_maps(cursor, |c| {
                         let len = u16::from_le_bytes(c.take_array::<2>()?);
-                        Ok(c.take(2 * usize::from(len))?.as_chunks::<2>().0)
+                        c.take_span(2 * usize::from(len))
                     })?))
                 }
             };
@@ -380,11 +373,11 @@ fn read_dtz_values(cursor: &mut Cursor, flags: &[u8]) -> LoadResult<Vec<DtzValue
         .collect()
 }
 
-fn read_maps<T: 'static>(
+fn read_maps(
     cursor: &mut Cursor,
-    mut read: impl FnMut(&mut Cursor) -> LoadResult<&'static [T]>,
-) -> LoadResult<[&'static [T]; 4]> {
-    let mut maps: [&[T]; 4] = [&[]; 4];
+    mut read: impl FnMut(&mut Cursor) -> LoadResult<Span>,
+) -> LoadResult<[Span; 4]> {
+    let mut maps = [Span::EMPTY; 4];
     for map in &mut maps {
         *map = read(cursor)?;
     }

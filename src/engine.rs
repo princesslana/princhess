@@ -1,6 +1,7 @@
 use std::f32::consts::FRAC_PI_2;
 use std::process;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 
 use arrayvec::ArrayVec;
 use fastapprox::faster;
@@ -14,7 +15,7 @@ use crate::math::Rng;
 use crate::mcts::{self, Mcts};
 use crate::options::{EngineOptions, MctsOptions};
 use crate::state::State;
-use crate::tablebase;
+use crate::tablebase::Tablebases;
 use crate::threadpool::{Scope, ThreadPool};
 use crate::time_management::TimeManagement;
 use crate::transposition_table::{LRAllocator, LRTable};
@@ -147,19 +148,21 @@ impl<'a> ThreadData<'a> {
 pub struct Engine {
     mcts: Mcts,
     engine_options: EngineOptions,
+    tablebases: Arc<Tablebases>,
     ttable: LRTable,
     correction: CorrectionTable,
     threads: ThreadPool,
 }
 
 impl Engine {
-    pub fn new(state: State, engine_options: EngineOptions) -> Self {
+    pub fn new(state: State, engine_options: EngineOptions, tablebases: Arc<Tablebases>) -> Self {
         let ttable = LRTable::empty(engine_options.hash_size_mb);
-        let mcts = Mcts::new(state, &ttable, engine_options);
+        let mcts = Mcts::new(state, &ttable, engine_options, Arc::clone(&tablebases));
         let threads = ThreadPool::new(engine_options.threads as usize);
         Self {
             mcts,
             engine_options,
+            tablebases,
             ttable,
             correction: CorrectionTable::new(),
             threads,
@@ -167,7 +170,12 @@ impl Engine {
     }
 
     pub fn set_root_state(&mut self, state: State) {
-        self.mcts = Mcts::new(state, &self.ttable, self.engine_options);
+        self.mcts = Mcts::new(
+            state,
+            &self.ttable,
+            self.engine_options,
+            Arc::clone(&self.tablebases),
+        );
     }
 
     pub fn set_mcts_options(&mut self, mcts_options: MctsOptions) {
@@ -214,7 +222,8 @@ impl Engine {
 
         let root_state = self.mcts.root_state();
         let tablebase_root = if searchmoves.is_empty() {
-            tablebase::probe_root(root_state.board(), root_state.has_repeated())
+            self.tablebases
+                .probe_root(root_state.board(), root_state.has_repeated())
         } else {
             None
         };

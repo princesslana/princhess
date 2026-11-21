@@ -9,6 +9,8 @@ use std::ops::Neg;
 
 use crate::chess::{Board, Move};
 
+pub use crate::tablebase::tables::Tablebases;
+
 pub enum Wdl {
     Win,
     Draw,
@@ -24,7 +26,7 @@ pub struct RootProbe {
 /// A position's result from the side to move. Cursed wins and blessed losses are wins and
 /// losses that the 50-move rule turns into draws.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-enum Outcome {
+pub enum Outcome {
     Loss,
     BlessedLoss,
     Draw,
@@ -46,39 +48,30 @@ impl Neg for Outcome {
     }
 }
 
-/// Loads the tables found in a path list, freeing any loaded before. Returns the number of
-/// tables found, or `None` for an empty path, which clears them.
-///
-/// # Safety
-///
-/// No probe may be in progress, on any thread, and none may start until this returns.
-pub unsafe fn set_tablebase_directory(paths: &str) -> Option<usize> {
-    // SAFETY: Passed on to our caller
-    unsafe { tables::init(paths) }
-}
+impl Tablebases {
+    /// Ignores the 50-move rule: cursed wins and blessed losses are draws.
+    pub fn probe_wdl(&self, b: &Board) -> Option<Wdl> {
+        if !self.is_probeable(b) {
+            return None;
+        }
 
-/// Ignores the 50-move rule: cursed wins and blessed losses are draws.
-pub fn probe_wdl(b: &Board) -> Option<Wdl> {
-    if !is_probeable(b) {
-        return None;
+        match self.probe_outcome(b)? {
+            Outcome::Win => Some(Wdl::Win),
+            Outcome::CursedWin | Outcome::Draw | Outcome::BlessedLoss => Some(Wdl::Draw),
+            Outcome::Loss => Some(Wdl::Loss),
+        }
     }
 
-    match probe::probe_wdl(b)? {
-        Outcome::Win => Some(Wdl::Win),
-        Outcome::CursedWin | Outcome::Draw | Outcome::BlessedLoss => Some(Wdl::Draw),
-        Outcome::Loss => Some(Wdl::Loss),
-    }
-}
+    /// `None` when the position is outside the tables or has no legal moves.
+    pub fn probe_root(&self, b: &Board, has_repeated: bool) -> Option<RootProbe> {
+        if !self.is_probeable(b) {
+            return None;
+        }
 
-/// `None` when the position is outside the tables or has no legal moves.
-pub fn probe_root(b: &Board, has_repeated: bool) -> Option<RootProbe> {
-    if !is_probeable(b) {
-        return None;
+        self.rank_root(b, has_repeated)
     }
 
-    probe::probe_root(b, has_repeated)
-}
-
-fn is_probeable(b: &Board) -> bool {
-    b.occupied().count() <= tables::max_pieces() && !b.is_castling_rights()
+    fn is_probeable(&self, b: &Board) -> bool {
+        b.occupied().count() <= self.max_pieces() && !b.is_castling_rights()
+    }
 }

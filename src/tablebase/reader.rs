@@ -1,4 +1,4 @@
-//! A bounds-checked cursor over a mapped table file.
+//! A bounds-checked cursor over a mapped table file, and spans of it for reading later.
 
 use std::fmt::{self, Display, Formatter};
 use std::io;
@@ -33,13 +33,28 @@ impl From<io::Error> for LoadError {
 
 pub type LoadResult<T> = Result<T, LoadError>;
 
-pub struct Cursor {
-    data: &'static [u8],
+/// A section of a file, kept as offsets so a table can read it from the map it owns.
+#[derive(Clone, Copy)]
+pub struct Span {
+    start: usize,
+    end: usize,
+}
+
+impl Span {
+    pub const EMPTY: Self = Self { start: 0, end: 0 };
+
+    pub fn of(self, data: &[u8]) -> Option<&[u8]> {
+        data.get(self.start..self.end)
+    }
+}
+
+pub struct Cursor<'a> {
+    data: &'a [u8],
     pos: usize,
 }
 
-impl Cursor {
-    pub fn new(data: &'static [u8]) -> Self {
+impl<'a> Cursor<'a> {
+    pub fn new(data: &'a [u8]) -> Self {
         Self { data, pos: 0 }
     }
 
@@ -51,13 +66,30 @@ impl Cursor {
         self.data.get(self.pos).copied().ok_or(LoadError::Truncated)
     }
 
-    pub fn take(&mut self, len: usize) -> LoadResult<&'static [u8]> {
+    pub fn take(&mut self, len: usize) -> LoadResult<&'a [u8]> {
         let (taken, _) = self
             .rest()
             .split_at_checked(len)
             .ok_or(LoadError::Truncated)?;
         self.pos += len;
         Ok(taken)
+    }
+
+    pub fn take_span(&mut self, len: usize) -> LoadResult<Span> {
+        let start = self.pos;
+        self.skip(len)?;
+        Ok(Span {
+            start,
+            end: self.pos,
+        })
+    }
+
+    /// Everything from here to the end of the file, without moving the cursor.
+    pub fn rest_span(&self) -> Span {
+        Span {
+            start: self.pos.min(self.data.len()),
+            end: self.data.len(),
+        }
     }
 
     pub fn take_array<const N: usize>(&mut self) -> LoadResult<[u8; N]> {
@@ -69,13 +101,13 @@ impl Cursor {
         Ok(taken)
     }
 
-    pub fn take_pod<T: Pod>(&mut self) -> LoadResult<&'static T> {
+    pub fn take_pod<T: Pod>(&mut self) -> LoadResult<&'a T> {
         bytemuck::try_from_bytes(self.take(mem::size_of::<T>())?)
             .map_err(|_| LoadError::Corrupt("header"))
     }
 
     /// Everything from here to the end of the file.
-    pub fn rest(&self) -> &'static [u8] {
+    pub fn rest(&self) -> &'a [u8] {
         self.data.get(self.pos..).unwrap_or_default()
     }
 
