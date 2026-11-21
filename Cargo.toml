@@ -34,6 +34,7 @@ features = [
 arrayvec = { workspace = true }
 bytemuck = { workspace = true }
 fastapprox = "=0.3.1"
+memmap2 = "=0.9.12"
 nohash-hasher = "=0.2.0"
 scc = { workspace = true }
 
@@ -41,13 +42,9 @@ scc = { workspace = true }
 libc = "=0.2.189"
 
 [features]
-default = ["policy-net", "value-net", "fathom"]
+default = ["policy-net", "value-net"]
 policy-net = []
 value-net = []
-fathom = []
-
-[build-dependencies]
-cc = "=1.4.3"
 
 [profile.release]
 lto = true

@@ -99,6 +99,11 @@ impl Rank {
     pub const R6: Rank = Rank(5);
     pub const R7: Rank = Rank(6);
     pub const R8: Rank = Rank(7);
+
+    #[must_use]
+    pub const fn index(self) -> usize {
+        self.0 as usize
+    }
 }
 
 impl From<u8> for File {
