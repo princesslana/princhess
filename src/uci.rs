@@ -100,7 +100,9 @@ impl Uci {
             self.engine_options = EngineOptions::from(&self.options);
 
             if name.eq_ignore_ascii_case("syzygypath") {
-                if let Some(found) = tablebase::set_tablebase_directory(&value) {
+                // SAFETY: Commands are handled between searches: `go` holds back any line read
+                // during a search until every search thread has finished
+                if let Some(found) = unsafe { tablebase::set_tablebase_directory(&value) } {
                     println!("info string Found {found} tablebases at {value}");
                 }
             }

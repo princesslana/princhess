@@ -46,10 +46,15 @@ impl Neg for Outcome {
     }
 }
 
-/// Loads the tables found in a path list, replacing any loaded before. Returns the number of
+/// Loads the tables found in a path list, freeing any loaded before. Returns the number of
 /// tables found, or `None` for an empty path, which clears them.
-pub fn set_tablebase_directory(paths: &str) -> Option<usize> {
-    tables::init(paths)
+///
+/// # Safety
+///
+/// No probe may be in progress, on any thread, and none may start until this returns.
+pub unsafe fn set_tablebase_directory(paths: &str) -> Option<usize> {
+    // SAFETY: Passed on to our caller
+    unsafe { tables::init(paths) }
 }
 
 /// Ignores the 50-move rule: cursed wins and blessed losses are draws.
