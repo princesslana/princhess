@@ -52,6 +52,10 @@ impl Leading {
             Self::Pawns(n) => n,
         }
     }
+
+    fn is_pawns(self) -> bool {
+        matches!(self, Self::Pawns(_))
+    }
 }
 
 /// What a table's material says about its encodings. White and black are the table's first and
@@ -70,7 +74,7 @@ impl Layout {
     }
 
     pub fn has_pawns(&self) -> bool {
-        matches!(self.leading, Leading::Pawns(_))
+        self.leading.is_pawns()
     }
 
     /// Pawn tables have a sub-table per leading pawn file, a–d.
@@ -235,7 +239,7 @@ impl Encoding {
         if p[0].file() > File::D {
             fold |= Square::FLIP_FILE_MASK;
         }
-        if !self.has_pawns() && p[0].rank() > Rank::R4 {
+        if !self.leading.is_pawns() && p[0].rank() > Rank::R4 {
             fold |= Square::FLIP_RANK_MASK;
         }
         for sq in p.iter_mut() {
@@ -279,10 +283,6 @@ impl Encoding {
         }
 
         Some(idx)
-    }
-
-    fn has_pawns(&self) -> bool {
-        matches!(self.leading, Leading::Pawns(_))
     }
 }
 
@@ -401,7 +401,7 @@ fn triple_index(p0: Square, p1: Square, p2: Square) -> u64 {
     }
 }
 
-pub fn binomial(n: usize, k: usize) -> u64 {
+fn binomial(n: usize, k: usize) -> u64 {
     BINOMIAL[k][n]
 }
 

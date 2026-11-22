@@ -51,7 +51,7 @@ impl State {
             Some(_) => return None,
         }
         for mov_str in tokens {
-            for mov in result.available_moves() {
+            for mov in result.legal_moves() {
                 if mov.to_uci(is_chess960) == mov_str {
                     result.make_move(mov);
                     break;
@@ -89,7 +89,7 @@ impl State {
     }
 
     #[must_use]
-    pub fn is_available_move(&self) -> bool {
+    pub fn is_legal_move(&self) -> bool {
         self.board.is_legal_move()
     }
 
@@ -102,7 +102,7 @@ impl State {
     }
 
     #[must_use]
-    pub fn available_moves(&self) -> MoveList {
+    pub fn legal_moves(&self) -> MoveList {
         self.board.legal_moves()
     }
 
@@ -334,7 +334,7 @@ pub fn generate_random_opening(rng: &mut Rng, dfrc_pct: u64) -> (Vec<Move>, Stat
 }
 
 fn select_weighted_random_move(state: &State, t: f32, rng: &mut Rng) -> Move {
-    let moves = state.available_moves();
+    let moves = state.legal_moves();
 
     if moves.is_empty() {
         return Move::NONE;

@@ -49,7 +49,7 @@ impl Neg for Outcome {
 }
 
 impl Tablebases {
-    /// Ignores the 50-move rule: cursed wins and blessed losses are draws.
+    /// Applies the 50-move rule from a fresh counter: cursed wins and blessed losses are draws.
     pub fn probe_wdl(&self, b: &Board) -> Option<Wdl> {
         if !self.is_probeable(b) {
             return None;

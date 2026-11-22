@@ -1,9 +1,10 @@
 use std::cmp::Ordering;
 use std::ops::Neg;
 
-use crate::chess::{Board, Move, Piece};
+use crate::chess::{Board, Move, MoveList, Piece};
 use crate::engine::KNOWN_WIN;
-use crate::tablebase::tables::{DtzEntry, Tablebases};
+use crate::tablebase::table::DtzEntry;
+use crate::tablebase::tables::Tablebases;
 use crate::tablebase::{Outcome, RootProbe};
 
 /// Root rank of a win (or, negated, a loss) that holds whatever happens to the 50-move counter.
@@ -16,6 +17,12 @@ struct WdlProbe {
     /// The outcome comes from a capture (or en passant) rather than the table, so the DTZ
     /// table entry for this position is not needed.
     zeroing_best: bool,
+}
+
+enum DtzProbe {
+    /// The side to move is checkmated.
+    Mated,
+    Plies(i32),
 }
 
 impl Outcome {
@@ -36,7 +43,7 @@ impl Tablebases {
     /// Resolves captures (a table entry is only reliable where no capture is at least as good)
     /// and en passant (the tables assume no en passant rights).
     pub fn probe_outcome(&self, b: &Board) -> Option<Outcome> {
-        self.probe_wdl_full(b).map(|p| p.outcome)
+        self.probe_wdl_full(b, &b.legal_moves()).map(|p| p.outcome)
     }
 
     /// The root moves that keep the best result, and its score. Wins that hold under the
@@ -51,18 +58,14 @@ impl Tablebases {
             .map(|mv| {
                 let child = after(b, mv);
 
-                // Counting one ply for the move itself.
+                // Counting one ply for the move itself, except mate, which ends the game
                 let dtz = if child.halfmove_clock() == 0 {
                     (-self.probe_outcome(&child)?).zeroing_dtz()
                 } else {
-                    let dtz = -self.probe_dtz(&child)?;
-                    dtz + dtz.signum()
-                };
-
-                let dtz = if dtz == 2 && child.is_checkmate() {
-                    1
-                } else {
-                    dtz
+                    match self.probe_dtz(&child)? {
+                        DtzProbe::Mated => 1,
+                        DtzProbe::Plies(dtz) => -dtz - dtz.signum(),
+                    }
                 };
 
                 Some((mv, root_rank(dtz, cnt50, has_repeated)))
@@ -108,15 +111,14 @@ impl Tablebases {
         Some(alpha.max(self.probe_wdl_table(b)?))
     }
 
-    fn probe_wdl_full(&self, b: &Board) -> Option<WdlProbe> {
-        let moves = b.legal_moves();
-
+    /// `moves` are the position's legal moves.
+    fn probe_wdl_full(&self, b: &Board, moves: &MoveList) -> Option<WdlProbe> {
         // The best capture other than en passant, and the best en passant capture if better
         // still.
         let mut best_capture: Option<Outcome> = None;
         let mut best_ep: Option<Outcome> = None;
 
-        for &mv in &moves {
+        for &mv in moves {
             if !b.is_capture(mv) {
                 continue;
             }
@@ -179,25 +181,34 @@ impl Tablebases {
     }
 
     /// Distance to zeroing the 50-move counter, in plies from the side to move: positive for a
-    /// win, negative for a loss, 0 for a draw and -1 when mated. Values beyond ±100 are cursed
-    /// wins and blessed losses. Can be one ply short (a win in n + 1 reported as n), except in
-    /// tables with positions exactly at the 50-move limit, so a win is only certain while
-    /// dtz + counter stays below 100.
-    fn probe_dtz(&self, b: &Board) -> Option<i32> {
+    /// win, negative for a loss, 0 for a draw. Values beyond ±100 are cursed wins and blessed
+    /// losses. Can be one ply short (a win in n + 1 reported as n), except in tables with
+    /// positions exactly at the 50-move limit, so a win is only certain while dtz + counter
+    /// stays below 100.
+    fn probe_dtz(&self, b: &Board) -> Option<DtzProbe> {
+        let moves = b.legal_moves();
+
+        if moves.is_empty() {
+            return Some(if b.is_check() {
+                DtzProbe::Mated
+            } else {
+                DtzProbe::Plies(0)
+            });
+        }
+
         let WdlProbe {
             outcome,
             zeroing_best,
-        } = self.probe_wdl_full(b)?;
+        } = self.probe_wdl_full(b, &moves)?;
 
         if outcome == Outcome::Draw {
-            return Some(0);
+            return Some(DtzProbe::Plies(0));
         }
 
         if zeroing_best {
-            return Some(outcome.zeroing_dtz());
+            return Some(DtzProbe::Plies(outcome.zeroing_dtz()));
         }
 
-        let moves = b.legal_moves();
         let winning = outcome > Outcome::Draw;
 
         if winning {
@@ -207,7 +218,7 @@ impl Tablebases {
                 }
 
                 if -self.probe_outcome(&after(b, mv))? == outcome {
-                    return Some(outcome.zeroing_dtz());
+                    return Some(DtzProbe::Plies(outcome.zeroing_dtz()));
                 }
             }
         }
@@ -215,7 +226,8 @@ impl Tablebases {
         // The best move is not en passant, so the table's outcome (which ignores en passant) is
         // this position's, and its DTZ entry applies.
         if let DtzEntry::Value(dtz) = self.probe_dtz_table(b, outcome)? {
-            return Some(outcome.zeroing_dtz() + if winning { dtz } else { -dtz });
+            let dtz = outcome.zeroing_dtz() + if winning { dtz } else { -dtz };
+            return Some(DtzProbe::Plies(dtz));
         }
 
         // The table stores only the other side to move, so take the best non-zeroing move. Each
@@ -229,12 +241,13 @@ impl Tablebases {
                 continue;
             }
 
-            let child = after(b, mv);
-            let v = -self.probe_dtz(&child)?;
-
-            if v == 1 && child.is_checkmate() {
+            let DtzProbe::Plies(v) = self.probe_dtz(&after(b, mv))? else {
                 best = Some(1);
-            } else if winning {
+                continue;
+            };
+            let v = -v;
+
+            if winning {
                 if v > 0 && best.is_none_or(|best| v + 1 < best) {
                     best = Some(v + 1);
                 }
@@ -244,7 +257,7 @@ impl Tablebases {
         }
 
         // `None` only for a win without a winning move, which consistent tables never give.
-        best
+        best.map(DtzProbe::Plies)
     }
 }
 

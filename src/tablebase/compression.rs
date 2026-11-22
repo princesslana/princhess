@@ -9,6 +9,7 @@ use std::mem;
 use bytemuck::{Pod, Zeroable};
 
 use crate::tablebase::reader::{Cursor, LoadError, LoadResult, Span};
+use crate::tablebase::table::Kind;
 
 const CONSTANT: u8 = 0x80;
 /// The 12-bit all-ones right half that marks a symbol as a value.
@@ -77,13 +78,7 @@ struct CodeLength {
 }
 
 pub struct Compressed {
-    block_size: u32,
-    idx_bits: u32,
-    min_len: usize,
-    /// From `min_len` up.
-    code_lengths: Vec<CodeLength>,
-    symbols: Vec<Symbol>,
-    real_blocks: usize,
+    header: CompressedHeader,
     /// `IndexEntry`s.
     index: Span,
     /// Values per block, minus one, as little-endian `u16`s.
@@ -110,6 +105,7 @@ pub struct CompressedHeader {
     block_size: u32,
     idx_bits: u32,
     min_len: usize,
+    /// From `min_len` up.
     code_lengths: Vec<CodeLength>,
     symbols: Vec<Symbol>,
     real_blocks: usize,
@@ -120,10 +116,13 @@ pub struct CompressedHeader {
 impl PairsHeader {
     /// Reads a pairs header for a sub-table of `positions` values. Only WDL tables store a
     /// constant sub-table's value; a constant DTZ sub-table is all zero.
-    pub fn read(cursor: &mut Cursor, positions: u64, wdl: bool) -> LoadResult<Self> {
+    pub fn read(cursor: &mut Cursor, positions: u64, kind: Kind) -> LoadResult<Self> {
         if cursor.peek()? & CONSTANT != 0 {
             let [_, value] = cursor.take_array::<2>()?;
-            return Ok(Self::Constant(if wdl { u16::from(value) } else { 0 }));
+            return Ok(Self::Constant(match kind {
+                Kind::Wdl => u16::from(value),
+                Kind::Dtz => 0,
+            }));
         }
 
         let corrupt = || LoadError::Corrupt("pairs header");
@@ -196,13 +195,8 @@ impl PairsHeader {
     pub fn finish(self, index: Span, block_sizes: Span, data: Span) -> Pairs {
         match self {
             Self::Constant(v) => Pairs::Constant(v),
-            Self::Compressed(h) => Pairs::Compressed(Compressed {
-                block_size: h.block_size,
-                idx_bits: h.idx_bits,
-                min_len: h.min_len,
-                code_lengths: h.code_lengths,
-                symbols: h.symbols,
-                real_blocks: h.real_blocks,
+            Self::Compressed(header) => Pairs::Compressed(Compressed {
+                header,
                 index,
                 block_sizes,
                 data,
@@ -225,11 +219,12 @@ impl Pairs {
 impl Compressed {
     fn value(&self, file: &[u8], idx: u64) -> Option<u16> {
         let (block, mut offset) = self.locate(file, idx)?;
+        let h = &self.header;
 
         let mut words = self
             .data
             .of(file)?
-            .get(block << self.block_size..)?
+            .get(block << h.block_size..)?
             .as_chunks::<4>()
             .0
             .iter()
@@ -242,14 +237,14 @@ impl Compressed {
 
         // Shorter codes are numerically larger, so a code's length is the first it reaches
         let mut sym = loop {
-            let (l, length) = self
+            let (l, length) = h
                 .code_lengths
                 .iter()
                 .enumerate()
                 .find(|(_, length)| code >= length.base)?;
-            let bits = self.min_len + l;
+            let bits = h.min_len + l;
             let n = usize::try_from((code - length.base) >> (64 - bits)).ok()?;
-            let symbol = self.symbols.get(usize::from(length.first_symbol) + n)?;
+            let symbol = h.symbols.get(usize::from(length.first_symbol) + n)?;
 
             if offset < symbol.len {
                 break symbol;
@@ -265,12 +260,12 @@ impl Compressed {
         };
 
         while !sym.is_leaf() {
-            let left = &self.symbols[usize::from(sym.left)];
+            let left = &h.symbols[usize::from(sym.left)];
             if offset < left.len {
                 sym = left;
             } else {
                 offset -= left.len;
-                sym = &self.symbols[usize::from(sym.right)];
+                sym = &h.symbols[usize::from(sym.right)];
             }
         }
 
@@ -283,10 +278,11 @@ impl Compressed {
     fn locate(&self, file: &[u8], idx: u64) -> Option<(usize, u32)> {
         let index: &[IndexEntry] = bytemuck::try_cast_slice(self.index.of(file)?).ok()?;
         let block_sizes = self.block_sizes.of(file)?.as_chunks::<2>().0;
+        let idx_bits = self.header.idx_bits;
 
-        let entry = *index.get(usize::try_from(idx >> self.idx_bits).ok()?)?;
-        let half = 1i64 << (self.idx_bits - 1);
-        let within = i64::try_from(idx & ((1 << self.idx_bits) - 1)).ok()?;
+        let entry = *index.get(usize::try_from(idx >> idx_bits).ok()?)?;
+        let half = 1i64 << (idx_bits - 1);
+        let within = i64::try_from(idx & ((1 << idx_bits) - 1)).ok()?;
 
         let mut block = entry.block();
         let mut offset = within - half + entry.offset();
@@ -305,7 +301,7 @@ impl Compressed {
             block += 1;
         }
 
-        (block < self.real_blocks).then_some((block, u32::try_from(offset).ok()?))
+        (block < self.header.real_blocks).then_some((block, u32::try_from(offset).ok()?))
     }
 }
 

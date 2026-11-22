@@ -11,10 +11,8 @@ use nohash_hasher::{BuildNoHashHasher, IsEnabled};
 
 use crate::chess::{Board, Color, Piece};
 use crate::tablebase::encoding::{Layout, Leading, MAX_PIECES};
-use crate::tablebase::table::{Kind, Table, View, DATA_ALIGN, TRAILER_LEN};
+use crate::tablebase::table::{DtzEntry, Kind, Table, View, DATA_ALIGN, TRAILER_LEN};
 use crate::tablebase::Outcome;
-
-pub use crate::tablebase::table::DtzEntry;
 
 /// Pieces other than kings, in the order of a table name's letters.
 const PIECE_LETTERS: [(char, Piece); 5] = [
@@ -200,8 +198,8 @@ impl Entry {
     }
 }
 
-/// A set of tables, each opened on its first probe. Dropping the set unmaps them, so the engines
-/// probing it share it, and it outlives every search through them.
+/// A set of tables, each opened on its first probe. Engines share the set through an `Arc`, so
+/// it outlives every search probing it. Dropping it unmaps the tables.
 #[derive(Default)]
 pub struct Tablebases {
     entries: Vec<Entry>,

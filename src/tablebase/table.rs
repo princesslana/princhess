@@ -132,11 +132,9 @@ impl Table {
         #[cfg(unix)]
         let _ = map.advise(memmap2::Advice::Random);
 
-        let (has_pawns, files) = read(&map, kind, layout)?;
-
         Ok(Self {
-            has_pawns,
-            files,
+            has_pawns: layout.has_pawns(),
+            files: read(&map, kind, layout)?,
             map,
         })
     }
@@ -247,9 +245,8 @@ fn open_for_random_access(path: &Path) -> io::Result<File> {
 }
 
 /// The file's sections in order: piece descriptors, pairs headers, DTZ value maps, then every
-/// sub-table's index table, every block size table and every data section. Returns whether the
-/// table has pawns, and its file tables.
-fn read(data: &[u8], kind: Kind, layout: &Layout) -> LoadResult<(bool, ArrayVec<FileTable, 4>)> {
+/// sub-table's index table, every block size table and every data section.
+fn read(data: &[u8], kind: Kind, layout: &Layout) -> LoadResult<ArrayVec<FileTable, 4>> {
     let mut cursor = Cursor::new(data);
 
     let header: &FileHeader = cursor.take_pod()?;
@@ -283,11 +280,7 @@ fn read(data: &[u8], kind: Kind, layout: &Layout) -> LoadResult<(bool, ArrayVec<
     for file_encodings in &encodings {
         dtz_flags.push(cursor.peek()?);
         for (_, positions) in file_encodings {
-            headers.push(PairsHeader::read(
-                &mut cursor,
-                *positions,
-                kind == Kind::Wdl,
-            )?);
+            headers.push(PairsHeader::read(&mut cursor, *positions, kind)?);
         }
     }
 
@@ -341,7 +334,7 @@ fn read(data: &[u8], kind: Kind, layout: &Layout) -> LoadResult<(bool, ArrayVec<
         })
         .collect();
 
-    Ok((layout.has_pawns(), files))
+    Ok(files)
 }
 
 fn read_dtz_values(cursor: &mut Cursor, flags: &[u8]) -> LoadResult<Vec<DtzValues>> {

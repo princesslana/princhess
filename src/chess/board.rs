@@ -383,11 +383,6 @@ impl Board {
     }
 
     #[must_use]
-    pub fn is_checkmate(&self) -> bool {
-        self.is_check() && !self.is_legal_move()
-    }
-
-    #[must_use]
     pub fn legal_moves(&self) -> MoveList {
         let mut moves = MoveList::new();
 
@@ -410,9 +405,7 @@ impl Board {
 
     #[must_use]
     pub fn is_noisy(&self, mv: Move) -> bool {
-        mv.is_enpassant()
-            || mv.is_promotion()
-            || (!mv.is_castle() && self.occupied().contains(mv.to()))
+        self.is_capture(mv) || mv.is_promotion()
     }
 
     pub fn make_move(&mut self, mov: Move) {

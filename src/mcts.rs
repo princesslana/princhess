@@ -641,8 +641,7 @@ impl Mcts {
     /// Expands an edge that's being visited for the first time.
     /// Returns the node and evaluation, or None if the flag is invalid.
     fn expand_edge<'a>(&self, state: &State, tld: &ThreadData) -> Option<(&'a PositionNode, i64)> {
-        let flag =
-            evaluation::evaluate_state_flag(state, state.is_available_move(), &self.tablebases);
+        let flag = evaluation::evaluate_state_flag(state, state.is_legal_move(), &self.tablebases);
 
         let (node, eval) = match flag {
             Flag::TERMINAL_WIN => (&*WIN_NODE, 0),
