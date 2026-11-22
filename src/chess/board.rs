@@ -353,7 +353,7 @@ impl Board {
     }
 
     #[must_use]
-    pub fn is_castling_rights(&self) -> bool {
+    pub fn has_castling_rights(&self) -> bool {
         self.castling.any()
     }
 
@@ -376,7 +376,7 @@ impl Board {
     }
 
     #[must_use]
-    pub fn is_legal_move(&self) -> bool {
+    pub fn has_legal_moves(&self) -> bool {
         MoveGen::new(self)
             .gen(|_| ControlFlow::Break(true))
             .unwrap_or(false)

@@ -72,6 +72,6 @@ impl Tablebases {
     }
 
     fn is_probeable(&self, b: &Board) -> bool {
-        b.occupied().count() <= self.max_pieces() && !b.is_castling_rights()
+        b.occupied().count() <= self.max_pieces() && !b.has_castling_rights()
     }
 }

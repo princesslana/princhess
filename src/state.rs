@@ -89,8 +89,8 @@ impl State {
     }
 
     #[must_use]
-    pub fn is_legal_move(&self) -> bool {
-        self.board.is_legal_move()
+    pub fn has_legal_moves(&self) -> bool {
+        self.board.has_legal_moves()
     }
 
     #[must_use]
@@ -132,7 +132,7 @@ impl State {
     }
 
     #[must_use]
-    pub fn drawn_by_fifty_move_rule(&self) -> bool {
+    pub fn is_fifty_move_draw(&self) -> bool {
         self.halfmove_clock() >= 100
     }
 

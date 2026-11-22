@@ -760,11 +760,11 @@ fn run_game(
             return;
         }
 
-        if !state.is_legal_move() {
+        if !state.has_legal_moves() {
             continue;
         }
 
-        if state.drawn_by_fifty_move_rule()
+        if state.is_fifty_move_draw()
             || state.is_repetition()
             || state.board().is_insufficient_material()
         {
@@ -895,7 +895,7 @@ fn run_game(
 
             state.make_move(best_move);
 
-            if !state.is_legal_move() {
+            if !state.has_legal_moves() {
                 break if state.is_check() {
                     // The stm has been checkmated. Convert to white relative result
                     state
@@ -906,7 +906,7 @@ fn run_game(
                 };
             }
 
-            if state.drawn_by_fifty_move_rule()
+            if state.is_fifty_move_draw()
                 || state.is_repetition()
                 || state.board().is_insufficient_material()
             {

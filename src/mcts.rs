@@ -241,7 +241,7 @@ impl Mcts {
             }
 
             if state.is_repetition()
-                || state.drawn_by_fifty_move_rule()
+                || state.is_fifty_move_draw()
                 || state.board().is_insufficient_material()
             {
                 break &*PATH_DRAW_NODE;
@@ -641,7 +641,8 @@ impl Mcts {
     /// Expands an edge that's being visited for the first time.
     /// Returns the node and evaluation, or None if the flag is invalid.
     fn expand_edge<'a>(&self, state: &State, tld: &ThreadData) -> Option<(&'a PositionNode, i64)> {
-        let flag = evaluation::evaluate_state_flag(state, state.is_legal_move(), &self.tablebases);
+        let flag =
+            evaluation::evaluate_state_flag(state, state.has_legal_moves(), &self.tablebases);
 
         let (node, eval) = match flag {
             Flag::TERMINAL_WIN => (&*WIN_NODE, 0),
@@ -877,7 +878,7 @@ pub fn principal_variation<'a>(
     let mut crnt = from;
 
     if state.is_repetition()
-        || state.drawn_by_fifty_move_rule()
+        || state.is_fifty_move_draw()
         || state.board().is_insufficient_material()
     {
         return result;
@@ -891,7 +892,7 @@ pub fn principal_variation<'a>(
 
         state.make_move(*choice.get_move());
         if state.is_repetition()
-            || state.drawn_by_fifty_move_rule()
+            || state.is_fifty_move_draw()
             || state.board().is_insufficient_material()
         {
             break;
