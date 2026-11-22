@@ -5,8 +5,6 @@ use std::env;
 use std::fs;
 use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
-use std::ptr;
-use std::sync::atomic::{AtomicPtr, Ordering};
 use std::sync::OnceLock;
 
 use nohash_hasher::{BuildNoHashHasher, IsEnabled};
@@ -26,69 +24,6 @@ const PIECE_LETTERS: [(char, Piece); 5] = [
     ('N', Piece::KNIGHT),
     ('P', Piece::PAWN),
 ];
-
-/// The set in use: null, or a `Tablebases` boxed by `init`, which frees it when replacing it.
-static TABLEBASES: AtomicPtr<Tablebases> = AtomicPtr::new(ptr::null_mut());
-
-/// Loads the tables found in a path list (`:`-separated, `;` on Windows), freeing any loaded
-/// before. Returns the number of tables found, or `None` for an empty path, which clears them.
-///
-/// # Safety
-///
-/// No probe may be in progress, on any thread, and none may start until this returns.
-pub unsafe fn init(paths: &str) -> Option<usize> {
-    let set = if matches!(paths, "" | "<empty>") {
-        None
-    } else {
-        Some(Tablebases::find(paths))
-    };
-    let found = set.as_ref().map(|set| set.entries.len());
-
-    let set = match set {
-        Some(set) if !set.entries.is_empty() => Box::into_raw(Box::new(set)),
-        _ => ptr::null_mut(),
-    };
-    let old = TABLEBASES.swap(set, Ordering::AcqRel);
-    if !old.is_null() {
-        // SAFETY: `old` was boxed here, and the caller guarantees no probe can be reading it
-        drop(unsafe { Box::from_raw(old) });
-    }
-
-    found
-}
-
-pub fn max_pieces() -> usize {
-    loaded().map_or(0, |set| set.max_pieces)
-}
-
-pub fn probe_wdl_table(b: &Board) -> Option<Outcome> {
-    let material = Material::of(b);
-
-    // K v K has no table
-    if material.is_bare_kings() {
-        return Some(Outcome::Draw);
-    }
-
-    let entry = loaded()?.get(material)?;
-    entry.wdl.table()?.wdl(b, entry.view(material, b))
-}
-
-pub fn probe_dtz_table(b: &Board, outcome: Outcome) -> Option<DtzEntry> {
-    let material = Material::of(b);
-    let entry = loaded()?.get(material)?;
-
-    entry
-        .dtz
-        .as_ref()?
-        .table()?
-        .dtz(b, entry.view(material, b), outcome)
-}
-
-fn loaded() -> Option<&'static Tablebases> {
-    // SAFETY: `TABLEBASES` holds null or a live box, which `init` only frees when no probe is
-    // in progress
-    unsafe { TABLEBASES.load(Ordering::Acquire).as_ref() }
-}
 
 /// Piece counts other than kings, a nibble each: white pawn to queen, then black.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -200,12 +135,13 @@ impl Hash for Material {
 
 impl IsEnabled for Material {}
 
-/// A table file, opened on first use. A file that fails to open stays unavailable.
+/// A table file, opened on first use. A file that fails to open stays unavailable. Boxed, since
+/// most tables in a large set are never opened.
 struct LazyTable {
     path: PathBuf,
     kind: Kind,
     layout: Layout,
-    table: OnceLock<Option<Table>>,
+    table: OnceLock<Option<Box<Table>>>,
 }
 
 impl LazyTable {
@@ -221,7 +157,7 @@ impl LazyTable {
     fn table(&self) -> Option<&Table> {
         self.table
             .get_or_init(|| match Table::open(&self.path, self.kind, &self.layout) {
-                Ok(table) => Some(table),
+                Ok(table) => Some(Box::new(table)),
                 Err(e) => {
                     println!(
                         "info string Could not read tablebase file {}: {e}",
@@ -230,7 +166,7 @@ impl LazyTable {
                     None
                 }
             })
-            .as_ref()
+            .as_deref()
     }
 }
 
@@ -264,7 +200,10 @@ impl Entry {
     }
 }
 
-struct Tablebases {
+/// A set of tables, each opened on its first probe. Dropping the set unmaps them, so the engines
+/// probing it share it, and it outlives every search through them.
+#[derive(Default)]
+pub struct Tablebases {
     entries: Vec<Entry>,
     /// Entry index by material, both as stored and colour swapped.
     by_material: HashMap<Material, usize, BuildNoHashHasher<Material>>,
@@ -272,15 +211,16 @@ struct Tablebases {
 }
 
 impl Tablebases {
-    /// WDL files define the tables; a table's DTZ file is optional. A table found in more than
-    /// one directory is taken from the first.
-    fn find(paths: &str) -> Self {
-        let mut set = Self {
-            entries: Vec::new(),
-            by_material: HashMap::default(),
-            max_pieces: 0,
-        };
+    /// The tables found in a path list (`:`-separated, `;` on Windows), or `None` for an empty
+    /// path. WDL files define the tables; a table's DTZ file is optional. A table found in more
+    /// than one directory is taken from the first.
+    #[must_use]
+    pub fn load(paths: &str) -> Option<Self> {
+        if matches!(paths, "" | "<empty>") {
+            return None;
+        }
 
+        let mut set = Self::default();
         let dirs: Vec<PathBuf> = env::split_paths(paths).collect();
 
         for dir in &dirs {
@@ -297,7 +237,45 @@ impl Tablebases {
             }
         }
 
-        set
+        Some(set)
+    }
+
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.entries.len()
+    }
+
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.entries.is_empty()
+    }
+
+    /// Pieces in the largest table, 0 when there are none.
+    pub fn max_pieces(&self) -> usize {
+        self.max_pieces
+    }
+
+    pub fn probe_wdl_table(&self, b: &Board) -> Option<Outcome> {
+        let material = Material::of(b);
+
+        // K v K has no table
+        if material.is_bare_kings() {
+            return Some(Outcome::Draw);
+        }
+
+        let entry = self.get(material)?;
+        entry.wdl.table()?.wdl(b, entry.view(material, b))
+    }
+
+    pub fn probe_dtz_table(&self, b: &Board, outcome: Outcome) -> Option<DtzEntry> {
+        let material = Material::of(b);
+        let entry = self.get(material)?;
+
+        entry
+            .dtz
+            .as_ref()?
+            .table()?
+            .dtz(b, entry.view(material, b), outcome)
     }
 
     /// Adds the table of a WDL file, unless it's already present.

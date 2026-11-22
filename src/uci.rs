@@ -1,5 +1,6 @@
 use std::io;
 use std::str::SplitWhitespace;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use crate::engine::Engine;
@@ -9,7 +10,7 @@ use crate::math::Rng;
 use crate::nets;
 use crate::options::{EngineOptions, UciOption, UciOptionMap};
 use crate::state::{self, State};
-use crate::tablebase;
+use crate::tablebase::Tablebases;
 use crate::time_management::TimeManagement;
 
 pub type Tokens<'a> = SplitWhitespace<'a>;
@@ -24,6 +25,7 @@ const BENCH_PLAYOUTS_PER_POSITION: usize = 5000;
 pub struct Uci {
     options: UciOptionMap,
     engine_options: EngineOptions,
+    tablebases: Arc<Tablebases>,
     engine: Engine,
 }
 
@@ -34,11 +36,13 @@ impl Uci {
 
         let options = UciOptionMap::default();
         let engine_options = EngineOptions::from(&options);
-        let engine = Engine::new(State::default(), engine_options);
+        let tablebases = Arc::default();
+        let engine = Engine::new(State::default(), engine_options, Arc::clone(&tablebases));
 
         Self {
             options,
             engine_options,
+            tablebases,
             engine,
         }
     }
@@ -73,7 +77,11 @@ impl Uci {
                 "isready" => println!("readyok"),
                 "setoption" => self.handle_setoption(tokens),
                 "ucinewgame" => {
-                    self.engine = Engine::new(State::default(), self.engine_options);
+                    self.engine = Engine::new(
+                        State::default(),
+                        self.engine_options,
+                        Arc::clone(&self.tablebases),
+                    );
                 }
                 "position" => self.handle_position(tokens, line),
                 "quit" => should_quit = true,
@@ -100,14 +108,20 @@ impl Uci {
             self.engine_options = EngineOptions::from(&self.options);
 
             if name.eq_ignore_ascii_case("syzygypath") {
-                // SAFETY: Commands are handled between searches: `go` holds back any line read
-                // during a search until every search thread has finished
-                if let Some(found) = unsafe { tablebase::set_tablebase_directory(&value) } {
-                    println!("info string Found {found} tablebases at {value}");
+                let tablebases = Tablebases::load(&value);
+                if let Some(set) = &tablebases {
+                    println!("info string Found {} tablebases at {value}", set.len());
                 }
+
+                // The old set is freed with the engine replaced below
+                self.tablebases = Arc::new(tablebases.unwrap_or_default());
             }
 
-            self.engine = Engine::new(root_state, self.engine_options);
+            self.engine = Engine::new(
+                root_state,
+                self.engine_options,
+                Arc::clone(&self.tablebases),
+            );
         }
     }
 
@@ -127,7 +141,11 @@ impl Uci {
         let mut total_nodes = 0;
         let mut total_elapsed = Duration::ZERO;
 
-        let mut local_engine = Engine::new(State::default(), self.engine_options);
+        let mut local_engine = Engine::new(
+            State::default(),
+            self.engine_options,
+            Arc::clone(&self.tablebases),
+        );
         let has_limits = tokens.clone().next().is_some();
 
         for fen_line in BENCH_FENS.lines().filter(|line| !line.is_empty()) {

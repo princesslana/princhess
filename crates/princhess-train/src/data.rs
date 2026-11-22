@@ -402,6 +402,8 @@ impl<T: Pod> TrainingData<T> {
 mod tests {
     use super::*;
 
+    use std::sync::Arc;
+
     use princhess::engine::Engine;
     use princhess::options::EngineOptions;
 
@@ -414,7 +416,11 @@ mod tests {
     // Priors can be zeros — these tests only check board-state round-tripping.
     fn training_position_for(fen: &str) -> (State, TrainingPosition) {
         let state_before = State::from_fen(fen);
-        let engine = Engine::new(state_before.clone(), EngineOptions::default());
+        let engine = Engine::new(
+            state_before.clone(),
+            EngineOptions::default(),
+            Arc::default(),
+        );
         let tree = engine.mcts();
 
         let priors = vec![0.0; tree.root_edges().len()];

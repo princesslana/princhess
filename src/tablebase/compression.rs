@@ -4,9 +4,11 @@
 //! value, or a pair of earlier symbols expanding to the left's run then the right's), and the
 //! symbol sequence is Huffman coded in fixed-size blocks.
 
+use std::mem;
+
 use bytemuck::{Pod, Zeroable};
 
-use crate::tablebase::reader::{Cursor, LoadError, LoadResult};
+use crate::tablebase::reader::{Cursor, LoadError, LoadResult, Span};
 
 const CONSTANT: u8 = 0x80;
 /// The 12-bit all-ones right half that marks a symbol as a value.
@@ -82,11 +84,12 @@ pub struct Compressed {
     code_lengths: Vec<CodeLength>,
     symbols: Vec<Symbol>,
     real_blocks: usize,
-    index: &'static [IndexEntry],
-    /// Values per block, minus one, little-endian.
-    block_sizes: &'static [[u8; 2]],
+    /// `IndexEntry`s.
+    index: Span,
+    /// Values per block, minus one, as little-endian `u16`s.
+    block_sizes: Span,
     /// The blocks, then the rest of the file: decoding reads ahead past the last block.
-    data: &'static [u8],
+    data: Span,
 }
 
 pub enum Pairs {
@@ -164,22 +167,22 @@ impl PairsHeader {
         }))
     }
 
-    pub fn read_index(&self, cursor: &mut Cursor) -> LoadResult<&'static [u8]> {
+    pub fn read_index(&self, cursor: &mut Cursor) -> LoadResult<Span> {
         match self {
-            Self::Constant(_) => Ok(&[]),
-            Self::Compressed(h) => cursor.take(6 * h.entries),
+            Self::Constant(_) => Ok(Span::EMPTY),
+            Self::Compressed(h) => cursor.take_span(mem::size_of::<IndexEntry>() * h.entries),
         }
     }
 
-    pub fn read_block_sizes(&self, cursor: &mut Cursor) -> LoadResult<&'static [u8]> {
+    pub fn read_block_sizes(&self, cursor: &mut Cursor) -> LoadResult<Span> {
         match self {
-            Self::Constant(_) => Ok(&[]),
-            Self::Compressed(h) => cursor.take(2 * h.blocks),
+            Self::Constant(_) => Ok(Span::EMPTY),
+            Self::Compressed(h) => cursor.take_span(2 * h.blocks),
         }
     }
 
-    pub fn read_data(&self, cursor: &mut Cursor) -> LoadResult<&'static [u8]> {
-        let data = cursor.rest();
+    pub fn read_data(&self, cursor: &mut Cursor) -> LoadResult<Span> {
+        let data = cursor.rest_span();
         if let Self::Compressed(h) = self {
             let len = h
                 .real_blocks
@@ -190,12 +193,7 @@ impl PairsHeader {
         Ok(data)
     }
 
-    pub fn finish(
-        self,
-        index: &'static [u8],
-        block_sizes: &'static [u8],
-        data: &'static [u8],
-    ) -> Pairs {
+    pub fn finish(self, index: Span, block_sizes: Span, data: Span) -> Pairs {
         match self {
             Self::Constant(v) => Pairs::Constant(v),
             Self::Compressed(h) => Pairs::Compressed(Compressed {
@@ -205,8 +203,8 @@ impl PairsHeader {
                 code_lengths: h.code_lengths,
                 symbols: h.symbols,
                 real_blocks: h.real_blocks,
-                index: bytemuck::cast_slice(index),
-                block_sizes: block_sizes.as_chunks::<2>().0,
+                index,
+                block_sizes,
                 data,
             }),
         }
@@ -214,21 +212,23 @@ impl PairsHeader {
 }
 
 impl Pairs {
-    /// The raw value at `idx`: 12 bits, of which WDL tables use the low 8.
-    pub fn value(&self, idx: u64) -> Option<u16> {
+    /// The raw value at `idx`: 12 bits, of which WDL tables use the low 8. `file` is the
+    /// table file the sub-table was read from.
+    pub fn value(&self, file: &[u8], idx: u64) -> Option<u16> {
         match self {
             Self::Constant(v) => Some(*v),
-            Self::Compressed(c) => c.value(idx),
+            Self::Compressed(c) => c.value(file, idx),
         }
     }
 }
 
 impl Compressed {
-    fn value(&self, idx: u64) -> Option<u16> {
-        let (block, mut offset) = self.locate(idx)?;
+    fn value(&self, file: &[u8], idx: u64) -> Option<u16> {
+        let (block, mut offset) = self.locate(file, idx)?;
 
         let mut words = self
             .data
+            .of(file)?
             .get(block << self.block_size..)?
             .as_chunks::<4>()
             .0
@@ -280,17 +280,18 @@ impl Compressed {
     /// The block holding `idx` and its offset in the block. Each index entry gives the block
     /// and offset of the middle position of its range, so find our offset from that block,
     /// then walk to the block holding it.
-    fn locate(&self, idx: u64) -> Option<(usize, u32)> {
-        let entry = *self
-            .index
-            .get(usize::try_from(idx >> self.idx_bits).ok()?)?;
+    fn locate(&self, file: &[u8], idx: u64) -> Option<(usize, u32)> {
+        let index: &[IndexEntry] = bytemuck::try_cast_slice(self.index.of(file)?).ok()?;
+        let block_sizes = self.block_sizes.of(file)?.as_chunks::<2>().0;
+
+        let entry = *index.get(usize::try_from(idx >> self.idx_bits).ok()?)?;
         let half = 1i64 << (self.idx_bits - 1);
         let within = i64::try_from(idx & ((1 << self.idx_bits) - 1)).ok()?;
 
         let mut block = entry.block();
         let mut offset = within - half + entry.offset();
         let block_len = |b: usize| {
-            self.block_sizes
+            block_sizes
                 .get(b)
                 .map(|&s| i64::from(u16::from_le_bytes(s)) + 1)
         };

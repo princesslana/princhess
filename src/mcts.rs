@@ -2,6 +2,7 @@ use std::cmp::Reverse;
 use std::fmt::{self, Display, Formatter, Write};
 use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU64, AtomicUsize, Ordering};
+use std::sync::Arc;
 
 use arrayvec::ArrayVec;
 use fastapprox::faster;
@@ -20,6 +21,7 @@ use crate::math::{self, TotalF32};
 use crate::options::{EngineOptions, MctsOptions, TimeManagementOptions};
 use crate::quantized_value::QAB;
 use crate::state::State;
+use crate::tablebase::Tablebases;
 use crate::time_management::TimeManagement;
 use crate::transposition_table::LRTable;
 
@@ -51,6 +53,7 @@ pub struct Mcts {
     tablebase_score: Option<i64>,
 
     engine_options: EngineOptions,
+    tablebases: Arc<Tablebases>,
 
     num_nodes: AtomicUsize,
     playouts: AtomicUsize,
@@ -64,8 +67,17 @@ pub struct Mcts {
 
 impl Mcts {
     /// Creates a new MCTS instance with the given root state.
-    pub fn new(state: State, table: &LRTable, engine_options: EngineOptions) -> Self {
-        let root = RootNode::new(&state, engine_options.mcts_options.policy_temperature);
+    pub fn new(
+        state: State,
+        table: &LRTable,
+        engine_options: EngineOptions,
+        tablebases: Arc<Tablebases>,
+    ) -> Self {
+        let root = RootNode::new(
+            &state,
+            engine_options.mcts_options.policy_temperature,
+            &tablebases,
+        );
 
         // Warm-start: copy statistics from transposition table if available
         if let Some(cached) = table.lookup_from_all(&state) {
@@ -78,6 +90,7 @@ impl Mcts {
             root,
             tablebase_score: None,
             engine_options,
+            tablebases,
             num_nodes: 1.into(),
             playouts: 0.into(),
             max_depth: 0.into(),
@@ -357,6 +370,7 @@ impl Mcts {
             state,
             |sz| tld.allocator.alloc_node(sz),
             self.engine_options.mcts_options.policy_temperature,
+            &self.tablebases,
         )?;
 
         if let Some(eval) = first_eval {
@@ -627,7 +641,8 @@ impl Mcts {
     /// Expands an edge that's being visited for the first time.
     /// Returns the node and evaluation, or None if the flag is invalid.
     fn expand_edge<'a>(&self, state: &State, tld: &ThreadData) -> Option<(&'a PositionNode, i64)> {
-        let flag = evaluation::evaluate_state_flag(state, state.is_available_move());
+        let flag =
+            evaluation::evaluate_state_flag(state, state.is_available_move(), &self.tablebases);
 
         let (node, eval) = match flag {
             Flag::TERMINAL_WIN => (&*WIN_NODE, 0),

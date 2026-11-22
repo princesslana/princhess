@@ -12,6 +12,7 @@ use crate::engine::SCALE;
 use crate::evaluation::{self, Flag};
 use crate::mcts::MAX_PLAYOUT_LENGTH;
 use crate::state::State;
+use crate::tablebase::Tablebases;
 use crate::transposition_table::AllocNodeResult;
 
 #[repr(C)]
@@ -396,13 +397,14 @@ pub fn create_node<F>(
     state: &State,
     alloc: F,
     policy_t: f32,
+    tablebases: &Tablebases,
 ) -> Result<ArenaRef<PositionNode>, arena::Error>
 where
     F: FnOnce(usize) -> AllocNodeResult,
 {
     let moves = state.available_moves();
 
-    let state_flag = evaluation::evaluate_state_flag(state, !moves.is_empty());
+    let state_flag = evaluation::evaluate_state_flag(state, !moves.is_empty(), tablebases);
     let move_eval = evaluation::policy(state, &moves, policy_t);
 
     let (node_uninit_ref, edges_uninit_ref) = alloc(move_eval.len())?;
@@ -449,7 +451,7 @@ impl RootNode {
     /// # Panics
     ///
     /// Never panics, allocating into the root's own memory can't fail.
-    pub fn new(state: &State, policy_t: f32) -> Pin<Box<Self>> {
+    pub fn new(state: &State, policy_t: f32, tablebases: &Tablebases) -> Pin<Box<Self>> {
         // SAFETY: Every field is MaybeUninit or zero-sized, so uninitialized memory is a valid RootNode
         let mut root = unsafe { Box::<Self>::new_uninit().assume_init() };
         let node_ptr = NonNull::from(&mut root.node);
@@ -464,6 +466,7 @@ impl RootNode {
                 ))
             },
             policy_t,
+            tablebases,
         )
         .expect("Root node allocation can't fail");
 

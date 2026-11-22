@@ -383,6 +383,11 @@ impl Board {
     }
 
     #[must_use]
+    pub fn is_checkmate(&self) -> bool {
+        self.is_check() && !self.is_legal_move()
+    }
+
+    #[must_use]
     pub fn legal_moves(&self) -> MoveList {
         let mut moves = MoveList::new();
 
@@ -396,6 +401,11 @@ impl Board {
 
     pub fn occupied(&self) -> Bitboard {
         self.white() | self.black()
+    }
+
+    #[must_use]
+    pub fn is_capture(&self, mv: Move) -> bool {
+        mv.is_enpassant() || self.by_color(!self.stm).contains(mv.to())
     }
 
     #[must_use]

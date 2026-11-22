@@ -1699,7 +1699,7 @@ fn main() {
                     ..EngineOptions::default()
                 };
 
-                let mut engine = Engine::new(State::default(), engine_options);
+                let mut engine = Engine::new(State::default(), engine_options, Arc::default());
 
                 while stats.positions.load(Ordering::Relaxed) < max_positions
                     && !stop.load(Ordering::Relaxed)
