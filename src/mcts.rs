@@ -642,7 +642,7 @@ impl Mcts {
     /// Returns the node and evaluation, or None if the flag is invalid.
     fn expand_edge<'a>(&self, state: &State, tld: &ThreadData) -> Option<(&'a PositionNode, i64)> {
         let flag =
-            evaluation::evaluate_state_flag(state, state.is_available_move(), &self.tablebases);
+            evaluation::evaluate_state_flag(state, state.has_legal_moves(), &self.tablebases);
 
         let (node, eval) = match flag {
             Flag::TERMINAL_WIN => (&*WIN_NODE, 0),
@@ -679,7 +679,7 @@ impl Mcts {
             return;
         };
 
-        if best.visits() == 0 || state.board().is_noisy(*best.get_move()) {
+        if best.visits() == 0 || best.get_move().is_noisy() {
             return;
         }
 

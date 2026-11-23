@@ -2,7 +2,7 @@ use std::ops::ControlFlow::{self, Break, Continue};
 
 use crate::chess::{attacks, Bitboard, Board, Color, File, Move, Piece, Rank, Square};
 
-pub struct MoveGen<'a> {
+pub struct MoveGen<'a, const CAPTURES_ONLY: bool> {
     board: &'a Board,
     threats: Bitboard,
     checkers: Bitboard,
@@ -17,8 +17,8 @@ macro_rules! shortcircuit {
     }
 }
 
-impl MoveGen<'_> {
-    pub fn new(board: &Board) -> MoveGen<'_> {
+impl<const CAPTURES_ONLY: bool> MoveGen<'_, CAPTURES_ONLY> {
+    pub fn new(board: &Board) -> MoveGen<'_, CAPTURES_ONLY> {
         let us = board.side_to_move();
         let king_sq = board.king_of(us);
         let threats =
@@ -39,7 +39,7 @@ impl MoveGen<'_> {
         }
     }
 
-    pub fn gen<F, R>(&self, mut f: F) -> Option<R>
+    pub fn generate<F, R>(&self, mut f: F) -> Option<R>
     where
         F: FnMut(Move) -> ControlFlow<R>,
     {
@@ -61,7 +61,7 @@ impl MoveGen<'_> {
             }
         }
 
-        if !self.is_check() {
+        if !CAPTURES_ONLY && !self.is_check() {
             if let Break(r) = self.gen_castling(&mut f) {
                 return Some(r);
             }
@@ -78,11 +78,32 @@ impl MoveGen<'_> {
         self.us().fold(self.board.white(), self.board.black())
     }
 
+    fn them_pieces(&self) -> Bitboard {
+        self.us().fold(self.board.black(), self.board.white())
+    }
+
     fn is_check(&self) -> bool {
         self.checkers.any()
     }
 
-    fn gen_safe_king<F, R>(&self, mut f: F) -> ControlFlow<R>
+    fn gen_to<F, R>(&self, from: Square, targets: Bitboard, mut f: F) -> ControlFlow<R>
+    where
+        F: FnMut(Move) -> ControlFlow<R>,
+    {
+        for to in targets & self.them_pieces() {
+            shortcircuit!(f(Move::new_capture(from, to)));
+        }
+
+        if !CAPTURES_ONLY {
+            for to in targets & !self.them_pieces() {
+                shortcircuit!(f(Move::new(from, to)));
+            }
+        }
+
+        Continue(())
+    }
+
+    fn gen_safe_king<F, R>(&self, f: F) -> ControlFlow<R>
     where
         F: FnMut(Move) -> ControlFlow<R>,
     {
@@ -90,11 +111,7 @@ impl MoveGen<'_> {
 
         let attacks = attacks::king(from) & !self.us_pieces() & !self.threats;
 
-        for to in attacks {
-            shortcircuit!(f(Move::new(from, to)));
-        }
-
-        Continue(())
+        self.gen_to(from, attacks, f)
     }
 
     fn gen_pawn<F, R>(&self, mut f: F) -> ControlFlow<R>
@@ -104,48 +121,51 @@ impl MoveGen<'_> {
         let pieces = self.board.pawns() & self.us_pieces();
         let targets = self.target_squares();
 
-        let us = self.us();
-        let them = !us;
-        let them_pieces = them.fold(self.board.white(), self.board.black());
-        let occ = self.board.occupied();
-
         for from in pieces & !self.pinned {
-            let quiets = pawn_pushes(us, from, occ);
-            let attacks = attacks::pawn(us, from) & them_pieces;
-            let moves = (quiets | attacks) & targets;
-
-            for to in moves {
-                if to.rank() == Rank::R1 || to.rank() == Rank::R8 {
-                    for pc in &[Piece::QUEEN, Piece::ROOK, Piece::BISHOP, Piece::KNIGHT] {
-                        shortcircuit!(f(Move::new_promotion(from, to, *pc)));
-                    }
-                } else {
-                    shortcircuit!(f(Move::new(from, to)));
-                }
-            }
+            shortcircuit!(self.gen_pawn_from(from, targets, &mut f));
         }
 
         if !self.is_check() {
             for from in pieces & self.pinned {
                 let targets = targets & attacks::through(from, self.board.king_of(self.us()));
-                let quiets = pawn_pushes(us, from, occ);
-                let attacks = attacks::pawn(us, from) & them_pieces;
-                let moves = (quiets | attacks) & targets;
-
-                for to in moves {
-                    if to.rank() == Rank::R1 || to.rank() == Rank::R8 {
-                        for pc in &[Piece::QUEEN, Piece::ROOK, Piece::BISHOP, Piece::KNIGHT] {
-                            shortcircuit!(f(Move::new_promotion(from, to, *pc)));
-                        }
-                    } else {
-                        shortcircuit!(f(Move::new(from, to)));
-                    }
-                }
+                shortcircuit!(self.gen_pawn_from(from, targets, &mut f));
             }
         }
 
         if self.board.ep_square() != Square::NONE {
             shortcircuit!(self.gen_en_passant(&mut f));
+        }
+
+        Continue(())
+    }
+
+    fn gen_pawn_from<F, R>(&self, from: Square, targets: Bitboard, mut f: F) -> ControlFlow<R>
+    where
+        F: FnMut(Move) -> ControlFlow<R>,
+    {
+        let us = self.us();
+        let is_promotion = |to: Square| to.rank() == Rank::R1 || to.rank() == Rank::R8;
+
+        for to in attacks::pawn(us, from) & self.them_pieces() & targets {
+            if is_promotion(to) {
+                for pc in PROMOTIONS {
+                    shortcircuit!(f(Move::new_promotion_capture(from, to, pc)));
+                }
+            } else {
+                shortcircuit!(f(Move::new_capture(from, to)));
+            }
+        }
+
+        if !CAPTURES_ONLY {
+            for to in pawn_pushes(us, from, self.board.occupied()) & targets {
+                if is_promotion(to) {
+                    for pc in PROMOTIONS {
+                        shortcircuit!(f(Move::new_promotion(from, to, pc)));
+                    }
+                } else {
+                    shortcircuit!(f(Move::new(from, to)));
+                }
+            }
         }
 
         Continue(())
@@ -187,9 +207,7 @@ impl MoveGen<'_> {
             let attacks =
                 attacks::for_piece(piece, self.us(), from, self.board.occupied()) & targets;
 
-            for to in attacks {
-                shortcircuit!(f(Move::new(from, to)));
-            }
+            shortcircuit!(self.gen_to(from, attacks, &mut f));
         }
 
         if !self.is_check() {
@@ -198,9 +216,7 @@ impl MoveGen<'_> {
                 let attacks =
                     attacks::for_piece(piece, self.us(), from, self.board.occupied()) & targets;
 
-                for to in attacks {
-                    shortcircuit!(f(Move::new(from, to)));
-                }
+                shortcircuit!(self.gen_to(from, attacks, &mut f));
             }
         }
 
@@ -274,6 +290,8 @@ impl MoveGen<'_> {
     }
 }
 
+const PROMOTIONS: [Piece; 4] = [Piece::QUEEN, Piece::ROOK, Piece::BISHOP, Piece::KNIGHT];
+
 fn pawn_pushes(color: Color, from: Square, occ: Bitboard) -> Bitboard {
     let mut pushes = Bitboard::EMPTY;
 
@@ -307,8 +325,8 @@ mod tests {
         }
 
         let mut count = 0;
-        let movegen = MoveGen::new(state.board());
-        movegen.gen(|mv| {
+        let movegen = MoveGen::<false>::new(state.board());
+        movegen.generate(|mv| {
             let mut new_state = state.clone();
             new_state.make_move(mv);
             count += perft(&new_state, depth - 1);

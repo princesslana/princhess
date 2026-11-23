@@ -90,11 +90,7 @@ impl Tablebases {
     /// Captures-only alpha-beta with the table outcome as stand-pat. Terminates as each capture
     /// drops to a smaller table. Never sees en passant: every position here follows a capture.
     fn probe_ab(&self, b: &Board, mut alpha: Outcome, beta: Outcome) -> Option<Outcome> {
-        for mv in b.legal_moves() {
-            if !b.is_capture(mv) {
-                continue;
-            }
-
+        for mv in b.capture_moves() {
             let v = -self.probe_ab(&after(b, mv), -beta, -alpha)?;
 
             if v > alpha {
@@ -109,18 +105,12 @@ impl Tablebases {
     }
 
     fn probe_wdl_full(&self, b: &Board) -> Option<WdlProbe> {
-        let moves = b.legal_moves();
-
         // The best capture other than en passant, and the best en passant capture if better
         // still.
         let mut best_capture: Option<Outcome> = None;
         let mut best_ep: Option<Outcome> = None;
 
-        for &mv in &moves {
-            if !b.is_capture(mv) {
-                continue;
-            }
-
+        for mv in b.capture_moves() {
             let beta = best_capture.map_or(Outcome::Win, Neg::neg);
             let v = -self.probe_ab(&after(b, mv), Outcome::Loss, beta)?;
 
@@ -162,7 +152,9 @@ impl Tablebases {
         // The table scores the position without en passant rights. If en passant is the only
         // legal move, that position is stalemate (a table draw), but here the capture is forced.
         let forced_ep = best_ep.filter(|_| {
-            table == Outcome::Draw && !b.is_check() && moves.iter().all(|m| m.is_enpassant())
+            table == Outcome::Draw
+                && !b.is_check()
+                && b.legal_moves().iter().all(|m| m.is_enpassant())
         });
 
         if let Some(ep) = forced_ep {
@@ -202,7 +194,7 @@ impl Tablebases {
 
         if winning {
             for &mv in &moves {
-                if b.piece_at(mv.from()) != Piece::PAWN || b.is_capture(mv) {
+                if b.piece_at(mv.from()) != Piece::PAWN || mv.is_capture() {
                     continue;
                 }
 
@@ -225,7 +217,7 @@ impl Tablebases {
         let mut best = (!winning).then(|| outcome.zeroing_dtz());
 
         for &mv in &moves {
-            if b.is_capture(mv) || b.piece_at(mv.from()) == Piece::PAWN {
+            if mv.is_capture() || b.piece_at(mv.from()) == Piece::PAWN {
                 continue;
             }
 

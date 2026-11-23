@@ -3,6 +3,15 @@ use bytemuck::{Pod, Zeroable};
 
 use crate::chess::{Piece, Square};
 
+/// From square in bits 0-5, to square in bits 6-11, and the kind of move in bits 12-15:
+///
+/// | 15 | 14 | 13-12 | Kind                            |
+/// |----|----|-------|---------------------------------|
+/// | 0  | 0  | 00    | Quiet                           |
+/// | 0  | 1  | 00    | Capture                         |
+/// | 0  | 0  | 01    | Castle                          |
+/// | 0  | 1  | 01    | En passant                      |
+/// | 1  | c  | piece | Promotion, a capture when c = 1 |
 #[must_use]
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Pod, Zeroable)]
 #[repr(transparent)]
@@ -20,28 +29,38 @@ impl Move {
     const PROMO_MASK: u16 = 0b11;
     const PROMO_SHIFT: u16 = 12;
 
-    const PROMO_FLAG: u16 = 0b1100_0000_0000_0000;
-    const ENPASSANT_FLAG: u16 = 0b0100_0000_0000_0000;
-    const CASTLE_FLAG: u16 = 0b1000_0000_0000_0000;
+    const KIND_MASK: u16 = 0b1111 << 12;
+    const PROMOTION_FLAG: u16 = 0b1000 << 12;
+    const CAPTURE_FLAG: u16 = 0b0100 << 12;
+    const CASTLE_KIND: u16 = 0b0001 << 12;
+    const EN_PASSANT_KIND: u16 = 0b0101 << 12;
 
     pub fn new(from: Square, to: Square) -> Self {
         Self(u16::from(from) | (u16::from(to) << Self::TO_SHIFT))
     }
 
+    pub fn new_capture(from: Square, to: Square) -> Self {
+        Self(Self::new(from, to).0 | Self::CAPTURE_FLAG)
+    }
+
     pub fn new_promotion(from: Square, to: Square, promotion: Piece) -> Self {
         Self(
             Self::new(from, to).0
-                | Self::PROMO_FLAG
+                | Self::PROMOTION_FLAG
                 | (promotion.to_promotion_idx() << Self::PROMO_SHIFT),
         )
     }
 
+    pub fn new_promotion_capture(from: Square, to: Square, promotion: Piece) -> Self {
+        Self(Self::new_promotion(from, to, promotion).0 | Self::CAPTURE_FLAG)
+    }
+
     pub fn new_en_passant(from: Square, to: Square) -> Self {
-        Self(Self::new(from, to).0 | Self::ENPASSANT_FLAG)
+        Self(Self::new(from, to).0 | Self::EN_PASSANT_KIND)
     }
 
     pub fn new_castle(king: Square, rook: Square) -> Self {
-        Self(Self::new(king, rook).0 | Self::CASTLE_FLAG)
+        Self(Self::new(king, rook).0 | Self::CASTLE_KIND)
     }
 
     pub fn from(self) -> Square {
@@ -54,17 +73,27 @@ impl Move {
 
     #[must_use]
     pub fn is_enpassant(self) -> bool {
-        self.0 & Self::ENPASSANT_FLAG != 0 && self.0 & Self::CASTLE_FLAG == 0
+        self.0 & Self::KIND_MASK == Self::EN_PASSANT_KIND
     }
 
     #[must_use]
     pub fn is_castle(self) -> bool {
-        self.0 & Self::CASTLE_FLAG != 0 && self.0 & Self::ENPASSANT_FLAG == 0
+        self.0 & Self::KIND_MASK == Self::CASTLE_KIND
     }
 
     #[must_use]
     pub fn is_promotion(self) -> bool {
-        self.0 & Self::PROMO_FLAG == Self::PROMO_FLAG
+        self.0 & Self::PROMOTION_FLAG != 0
+    }
+
+    #[must_use]
+    pub fn is_capture(self) -> bool {
+        self.0 & Self::CAPTURE_FLAG != 0
+    }
+
+    #[must_use]
+    pub fn is_noisy(self) -> bool {
+        self.0 & (Self::CAPTURE_FLAG | Self::PROMOTION_FLAG) != 0
     }
 
     pub fn promotion(self) -> Piece {

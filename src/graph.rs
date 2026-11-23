@@ -402,7 +402,7 @@ pub fn create_node<F>(
 where
     F: FnOnce(usize) -> AllocNodeResult,
 {
-    let moves = state.available_moves();
+    let moves = state.legal_moves();
 
     let state_flag = evaluation::evaluate_state_flag(state, !moves.is_empty(), tablebases);
     let move_eval = evaluation::policy(state, &moves, policy_t);

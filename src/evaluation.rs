@@ -78,8 +78,8 @@ pub fn policy(state: &State, moves: &MoveList, t: f32) -> Vec<f32> {
 }
 
 #[must_use]
-pub fn evaluate_state_flag(state: &State, is_legal_moves: bool, tablebases: &Tablebases) -> Flag {
-    if !is_legal_moves {
+pub fn evaluate_state_flag(state: &State, has_legal_moves: bool, tablebases: &Tablebases) -> Flag {
+    if !has_legal_moves {
         if state.is_check() {
             Flag::TERMINAL_LOSS
         } else {
