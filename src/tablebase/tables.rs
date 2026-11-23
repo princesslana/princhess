@@ -200,8 +200,7 @@ impl Entry {
     }
 }
 
-/// A set of tables, each opened on its first probe. Dropping the set unmaps them, so the engines
-/// probing it share it, and it outlives every search through them.
+/// A set of tables, each opened on its first probe. Dropping it unmaps the tables.
 #[derive(Default)]
 pub struct Tablebases {
     entries: Vec<Entry>,
