@@ -17,8 +17,20 @@ macro_rules! shortcircuit {
     }
 }
 
+impl MoveGen<'_, false> {
+    pub fn all(board: &Board) -> MoveGen<'_, false> {
+        MoveGen::new(board)
+    }
+}
+
+impl MoveGen<'_, true> {
+    pub fn captures(board: &Board) -> MoveGen<'_, true> {
+        MoveGen::new(board)
+    }
+}
+
 impl<const CAPTURES_ONLY: bool> MoveGen<'_, CAPTURES_ONLY> {
-    pub fn new(board: &Board) -> MoveGen<'_, CAPTURES_ONLY> {
+    fn new(board: &Board) -> MoveGen<'_, CAPTURES_ONLY> {
         let us = board.side_to_move();
         let king_sq = board.king_of(us);
         let threats =
@@ -325,7 +337,7 @@ mod tests {
         }
 
         let mut count = 0;
-        let movegen = MoveGen::<false>::new(state.board());
+        let movegen = MoveGen::all(state.board());
         movegen.generate(|mv| {
             let mut new_state = state.clone();
             new_state.make_move(mv);

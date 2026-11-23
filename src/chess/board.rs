@@ -377,7 +377,7 @@ impl Board {
 
     #[must_use]
     pub fn has_legal_moves(&self) -> bool {
-        MoveGen::<false>::new(self)
+        MoveGen::all(self)
             .generate(|_| ControlFlow::Break(true))
             .unwrap_or(false)
     }
@@ -389,18 +389,18 @@ impl Board {
 
     #[must_use]
     pub fn legal_moves(&self) -> MoveList {
-        self.generate_moves::<false>()
+        Self::generate_moves(&MoveGen::all(self))
     }
 
     #[must_use]
     pub fn capture_moves(&self) -> MoveList {
-        self.generate_moves::<true>()
+        Self::generate_moves(&MoveGen::captures(self))
     }
 
-    fn generate_moves<const CAPTURES_ONLY: bool>(&self) -> MoveList {
+    fn generate_moves<const CAPTURES_ONLY: bool>(movegen: &MoveGen<'_, CAPTURES_ONLY>) -> MoveList {
         let mut moves = MoveList::new();
 
-        MoveGen::<CAPTURES_ONLY>::new(self).generate(|m| {
+        movegen.generate(|m| {
             moves.push(m);
             ControlFlow::<()>::Continue(())
         });
