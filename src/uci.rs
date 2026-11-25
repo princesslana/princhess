@@ -233,7 +233,9 @@ impl Default for Uci {
 #[must_use]
 pub fn read_stdin() -> String {
     let mut input = String::new();
-    io::stdin().read_line(&mut input).unwrap();
+    if io::stdin().read_line(&mut input).unwrap() == 0 {
+        return "quit".to_owned();
+    }
     input
 }
 
