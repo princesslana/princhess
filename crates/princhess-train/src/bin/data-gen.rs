@@ -760,7 +760,7 @@ fn run_game(
             return;
         }
 
-        if !state.is_available_move() {
+        if !state.has_legal_moves() {
             continue;
         }
 
@@ -790,7 +790,7 @@ fn run_game(
                 game_stats.skipped += 1;
             } else {
                 let tree = engine.mcts();
-                let root_moves = tree.root_state().available_moves();
+                let root_moves = tree.root_state().legal_moves();
                 let priors = evaluation::policy(
                     tree.root_state(),
                     &root_moves,
@@ -895,7 +895,7 @@ fn run_game(
 
             state.make_move(best_move);
 
-            if !state.is_available_move() {
+            if !state.has_legal_moves() {
                 break if state.is_check() {
                     // The stm has been checkmated. Convert to white relative result
                     state

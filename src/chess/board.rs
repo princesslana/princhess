@@ -376,22 +376,31 @@ impl Board {
     }
 
     #[must_use]
-    pub fn is_legal_move(&self) -> bool {
-        MoveGen::new(self)
-            .gen(|_| ControlFlow::Break(true))
+    pub fn has_legal_moves(&self) -> bool {
+        MoveGen::all(self)
+            .generate(|_| ControlFlow::Break(true))
             .unwrap_or(false)
     }
 
     #[must_use]
     pub fn is_checkmate(&self) -> bool {
-        self.is_check() && !self.is_legal_move()
+        self.is_check() && !self.has_legal_moves()
     }
 
     #[must_use]
     pub fn legal_moves(&self) -> MoveList {
+        Self::generate_moves(&MoveGen::all(self))
+    }
+
+    #[must_use]
+    pub fn capture_moves(&self) -> MoveList {
+        Self::generate_moves(&MoveGen::captures(self))
+    }
+
+    fn generate_moves<const CAPTURES_ONLY: bool>(movegen: &MoveGen<'_, CAPTURES_ONLY>) -> MoveList {
         let mut moves = MoveList::new();
 
-        MoveGen::new(self).gen(|m| {
+        movegen.generate(|m| {
             moves.push(m);
             ControlFlow::<()>::Continue(())
         });
@@ -401,18 +410,6 @@ impl Board {
 
     pub fn occupied(&self) -> Bitboard {
         self.white() | self.black()
-    }
-
-    #[must_use]
-    pub fn is_capture(&self, mv: Move) -> bool {
-        mv.is_enpassant() || self.by_color(!self.stm).contains(mv.to())
-    }
-
-    #[must_use]
-    pub fn is_noisy(&self, mv: Move) -> bool {
-        mv.is_enpassant()
-            || mv.is_promotion()
-            || (!mv.is_castle() && self.occupied().contains(mv.to()))
     }
 
     pub fn make_move(&mut self, mov: Move) {

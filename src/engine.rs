@@ -399,7 +399,7 @@ impl Engine {
 
         let node_moves = current_node.edges();
 
-        let state_moves = current_state.available_moves();
+        let state_moves = current_state.legal_moves();
         let state_moves_eval = evaluation::policy(
             &current_state,
             &state_moves,
