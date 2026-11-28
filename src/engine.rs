@@ -9,7 +9,7 @@ use fastapprox::faster;
 use crate::chess::Move;
 use crate::correction::CorrectionTable;
 use crate::evaluation;
-use crate::graph::{self, MoveEdge, PositionNode, Reward};
+use crate::graph::{MoveEdge, PositionNode, Reward};
 use crate::hot_table::{HotSlot, HotTable};
 use crate::math::Rng;
 use crate::mcts::{self, Mcts};
@@ -466,17 +466,6 @@ impl Engine {
 
     pub fn best_move(&self) -> Move {
         self.mcts.best_move()
-    }
-
-    /// Returns the move with the highest visit count from the root position.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the root node has no child moves (e.g., checkmate or stalemate positions).
-    pub fn most_visited_move(&self) -> Move {
-        *graph::select_edge_by_visits(self.mcts.root_edges())
-            .expect("Root node must have moves to determine most visited move")
-            .get_move()
     }
 
     fn to_uci(&self, mov: Move) -> String {

@@ -534,8 +534,9 @@ impl Mcts {
 
         let mut m = 1.0;
 
-        let bm = graph::select_edge_by_rewards(self.root_edges())
-            .expect("Root node must have moves during active search for time management");
+        let Some(bm) = graph::select_edge_by_rewards(self.root_edges()) else {
+            return 1.0;
+        };
         let bm_reward = bm.reward();
 
         let non_bm_frac = 1.0 - bm_reward.visits as f32 / self.root_visits() as f32;
@@ -864,10 +865,6 @@ pub fn format_score(bounds: (i16, i16), eval: f32) -> String {
 }
 
 /// Extracts the principal variation (best line of play) from the search tree.
-///
-/// # Panics
-///
-/// Panics if there's a logic error where a node has edges but selecting by rewards returns None.
 #[must_use]
 pub fn principal_variation<'a>(
     mut state: State,
@@ -884,9 +881,10 @@ pub fn principal_variation<'a>(
         return result;
     }
 
-    while !crnt.edges().is_empty() && result.len() < num_moves {
-        let choice = graph::select_edge_by_rewards(crnt.edges())
-            .expect("Expected a child move, but node had no edges.");
+    while result.len() < num_moves {
+        let Some(choice) = graph::select_edge_by_rewards(crnt.edges()) else {
+            break;
+        };
 
         result.push(choice);
 
