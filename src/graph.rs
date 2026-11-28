@@ -370,19 +370,27 @@ impl MoveEdge {
 /// Select the edge with the most visits, the higher average reward breaking ties
 #[inline]
 pub fn select_edge_by_visits(edges: &[MoveEdge]) -> Option<&MoveEdge> {
-    edges.iter().max_by_key(|x| {
-        let reward = x.reward();
-        (reward.visits, reward.average)
-    })
+    edges
+        .iter()
+        .max_by_key(|x| (x.visits(), x.sum_evaluations()))
 }
 
 /// Select the visited edge with the highest average reward
 #[inline]
 pub fn select_edge_by_rewards(edges: &[MoveEdge]) -> Option<&MoveEdge> {
-    edges
-        .iter()
-        .filter(|x| x.visits() > 0)
-        .max_by_key(|x| x.reward().average)
+    let mut best = None;
+    let mut best_average = i64::MIN;
+
+    for edge in edges {
+        let reward = edge.reward();
+
+        if reward.visits > 0 && reward.average >= best_average {
+            best = Some(edge);
+            best_average = reward.average;
+        }
+    }
+
+    best
 }
 
 /// Copy visit and evaluation statistics from src edges to dest edges
